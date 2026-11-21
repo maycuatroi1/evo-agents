@@ -30978,6 +30978,275 @@
           }
         }
       },
+      "/v1/auth/app-session": {
+        "post": {
+          "tags": [
+            "auth"
+          ],
+          "summary": "App Session",
+          "description": "Trade the identity an app's sign-in gives a person for a session of that member, sent as Bearer.",
+          "operationId": "app_session_v1_auth_app_session_post",
+          "parameters": [
+            {
+              "name": "X-Evo-App-Timestamp",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-App-Timestamp"
+              }
+            },
+            {
+              "name": "X-Evo-App-Signature",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-App-Signature"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSessionRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignedIn"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/auth-apps": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "List Apps",
+          "description": "The apps registered, revoked ones too, without their secrets.",
+          "operationId": "list_apps_v1_admin_auth_apps_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/AuthApp"
+                    },
+                    "type": "array",
+                    "title": "Response List Apps V1 Admin Auth Apps Get"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Create App",
+          "description": "Register an app that signs its users in; its secret is in this answer alone.",
+          "operationId": "create_app_v1_admin_auth_apps_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthAppCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AuthAppCreated"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/auth-apps/{name}": {
+        "delete": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Revoke App",
+          "description": "Revoke an app: it signs nobody in again, and every session it opened ends now.",
+          "operationId": "revoke_app_v1_admin_auth_apps__name__delete",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,38}$",
+                "title": "Name"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/tokens": {
         "get": {
           "tags": [
@@ -117991,6 +118260,37 @@
           ],
           "title": "ApnsDeviceIn"
         },
+        "AppSessionRequest": {
+          "properties": {
+            "app": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,38}$",
+              "title": "App",
+              "description": "the name the app is registered under"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Subject",
+              "description": "the person's stable id at the app"
+            },
+            "login": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,59}$",
+              "title": "Login",
+              "description": "the login the person gets on a first sign-in, before _<app>"
+            }
+          },
+          "type": "object",
+          "required": [
+            "app",
+            "subject",
+            "login"
+          ],
+          "title": "AppSessionRequest"
+        },
         "AppliedDecision": {
           "properties": {
             "number": {
@@ -118735,6 +119035,88 @@
             "project"
           ],
           "title": "AuditRow"
+        },
+        "AuthApp": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "members": {
+              "type": "integer",
+              "title": "Members",
+              "description": "the people it signed in at least once"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "created_by",
+            "created_at",
+            "revoked_at",
+            "members"
+          ],
+          "title": "AuthApp"
+        },
+        "AuthAppCreate": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,38}$",
+              "title": "Name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "AuthAppCreate"
+        },
+        "AuthAppCreated": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "secret": {
+              "type": "string",
+              "title": "Secret",
+              "description": "the app's secret; shown once, the hub keeps it sealed"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "secret",
+            "created_at"
+          ],
+          "title": "AuthAppCreated"
         },
         "AuthConfig": {
           "properties": {

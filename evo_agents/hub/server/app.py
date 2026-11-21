@@ -47,6 +47,7 @@ from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import (
     admin,
+    app_sessions,
     auth,
     blobs,
     errors,
@@ -322,6 +323,8 @@ def _include_account_routes(app: FastAPI) -> None:
         health.router,
         auth.router,
         web_auth.router,
+        app_sessions.router,  # POST /v1/auth/app-session
+        app_sessions.admin_router,  # /v1/admin/auth-apps
         tokens.router,
         user_emails.router,
         admin.router,

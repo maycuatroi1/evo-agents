@@ -54,7 +54,7 @@ Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, 
 wrong: a 404, a validation failure or an unhandled exception never answers with HTML or a traceback, and the
 `request_id` is the one in the api's log line for that request.
 
-A request carries one of four credentials:
+A request carries one of five credentials:
 
 - a machine token (`evh_...`) as `Authorization: Bearer`, which `evo-agents hub login` stores on a machine;
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
@@ -67,9 +67,13 @@ A request carries one of four credentials:
 - an ingest key of a project's signals (`evi_...`) as `Authorization: Bearer`, which an admin of the project makes for a
   service (`docs/signals.md`). It writes that project's signals through `POST /v1/signals/{project}` and gets 403
   everywhere else, the routes that read signals included; a revoked one gets 401 at its next batch.
+- an app session (`eva_...`) as `Authorization: Bearer`, which a first-party app the hub admin registered gets for
+  one of its signed-in people from `POST /v1/auth/app-session` ([below](#signing-in-from-a-first-party-app)). It is a
+  web session of that member sent without the cookie, so it needs no `X-Evo-CSRF` header; as the cookie it gets 401,
+  and a web session (`evs_...`) as `Authorization: Bearer` gets 401 too.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
-`/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
+`/v1/auth/web/login`, `/v1/auth/web/callback`, `/v1/auth/app-session`, whose app's signature is the credential), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
 webhook (its secret header is the credential), what a browser needs to subscribe to push (`GET /v1/push/config`),
 the hub's branding, which the sign-in page shows (`GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`),
 the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
@@ -331,6 +335,44 @@ unused for 90 (`/v1/admin/tokens?state=expiring` and `?state=unused` list them),
 bytes the blob store holds and the deletions still pending, graph builds that failed within 7 days, offline workers
 and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page. The trail keeps
 `EVO_HUB_AUDIT_DAYS` days of rows (365 by default, at least 30): the worker's daily `hub.prune_audit` deletes older ones.
+
+### Signing in from a first-party app
+
+A first-party app with its own enterprise sign-in can sign its people in to the hub with no GitHub account. A hub
+admin registers it once, and the answer holds its secret, which the hub never shows again and keeps sealed under
+`EVO_HUB_SECRETS_KEY` (without the key these routes answer 503):
+
+```sh
+curl -X POST https://hub.example.org/v1/admin/auth-apps -H "Authorization: Bearer $EVO_HUB_TOKEN" \
+  -H "Content-Type: application/json" -d '{"name": "lumen-studio"}'   # {"name", "secret": "evk_...", "created_at"}
+curl https://hub.example.org/v1/admin/auth-apps -H "Authorization: Bearer $EVO_HUB_TOKEN"       # the apps, no secrets
+curl -X DELETE https://hub.example.org/v1/admin/auth-apps/lumen-studio -H "Authorization: Bearer $EVO_HUB_TOKEN"
+```
+
+A name is 2 to 39 lowercase letters, digits and hyphens, starting with a letter. Revoking an app ends every session it
+opened at once, and it signs nobody in again.
+
+Once its own sign-in has told it who the person is, the app's server asks for a session with
+`POST /v1/auth/app-session` and the body `{"app": "lumen-studio", "subject": "<the person's stable id>", "login":
+"mai"}`. Two headers sign it: `X-Evo-App-Timestamp`, the Unix time in seconds, and `X-Evo-App-Signature`,
+`sha256=` followed by the hex HMAC-SHA256, under the app's secret, of the timestamp, a `.` and the raw body. The hub
+takes a signature made within 300 seconds of its clock; an unknown or revoked app, a wrong signature and a stale one
+all get the same 401. The answer is the one of `POST /v1/auth/github`: `{token, token_id, login, admin, expires_at}`,
+where the token is `eva_...`.
+
+`subject` is what finds the member: the same app and subject get the same member every time, made on the first
+sign-in with no GitHub account and the login `<login>_<app>`, here `mai_lumen-studio`. A GitHub login never holds `_`,
+so a GitHub sign-in never claims that row; a hub admin can grant the login a role before the person first signs in,
+as for anyone else (`PUT /v1/admin/projects/{project}/grants/mai_lumen-studio`). The login stays as it was made; a
+second subject asking for a login another member holds gets 409.
+
+The app sends the session as `Authorization: Bearer` on the person's behalf, and the hub applies to it what it
+applies to that person signed in on the web: their own grants, the labels of their chats, their autonomy and its
+ceilings, the quota of their accounts, and the rules only a web session passes, such as a worker set to take runs
+dispatched from the web (`docs/workers.md`). It lasts as a web session does and ends with `POST /v1/auth/logout`. Each
+sign-in writes the audit row `auth.login` with the target `app:lumen-studio`; registering and revoking an app write
+`auth_app.create` and `auth_app.revoke`. The routes of core plugins that check the Origin of a web write
+(`docs/plugins.md`) still refuse an app session's writes.
 
 ### Invite links
 

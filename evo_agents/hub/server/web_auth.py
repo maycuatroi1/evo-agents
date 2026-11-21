@@ -170,7 +170,7 @@ async def web_callback(
 @router.get("/csrf", response_model=Csrf, responses=UNCONFIGURED)
 async def csrf(response: Response, config: WebConfig, user: CurrentUser) -> Csrf:
     """The X-Evo-CSRF value of this web session, for every POST, PUT, PATCH and DELETE it makes."""
-    if user.kind != WEB:
+    if user.kind != WEB or user.app_session:
         raise HTTPException(400, "a CSRF token belongs to a web session; a Bearer request needs none")
     response.headers.update(NO_STORE)
     return Csrf(csrf=csrf_token(config.session_secret, user.token_hash))

@@ -22,6 +22,11 @@ from evo_agents.hub import tables
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
+# A hub admin registered a first-party app that signs members in, or revoked it with its sessions
+# (evo_agents.hub.server.app_sessions); the target is "app:<name>", never its secret. Its sign-ins are LOGIN rows of
+# target "app:<name>".
+AUTH_APP_CREATE = "auth_app.create"
+AUTH_APP_REVOKE = "auth_app.revoke"
 # A member's emails belong to no project; a target names the row and the member, "email:<id> user=<login>", never the
 # address (evo_agents.hub.server.user_emails).
 EMAIL_ADD = "user_email.add"
