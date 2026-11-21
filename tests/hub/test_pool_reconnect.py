@@ -15,9 +15,12 @@ if not pg.DSN:
 
 import psycopg
 from sqlalchemy import func, literal, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
 
 from evo_agents.hub import db
+
+LITERAL = {"literal_binds": True}  # a query of its own, on a connection outside the pool
 
 
 class Blackhole:
@@ -165,7 +168,8 @@ def test_connections_that_break_while_out_go_back_and_the_pool_serves_again(hear
                 await asyncio.sleep(0.05)
             async with await psycopg.AsyncConnection.connect(pg.DSN, autocommit=True) as admin:
                 for pid in pids:
-                    await admin.execute("SELECT pg_terminate_backend(%s)", (pid,))
+                    terminate = select(func.pg_terminate_backend(pid))
+                    await admin.execute(str(terminate.compile(dialect=postgresql.dialect(), compile_kwargs=LITERAL)))
             broken.set()
             for task in holders:
                 with pytest.raises(OperationalError):

@@ -47,6 +47,7 @@ from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import (
     admin,
+    app_sessions,
     auth,
     blobs,
     errors,
@@ -322,6 +323,8 @@ def _include_account_routes(app: FastAPI) -> None:
         health.router,
         auth.router,
         web_auth.router,
+        app_sessions.router,  # POST /v1/auth/app-session
+        app_sessions.admin_router,  # /v1/admin/auth-apps
         tokens.router,
         user_emails.router,
         admin.router,
@@ -477,13 +480,16 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         attachments,
         curator,
         decisions,
+        dlp_policy,
         doc_versions,
         kg_worker,
         local_runs,
+        member_tasks,
         notifications,
         output_content,
         output_notices,
         overview,
+        project_webhooks,
         proposal_reads,
         proposals,
         push,
@@ -521,6 +527,9 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         attachments.worker_router,
         doc_versions.chat_router,  # the versions of a document in a chat or a run
         doc_versions.router,
+        member_tasks.router,  # tasks a member hands an agent with no Git (task runs with no agent type)
+        project_webhooks.router,  # a project's outbound webhooks (evo_agents.hub.webhook_events)
+        dlp_policy.router,  # a project's data loss prevention policy (evo_agents.hub.dlp)
     ):
         app.include_router(routes)
 

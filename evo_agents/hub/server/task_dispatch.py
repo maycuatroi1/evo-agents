@@ -48,7 +48,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from sqlalchemy import null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs
+from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs, webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules, run_autonomy
@@ -572,23 +572,35 @@ async def show_task(request: Request, project: ProjectName, task: TaskId) -> Tas
 
 
 async def task_prompt(conn: AsyncConnection, view) -> str:
-    """The prompt of task run ``view`` (``runs.service.views.run_view``) as its worker claims it."""
+    """The prompt of task run ``view`` (``runs.service.views.run_view``) as its worker claims it: a plugin's agent
+    type's, or a member's task with no agent type (``member_tasks``)."""
     r, t, pl = tables.runs, tables.project_agent_types, tables.plugins
     query = (
         select(r.c.profile_id, t.c.name, pl.c.name.label("plugin"))
-        .join_from(r, t, t.c.id == r.c.agent_type_id)
-        .join(pl, pl.c.id == t.c.plugin_id)
+        .select_from(r.outerjoin(t, t.c.id == r.c.agent_type_id).outerjoin(pl, pl.c.id == t.c.plugin_id))
         .where(r.c.id == view.id)
     )
     found = (await conn.execute(query)).one()
     profile = await by_id(conn, found.profile_id)
+    agent = {
+        "handle": profile.handle,
+        "name": profile.name,
+        "project": profile.project,
+        "description": profile.description,
+    }
+    if found.name is None:
+        m = tables.member_tasks
+        task_id = task_runs.task_of(view.branch) or view.id
+        given = (await conn.execute(select(m.c.input, m.c.assets).where(m.c.task_id == task_id))).one_or_none()
+        return task_runs.build_member_task_prompt(
+            agent=agent,
+            login=view.dispatched_by,
+            task=view.request or "",
+            data=dict(given.input) if given is not None else {},
+            assets=list(given.assets) if given is not None else [],
+        )
     return task_runs.build_task_prompt(
-        agent={
-            "handle": profile.handle,
-            "name": profile.name,
-            "project": profile.project,
-            "description": profile.description,
-        },
+        agent=agent,
         plugin=found.plugin,
         agent_type=found.name,
         login=view.dispatched_by,
@@ -600,10 +612,24 @@ async def task_prompt(conn: AsyncConnection, view) -> str:
 
 async def task_run_ended(conn: AsyncConnection, run_id: int, new: str) -> int:
     """Store the event task.result of task run ``run_id``, moved to ``new``, for the plugin of its agent type, when
-    ``new`` ends the task (``task_runs.RESULT_STATES``); how many deliveries."""
+    ``new`` ends the task (``task_runs.RESULT_STATES``); how many deliveries. A member's task with no agent type has
+    no plugin: its event goes to the project's webhooks alone (``webhook_events``)."""
     if new not in task_runs.RESULT_STATES:
         return 0
-    found = (await conn.execute(_task_select().where(tables.runs.c.id == run_id))).one()
+    r, p = tables.runs, tables.projects
+    query = select(r.c.agent_type_id, r.c.project_id, p.c.name, r.c.attempt, r.c.branch, r.c.failure_cause)
+    row = (await conn.execute(query.join_from(r, p, p.c.id == r.c.project_id).where(r.c.id == run_id))).one()
+    if row.agent_type_id is None:
+        payload = {
+            "task_id": task_runs.task_of(row.branch) or run_id,
+            "run_id": run_id,
+            "attempt": row.attempt,
+            "project": row.name,
+            "state": new,
+            "failure_cause": row.failure_cause,
+        }
+        return await webhook_events.enqueue(conn, task_runs.RESULT_EVENT, row.project_id, payload)
+    found = (await conn.execute(_task_select().where(r.c.id == run_id))).one()
     payload = {key: value for key, value in _task(found).items() if key not in ("queued_at", "finished_at")}
     payload["state"] = new
     return await plugin_events.emit_task_result(conn, found.project_id, found.plugin_id, payload)

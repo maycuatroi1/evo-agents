@@ -15,7 +15,11 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
    the messages of the run's inbox, which the turn takes. The model calls the tools of ``hub_tools`` for at most
    MAX_ROUNDS rounds and TURN_SECONDS; messages that reach the inbox meanwhile join before the next round. A round
    whose tools asked an agent or escalated ends the turn, as the worker's agent ends its turn after the command: the
-   answer then wakes a new run instead of reaching a turn that goes on searching.
+   answer then wakes a new run instead of reaching a turn that goes on searching. Before each round leaves, the data
+   loss prevention policy of the run's project reads its messages (``dlp_policy.enforce_json``): they go redacted, and
+   stay so for the rounds after, or a round the policy blocks fails the run with what it found, kinds and counts. In the
+   first round the message that woke the run and its inbox alone count and block; the earlier messages its prompt shows
+   go redacted, counting nothing, so one message is counted once and blocks its own turn alone.
 5. Its last answer, masked as the worker's reply is, is the agent's reply in the thread (``chat_runs.agent_reply``).
    The turn's tokens and the key's cost go to run_spend, runs.usage and the attributes of the run's invoke_agent span.
 6. A run that asked an agent and waits for the answer parks (waiting, then parked), and the answer wakes it in a new
@@ -37,10 +41,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import runs, system_context, system_spec, tables
-from evo_agents.hub.server import gateway_accounts, gateway_sync, hub_tools, orchestrator, system_traces
+from evo_agents.hub.server import (
+    dlp_policy,
+    gateway_accounts,
+    gateway_sync,
+    hub_tools,
+    orchestrator,
+    system_traces,
+)
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_prompts import chat_prompt
-from evo_agents.hub.server.chat_runs import agent_reply
+from evo_agents.hub.server.chat_runs import agent_reply, chat_run
 from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
 from evo_agents.hub.server.gateway_leases import used_with
 from evo_agents.hub.server.notifications import notify
@@ -326,15 +337,21 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
     return reach, None if reach else f"no provider account of {held.prefix} has an active connection at the gateway"
 
 
-async def _prompt(engine: AsyncEngine, held: Held) -> list[dict]:
-    """The first messages of the turn: the profile's instructions, then the worker's prompt and the inbox's."""
+async def _prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str]]:
+    """(the first messages of the turn: the profile's instructions, then the worker's prompt and the inbox's; the texts
+    in them new to the provider: the body of the message that woke the run, and the inbox's)."""
+    cm = tables.chat_messages
     async with engine.begin() as conn:
         profile = await by_id(conn, held.profile_id)
         assert profile is not None  # _hold holds a run of an agent alone
         text = await chat_prompt(conn, held.run_id, held.branch, held.repos)
+        found = await chat_run(conn, held.run_id)
+        assert found is not None  # chat_prompt reads it too
+        woke = (await conn.execute(select(cm.c.body).where(cm.c.id == found.message_id))).scalar_one_or_none()
         inbox = await _take_inbox(conn, held.run_id)
     system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB) if part)
-    return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join([text, *inbox])}]
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join([text, *inbox])}]
+    return messages, [woke or "", *inbox]
 
 
 async def _take_inbox(conn, run_id: int) -> list[str]:
@@ -369,12 +386,21 @@ class _Loop:
     exhausted: bool = False  # the rounds or the time ran out before a final answer
 
 
-async def _rounds(client, key: str, held: Held, turn: hub_tools.Turn, messages: list[dict]) -> _Loop:
-    """The model's rounds of the turn, each tool call answered, until it answers without one or the bounds stop it."""
+async def _rounds(
+    client, key: str, held: Held, turn: hub_tools.Turn, messages: list[dict], fresh: list[str] | None = None
+) -> _Loop:
+    """The model's rounds of the turn, each tool call answered, until it answers without one or the bounds stop it;
+    ``fresh``, the texts of ``messages`` new to the provider (``_prompt``)."""
     found = _Loop({"input": 0, "output": 0})
     deadline = time.monotonic() + TURN_SECONDS
     while found.rounds < MAX_ROUNDS and time.monotonic() < deadline:
         found.rounds += 1
+        sent = {"messages": messages}  # the hub's own tools are no data of the project's
+        sent = await dlp_policy.enforce_json(
+            turn.engine, held.project_id, "hub_runtime", sent, run_id=held.run_id, fresh=fresh
+        )
+        messages[:] = sent["messages"]  # redacted once: a later round counts what is new alone
+        fresh = None
         body = {"model": held.model, "messages": messages, "tools": hub_tools.TOOLS}
         data = await _answer(client, key, body, deadline - time.monotonic())
         usage = data.get("usage") or {}
@@ -454,7 +480,8 @@ async def _converse(engine, config, blobs, sealer, held: Held, client: GatewayCl
     key = await client.create_key(KEY_NAME.format(run_id=held.run_id), reach, expires)
     turn = hub_tools.Turn(engine, config, blobs, sealer, held.run_id, held.project)
     try:
-        found = await _rounds(client, key.value.get_secret_value(), held, turn, await _prompt(engine, held))
+        messages, fresh = await _prompt(engine, held)
+        found = await _rounds(client, key.value.get_secret_value(), held, turn, messages, fresh)
         cost = await _spent(engine, client, held, key.id, found)
         if found.exhausted:  # the rule rounds: the Orchestrator of its agent, if any, is told
             await orchestrator.on_rounds(engine, held.run_id, found.rounds)
@@ -490,6 +517,9 @@ async def take_turn(engine: AsyncEngine, config, blobs, sealer, run_id: int, *, 
         return {"run_id": run_id, **await _converse(engine, config, blobs, sealer, held, client)}
     except (GatewayOff, GatewayError, TimeoutError) as exc:
         await _fail(engine, run_id, f"the hub runtime failed: {exc or type(exc).__name__}")
+        return {"run_id": run_id, "state": "failed"}
+    except dlp_policy.Blocked as exc:  # kinds and counts, never a value
+        await _fail(engine, run_id, f"the hub runtime failed: {exc}")
         return {"run_id": run_id, "state": "failed"}
     except Exception as exc:
         log.exception("hub turn failed", extra={"run_id": run_id})

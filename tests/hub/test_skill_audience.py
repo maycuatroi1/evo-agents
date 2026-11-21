@@ -21,7 +21,13 @@ from evo_agents.hub.contract import commands
 from evo_agents.hub.skill_sync import list_skills, publish, set_audience, sync
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
-from tests.hub.test_skills import hub, own_home, sign_in, skills_cli, write_skill  # noqa: F401 (hub, own_home: fixtures)
+from tests.hub.test_skills import (  # noqa: F401 (hub, own_home: fixtures)
+    hub,
+    own_home,
+    sign_in,
+    skills_cli,
+    write_skill,
+)
 from tests.hub.test_skills import ok as cli_ok
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)

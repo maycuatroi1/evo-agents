@@ -37,6 +37,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from evo_agents.hub import (
     tables_account_pools,
     tables_accounts,
+    tables_app_sessions,
     tables_attachments,
     tables_browser,
     tables_context,
@@ -77,6 +78,7 @@ from evo_agents.hub import (
     tables_traces,
     tables_triage,
     tables_workers,
+    tables_workspace,
 )
 from evo_agents.hub.tables_chats import bridge_tables, chat_tables, share_table
 
@@ -608,6 +610,9 @@ runs.append_constraint(
 notifications, notification_channels, notification_deliveries = tables_decisions.notification_tables(metadata)
 workflow_run_reads = tables_decisions.workflow_read_table(metadata)  # the hub's latest read of a waited run (0236)
 secrets, secret_bindings, credential_leases = tables_credentials.credential_tables(metadata)  # 0011
+auth_apps, app_identities = tables_app_sessions.app_session_tables(metadata)  # apps that sign members in (0262)
+member_tasks, project_webhooks, webhook_deliveries = tables_workspace.member_task_tables(metadata)  # 0263
+dlp_policies, dlp_counts = tables_workspace.dlp_tables(metadata)  # a project's DLP policy and its counts (0264)
 
 charters, schedules = tables_night.night_tables(metadata)  # the night shift (0012)
 

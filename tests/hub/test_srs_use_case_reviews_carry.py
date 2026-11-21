@@ -18,7 +18,17 @@ from evo_agents.hub import tables
 from evo_agents.hub.server.srs.doc import Document, Item
 from evo_agents.hub.server.srs.use_case_reviews import needed
 from tests.hub.live import sql
-from tests.hub.test_ba_agent import client, hub, imported, item, members, saved, srs_core, submitted, version  # noqa: F401
+from tests.hub.test_ba_agent import (  # noqa: F401
+    client,
+    hub,
+    imported,
+    item,
+    members,
+    saved,
+    srs_core,
+    submitted,
+    version,
+)
 from tests.hub.test_ba_agent import review as whole
 from tests.hub.test_credentials_api import app_key  # noqa: F401
 from tests.hub.test_srs_use_case_reviews import CASES, one, states

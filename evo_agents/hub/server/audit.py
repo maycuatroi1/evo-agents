@@ -22,6 +22,19 @@ from evo_agents.hub import tables
 LOGIN = "auth.login"
 LOGOUT = "auth.logout"
 TOKEN_REVOKE = "token.revoke"
+# A hub admin registered a first-party app that signs members in, or revoked it with its sessions
+# (evo_agents.hub.server.app_sessions); the target is "app:<name>", never its secret. Its sign-ins are LOGIN rows of
+# target "app:<name>".
+AUTH_APP_CREATE = "auth_app.create"
+AUTH_APP_REVOKE = "auth_app.revoke"
+# A project's admin set its DLP policy (evo_agents.hub.server.dlp_policy): "<project> mode=<m> kinds=<n> keywords=<n>",
+# never a keyword.
+DLP_POLICY = "dlp.policy"
+# A project's admin added, changed or deleted an outbound webhook (evo_agents.hub.server.project_webhooks):
+# "<project> webhook=<id>", never its URL's query or its secret.
+WEBHOOK_CREATE = "webhook.create"
+WEBHOOK_UPDATE = "webhook.update"
+WEBHOOK_DELETE = "webhook.delete"
 # A member's emails belong to no project; a target names the row and the member, "email:<id> user=<login>", never the
 # address (evo_agents.hub.server.user_emails).
 EMAIL_ADD = "user_email.add"
@@ -120,6 +133,8 @@ RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project
 # trace:<id>", the run its message woke and the trace that run opened
 RUN_DISPATCH_SYSTEM = "run.dispatch_system"
 RUN_DISPATCH_AUTHOR = "run.dispatch_author"  # a member queued an author run: "<project>/author run:<id>", no request
+# a member handed a task with no Git (``member_tasks``): "<project>/task run:<id> assets=<n>", no task, input or URI
+RUN_DISPATCH_TASK = "run.dispatch_task"
 RUN_STEP_REPORT = "run.step_report"  # a plan run's worker wrote a step, as the dispatcher: "... run:<id> status=<s>"
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
 RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done

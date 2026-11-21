@@ -85,7 +85,7 @@ from sqlalchemy import func, insert, null, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
-from evo_agents.hub import judge, review, runs, tables, tiers
+from evo_agents.hub import judge, review, runs, tables, tiers, webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import VERIFY_RULE, PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
@@ -571,6 +571,14 @@ async def record_session_proposal(
     return await _record_proposal(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
 
 
+async def _announce(conn, proposal_id: int, values: dict) -> None:
+    """The ledger's line of proposal ``proposal_id`` just stored with ``values``, and its curator.proposal for the
+    project's webhooks."""
+    await ledger_lines.proposal_recorded(conn, values["project_id"], proposal_id)
+    said = {key: values[key] for key in ("run_id", "kind", "tier", "state")}
+    await webhook_events.enqueue(conn, "curator.proposal", values["project_id"], {"proposal_id": proposal_id, **said})
+
+
 async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal:
     if body.plan is not None:
         _check_draft(body.plan)
@@ -656,7 +664,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
                 user_id=run.owner.user_id,
                 run_id=run_id,
             )
-        await ledger_lines.proposal_recorded(conn, run.project_id, proposal_id)
+        await _announce(conn, proposal_id, values)
         await memory_promotion.recorded(conn, run, access, proposal_id, tier.tier, values["state"], promotion)
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}

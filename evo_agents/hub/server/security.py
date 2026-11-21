@@ -25,6 +25,13 @@ with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the ses
 /v1/auth/web/csrf hands out; a Bearer request needs none, since a browser never adds that header by itself.
 Every comparison of a secret value is constant-time.
 
+An app session, ``eva_``, is a web session of one member that a first-party app signed in for them
+(``evo_agents.hub.server.app_sessions``): the hub keeps it as a ``tokens`` row of kind web whose host names the app,
+and its principal is of kind WEB, so every rule of a person at their keyboard holds for it as for the cookie
+(``web_only_steering``, a worker's ``dispatch_from`` web, their own grants and autonomy). It arrives only as
+``Authorization: Bearer``, never as the cookie, and needs no X-Evo-CSRF, as any Bearer request; ``Principal.app_session``
+tells it from the cookie.
+
 An ingest key of a project's signals, ``evi_...`` (``evo_agents.hub.signals``), arrives as ``Authorization: Bearer``
 and passes only to the one route it writes through, ``POST /v1/signals/{project}`` (INGEST_ROUTE), which checks the key
 itself; anywhere else it gets 403 before the database is asked, the routes that read signals included. That route also
@@ -95,7 +102,9 @@ MACHINE = "machine"
 WEB = "web"
 WORKER = "worker"
 RUN = "run"  # the token of a run that runs as its owner (``run_access``)
-PREFIXES = {MACHINE: "evh_", WEB: "evs_", WORKER: "evw_", RUN: "evr_"}
+APP = "app"  # an app session as it arrives, Bearer; kept and seen as a web session (``app_sessions``)
+PREFIXES = {MACHINE: "evh_", WEB: "evs_", WORKER: "evw_", RUN: "evr_", APP: "eva_"}
+STORED_KIND = {APP: WEB}  # the tokens.kind of a credential whose kind is not its own there
 TOKEN_BYTES = 32
 TOKEN_TTL = timedelta(days=90)  # without use; every use moves the expiry
 TOUCH_EVERY = timedelta(days=1)  # at most one write of last_used_at and expires_at per token in this time
@@ -113,6 +122,7 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/github",
         "/v1/auth/web/login",
         "/v1/auth/web/callback",
+        "/v1/auth/app-session",  # the app's signature is the credential (evo_agents.hub.server.app_sessions)
         "/v1/worker/join",  # a pairing code or a pool's join token is the credential
         "/v1/invites/preview",  # an invite link's token is the credential; it shows what the link gives, never more
         # the secret token Telegram sends is the credential: the named exception of the core plugin telegram, whose
@@ -149,7 +159,7 @@ LOGIN_HINT = "run `evo-agents hub login`"
 JOIN_HINT = "join the machine with `evo-agents worker join`"
 WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
 
-_TOKEN = re.compile(r"ev[hswr]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
+_TOKEN = re.compile(r"ev[hswra]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
 WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
 
 
@@ -361,7 +371,7 @@ class Principal:
     login: str
     admin: bool  # it acts as a hub admin: its account answers to a login of EVO_HUB_ADMINS (admin_login)
     token_id: int
-    kind: str  # MACHINE, WORKER or RUN (a Bearer token), or WEB (the session cookie)
+    kind: str  # MACHINE, WORKER or RUN (a Bearer token), or WEB (the session cookie, or an app session)
     token_hash: str
     scope: RunScope | None = None  # the agent of a run, on /mcp only; None for everyone else
     run_id: int | None = None  # RUN: the run whose token it is, which acts as its owner; None for everyone else
@@ -373,6 +383,8 @@ class Principal:
     # RUN of a KG run (``kg_run_access``): the one project it reaches, on the routes of ``kg_run_access.ROUTES`` alone;
     # None for everyone else
     kg_project: str | None = None
+    # WEB of an app session (``eva_``, Bearer): a web session without the cookie, so no CSRF; False for everyone else
+    app_session: bool = False
 
     def __repr__(self) -> str:
         run = self.scope.run_id if self.scope is not None else self.run_id
@@ -483,7 +495,7 @@ async def issue_token(conn: AsyncConnection, user_id: int, kind: str, host: str 
         insert(tokens)
         .values(
             user_id=user_id,
-            kind=kind,
+            kind=STORED_KIND.get(kind, kind),
             token_hash=hash_token(token),
             host=host,
             expires_at=func.now() + TOKEN_TTL,
@@ -515,11 +527,14 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
         if kind == RUN:
             row = (await conn.execute(AUTHENTICATE_RUN, {"digest": digest})).one_or_none()
         else:
-            row = (await conn.execute(AUTHENTICATE, {"digest": digest, "token_kind": kind})).one_or_none()
+            stored = STORED_KIND.get(kind, kind)
+            row = (await conn.execute(AUTHENTICATE, {"digest": digest, "token_kind": stored})).one_or_none()
     if row is None:
         return None
     token_id, user_id, login, admin_as, *run = row
     admin = kind != WORKER and config.is_admin(admin_as)  # a worker acts for its owner on its own routes only
+    if kind == APP:  # a web session of the member, carried by Bearer
+        return Principal(user_id, login, admin, token_id, WEB, digest, admin_login=admin_as, app_session=True)
     if not run:
         return Principal(user_id, login, admin, token_id, kind, digest, admin_login=admin_as)
     run_id, reach, kg, project = run
@@ -643,7 +658,14 @@ class Authenticate:
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
         if principal is None:
-            what = {MACHINE: "token", WEB: "web session", WORKER: "worker token", RUN: "run's token"}[kind]
+            what = {
+                MACHINE: "token",
+                WEB: "web session",
+                WORKER: "worker token",
+                RUN: "run's token",
+                APP: "app session",
+            }
+            what = what[kind]
             return unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}", clear_cookie=kind == WEB)
         request.state.principal = principal
         if kind == RUN:  # after the database: a run's token that is no longer live gets 401 everywhere
@@ -684,7 +706,7 @@ class Authenticate:
         # Decided by the kind of credential alone, before the database: a worker token outside the worker's routes,
         # or anything else on them, is refused whether or not it is live.
         if worker_route and kind != WORKER:
-            what = {WEB: "a web session", RUN: "a run's token"}.get(kind, "a machine token")
+            what = {WEB: "a web session", RUN: "a run's token", APP: "an app session"}.get(kind, "a machine token")
             return error_response(
                 request, 403, f"{WORKER_PREFIX}* takes a worker token (evw_...), not {what}: {JOIN_HINT}"
             )
@@ -710,8 +732,8 @@ class Authenticate:
 
 
 def _bearer_kind(token: str) -> str:
-    """The kind of a Bearer token by its prefix: WORKER, RUN, else MACHINE (which a malformed token fails as)."""
-    for kind in (WORKER, RUN):
+    """The kind of a Bearer token by its prefix: WORKER, RUN, APP, else MACHINE (which a malformed token fails as)."""
+    for kind in (WORKER, RUN, APP):
         if token.startswith(PREFIXES[kind]):
             return kind
     return MACHINE

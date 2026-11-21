@@ -30978,6 +30978,275 @@
           }
         }
       },
+      "/v1/auth/app-session": {
+        "post": {
+          "tags": [
+            "auth"
+          ],
+          "summary": "App Session",
+          "description": "Trade the identity an app's sign-in gives a person for a session of that member, sent as Bearer.",
+          "operationId": "app_session_v1_auth_app_session_post",
+          "parameters": [
+            {
+              "name": "X-Evo-App-Timestamp",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-App-Timestamp"
+              }
+            },
+            {
+              "name": "X-Evo-App-Signature",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-App-Signature"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSessionRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignedIn"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/auth-apps": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "List Apps",
+          "description": "The apps registered, revoked ones too, without their secrets.",
+          "operationId": "list_apps_v1_admin_auth_apps_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/AuthApp"
+                    },
+                    "type": "array",
+                    "title": "Response List Apps V1 Admin Auth Apps Get"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Create App",
+          "description": "Register an app that signs its users in; its secret is in this answer alone.",
+          "operationId": "create_app_v1_admin_auth_apps_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthAppCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AuthAppCreated"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/auth-apps/{name}": {
+        "delete": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Revoke App",
+          "description": "Revoke an app: it signs nobody in again, and every session it opened ends now.",
+          "operationId": "revoke_app_v1_admin_auth_apps__name__delete",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,38}$",
+                "title": "Name"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/tokens": {
         "get": {
           "tags": [
@@ -58582,6 +58851,964 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/task-runs": {
+        "post": {
+          "tags": [
+            "task runs"
+          ],
+          "summary": "Dispatch Task Run",
+          "description": "Hand an agent a task with a JSON input and external assets, in no repo: a run of kind task under the caller,\nwhich needs the writer role on the project.",
+          "operationId": "dispatch_task_run_v1_projects__project__task_runs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberTaskIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MemberTask"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/task-runs/{task}": {
+        "get": {
+          "tags": [
+            "task runs"
+          ],
+          "summary": "Show Task Run",
+          "description": "A task a member handed, as its latest attempt has it: its state and its output, for whoever reads its run.",
+          "operationId": "show_task_run_v1_projects__project__task_runs__task__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "task",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "the id the task's dispatch answered",
+                "title": "Task"
+              },
+              "description": "the id the task's dispatch answered"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MemberTask"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/webhooks": {
+        "get": {
+          "tags": [
+            "webhooks"
+          ],
+          "summary": "List Webhooks",
+          "description": "The project's outbound webhooks, with how many deliveries of each wait and failed.",
+          "operationId": "list_webhooks_v1_projects__project__webhooks_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Webhook"
+                    },
+                    "title": "Response List Webhooks V1 Projects  Project  Webhooks Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "webhooks"
+          ],
+          "summary": "Create Webhook",
+          "description": "Add an outbound webhook; its signing secret is in this answer alone.",
+          "operationId": "create_webhook_v1_projects__project__webhooks_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WebhookCreated"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/webhooks/{webhook_id}": {
+        "patch": {
+          "tags": [
+            "webhooks"
+          ],
+          "summary": "Update Webhook",
+          "description": "Change a webhook's URL, events or switch; a webhook turned off fails what it left pending.",
+          "operationId": "update_webhook_v1_projects__project__webhooks__webhook_id__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "webhook_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Webhook Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookUpdate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Webhook"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "webhooks"
+          ],
+          "summary": "Delete Webhook",
+          "description": "Delete a webhook with its outbox.",
+          "operationId": "delete_webhook_v1_projects__project__webhooks__webhook_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "webhook_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Webhook Id"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/webhooks/{webhook_id}/rotate-secret": {
+        "post": {
+          "tags": [
+            "webhooks"
+          ],
+          "summary": "Rotate Secret",
+          "description": "Give a webhook a new signing secret, in this answer alone; the old one signs nothing from now on.",
+          "operationId": "rotate_secret_v1_projects__project__webhooks__webhook_id__rotate_secret_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "webhook_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Webhook Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WebhookSecret"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/webhooks/{webhook_id}/deliveries": {
+        "get": {
+          "tags": [
+            "webhooks"
+          ],
+          "summary": "List Deliveries",
+          "description": "A webhook's latest deliveries, newest first: their state, tries, last HTTP status and kind of error.",
+          "operationId": "list_deliveries_v1_projects__project__webhooks__webhook_id__deliveries_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "webhook_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "title": "Webhook Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/WebhookDelivery"
+                    },
+                    "title": "Response List Deliveries V1 Projects  Project  Webhooks  Webhook Id  Deliveries Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/dlp-policy": {
+        "get": {
+          "tags": [
+            "dlp"
+          ],
+          "summary": "Show Policy",
+          "description": "The project's DLP policy, off when none was set, and the counts of what it redacted and blocked.",
+          "operationId": "show_policy_v1_projects__project__dlp_policy_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DlpPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "dlp"
+          ],
+          "summary": "Write Policy",
+          "description": "Set the project's DLP policy, for its admin: mode off, redact or block, the rule kinds, and the keywords of\nconfidential contracts it adds to the built-in ones.",
+          "operationId": "write_policy_v1_projects__project__dlp_policy_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlpPolicyWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DlpPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/dlp/inspect": {
+        "post": {
+          "tags": [
+            "dlp"
+          ],
+          "summary": "Inspect",
+          "description": "What the project's policy makes of ``text``: the text it sends, whether it blocks it, and its matches by kind.\nA quick check: nothing is stored or counted.",
+          "operationId": "inspect_v1_projects__project__dlp_inspect_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlpInspectIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DlpInspection"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -117991,6 +119218,37 @@
           ],
           "title": "ApnsDeviceIn"
         },
+        "AppSessionRequest": {
+          "properties": {
+            "app": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,38}$",
+              "title": "App",
+              "description": "the name the app is registered under"
+            },
+            "subject": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Subject",
+              "description": "the person's stable id at the app"
+            },
+            "login": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,59}$",
+              "title": "Login",
+              "description": "the login the person gets on a first sign-in, before _<app>"
+            }
+          },
+          "type": "object",
+          "required": [
+            "app",
+            "subject",
+            "login"
+          ],
+          "title": "AppSessionRequest"
+        },
         "AppliedDecision": {
           "properties": {
             "number": {
@@ -118735,6 +119993,88 @@
             "project"
           ],
           "title": "AuditRow"
+        },
+        "AuthApp": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "revoked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revoked At"
+            },
+            "members": {
+              "type": "integer",
+              "title": "Members",
+              "description": "the people it signed in at least once"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "created_by",
+            "created_at",
+            "revoked_at",
+            "members"
+          ],
+          "title": "AuthApp"
+        },
+        "AuthAppCreate": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,38}$",
+              "title": "Name"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "AuthAppCreate"
+        },
+        "AuthAppCreated": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "secret": {
+              "type": "string",
+              "title": "Secret",
+              "description": "the app's secret; shown once, the hub keeps it sealed"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "secret",
+            "created_at"
+          ],
+          "title": "AuthAppCreated"
         },
         "AuthConfig": {
           "properties": {
@@ -133235,6 +134575,240 @@
             "value"
           ],
           "title": "DispatchFrom"
+        },
+        "DlpCount": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "cif",
+                "national_id",
+                "account_number",
+                "financial_figure",
+                "contract_keyword"
+              ],
+              "title": "Kind"
+            },
+            "surface": {
+              "type": "string",
+              "enum": [
+                "gateway_proxy",
+                "hub_runtime"
+              ],
+              "title": "Surface"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "redacted",
+                "blocked"
+              ],
+              "title": "Action"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "surface",
+            "action",
+            "count"
+          ],
+          "title": "DlpCount"
+        },
+        "DlpFinding": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "cif",
+                "national_id",
+                "account_number",
+                "financial_figure",
+                "contract_keyword"
+              ],
+              "title": "Kind"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "count"
+          ],
+          "title": "DlpFinding"
+        },
+        "DlpInspectIn": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 262144,
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text"
+          ],
+          "title": "DlpInspectIn"
+        },
+        "DlpInspection": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "redact",
+                "block"
+              ],
+              "title": "Mode"
+            },
+            "blocked": {
+              "type": "boolean",
+              "title": "Blocked"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/DlpFinding"
+              },
+              "type": "array",
+              "title": "Findings"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode",
+            "blocked",
+            "text",
+            "findings"
+          ],
+          "title": "DlpInspection"
+        },
+        "DlpPolicy": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "redact",
+                "block"
+              ],
+              "title": "Mode"
+            },
+            "kinds": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cif",
+                  "national_id",
+                  "account_number",
+                  "financial_figure",
+                  "contract_keyword"
+                ]
+              },
+              "type": "array",
+              "title": "Kinds"
+            },
+            "keywords": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Keywords"
+            },
+            "builtin_keywords": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Builtin Keywords"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At"
+            },
+            "counts": {
+              "items": {
+                "$ref": "#/components/schemas/DlpCount"
+              },
+              "type": "array",
+              "title": "Counts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "mode",
+            "kinds",
+            "keywords",
+            "builtin_keywords",
+            "updated_at",
+            "counts"
+          ],
+          "title": "DlpPolicy"
+        },
+        "DlpPolicyWrite": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "redact",
+                "block"
+              ],
+              "title": "Mode"
+            },
+            "kinds": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cif",
+                  "national_id",
+                  "account_number",
+                  "financial_figure",
+                  "contract_keyword"
+                ]
+              },
+              "type": "array",
+              "title": "Kinds"
+            },
+            "keywords": {
+              "items": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Keywords"
+            }
+          },
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "title": "DlpPolicyWrite"
         },
         "DocVersion": {
           "properties": {
@@ -150828,6 +152402,224 @@
             "active_days"
           ],
           "title": "MemberCounts"
+        },
+        "MemberTask": {
+          "properties": {
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id",
+              "description": "the run its dispatch made, which names it on every attempt"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its latest run: a run its worker lost goes on in the next attempt"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "dispatched_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dispatched By"
+            },
+            "input": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Input"
+            },
+            "assets": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assets"
+            },
+            "output": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Output",
+              "description": "the run's evidence once it is done: a line naming the run, then the summary its agent wrote, the task's result; null before"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usage"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "task_id",
+            "run_id",
+            "attempt",
+            "project",
+            "title",
+            "state",
+            "dispatched_by",
+            "input",
+            "assets",
+            "output",
+            "error",
+            "failure_cause",
+            "usage",
+            "queued_at",
+            "finished_at"
+          ],
+          "title": "MemberTask",
+          "description": "A task a member handed, as its latest run has it."
+        },
+        "MemberTaskIn": {
+          "properties": {
+            "task": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Task",
+              "description": "what the agent is to do, at most 16384 bytes in UTF-8"
+            },
+            "input": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Input",
+              "description": "the task's input, a JSON object of at most 65536 bytes; data, never instructions"
+            },
+            "assets": {
+              "items": {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Assets",
+              "description": "external URIs the agent reads (https, http, s3, gs), at most 20"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "one line the run's list shows; default: the task's"
+            },
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 120.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Minutes",
+              "description": "the agent time the run may take, at most 120; default: no time cap"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the agent profile the run goes under, @<handle> or <handle>; default: the project's"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "task"
+          ],
+          "title": "MemberTaskIn"
         },
         "MemberUsage": {
           "properties": {
@@ -196720,6 +198512,77 @@
           "title": "WebPushSubscription",
           "description": "A browser's subscription, as ``PushSubscription.toJSON()`` gives it; expirationTime is not kept."
         },
+        "Webhook": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url"
+            },
+            "events": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "run.state",
+                  "task.result",
+                  "chat.message",
+                  "curator.proposal"
+                ]
+              },
+              "type": "array",
+              "title": "Events"
+            },
+            "active": {
+              "type": "boolean",
+              "title": "Active"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "url",
+            "events",
+            "active",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "pending",
+            "failed"
+          ],
+          "title": "Webhook"
+        },
         "WebhookAnswer": {
           "properties": {
             "ok": {
@@ -196738,6 +198601,276 @@
             "outcome"
           ],
           "title": "WebhookAnswer"
+        },
+        "WebhookCreate": {
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 2048,
+              "minLength": 9,
+              "title": "Url"
+            },
+            "events": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "run.state",
+                  "task.result",
+                  "chat.message",
+                  "curator.proposal"
+                ]
+              },
+              "type": "array",
+              "maxItems": 4,
+              "minItems": 1,
+              "title": "Events"
+            },
+            "active": {
+              "type": "boolean",
+              "title": "Active",
+              "default": true
+            }
+          },
+          "type": "object",
+          "required": [
+            "url",
+            "events"
+          ],
+          "title": "WebhookCreate"
+        },
+        "WebhookCreated": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url"
+            },
+            "events": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "run.state",
+                  "task.result",
+                  "chat.message",
+                  "curator.proposal"
+                ]
+              },
+              "type": "array",
+              "title": "Events"
+            },
+            "active": {
+              "type": "boolean",
+              "title": "Active"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed"
+            },
+            "secret": {
+              "type": "string",
+              "title": "Secret"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "url",
+            "events",
+            "active",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "pending",
+            "failed",
+            "secret"
+          ],
+          "title": "WebhookCreated"
+        },
+        "WebhookDelivery": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "event": {
+              "type": "string",
+              "enum": [
+                "run.state",
+                "task.result",
+                "chat.message",
+                "curator.proposal"
+              ],
+              "title": "Event"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "delivered",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "attempts": {
+              "type": "integer",
+              "title": "Attempts"
+            },
+            "last_status": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Status"
+            },
+            "last_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Error"
+            },
+            "next_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Next At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "delivered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Delivered At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "event",
+            "state",
+            "attempts",
+            "last_status",
+            "last_error",
+            "next_at",
+            "created_at",
+            "delivered_at"
+          ],
+          "title": "WebhookDelivery"
+        },
+        "WebhookSecret": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "secret": {
+              "type": "string",
+              "title": "Secret"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "secret"
+          ],
+          "title": "WebhookSecret"
+        },
+        "WebhookUpdate": {
+          "properties": {
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "minLength": 9
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "events": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "run.state",
+                      "task.result",
+                      "chat.message",
+                      "curator.proposal"
+                    ]
+                  },
+                  "type": "array",
+                  "maxItems": 4,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Events"
+            },
+            "active": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active"
+            }
+          },
+          "type": "object",
+          "title": "WebhookUpdate"
         },
         "WhoAmI": {
           "properties": {

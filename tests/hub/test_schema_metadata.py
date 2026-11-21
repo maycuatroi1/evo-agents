@@ -72,7 +72,7 @@ def hub_tables() -> set[str]:
     return set(tables.metadata.tables) - PLUGIN_OWNED_TABLES
 
 
-def test_the_metadata_holds_the_two_hundred_and_forty_three_hub_tables():
+def test_the_metadata_holds_the_two_hundred_and_fifty_hub_tables():
     assert hub_tables() == TABLES - pg.QUEUE_TABLES - PLUGIN_OWNED_TABLES
     # the last added: problems, problem_revisions, problem_evidence, intakes, kg_review_dismissals, kg_decisions,
     # kg_decision_events, opportunities (4), retired_project_plugins, worker_pools, worker_pool_projects,
@@ -83,9 +83,10 @@ def test_the_metadata_holds_the_two_hundred_and_forty_three_hub_tables():
     # agent_system_revisions, system_traces, system_spans, agent_ask_briefs, orchestrator_threads,
     # srs_use_case_revisions, srs_use_case_releases, chat_label_shares, workflow_run_reads,
     # plan_run_choices, ops_cursors, ops_batches, ops_items, cron_jobs, cron_fires, the 12 graph tables of 0248 (kg_asked among them), kg_vector_cache, curator_change_repos, curator_evolve_runs, curator_evolve_candidates,
-    # curator_evolve_arm_cache; 257 with the 14 tables of crm,
+    # curator_evolve_arm_cache, auth_apps, app_identities, member_tasks, project_webhooks, webhook_deliveries,
+    # dlp_policies, dlp_counts; 264 with the 14 tables of crm,
     # pm and marketing, whose plugins keep them
-    assert len(hub_tables()) == 243
+    assert len(hub_tables()) == 250
     assert len(PLUGIN_OWNED_TABLES) == 14 and PLUGIN_OWNED_TABLES <= TABLES
 
 

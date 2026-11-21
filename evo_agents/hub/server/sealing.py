@@ -7,7 +7,8 @@ associated data binds a value to where it belongs, ``secret:{owner_id}:{name}:{k
 value copied between the two kinds of row does not open) and ``lease:{id}`` for a token the hub leased, ``plugin-config:{plugin}:{layer}:{project}:{profile}:{field}`` for a
 secret field of a plugin's config, and ``browser-identity:{id}:{version}`` for the data key of one version of a browser
 identity's profile (``evo_agents.hub.server.browser_profiles``), and ``market-source:{id}`` for the GitHub token of a
-market source (``evo_agents.hub.market_refresh``), so a sealed value copied into another row, or to
+market source (``evo_agents.hub.market_refresh``), and ``auth-app:{name}`` for the secret of a first-party app that
+signs members in (``evo_agents.hub.server.app_sessions``), so a sealed value copied into another row, or to
 another version, does not open there. The key is 32 bytes in base64url, read by ``evo_agents.hub.config``; it never
 reaches the database, a log line or an error. ``Sealer.seal`` and ``Sealer.open`` take text; ``seal_bytes`` and
 ``open_bytes`` take bytes, such as a data key, in the same form.
@@ -102,6 +103,11 @@ def market_purchase_aad(seller_url: str, number: str) -> bytes:
     """The associated data of the secret of order ``number`` placed with the seller at ``seller_url``: it opens only as
     that order's."""
     return f"market-purchase:{seller_url}:{number}".encode()
+
+
+def auth_app_aad(name: str) -> bytes:
+    """The associated data of the secret of first-party app ``name``: it opens only as that app's."""
+    return f"auth-app:{name}".encode()
 
 
 class Sealer:

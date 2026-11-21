@@ -46,7 +46,7 @@ from evo_agents.hub.db import driver
 DEFAULT_QUEUE = "default"  # every job but the kg ones: periodic, short, on their own worker
 KG_QUEUE = "kg"  # the kg jobs of defer_kg: knowledge graph builds, on workers of their own
 HUB_QUEUE = "hub"  # the turns of the hub runtime (HUB_TURN), on a worker of their own beside the default queue's
-DELIVERY_QUEUE = "deliveries"  # DELIVER_PLUGIN_EVENTS, on a worker of its own beside the default queue's
+DELIVERY_QUEUE = "deliveries"  # DELIVER_PLUGIN_EVENTS and DELIVER_WEBHOOKS, on a worker of its own beside the default's
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -76,6 +76,7 @@ REPLAY_SUITE = "curator.replay_suite"  # hourly: each charter's suite of replay 
 PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once
 PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
 DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute, on commit and when due: what is due for plugins
+DELIVER_WEBHOOKS = "hub.deliver_webhooks"  # every minute and on commit: what is due for projects' outbound webhooks
 READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
 VALUE_CHECK = "hub.value_check"  # on a batch of a project's signals: its plugins' value_check jobs, for it alone
 RELEASE_SCHEDULES = "hub.release_schedules"  # every minute: the daily check of each release schedule, at its time
@@ -107,7 +108,7 @@ def queue_of(task: str) -> str:
         return LEASE
     if task == HUB_TURN:
         return HUB_QUEUE
-    if task == DELIVER_PLUGIN_EVENTS:
+    if task in (DELIVER_PLUGIN_EVENTS, DELIVER_WEBHOOKS):
         return DELIVERY_QUEUE
     return KG_QUEUE if task == KG_BUILD else DEFAULT_QUEUE
 

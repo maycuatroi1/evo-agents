@@ -54,7 +54,7 @@ Every route lives under `/v1` and answers JSON. Errors have one shape, `{error, 
 wrong: a 404, a validation failure or an unhandled exception never answers with HTML or a traceback, and the
 `request_id` is the one in the api's log line for that request.
 
-A request carries one of four credentials:
+A request carries one of five credentials:
 
 - a machine token (`evh_...`) as `Authorization: Bearer`, which `evo-agents hub login` stores on a machine;
 - a web session (`evs_...`) in the `evo_hub_session` cookie. A write made with the cookie (POST, PUT, PATCH,
@@ -67,9 +67,13 @@ A request carries one of four credentials:
 - an ingest key of a project's signals (`evi_...`) as `Authorization: Bearer`, which an admin of the project makes for a
   service (`docs/signals.md`). It writes that project's signals through `POST /v1/signals/{project}` and gets 403
   everywhere else, the routes that read signals included; a revoked one gets 401 at its next batch.
+- an app session (`eva_...`) as `Authorization: Bearer`, which a first-party app the hub admin registered gets for
+  one of its signed-in people from `POST /v1/auth/app-session` ([below](#signing-in-from-a-first-party-app)). It is a
+  web session of that member sent without the cookie, so it needs no `X-Evo-CSRF` header; as the cookie it gets 401,
+  and a web session (`evs_...`) as `Authorization: Bearer` gets 401 too.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
-`/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
+`/v1/auth/web/login`, `/v1/auth/web/callback`, `/v1/auth/app-session`, whose app's signature is the credential), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
 webhook (its secret header is the credential), what a browser needs to subscribe to push (`GET /v1/push/config`),
 the hub's branding, which the sign-in page shows (`GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`),
 the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
@@ -331,6 +335,44 @@ unused for 90 (`/v1/admin/tokens?state=expiring` and `?state=unused` list them),
 bytes the blob store holds and the deletions still pending, graph builds that failed within 7 days, offline workers
 and the audit rows of the last 24 hours. The rows of every table are on its Diagnostics page. The trail keeps
 `EVO_HUB_AUDIT_DAYS` days of rows (365 by default, at least 30): the worker's daily `hub.prune_audit` deletes older ones.
+
+### Signing in from a first-party app
+
+A first-party app with its own enterprise sign-in can sign its people in to the hub with no GitHub account. A hub
+admin registers it once, and the answer holds its secret, which the hub never shows again and keeps sealed under
+`EVO_HUB_SECRETS_KEY` (without the key these routes answer 503):
+
+```sh
+curl -X POST https://hub.example.org/v1/admin/auth-apps -H "Authorization: Bearer $EVO_HUB_TOKEN" \
+  -H "Content-Type: application/json" -d '{"name": "lumen-studio"}'   # {"name", "secret": "evk_...", "created_at"}
+curl https://hub.example.org/v1/admin/auth-apps -H "Authorization: Bearer $EVO_HUB_TOKEN"       # the apps, no secrets
+curl -X DELETE https://hub.example.org/v1/admin/auth-apps/lumen-studio -H "Authorization: Bearer $EVO_HUB_TOKEN"
+```
+
+A name is 2 to 39 lowercase letters, digits and hyphens, starting with a letter. Revoking an app ends every session it
+opened at once, and it signs nobody in again.
+
+Once its own sign-in has told it who the person is, the app's server asks for a session with
+`POST /v1/auth/app-session` and the body `{"app": "lumen-studio", "subject": "<the person's stable id>", "login":
+"mai"}`. Two headers sign it: `X-Evo-App-Timestamp`, the Unix time in seconds, and `X-Evo-App-Signature`,
+`sha256=` followed by the hex HMAC-SHA256, under the app's secret, of the timestamp, a `.` and the raw body. The hub
+takes a signature made within 300 seconds of its clock; an unknown or revoked app, a wrong signature and a stale one
+all get the same 401. The answer is the one of `POST /v1/auth/github`: `{token, token_id, login, admin, expires_at}`,
+where the token is `eva_...`.
+
+`subject` is what finds the member: the same app and subject get the same member every time, made on the first
+sign-in with no GitHub account and the login `<login>_<app>`, here `mai_lumen-studio`. A GitHub login never holds `_`,
+so a GitHub sign-in never claims that row; a hub admin can grant the login a role before the person first signs in,
+as for anyone else (`PUT /v1/admin/projects/{project}/grants/mai_lumen-studio`). The login stays as it was made; a
+second subject asking for a login another member holds gets 409.
+
+The app sends the session as `Authorization: Bearer` on the person's behalf, and the hub applies to it what it
+applies to that person signed in on the web: their own grants, the labels of their chats, their autonomy and its
+ceilings, the quota of their accounts, and the rules only a web session passes, such as a worker set to take runs
+dispatched from the web (`docs/workers.md`). It lasts as a web session does and ends with `POST /v1/auth/logout`. Each
+sign-in writes the audit row `auth.login` with the target `app:lumen-studio`; registering and revoking an app write
+`auth_app.create` and `auth_app.revoke`. The routes of core plugins that check the Origin of a web write
+(`docs/plugins.md`) still refuse an app session's writes.
 
 ### Invite links
 
@@ -2469,6 +2511,29 @@ Curator ignores it, and one that stays silent for 24 hours ends. Its decisions (
 Telegram and the Inbox like any other, and the first answer wins, from the web, Telegram, `hub decision answer` or the
 machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
 states and kind in `hub run list/show`; the machine side talks HTTP.
+
+## Member task runs
+
+A writer of a project hands an agent a task that needs no Git: `POST /v1/projects/{p}/task-runs` with the task, a JSON
+object as its input (at most 64 KiB) and up to 20 external asset URIs (`https`, `http`, `s3` or `gs`, each with a
+host). The hub queues a run of kind `task` with no repo and no agent type, under the caller's own principal: their
+autonomy ceiling, their accounts and their quota pacing apply as to any run they dispatch, and the project's default
+agent profile runs it unless `profile` names another. A web session, a token and an app session (`eva_...`) of a
+first-party app each may. A reader gets 403.
+
+```bash
+curl -X POST https://hub.example.org/v1/projects/lumen-studio/task-runs -H "Authorization: Bearer $EVO_HUB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Draft three taglines for the spring campaign.", "input": {"tone": ["warm", "short"]},
+       "assets": ["https://assets.lumenops.example/brief.pdf"]}'
+curl https://hub.example.org/v1/projects/lumen-studio/task-runs/812 -H "Authorization: Bearer $EVO_HUB_TOKEN"
+```
+
+The answer, and `GET /v1/projects/{p}/task-runs/{task}` after it, give the task as its latest attempt has it:
+`task_id` (the run its dispatch made, which names it on every attempt), `run_id` and `attempt`, `state`, the input and
+assets, and `output`, the summary its agent wrote once the run is done. A run its worker lost goes on in the next
+attempt with the same input. The worker builds no worktree: the agent reads the task, its input and the asset URIs in
+its prompt. When the run ends, the project's webhooks that take `task.result` get it (Outbound webhooks below).
 
 ## Outputs of runs
 
@@ -4705,6 +4770,83 @@ curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1
 curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/branding/rollback \
   -d '{"version": 1}'
 ```
+
+## Outbound webhooks
+
+A project's admin sets up to 20 webhooks, each an `https` URL and the events it takes: `run.state` (a run of the
+project changed state), `task.result` (a task run ended), `chat.message` (a message in a chat of the project) and
+`curator.proposal` (the Curator proposed a change). The routes are admin-only:
+
+- `GET /v1/projects/{p}/webhooks`, `POST` to create one, `PATCH .../webhooks/{id}` (url, events, active), `DELETE`;
+- `POST .../webhooks/{id}/rotate-secret`, and `GET .../webhooks/{id}/deliveries` for the last tries.
+
+The create and rotate answers alone carry the signing secret (`evx_...`, with `Cache-Control: no-store`); the hub
+stores it sealed under `EVO_HUB_SECRETS_KEY` and answers 503 without that key. The audit log names the webhook's id,
+never its URL.
+
+Each event is written to an outbox, `webhook_deliveries`, in the transaction that made it, so a hub that stops after
+the commit still delivers it. The job `hub.deliver_webhooks` (on each such commit and every minute, on the deliveries
+queue) POSTs `{id, event, project, created_at, data}`, whose `data` holds ids and states, never a text, with:
+
+- `X-Evo-Event` and `X-Evo-Delivery`, the delivery's id, the same on every try;
+- `X-Evo-Timestamp`, the Unix time of the try;
+- `X-Evo-Signature`: `sha256=` and the hex HMAC-SHA256, under the secret, of the timestamp, a dot and the raw body.
+
+A receiver checks the signature and refuses a timestamp far from its clock:
+
+```python
+import hashlib, hmac
+
+def valid(secret: str, timestamp: str, body: bytes, header: str) -> bool:
+    expected = hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(header, "sha256=" + expected)
+```
+
+A 2xx answer delivers it. Any other answer, or none in 10 seconds, is tried again after a backoff that starts at a
+minute and doubles up to an hour; the eighth try fails it, and so does turning off or deleting its webhook. A delivery
+keeps the last status and the error's kind, never the receiver's body, and is dropped 14 days after it ended.
+
+A webhook's URL names a host on the public internet, with no user or password: create and `PATCH` answer 422 for an
+address or a name of a private network (loopback, RFC 1918, link-local and the metadata address, `localhost`, a name
+with no dot or under `.internal` and the like), as for a provider account's base URL. DNS may change after the write,
+so each try resolves the host again and refuses it, as a failed try, unless every address is public; the POST goes to
+the address checked, with the host name in the Host header and in TLS. A pass of the job claims one delivery at a
+time, for longer than a try takes, so two passes never send a delivery twice and one slow receiver delays a pass by
+10 seconds at most.
+
+## Data loss prevention
+
+A project's admin sets what the hub does when a model call of the project's runs carries customer or confidential
+data. `GET /v1/projects/{p}/dlp-policy` gives a reader the policy (off when none was set) and the counts of what it
+redacted and blocked; `PUT` sets it, for the admin; `POST /v1/projects/{p}/dlp/inspect` with `{"text": ...}` shows a
+reader what the policy makes of a text, and counts nothing.
+
+```bash
+curl -X PUT https://hub.example.org/v1/projects/lumen-studio/dlp-policy -H "Authorization: Bearer $EVO_HUB_TOKEN" \
+  -H "Content-Type: application/json" -d '{"mode": "redact", "keywords": ["Project Northwind"]}'
+```
+
+The rule kinds, all on unless `kinds` names fewer:
+
+- `cif`: a customer information file code, `CIF` and 6 to 12 digits;
+- `national_id`: a citizen identity card number (CCCD), 12 digits with a province code, or 9 digits after CMND;
+- `account_number`: 8 to 19 digits after a word that names an account (account, acct, a/c, STK, tai khoan);
+- `financial_figure`: an amount of at least four digits with a currency or scale (VND, USD, EUR, dong, ty, trieu,
+  million, billion) or a leading `$`;
+- `contract_keyword`: a keyword of a confidential contract, the built-in ones (`builtin_keywords`) and the policy's
+  `keywords`, whole words, case and accents aside.
+
+Years, ports and phone numbers do not match. The hub's gateway route (`/v1/messages`, `/v1/chat/completions` and the
+rest of the run-token routes) and the hub runtime apply the policy before a call leaves for a provider. In mode
+`redact` each match goes as `[REDACTED:<kind>]`; in mode `block` the call never leaves: the gateway route answers 422,
+and a hub agent's turn fails with the kinds and counts. A hub agent's prompt shows earlier messages of the chat as the
+store keeps them: in a turn's first round the message that woke the turn and its inbox alone count and block, and the
+earlier messages go redacted, so a message counts once and blocks its own turn alone. From the second round on, the
+round's new content is inspected in full, tool results among it: in mode `block`, a tool result that matches, such as
+a read of the chat that returns an old matching message, fails the turn. The gateway route inspects each call whole
+and counts per call, not per message: a run's agent sends its whole conversation on each call, so in mode `block` one
+matching tool result makes every later call of that run answer 422. Each redaction and block is counted by rule kind,
+surface and action in `dlp_counts`. Neither a count, a log line, an error nor the audit log holds a matched value.
 
 ## Blob store
 

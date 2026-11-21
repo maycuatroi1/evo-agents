@@ -31,8 +31,8 @@ GITLAB_TOKEN = re.compile(r"\b(?P<head>glpat-)[A-Za-z0-9_-]{20,}")  # personal a
 HUGGING_FACE_TOKEN = re.compile(r"\b(?P<head>hf_)[A-Za-z0-9]{30,}")
 NPM_TOKEN = re.compile(r"\b(?P<head>npm_)[A-Za-z0-9]{30,}")
 GITHUB_TOKEN = re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}")  # every kind of GitHub token
-# hub, web, worker, run, signal ingest, invite and join tokens
-HUB_TOKEN = re.compile(r"\b(?P<head>ev[hswrinj]_)[A-Za-z0-9_-]{8,}")
+# hub, web, worker, run, signal ingest, invite, join, app session, app secret and webhook secret tokens
+HUB_TOKEN = re.compile(r"\b(?P<head>ev[hswrinjakx]_)[A-Za-z0-9_-]{8,}")
 
 # The password of a URI, scheme://user:password@host, any scheme
 URI_PASSWORD = re.compile(r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^:/@\s]*:)(?P<value>[^@\s/]+)@")

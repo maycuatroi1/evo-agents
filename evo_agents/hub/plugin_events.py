@@ -64,7 +64,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import access, hub_events, tables, telegram
+from evo_agents.hub import access, hub_events, tables, telegram, webhook_events
 from evo_agents.hub.plugin_calls import (
     CoreContext,
     PluginCallError,
@@ -152,11 +152,14 @@ async def emit(
 ) -> int:
     """Store a delivery of the event ``kind`` of project ``project_id`` for each plugin that takes it (plugin
     ``plugin_id`` alone when given), in the caller's transaction; how many. An event of ``hub_events.KINDS`` is also
-    written to hub_events, in the same transaction."""
+    written to hub_events, and one of ``webhook_events.EVENTS`` to the outbox of the project's webhooks, in the same
+    transaction."""
     if project_id is None:
         return 0
     if kind in hub_events.KINDS:
         await hub_events.record(conn, kind, project_id, payload)
+    if kind in webhook_events.EVENTS:
+        await webhook_events.enqueue(conn, kind, project_id, payload)
     found = [item for item in await _subscribers(conn, kind, project_id) if plugin_id in (None, item[0])]
     if found:
         values = [
