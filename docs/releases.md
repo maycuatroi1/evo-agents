@@ -16,7 +16,7 @@ a member's worker runs the agent, and the hub's GitHub App, never the agent, mer
 | --- | --- |
 | the schedule, the check, the cycle | `evo_agents/hub/releases.py`, `evo_agents/hub/server/release_check.py`, `evo_agents/hub/server/release_github.py` |
 | the range, the version rule, the prompts, the refusals | `evo_agents/hub/release_runs.py`, `evo_agents/hub/server/release_claims.py` |
-| landing: pull request, merge, tag | `evo_agents/hub/server/release_land.py` |
+| landing: pull request, merge, tag; the branches a refused landing left | `evo_agents/hub/server/release_land.py`, `evo_agents/hub/server/release_settle.py` |
 | following the CI, failures, infrastructure, stop causes | `evo_agents/hub/release_ci.py`, `evo_agents/hub/server/release_watch.py`, `evo_agents/hub/server/release_actions.py` |
 | stopping, the owner's decision and its answer | `evo_agents/hub/server/release_cycles.py`, `evo_agents/hub/server/release_answer.py` |
 | the routes and the command line | `evo_agents/hub/server/releases.py`, `evo_agents/hub/release_cli.py` |
@@ -165,6 +165,24 @@ it. The hub:
 
 Each part is saved as it is done, so a pass that GitHub failed goes on from there. GitHub failing counts one try; 5
 passes in a row mark the run failed and stop the cycle (cause `github`). A refusal stops it at once (cause `refused`).
+
+### Branches a refused landing left
+
+A refused landing leaves `release/<version>` on origin, and a fix run of the same red tag picks the same version, so its
+push of that branch would be refused as no fast-forward (the run would fail `push_conflict`). Before the checks, each
+pass settles the runs the hub refused or failed to land, that made no tag, and whose cycle is open or stopped
+(`release_settle.settle_releases`), once a pass per run:
+
+- **A person merged its pull request** into the default branch, whose head is the commit the run pushed: the hub adopts
+  it. It tags the merge commit `v<version>` (or finds the tag there already), keeps the run as tagged with that merge
+  commit, writes the cycle's `release_tags` row for the run, and audits `release.tag`, as for a landing of its own. The
+  guard against test hacking judges the hub's own merge only; a person's merge is theirs to decide. A tag on another
+  commit is left alone. A stopped cycle stays stopped: its owner's `continue` makes the hub follow the new tag's CI.
+- **Nobody merged it** and the cycle is open again (its owner chose `continue`): the hub closes the branch's open pull
+  requests and deletes the branch, when the branch still holds the commit the run pushed, so the new fix run pushes its
+  own `release/<version>`. A stopped cycle keeps the branch and its pull request for a person to read, and a branch
+  that moved is never touched. A run that finds its branch taken anyway fails `push_conflict`, and the owner continues
+  the cycle again once the hub cleared it.
 
 ## Following the CI
 

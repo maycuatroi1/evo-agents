@@ -49,6 +49,7 @@ from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.release_cycles import DISPATCH, queue_run
 from evo_agents.hub.server.release_github import ReadFailed, Reading, read_release
 from evo_agents.hub.server.release_land import land_releases, owner_is_admin
+from evo_agents.hub.server.release_settle import settle_releases
 from evo_agents.hub.server.release_watch import Read, red_tag, watch_releases
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
@@ -359,14 +360,17 @@ async def fire_release_schedules(engine: AsyncEngine, app: GitHubApp | None, *, 
 
 
 async def release_pass(engine: AsyncEngine, app: GitHubApp | None, *, now: datetime | None = None) -> dict:
-    """One pass of ``hub.release_schedules``: the checks that are due, the landing of the release runs done, then
-    the watch of the open cycles' CI, which reads the clock (``now`` is the checks'); how many of each ended each way,
-    the landings under ``landed_<how>`` and the watch's under ``watched_<how>``."""
+    """One pass of ``hub.release_schedules``: the branches a refused landing left (``release_settle``), the checks
+    that are due, the landing of the release runs done, then the watch of the open cycles' CI, which reads the clock
+    (``now`` is the checks'); how many of each ended each way, the settling under ``settled_<how>``, the landings
+    under ``landed_<how>`` and the watch's under ``watched_<how>``."""
+    settled = await settle_releases(engine, app)
     found = await fire_release_schedules(engine, app, now=now)
     landed = await land_releases(engine, app)
     watched = await watch_releases(engine, app)
     return {
         **found,
+        **{f"settled_{how}": count for how, count in settled.items()},
         **{f"landed_{how}": count for how, count in landed.items()},
         **{f"watched_{how}": count for how, count in watched.items()},
     }

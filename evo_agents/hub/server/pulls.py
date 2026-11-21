@@ -203,7 +203,7 @@ async def repository(app: GitHubApp, token: str, owner: str, repo: str) -> dict:
 async def branch_head(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict:
     """The commit ``branch`` of owner/repo points at: {sha, date}, its committer time."""
     doing = f"reading branch {branch} of {owner}/{repo}"
-    response = await _api(app, token, "GET", _path("repos", owner, repo, "branches", branch), doing)
+    response = await _api(app, token, "GET", _path("repos", owner, repo, "branches", *branch.split("/")), doing)
     if response.status_code != 200:
         raise _refused(response, doing)
     commit = app._json(response, doing).get("commit")
@@ -369,6 +369,19 @@ async def create_ref(app: GitHubApp, token: str, owner: str, repo: str, ref: str
     if response.status_code == 422 and "already exists" in str(refusal).lower():
         return False
     raise refusal
+
+
+async def delete_branch(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> bool:
+    """Delete ``branch`` of owner/repo: True when it was deleted now, False when GitHub says there is none; ``Refused``
+    for any other refusal."""
+    doing = f"deleting branch {branch} of {owner}/{repo}"
+    path = _path("repos", owner, repo, "git", "refs", "heads", *branch.split("/"))
+    response = await _api(app, token, "DELETE", path, doing)
+    if response.status_code == 204:
+        return True
+    if response.status_code in (404, 422):
+        return False
+    raise _refused(response, doing)
 
 
 async def file_text(app: GitHubApp, token: str, owner: str, repo: str, path: str, ref: str) -> str | None:

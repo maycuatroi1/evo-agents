@@ -36,6 +36,7 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import diff_signs, release_ci, release_runs, releases, runs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.release_check import release_pass
+from evo_agents.hub.server.release_settle import settle_releases
 from evo_agents.hub.server.release_watch import watch_releases
 from evo_agents.hub.server.run_state import move_run
 from tests.hub.live import sql
@@ -45,6 +46,7 @@ from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
 from tests.hub.test_curator import PROJECT, grant
 from tests.hub.test_release_runs import (
+    ELSEWHERE,
     VERSION_FILE,
     at_head,
     cut,
@@ -162,6 +164,11 @@ def _world(hub_db, tmp_path, github, app_key, permissions):  # noqa: F811
 def watch(world) -> dict:
     state = world.app.state
     return world.client.portal.call(partial(watch_releases, state.engine, state.github_app))
+
+
+def settle(world) -> dict:
+    state = world.app.state
+    return world.client.portal.call(partial(settle_releases, state.engine, state.github_app))
 
 
 def tagged(world) -> tuple[int, str]:
@@ -513,6 +520,109 @@ def test_a_fix_with_signs_of_test_hacking_is_not_merged_and_stops_the_cycle(worl
     assert found["state"] == "stopped" and found["stop_cause"] == "hacking"
     assert "signs of test hacking" in found["stop_reason"] and "an assertion of a test removed" in found["stop_reason"]
     assert landed_row(world.db, fix_id)["land_state"] == "refused"
+
+
+HACKING = [
+    patch(
+        "tests/hub/test_paths.py",
+        " def test_a_written_file_ends_lines_in_lf():",
+        "-    assert a == b",
+        "+    assert True",
+    ),
+]
+
+
+def refused_fix(world) -> int:
+    """A fix of v0.25.0 whose change shows a sign of test hacking: refused, its pull request open on release/0.25.1
+    and its cycle stopped; the fix run's id."""
+    _, fix_id = red_tag_fixing(world)
+    assert fixed(world, fix_id, files=HACKING) == {"refused": 1}
+    return fix_id
+
+
+def continued(world) -> int:
+    """The owner answers ``continue`` to the stopped cycle: the second fix run of the same red tag is queued, claimed
+    and running; its id."""
+    assert answer(world, cycle(world.db)["decision_id"], "continue").status_code == 200
+    second = claimed(world)
+    assert second["release"]["red_tag"] == "v0.25.0"
+    return second["id"]
+
+
+def pulls_of(world, branch: str) -> list:
+    return [item for item in world.github.pulls.values() if item.head == branch]
+
+
+def test_a_second_fix_run_of_the_same_red_tag_finds_release_branch_free_and_lands(world):
+    first = refused_fix(world)
+    assert settle(world) == {"kept": 1}, "stopped, the cycle keeps the branch and its pull request for a person"
+    heads = world.github.repos[(MINE.lower(), REPO)].heads
+    assert heads["release/0.25.1"] == FIXED
+    second = continued(world)
+    assert second != first
+    assert settle(world) == {"cleared": 1}
+    assert "release/0.25.1" not in heads, "free: the second run's push of the same version is no push_conflict"
+    assert world.github.deleted_branches == [(MINE, REPO, "release/0.25.1")]
+    assert [item.state for item in pulls_of(world, "release/0.25.1")] == ["closed"]
+    assert settle(world) == {"clean": 1}, "nothing is done twice"
+    assert fixed(world, second, head=FIXED_AGAIN, files=[]) == {"tagged": 1}
+    assert landed_row(world.db, second)["land_state"] == "tagged"
+    assert landed_row(world.db, first)["tagged"] is None
+    assert settle(world) == {}, "the first run's branch is the second run's now: nothing of it is left behind"
+
+
+def test_a_release_branch_that_moved_since_the_refusal_is_left_as_it_is(world):
+    refused_fix(world)
+    continued(world)
+    world.github.push(MINE, REPO, "release/0.25.1", PERSON)
+    assert settle(world) == {"kept": 1}
+    assert world.github.deleted_branches == []
+    assert [item.state for item in pulls_of(world, "release/0.25.1")] == ["open"]
+
+
+def test_a_pull_request_a_person_merged_after_a_refusal_is_tagged_by_the_hub_and_followed(world):
+    fix_id = refused_fix(world)
+    merges = len(world.github.merges)
+    world.github.merge_by_hand(MINE, REPO, "release/0.25.1", "a-member", "9" * 40)
+    assert settle(world) == {"adopted": 1}
+    assert tag_of(world.github, "v0.25.1")[0] == "9" * 40
+    assert len(world.github.merges) == merges, "the hub tagged a merge it did not make"
+    row = landed_row(world.db, fix_id)
+    assert (row["land_state"], row["tagged"], row["merge_commit"], row["pull_number"]) == (
+        "tagged",
+        "v0.25.1",
+        "9" * 40,
+        2,
+    )
+    assert tags(world.db)[-1] | {"workflow_run_id": None} == {
+        "tag": "v0.25.1",
+        "commit": "9" * 40,
+        "run_id": fix_id,
+        "ci_state": "pending",
+        "workflow_run_id": None,
+        "reruns": 0,
+        "failures": None,
+        "problem": None,
+    }
+    a = tables.audit
+    assert sql(world.db, select(func.count()).where(a.c.action == "release.tag")) == [(2,)], "the cut's and this"
+    assert settle(world) == {}, "a run tagged is settled"
+    assert cycle(world.db)["state"] == "stopped"
+    assert answer(world, cycle(world.db)["decision_id"], "continue").status_code == 200
+    assert release_rows(world.db)[-1][1:] == ("fix", "v0.25.0"), "no new run: the CI of v0.25.1 is followed"
+    ci(world, "v0.25.1", "9" * 40)
+    assert watch(world) == {"published": 1}
+
+
+def test_a_tag_a_person_made_on_the_merge_commit_is_kept_and_a_tag_elsewhere_is_not_taken(world):
+    fix_id = refused_fix(world)
+    world.github.merge_by_hand(MINE, REPO, "release/0.25.1", "a-member", "9" * 40)
+    world.github.tag(MINE, REPO, "v0.25.1", ELSEWHERE)
+    assert settle(world) == {"skipped": 1}
+    assert landed_row(world.db, fix_id)["tagged"] is None
+    world.github.tag(MINE, REPO, "v0.25.1", "9" * 40)
+    assert settle(world) == {"adopted": 1}
+    assert [item[:3] for item in world.github.made_refs if item[2] == "refs/tags/v0.25.1"] == []
 
 
 def test_a_fix_that_adds_importorskip_and_a_platform_skip_with_its_reason_is_no_hacking(world):
