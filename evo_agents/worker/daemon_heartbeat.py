@@ -77,16 +77,14 @@ class Heartbeat:
         backoff = Backoff()
         while True:
             self.daemon.wake.turn("heartbeat")  # a sleep holds the claims, never the heartbeats of the runs held
-            try:
-                ok = await self.beat()
-            except Exception:  # a bug here must not end the heartbeats, and with them the leases
+            delay = self.daemon.heartbeat_s
+            try:  # a bug here, the backoff's included, must not end the heartbeats, and with them the leases
+                if await self.beat():
+                    backoff.reset()
+                else:
+                    delay = min(delay, backoff.next())
+            except Exception:
                 log.exception("heartbeat failed")
-                ok = False
-            if ok:
-                backoff.reset()
-                delay = self.daemon.heartbeat_s
-            else:
-                delay = min(self.daemon.heartbeat_s, backoff.next())
             await asyncio.sleep(delay)
 
     def _held(self) -> list[int]:
