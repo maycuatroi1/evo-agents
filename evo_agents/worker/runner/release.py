@@ -246,7 +246,14 @@ class ReleaseRun:
         except gitops.PushRefused as exc:
             raise RunFailed(f"{name}: {exc}") from None
         except gitops.GitError as exc:
-            raise RunFailed(f"git push of {name} to {branch} failed: {exc}", cause=push_cause(exc)) from None
+            cause = push_cause(exc)
+            taken = (
+                f"; origin holds {branch} of an earlier release run, which the hub clears once its cycle goes on "
+                "(release_settle): continue the cycle again"
+                if cause == "push_conflict"
+                else ""
+            )
+            raise RunFailed(f"git push of {name} to {branch} failed: {exc}{taken}", cause=cause) from None
         run.note(
             f"Pushed {pushed.head[:12]} of {name} to {branch} on origin ({len(pushed.commits)} commit(s)).",
             commit_sha=pushed.head,

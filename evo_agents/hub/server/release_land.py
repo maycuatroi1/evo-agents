@@ -93,14 +93,15 @@ class Landing:
     decision: str | None
     pull_number: int | None
     merge_commit: str | None
+    cycle_state: str
 
     @property
     def tag(self) -> str:
         return releases.tag_prefix(self.tag_pattern) + self.version
 
 
-def _waiting():
-    """The release runs that wait to land: done, with their branch, not landed, of an open cycle."""
+def landing_rows(*where):
+    """The release runs with their branch, done, that ``where`` keeps, with their cycle, schedule, project and repo."""
     rr, r, c, s, p, pr, u = (
         tables.release_runs,
         tables.runs,
@@ -125,6 +126,7 @@ def _waiting():
             c.c.target_ref,
             c.c.target_commit,
             c.c.base_tag,
+            c.c.state.label("cycle_state"),
             rr.c.version,
             rr.c.branch,
             rr.c.head_commit,
@@ -138,9 +140,14 @@ def _waiting():
         .join(p, p.c.id == c.c.project_id)
         .join(u, u.c.id == c.c.owner_id)
         .outerjoin(pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == s.c.repo))
-        .where(r.c.state == "done", rr.c.branch.is_not(None), rr.c.land_state.is_(None), c.c.state == "open")
+        .where(r.c.state == "done", rr.c.branch.is_not(None), *where)
         .order_by(rr.c.run_id)
     )
+
+
+def _waiting():
+    """The release runs that wait to land: done, with their branch, not landed, of an open cycle."""
+    return landing_rows(tables.release_runs.c.land_state.is_(None), tables.release_cycles.c.state == "open")
 
 
 async def owner_is_admin(conn: AsyncConnection, owner_id: int, owner: str, project: str) -> bool:
@@ -154,20 +161,20 @@ async def owner_is_admin(conn: AsyncConnection, owner_id: int, owner: str, proje
     return has_role(access.role, "admin")
 
 
-async def _save(engine: AsyncEngine, run_id: int, **values) -> None:
+async def save_run(engine: AsyncEngine, run_id: int, **values) -> None:
     rr = tables.release_runs
     async with engine.begin() as conn:
         await conn.execute(update(rr).where(rr.c.run_id == run_id).values(**values))
 
 
-async def _event(conn, run_id: int, body: dict) -> None:
+async def run_event(conn, run_id: int, body: dict) -> None:
     """Write ``body`` in the log of run ``run_id``, its row locked as write_event wants."""
     r = tables.runs
     await conn.execute(select(r.c.id).where(r.c.id == run_id).with_for_update())
     await write_event(conn, run_id, body)
 
 
-async def _default_branch(app: GitHubApp, token: str, where: tuple[str, str]) -> str:
+async def default_branch(app: GitHubApp, token: str, where: tuple[str, str]) -> str:
     """The default branch of the repo, as GitHub names it."""
     owner, name = where
     found = await pulls.repository(app, token, owner, name)
@@ -246,7 +253,7 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
     """The merge commit of the pull request of ``row``'s branch: merged now, once nothing refuses it, or found merged
     by an earlier pass or by hand, when it is the run's (``pull_problem``) and shows no sign of test hacking."""
     owner, name = where
-    default = await _default_branch(app, token, where)
+    default = await default_branch(app, token, where)
     number = row.pull_number
     if number is not None:
         found = await pulls.pull(app, token, owner, name, number)
@@ -284,15 +291,15 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
         problem = pull_problem(made, row, default)
         if problem is not None:
             raise Refusal(problem)
-        await _save(engine, row.run_id, pull_number=number, pull_url=url if isinstance(url, str) else None)
+        await save_run(engine, row.run_id, pull_number=number, pull_url=url if isinstance(url, str) else None)
     await _no_signs(app, token, where, row, number)
     title = f"Merge pull request #{number} from {owner}/{row.branch}"
     merge = await pulls.merge_pull(app, token, owner, name, number, sha=row.head_commit, title=title)
-    await _save(engine, row.run_id, merge_commit=merge)
+    await save_run(engine, row.run_id, merge_commit=merge)
     return merge
 
 
-async def _tagged(app: GitHubApp, token: str, where: tuple[str, str], tag: str, merge: str) -> None:
+async def ensure_tag(app: GitHubApp, token: str, where: tuple[str, str], tag: str, merge: str) -> None:
     """Tag ``merge`` as ``tag``, or find it tagged so already; Refusal for a tag on another commit."""
     on = await _tag_commit(app, token, where, tag)
     if on is None and await pulls.create_ref(app, token, *where, TAGS + tag, merge):
@@ -306,7 +313,7 @@ async def _tagged(app: GitHubApp, token: str, where: tuple[str, str], tag: str, 
 
 async def _land(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[str, str], row: Landing) -> str:
     merge = row.merge_commit or await _merged(engine, app, token, where, row)
-    await _tagged(app, token, where, row.tag, merge)
+    await ensure_tag(app, token, where, row.tag, merge)
     return merge
 
 
@@ -324,7 +331,7 @@ async def _refuse(
         await stop_cycle(
             conn, row.cycle_id, f"the hub did not land {row.branch} of release run #{row.run_id}: {reason}", cause
         )
-        await _event(conn, row.run_id, {"text": f"The hub did not land {row.branch}: {reason}", "land_state": state})
+        await run_event(conn, row.run_id, {"text": f"The hub did not land {row.branch}: {reason}", "land_state": state})
     log.warning("release not landed", extra={"run_id": row.run_id, "state": state, "reason": reason})
     return state
 
@@ -347,7 +354,8 @@ async def _try_failed(engine: AsyncEngine, row: Landing, reason: str) -> str:
     return await _refuse(engine, row, f"GitHub failed {tries} passes in a row: {reason}", "failed", "github")
 
 
-async def _done(engine: AsyncEngine, row: Landing, merge: str) -> str:
+async def mark_tagged(engine: AsyncEngine, row: Landing, merge: str, *, by_hand: bool = False) -> str:
+    """Keep ``row`` tagged at ``merge``, follow the tag, audit it; ``by_hand`` when a person merged the pull request."""
     rr = tables.release_runs
     async with engine.begin() as conn:
         await conn.execute(
@@ -360,11 +368,13 @@ async def _done(engine: AsyncEngine, row: Landing, merge: str) -> str:
         await conn.execute(  # a watch that saw the tag before this pass followed it as a person's: it is the run's
             followed.on_conflict_do_update(constraint="release_tags_cycle_id_tag_key", set_={"run_id": row.run_id})
         )
+        who = "A person merged" if by_hand else "The hub merged"
         text = (
-            f"The hub merged {row.branch} as {releases.short(merge)} and tagged it {row.tag}: {row.workflow} of the "
+            f"{who} {row.branch} as {releases.short(merge)} and "
+            f"{'the hub ' if by_hand else ''}tagged it {row.tag}: {row.workflow} of the "
             "tag publishes the release, and the hub follows its CI."
         )
-        await _event(conn, row.run_id, {"text": text, "tag": row.tag, "merge_commit": merge})
+        await run_event(conn, row.run_id, {"text": text, "tag": row.tag, "merge_commit": merge})
         await audit.record(
             conn,
             actor_id=row.owner_id,
@@ -404,7 +414,7 @@ async def land(engine: AsyncEngine, app: GitHubApp | None, row: Landing) -> str:
         return await _try_failed(engine, row, str(exc))
     except GitHubRefused as exc:
         return await _refuse(engine, row, str(exc))
-    tagged = await _done(engine, row, merge)
+    tagged = await mark_tagged(engine, row, merge)
     async with engine.begin() as conn:
         title = f"The hub merged {row.branch} and tagged {row.tag} of {row.repo} for release run {row.run_id}"
         await autonomy_gates.tell_after(conn, row.run_id, "K6", key=f"release {row.tag}", title=title, repo=row.repo)

@@ -221,6 +221,7 @@ class FakeGitHub:
     comments: list = field(default_factory=list)  # POST .../issues/{n}/comments, in order
     statuses: dict = field(default_factory=dict)  # sha -> combined status
     merges: list = field(default_factory=list)  # (owner, name, number, sha, app) of each merge
+    deleted_branches: list = field(default_factory=list)  # (owner, name, branch) of each branch deleted through the API
     made_refs: list = field(default_factory=list)  # (owner, name, ref, sha, app) of each ref made through the API
     installations: dict = field(default_factory=dict)  # installation id -> AppInstallation
     app_tokens: dict = field(default_factory=dict)  # installation token -> AppToken
@@ -1115,6 +1116,16 @@ class FakeGitHub:
                 repo.refs[ref] = (sha, None)
                 self.made_refs.append((repo.owner, repo.name, ref, sha, app))
             return 201, {"ref": ref, "object": {"sha": sha, "type": "commit"}}
+        if method == "DELETE" and rest[:3] == ["git", "refs", "heads"] and len(rest) > 3:
+            _, _, refused = need("contents", "write")
+            if refused:
+                return refused
+            branch = "/".join(rest[3:])
+            with self._lock:
+                if branch == repo.default_branch or repo.heads.pop(branch, None) is None:
+                    return 422, {"message": "Reference does not exist"}
+                self.deleted_branches.append((repo.owner, repo.name, branch))
+            return 204, None
         if method == "POST" and rest == ["check-runs"]:
             _, app, refused = need("checks", "write")
             if refused:
