@@ -222,9 +222,19 @@ def test_the_hub_runtime_sends_a_turn_redacted_or_fails_it_when_blocked(client, 
     assert len(gateway.asked) == before
     assert run_row(hub_db, second)[0] == "failed"
     ((error,),) = sql(hub_db, select(tables.runs.c.error).where(tables.runs.c.id == second))
-    # the thread it reads holds the first question too, as its member wrote it
-    assert (
-        error == "the hub runtime failed: the project's DLP policy blocked this call: it holds 1 account_number, 2 cif"
-    )
-    assert ("cif", "hub_runtime", "blocked", 2) in counts(hub_db)
-    assert ("cif", "hub_runtime", "redacted", 1) in counts(hub_db)
+    # the chat its prompt shows holds the first question too, as its member wrote it: that counted in its own turn
+    assert error == "the hub runtime failed: the project's DLP policy blocked this call: it holds 1 cif"
+    assert counts(hub_db) == [
+        ("account_number", "hub_runtime", "redacted", 1),
+        ("cif", "hub_runtime", "blocked", 1),
+        ("cif", "hub_runtime", "redacted", 1),
+    ]
+
+    # a clean message after it goes, the earlier ones in its prompt redacted, and counts nothing
+    sent(client, hub["owner"], chat["id"], "@helper which service signs the export links?")
+    (*_, third) = chat_runs_of(hub_db)
+    assert turn(client, gateway, third)["state"] == "done"
+    asked = json.dumps(gateway.asked[-1]["messages"])
+    assert "which service signs the export links" in asked and "[REDACTED:cif]" in asked
+    assert not any(value in asked for value in VALUES)
+    assert len(counts(hub_db)) == 3 and ("cif", "hub_runtime", "blocked", 1) in counts(hub_db)

@@ -132,15 +132,25 @@ async def enforce(engine: AsyncEngine, project_id: int, surface: str, content: b
     return made
 
 
-async def enforce_json(engine: AsyncEngine, project_id: int, surface: str, body: dict, *, run_id: int) -> dict:
-    """``enforce`` on a body not encoded yet."""
+async def enforce_json(
+    engine: AsyncEngine, project_id: int, surface: str, body: dict, *, run_id: int, fresh: list[str] | None = None
+) -> dict:
+    """``enforce`` on a body not encoded yet. With ``fresh``, the texts of ``body`` new to the provider (the message
+    that woke a hub turn and its inbox), their matches alone count and block: the rest of ``body``, the chat as the
+    store keeps it, which an earlier turn counted or was blocked on, goes redacted and counts nothing."""
     async with engine.begin() as conn:
         policy = await policy_of(conn, project_id)
         if not policy.on:
             return body
-        made, scan = dlp.apply_json(policy, body)
+        if fresh is None:
+            made, scan = dlp.apply_json(policy, body)
+        else:
+            scan = dlp.Scan("")
+            for text in fresh:
+                scan.add(dlp.apply(policy, text))
+            made, _ = dlp.apply_json(dlp.Policy("redact", policy.kinds, policy.keywords), body)
         if not scan.counts:
-            return body
+            return made
         action = "blocked" if scan.blocked else "redacted"
         await count(conn, project_id, surface, action, scan.counts)
     log.info("dlp " + action, extra={"run_id": run_id, "surface": surface, "kinds": dict(scan.counts)})

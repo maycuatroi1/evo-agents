@@ -4831,7 +4831,7 @@ The rule kinds, all on unless `kinds` names fewer:
 Years, ports and phone numbers do not match. The hub's gateway route (`/v1/messages`, `/v1/chat/completions` and the
 rest of the run-token routes) and the hub runtime apply the policy before a call leaves for a provider. In mode
 `redact` each match goes as `[REDACTED:<kind>]`; in mode `block` the call never leaves: the gateway route answers 422,
-and a hub agent's turn fails with the kinds and counts. Each redaction and block is counted by rule kind, surface and
+and a hub agent's turn fails with the kinds and counts. A hub agent's prompt shows earlier messages of the chat as the store keeps them: there the message that woke the turn and its inbox alone count and block, and the earlier messages go redacted, so a message counts once and blocks its own turn alone. Each redaction and block is counted by rule kind, surface and
 action in `dlp_counts`. Neither a count, a log line, an error nor the audit log holds a matched value.
 
 ## Blob store
