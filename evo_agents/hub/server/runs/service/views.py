@@ -11,9 +11,10 @@ from fastapi import HTTPException
 from sqlalchemy import BigInteger, and_, bindparam, case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, runs, spend_store, system_context, tables
+from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server import system_traces
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import ActiveRun, PlanTrace, ReadySteps, Run, SteadyWait, StepReadiness
 from evo_agents.hub.server.runs.models.spend import run_spend_view
@@ -245,20 +246,10 @@ async def plan_activity(conn: AsyncConnection, project_id: int, plan_id: str) ->
 
 
 async def plan_trace(conn: AsyncConnection, project_id: int, plan_id: str) -> PlanTrace | None:
-    """The trace a system dispatch of the plan opened that has a run active (its ``invoke_agent`` spans name its
-    runs), with its latest active run; None when every run of every such trace has ended. A chat run has no plan, so
+    """The trace a system dispatch of the plan opened that has a run active, with its latest active run; None when
+    every run of every such trace has ended (``system_traces.plan_traces``). A chat run has no plan, so
     ``plan_activity``'s runs never show it."""
-    t, s, r = tables.system_traces, tables.system_spans, tables.runs
-    query = (
-        select(t.c.id, t.c.system_slug, r.c.id.label("run_id"), r.c.state)
-        .join_from(t, s, and_(s.c.trace_id == t.c.id, s.c.name == system_context.INVOKE))
-        .join(r, r.c.id == s.c.run_id)
-        .where(t.c.project_id == project_id, t.c.plan_id == plan_id, r.c.state.in_(runs.ACTIVE_STATES))
-        .order_by(r.c.id.desc())
-        .limit(1)
-    )
-    row = (await conn.execute(query)).one_or_none()
-    return None if row is None else PlanTrace(id=row.id, system=row.system_slug, run_id=row.run_id, state=row.state)
+    return (await system_traces.plan_traces(conn, project_id, plan_id)).get(plan_id)
 
 
 def plan_lock_key(project_id: int, plan_id: str) -> str:

@@ -2,15 +2,16 @@
 ``{"system": slug}``, hands the plan to the system's entry agent as the caller would by hand.
 
 The hub writes the caller's own message in their direct chat with the entry agent (``chat_direct.direct_chat``, made
-when there is none): it names the plan, its revision, its page on the web and its pending steps, and says how to run
-it. Read the plan with plan_show; take the pending steps in the order their depends_on allows; hand each step to the
-system's agents along its interacts edges with a brief (goal, repo, criteria, verify, done when); mark a step done
-with its evidence once its verify passes; ask the person about any decision it may not take; and report which steps
-are done and which are left. The message goes through ``chats.deliver_message`` as a typed one does, so it wakes the
-entry agent and ``system_traces.join`` opens a trace at the system's revision now; the names the text mentions are
-not read as mentions (``skip``), so the message hands work to the entry agent alone and opens no group. The trace
-then takes the plan's id and revision (system_traces.plan_id and plan_revision, 0237), and the dispatch is audited
-once (run.dispatch_system), naming the plan, the run, the system and the trace.
+when there is none): it names the plan, its revision, its page on the web and its pending steps, and says how to run it.
+Read the plan with plan_show; take the pending steps in the order their depends_on allows; hand each step to the
+system's agents along its interacts edges with a brief (goal, repo, criteria, verify, done when), marking it in_progress
+as it goes out, so the plan's page shows it moving; mark a step done with its evidence once its verify passes, and one
+that comes back unfinished pending again; ask the person about any decision it may not take; and report which steps are
+done and which are left. The message goes through ``chats.deliver_message`` as a typed one does, so it wakes the entry
+agent and ``system_traces.join`` opens a trace at the system's revision now; the names the text mentions are not read as
+mentions (``skip``), so the message hands work to the entry agent alone and opens no group. The trace then takes the
+plan's id and revision (system_traces.plan_id and plan_revision, 0237), and the dispatch is audited once
+(run.dispatch_system), naming the plan, the run, the system and the trace.
 
 Refused with 403 without the writer role on the project (``dispatch.check_dispatcher``), 404 for a plan the caller
 cannot read, 422 for a system the project lacks, and 409 for: a plan the Curator made (the night shift alone runs
@@ -97,8 +98,10 @@ def dispatch_text(plan_id: str, revision: int, link: str, slug: str, steps: list
             "2. Take the pending steps in the order their depends_on allows: a step is next once every step it "
             "depends on is done.",
             "3. Hand each step to the agents of the system along its interacts edges, with a brief: the goal, the "
-            "repo, the criteria, the verify command and when it is done.",
-            "4. When a step's verify passes, mark it done with plan_step, with the evidence.",
+            "repo, the criteria, the verify command and when it is done. As you hand it, mark it in_progress with "
+            "plan_step, with a note naming the agent and its run, so the plan's page shows it moving.",
+            "4. When a step's verify passes, mark it done with plan_step, with the evidence; a step that comes back "
+            "unfinished goes back to pending, with a note saying why.",
             "5. Ask me about any decision you may not take yourself.",
             "6. When you stop, report which steps are done and which are left.",
         ]

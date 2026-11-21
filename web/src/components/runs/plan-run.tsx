@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { browserApi } from "@/lib/api/browser";
 import { type PlanStep, percent } from "@/lib/plans";
 import { cn } from "@/lib/utils";
+import { systemObserveHref } from "@/lib/systems-queries";
 import { onlyWaits, waitSubject } from "@/lib/waits";
 
 import { useCanDispatch, useViewer } from "./hooks";
@@ -46,6 +47,52 @@ import {
  * plans table) do not carry the dialog's form in their first load.
  */
 const PlanRunDialog = dynamic(() => import("./plan-run-dialog").then((module) => module.PlanRunDialog), { ssr: false });
+
+/** A plan's active plan run as a badge with an icon and a word, linked to the run. */
+function PlanRunLink({ project, run }: { project: string; run: Run }) {
+  const t = useTranslations("runs.planRun");
+  const phase = planRunPhase(run.state);
+  return (
+    <Link
+      href={runHref(project, run.id)}
+      className="shrink-0 rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+      aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
+      data-testid="plan-run-link"
+      data-run-id={run.id}
+    >
+      <StatusBadge kind="run" status={phase} data-testid="plan-run-phase" />
+    </Link>
+  );
+}
+
+/** The trace of a system a plan was handed to, as a badge linked to the trace in the system's Observe: its runs are
+ * chat runs, which name no plan, so the project's runs never show it. */
+function PlanTraceLink({ project, trace }: { project: string; trace: PlanTrace }) {
+  const t = useTranslations("runs.planRun");
+  const phase = planRunPhase(trace.state);
+  return (
+    <Link
+      href={systemObserveHref(project, trace.system, trace.id)}
+      className="shrink-0 rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+      aria-label={t("trace.listLink", { id: trace.id, system: trace.system, state: t(`phase.${phase}Long`) })}
+      data-testid="plan-trace-link"
+      data-trace-id={trace.id}
+      data-system={trace.system}
+    >
+      <StatusBadge kind="run" status={phase} data-testid="plan-trace-phase" />
+    </Link>
+  );
+}
+
+/**
+ * A plan's active plan run among the project's `runs`, else the trace of a system that runs it, as a linked badge for
+ * the plans list; null for neither, so a phone's row leaves its status out.
+ */
+export function planActivityLink(project: string, planId: string, trace: PlanTrace | null | undefined, runs: readonly Run[]) {
+  const planRun = activePlanRun(runs, planId);
+  if (planRun) return <PlanRunLink project={project} run={planRun} />;
+  return trace ? <PlanTraceLink project={project} trace={trace} /> : null;
+}
 /** The banner of a system's trace that runs the plan, loaded once a plan has one: it carries the systems' queries. */
 export const PlanTraceBanner = dynamic(() => import("./plan-trace-banner").then((module) => module.PlanTraceBanner), { ssr: false });
 const CuratorBuildDialog = dynamic(() => import("./curator-build-dialog").then((module) => module.CuratorBuildDialog), { ssr: false });

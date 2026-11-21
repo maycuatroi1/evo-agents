@@ -1044,20 +1044,21 @@ span says so.
 ### A plan run in a system
 
 A writer of the project can hand a whole plan to an agent system instead of queueing a plan run on a worker
-(`evo_agents/hub/server/plan_systems.py`). `POST /v1/projects/{p}/plans/{plan_id}/system-dispatch` takes `{system}`,
-the slug of a system of the project, and does what the member would do by hand: it writes their own message in their
-direct chat with the system's entry agent (the chat is made when there is none). The message names the plan, its
-revision, its page on the web and its pending steps (each with its key, title and the steps it depends on, as many as
-fit, then "and N more: see plan_show"), and says how to run it: read the plan with plan_show, take the pending steps in
-the order `depends_on` allows, hand each step to the system's agents along its `interacts` edges with a brief (the
-goal, the repo, the criteria, the verify command and when it is done), mark a step done with plan_step and its
-evidence once its verify passes, ask the person about any decision it may not take itself, and report which steps are
-done and which are left when it stops. The message is delivered as a typed one, so it wakes the entry agent and opens
-a trace at the system's revision now (Traces); the names its text mentions are not read as mentions, so it hands
-work to the entry agent alone. The trace then records the plan's id and revision (`system_traces.plan_id` and
-`plan_revision`, migration 0237; null for a trace a typed message opened), and the audit row `run.dispatch_system`
-names `<project>/<plan> run:<id> system:<slug> trace:<id>`. The answer (201) is `{system, system_revision, trace_id,
-plan_id, plan_revision, chat_id, message_id, run_id}`, `run_id` being the entry agent's run the message woke.
+(`evo_agents/hub/server/plan_systems.py`). `POST /v1/projects/{p}/plans/{plan_id}/system-dispatch` takes `{system}`, the
+slug of a system of the project, and does what the member would do by hand: it writes their own message in their direct
+chat with the system's entry agent (the chat is made when there is none). The message names the plan, its revision, its
+page on the web and its pending steps (each with its key, title and the steps it depends on, as many as fit, then "and N
+more: see plan_show"), and says how to run it: read the plan with plan_show, take the pending steps in the order
+`depends_on` allows, hand each step to the system's agents along its `interacts` edges with a brief (the goal, the repo,
+the criteria, the verify command and when it is done), marking it `in_progress` with plan_step as it hands it so the
+plan's page shows it moving, mark a step done with plan_step and its evidence once its verify passes (one that comes
+back unfinished goes back to `pending`), ask the person about any decision it may not take itself, and report which
+steps are done and which are left when it stops. The message is delivered as a typed one, so it wakes the entry agent
+and opens a trace at the system's revision now (Traces); the names its text mentions are not read as mentions, so it
+hands work to the entry agent alone. The trace then records the plan's id and revision (`system_traces.plan_id` and
+`plan_revision`, migration 0237; null for a trace a typed message opened), and the audit row `run.dispatch_system` names
+`<project>/<plan> run:<id> system:<slug> trace:<id>`. The answer (201) is `{system, system_revision, trace_id, plan_id,
+plan_revision, chat_id, message_id, run_id}`, `run_id` being the entry agent's run the message woke.
 
 The dispatch is refused with 403 without the writer role, 404 for a plan the caller cannot read, 422 for a system
 the project does not have, and 409 for a plan the Curator made (the night shift alone runs it), a system with no
@@ -1070,7 +1071,10 @@ plan run and a step run do, so two dispatches at once, or a dispatch and a plan 
 a run of a trace of the plan is queued, running, waiting or parked, a plan run, a step run and a rerun of the plan get
 409 naming the trace, its system and the run (`plan X is run by system S in trace #N, whose run #R is running`), and
 `GET .../plans/{plan_id}/ready-steps` answers the trace as `trace` (`{id, system, run_id, state}`, the latest active
-run) next to `plan_run`, with no step ready. Once every run of the trace has ended, the plan is free again.
+run) next to `plan_run`, with no step ready. `GET .../plans` answers the same `trace` on each plan a trace runs
+(`system_traces.plan_traces`), since the trace's runs are chat runs, which name no plan: the plans list shows it as
+a badge linked to the trace in the system's Observe, and reads the list every 5 seconds while one is there. Once
+every run of the trace has ended, the plan is free again.
 
 The trace is a trace like any other: its budget (`limits.trace_runs` and `limits.trace_usd`, Budget of a trace) still
 applies, so a plan with many steps can pass it, and then the next hand-off of the trace is refused. The web's Run plan

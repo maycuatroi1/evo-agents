@@ -315,6 +315,14 @@ def system_dispatch(client, headers, system: str = SLUG, plan_id: str = credenti
     return client.post(path, json={"system": system}, headers=headers)
 
 
+def listed_trace(client, headers) -> dict | None:
+    """The trace GET .../plans shows for the plan."""
+    listed = client.get(f"/v1/projects/{PROJECT}/plans", headers=headers)
+    assert listed.status_code == 200, listed.text
+    (plan,) = [plan for plan in listed.json() if plan["plan_id"] == credentials_api.PLAN]
+    return plan["trace"]
+
+
 def plan_traces(db) -> list[tuple]:
     t = tables.system_traces
     return sql(db, select(t.c.id, t.c.system_slug, t.c.plan_id, t.c.plan_revision).order_by(t.c.id))
@@ -340,6 +348,7 @@ def test_a_system_dispatch_writes_the_callers_message_to_the_entry_agent_and_its
     assert f"Run plan {credentials_api.PLAN}, revision 1, in system {SLUG}: " in text
     assert text.splitlines()[0].endswith(f"/p/{PROJECT}/plans/{credentials_api.PLAN}")
     assert "- step 1: Push evo-agents" in text and "plan_show" in text and "plan_step" in text
+    assert "mark it in_progress with plan_step" in text and "goes back to pending" in text
     mentions = tables.chat_mentions
     query = select(mentions.c.name, mentions.c.run_id).where(mentions.c.message_id == found["message_id"])
     assert sql(hub_db, query) == [("reviewer", found["run_id"])]  # the entry agent alone, as its direct chat's agent
@@ -397,14 +406,17 @@ def test_a_plan_trace_holds_the_plan_runs_and_step_runs_until_its_runs_end(clien
     again = system_dispatch(client, hub["other"])
     assert again.status_code == 409 and named in again.text, again.text
     ready = client.get(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}/ready-steps", headers=hub["owner"]).json()
-    assert ready["trace"] == {"id": found["trace_id"], "system": SLUG, "run_id": found["run_id"], "state": "queued"}
+    trace = {"id": found["trace_id"], "system": SLUG, "run_id": found["run_id"], "state": "queued"}
+    assert ready["trace"] == trace
     assert all(named in step["reason"] for step in ready["steps"])
+    assert listed_trace(client, hub["owner"]) == trace  # the plans list shows it too: its chat runs name no plan
 
     assert claim(client, studio)["id"] == found["run_id"]
     moved(client, studio, found["run_id"], "running", session_id="sess-1")
     ended(client, studio, found["run_id"])
     ready = client.get(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}/ready-steps", headers=hub["owner"]).json()
     assert ready["trace"] is None and all(step["ready"] for step in ready["steps"])
+    assert listed_trace(client, hub["owner"]) is None
     run = client.post(plan, json={"plan_id": credentials_api.PLAN}, headers=hub["owner"])
     assert run.status_code == 201, run.text
     held = system_dispatch(client, hub["owner"])  # and a plan run holds the plan from a system
