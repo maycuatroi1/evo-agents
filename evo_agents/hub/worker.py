@@ -540,7 +540,7 @@ async def deliver_plugin_events(context: JobContext, timestamp: int | None = Non
     queue=jobs.DELIVERY_QUEUE,
 )
 async def deliver_webhooks(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.webhook_events import deliver
+    from evo_agents.hub.server.webhook_delivery import deliver
 
     found = hub(context)
     assert found.engine is not None  # the hub's worker opens its engine before its first job

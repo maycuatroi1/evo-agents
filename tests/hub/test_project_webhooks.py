@@ -5,7 +5,8 @@ The checks the step names: a project's admin alone sets its webhooks, whose secr
 alone and is stored sealed; the events run.state, chat.message, task.result and curator.proposal reach the outbox of
 the webhooks that take them, in the transaction that made them; a delivery is a POST signed with HMAC-SHA256 under
 the secret, retried with a backoff while its receiver fails, and failed after MAX_ATTEMPTS tries or when its webhook
-is turned off."""
+is turned off. A webhook's URL names a public host, and each try goes to an address of it that was checked public
+(``evo_agents.hub.server.webhook_delivery``); a pass claims one delivery at a time."""
 
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents import secret_patterns
 from evo_agents.hub import tables, webhook_events
+from evo_agents.hub.server import webhook_delivery
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub.live import sql
@@ -45,6 +47,17 @@ from tests.hub.test_runs import (
 )
 
 URL = "https://hooks.lumenops.example/evo"
+PUBLIC = "93.184.216.34"
+ADDRESSES = {"hooks.lumenops.example": [PUBLIC]}
+PRIVATE_URLS = (
+    "https://127.0.0.1:5432/evo",
+    "https://169.254.169.254/latest/meta-data",
+    "https://10.0.0.5/evo",
+    "https://[::1]/evo",
+    "https://postgres/evo",
+    "https://localhost/evo",
+    "https://hooks.lumenops.internal/evo",
+)
 ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
 
 
@@ -84,9 +97,18 @@ class Receiver:
         return httpx.Response(self.status, text="the receiver's body, which the hub keeps none of")
 
 
-def deliver(client, receiver: Receiver) -> dict:  # noqa: F811
-    state = client.app.state
-    return client.portal.call(lambda: webhook_events.deliver(state.engine, state.sealer, transport=receiver.transport))
+def deliver(client, receiver: Receiver, addresses: dict | None = None) -> dict:  # noqa: F811
+    """One pass of the deliveries, with the hosts resolving as ``addresses`` (ADDRESSES by default) says."""
+    state, found = client.app.state, ADDRESSES if addresses is None else addresses
+
+    async def resolve(host: str, port: int) -> list[str]:
+        if host not in found:
+            raise OSError("no such host")
+        return list(found[host])
+
+    return client.portal.call(
+        lambda: webhook_delivery.deliver(state.engine, state.sealer, transport=receiver.transport, resolver=resolve)
+    )
 
 
 def due_now(db) -> None:
@@ -156,11 +178,15 @@ def test_only_the_admin_sets_or_reads_them_and_a_bad_webhook_is_422(client, hub,
         {"url": "https://hooks.lumenops.example/evo#frag", "events": ["run.state"]},
         {"url": URL, "events": []},
         {"url": URL, "events": ["plan.step"]},
+        {"url": "https://user:pw@hooks.lumenops.example/evo", "events": ["run.state"]},
+        *({"url": url, "events": ["run.state"]} for url in PRIVATE_URLS),
     ):
         assert client.post(path, json=bad, headers=admin).status_code == 422, bad
     assert sql(hub_db, select(func.count()).select_from(tables.project_webhooks)) == [(0,)]
     hook = created(client, admin)
     assert client.patch(f"{path}/{hook['id']}", json={"active": False}, headers=hub["other"]).status_code == 403
+    for url in PRIVATE_URLS:
+        assert client.patch(f"{path}/{hook['id']}", json={"url": url}, headers=admin).status_code == 422, url
     assert client.delete(f"{path}/{hook['id'] + 1}", headers=admin).status_code == 404
 
 
@@ -229,7 +255,9 @@ def test_a_delivery_is_signed_with_the_webhooks_secret(client, hub, admin, hub_d
     receiver = Receiver()
     assert deliver(client, receiver) == {"delivered": 1, "retry": 0, "failed": 0}
     (request,) = receiver.got
-    assert str(request.url) == URL and request.method == "POST"
+    assert (request.url.host, request.url.path, request.method) == (PUBLIC, "/evo", "POST")
+    assert request.headers["host"] == "hooks.lumenops.example"
+    assert request.extensions["sni_hostname"] == "hooks.lumenops.example"
     timestamp, sent = request.headers[webhook_events.TIMESTAMP_HEADER], request.content
     expected = hmac.new(hook["secret"].encode(), timestamp.encode() + b"." + sent, hashlib.sha256).hexdigest()
     assert request.headers[webhook_events.SIGNATURE_HEADER] == f"sha256={expected}"
@@ -270,3 +298,46 @@ def test_a_webhook_turned_off_fails_what_it_left_pending(client, hub, admin, hub
     receiver = Receiver()
     assert deliver(client, receiver) == {"delivered": 0, "retry": 0, "failed": 1}
     assert receiver.got == [] and [row[3] for row in outbox(hub_db)] == ["failed"]
+
+
+def again(db) -> None:
+    """The pending deliveries due now, with no try yet: a test tries one more often than MAX_ATTEMPTS."""
+    due_now(db)
+    sql(db, update(tables.webhook_deliveries).values(attempts=0))
+
+
+def test_a_host_that_resolves_to_a_private_address_is_not_called(client, hub, admin, hub_db):  # noqa: F811
+    hook, _ = run_state_delivery(client, hub, admin)
+    d, receiver = tables.webhook_deliveries, Receiver()
+    for addresses in (["10.0.0.5"], ["169.254.169.254"], [PUBLIC, "127.0.0.1"], ["::ffff:192.168.0.1"]):
+        again(hub_db)
+        found = deliver(client, receiver, {"hooks.lumenops.example": addresses})
+        assert found == {"delivered": 0, "retry": 1, "failed": 0}, addresses
+        ((error,),) = sql(hub_db, select(d.c.last_error))
+        assert error.startswith("refused: hooks.lumenops.example resolves to"), error
+    again(hub_db)
+    assert deliver(client, receiver, {}) == {"delivered": 0, "retry": 1, "failed": 0}  # it does not resolve
+    h = tables.project_webhooks  # a URL stored before the check, or by hand, is checked again at each try
+    for url in PRIVATE_URLS:
+        sql(hub_db, update(h).values(url=url).where(h.c.id == hook["id"]))
+        again(hub_db)
+        assert deliver(client, receiver, {"postgres": ["10.0.0.5"]}) == {"delivered": 0, "retry": 1, "failed": 0}
+    assert receiver.got == []
+    sql(hub_db, update(h).values(url=URL).where(h.c.id == hook["id"]))
+    again(hub_db)
+    assert deliver(client, receiver) == {"delivered": 1, "retry": 0, "failed": 0}
+
+
+def test_a_pass_claims_one_delivery_at_a_time_for_longer_than_a_try(client, hub, admin, hub_db):  # noqa: F811
+    created(client, admin, url="https://hooks.lumenops.example/second")
+    run_state_delivery(client, hub, admin)
+    d, engine = tables.webhook_deliveries, client.app.state.engine
+    due = select(func.count()).select_from(d).where(d.c.state == "pending", d.c.next_at <= func.now())
+    ((pending,),) = sql(hub_db, due)
+    assert pending >= 2
+    first = client.portal.call(lambda: webhook_delivery._claim(engine))
+    ((ahead,),) = sql(hub_db, select(d.c.next_at - func.now()).where(d.c.id == first.id))
+    assert ahead > timedelta(seconds=webhook_delivery.TIMEOUT)  # a second pass cannot take it while it is tried
+    assert sql(hub_db, due) == [(pending - 1,)]  # the others stay due for another pass
+    second = client.portal.call(lambda: webhook_delivery._claim(engine))
+    assert second.id != first.id

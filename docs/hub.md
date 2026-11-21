@@ -4806,6 +4806,14 @@ A 2xx answer delivers it. Any other answer, or none in 10 seconds, is tried agai
 minute and doubles up to an hour; the eighth try fails it, and so does turning off or deleting its webhook. A delivery
 keeps the last status and the error's kind, never the receiver's body, and is dropped 14 days after it ended.
 
+A webhook's URL names a host on the public internet, with no user or password: create and `PATCH` answer 422 for an
+address or a name of a private network (loopback, RFC 1918, link-local and the metadata address, `localhost`, a name
+with no dot or under `.internal` and the like), as for a provider account's base URL. DNS may change after the write,
+so each try resolves the host again and refuses it, as a failed try, unless every address is public; the POST goes to
+the address checked, with the host name in the Host header and in TLS. A pass of the job claims one delivery at a
+time, for longer than a try takes, so two passes never send a delivery twice and one slow receiver delays a pass by
+10 seconds at most.
+
 ## Data loss prevention
 
 A project's admin sets what the hub does when a model call of the project's runs carries customer or confidential
@@ -4831,8 +4839,14 @@ The rule kinds, all on unless `kinds` names fewer:
 Years, ports and phone numbers do not match. The hub's gateway route (`/v1/messages`, `/v1/chat/completions` and the
 rest of the run-token routes) and the hub runtime apply the policy before a call leaves for a provider. In mode
 `redact` each match goes as `[REDACTED:<kind>]`; in mode `block` the call never leaves: the gateway route answers 422,
-and a hub agent's turn fails with the kinds and counts. A hub agent's prompt shows earlier messages of the chat as the store keeps them: there the message that woke the turn and its inbox alone count and block, and the earlier messages go redacted, so a message counts once and blocks its own turn alone. Each redaction and block is counted by rule kind, surface and
-action in `dlp_counts`. Neither a count, a log line, an error nor the audit log holds a matched value.
+and a hub agent's turn fails with the kinds and counts. A hub agent's prompt shows earlier messages of the chat as the
+store keeps them: in a turn's first round the message that woke the turn and its inbox alone count and block, and the
+earlier messages go redacted, so a message counts once and blocks its own turn alone. From the second round on, the
+round's new content is inspected in full, tool results among it: in mode `block`, a tool result that matches, such as
+a read of the chat that returns an old matching message, fails the turn. The gateway route inspects each call whole
+and counts per call, not per message: a run's agent sends its whole conversation on each call, so in mode `block` one
+matching tool result makes every later call of that run answer 422. Each redaction and block is counted by rule kind,
+surface and action in `dlp_counts`. Neither a count, a log line, an error nor the audit log holds a matched value.
 
 ## Blob store
 

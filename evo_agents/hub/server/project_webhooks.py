@@ -28,6 +28,7 @@ from evo_agents.hub.server import audit, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.public_endpoint import host_refusal
 from evo_agents.hub.server.sealing import Sealer
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -47,9 +48,20 @@ Url = Annotated[str, Field(min_length=9, max_length=webhook_events.MAX_URL_CHARS
 
 
 def _https(url: str) -> str:
-    parts = urlsplit(url)
+    """``url`` when it is https, with a host on the public internet (``public_endpoint.host_refusal``), no user or
+    password and no fragment; ValueError otherwise. Its addresses are checked before each try (``webhook_delivery``)."""
+    try:
+        parts = urlsplit(url)
+        parts.port  # noqa: B018 (a port that is not a number raises here)
+    except ValueError:
+        raise ValueError("a webhook's URL is https://<host>/<path>") from None
     if parts.scheme != "https" or not parts.hostname or parts.fragment:
         raise ValueError("a webhook's URL is https://<host>/<path>, with no fragment")
+    if parts.username is not None or parts.password is not None:
+        raise ValueError("a webhook's URL holds no user or password: put a receiver's key in its path or query")
+    refusal = host_refusal(parts.hostname.lower().rstrip("."))
+    if refusal is not None:
+        raise ValueError(refusal)
     return url
 
 
