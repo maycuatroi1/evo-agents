@@ -97,7 +97,16 @@ if pg.DSN:
     from evo_agents.hub import tables
     from evo_agents.hub.server.chat_access import channel_cleared
     from tests.hub.live import sql
-    from tests.hub.test_chats import OPEN_SINKS, agent, client, created, hub, on_hub, page, sent  # noqa: F401 (fixtures)
+    from tests.hub.test_chats import (  # noqa: F401 (fixtures)
+        OPEN_SINKS,
+        agent,
+        client,
+        created,
+        hub,
+        on_hub,
+        page,
+        sent,
+    )
     from tests.hub.test_plans import registration
     from tests.hub.test_runs import PROJECT
 

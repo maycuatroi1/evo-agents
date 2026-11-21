@@ -18,7 +18,18 @@ from evo_agents.hub import tables
 from tests.hub import live
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker
-from tests.hub.test_runs import PLAN, PROJECT, claim, client, dispatched, hub, moved, notices, report, set_run  # noqa: F401
+from tests.hub.test_runs import (  # noqa: F401
+    PLAN,
+    PROJECT,
+    claim,
+    client,
+    dispatched,
+    hub,
+    moved,
+    notices,
+    report,
+    set_run,
+)
 from tests.hub.test_shared_workers import share
 from tests.hub.test_triage import count, root_of, row_of
 from tests.hub.test_triage_actions import agent_of, rerun

@@ -199,6 +199,8 @@ TABLES |= {
     "curator_evolve_arm_cache",
 }  # migration 0256
 TABLES |= {"auth_apps", "app_identities"}  # migration 0262
+TABLES |= {"member_tasks", "project_webhooks", "webhook_deliveries"}  # migration 0263
+TABLES |= {"dlp_policies", "dlp_counts"}  # migration 0264
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -289,8 +291,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_sixty_three_tables(hub_db):
-    assert len(TABLES) == 263  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_sixty_eight_tables(hub_db):
+    assert len(TABLES) == 268  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)

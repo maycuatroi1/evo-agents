@@ -8,8 +8,10 @@ row not revoked that still holds its key, of a run in a held state on the worker
 accounts' leases are none of them revoked. A call names a model of the run's prefix, ``<prefix>/<model>``, or gets
 403; the list of models is that of the prefix alone. The request goes on with the run's key of the gateway in place
 of the token and no other credential, and the answer comes back as the gateway streams it, chunk by chunk, server-sent
-events unbuffered, with a long read timeout (``gateway_client.RELAY_TIMEOUT``). The routes are not in the hub's
-OpenAPI document: they are the gateway's, which the runtimes speak. No log line holds a token, a key or a body.
+events unbuffered, with a long read timeout (``gateway_client.RELAY_TIMEOUT``). Before it goes, the data loss
+prevention policy of the run's project reads its body (``dlp_policy.enforce``): it goes redacted, or a call the policy
+blocks gets 422 and never leaves. The routes are not in the hub's OpenAPI document: they are the gateway's, which the
+runtimes speak. No log line holds a token, a key or a body.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from starlette.background import BackgroundTask
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.gateway_runs import GATEWAY
-from evo_agents.hub.server import gateway_sync
+from evo_agents.hub.server import dlp_policy, gateway_sync
 from evo_agents.hub.server.gateway_client import GatewayError, GatewayOff
 from evo_agents.hub.server.gateway_leases import run_token, token_hash
 from evo_agents.hub.server.sealing import Sealed, Unsealable, lease_aad
@@ -45,6 +47,7 @@ class Holder:
     run_id: int
     prefix: str
     key: str
+    project_id: int
 
 
 def _token(request: Request) -> str | None:
@@ -65,7 +68,7 @@ def _holder_query(digest: bytes):
         reached.c.revoked_at.is_not(None),
     )
     return (
-        select(cl.c.id, cl.c.run_id, cl.c.sealed_value, cl.c.nonce, cl.c.key_id, r.c.gateway_provider)
+        select(cl.c.id, cl.c.run_id, cl.c.sealed_value, cl.c.nonce, cl.c.key_id, r.c.gateway_provider, r.c.project_id)
         .join_from(cl, r, r.c.id == cl.c.run_id)
         .where(
             cl.c.token_hash == digest,
@@ -96,7 +99,7 @@ async def _holder(request: Request) -> Holder:
         raise HTTPException(401, REFUSED) from None
     if not hmac.compare_digest(run_token(key, row.id), token):
         raise HTTPException(401, REFUSED)
-    return Holder(row.run_id, row.gateway_provider, key)
+    return Holder(row.run_id, row.gateway_provider, key, row.project_id)
 
 
 def _headers(request: Request) -> dict[str, str]:
@@ -128,6 +131,12 @@ async def _call(request: Request, path: str) -> Response:
         raise HTTPException(400, "the body must be a JSON object that names a model") from None
     if not isinstance(model, str) or not model.startswith(f"{holder.prefix}/"):
         raise HTTPException(403, f"this run may call the models of {holder.prefix} alone: <{holder.prefix}>/<model>")
+    try:
+        content = await dlp_policy.enforce(
+            request.app.state.engine, holder.project_id, "gateway_proxy", content, run_id=holder.run_id
+        )
+    except dlp_policy.Blocked as exc:
+        raise HTTPException(422, str(exc)) from None
     return await _relay(request, holder, path, content)
 
 

@@ -2512,6 +2512,29 @@ Telegram and the Inbox like any other, and the first answer wins, from the web, 
 machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
 states and kind in `hub run list/show`; the machine side talks HTTP.
 
+## Member task runs
+
+A writer of a project hands an agent a task that needs no Git: `POST /v1/projects/{p}/task-runs` with the task, a JSON
+object as its input (at most 64 KiB) and up to 20 external asset URIs (`https`, `http`, `s3` or `gs`, each with a
+host). The hub queues a run of kind `task` with no repo and no agent type, under the caller's own principal: their
+autonomy ceiling, their accounts and their quota pacing apply as to any run they dispatch, and the project's default
+agent profile runs it unless `profile` names another. A web session, a token and an app session (`eva_...`) of a
+first-party app each may. A reader gets 403.
+
+```bash
+curl -X POST https://hub.example.org/v1/projects/lumen-studio/task-runs -H "Authorization: Bearer $EVO_HUB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Draft three taglines for the spring campaign.", "input": {"tone": ["warm", "short"]},
+       "assets": ["https://assets.lumenops.example/brief.pdf"]}'
+curl https://hub.example.org/v1/projects/lumen-studio/task-runs/812 -H "Authorization: Bearer $EVO_HUB_TOKEN"
+```
+
+The answer, and `GET /v1/projects/{p}/task-runs/{task}` after it, give the task as its latest attempt has it:
+`task_id` (the run its dispatch made, which names it on every attempt), `run_id` and `attempt`, `state`, the input and
+assets, and `output`, the summary its agent wrote once the run is done. A run its worker lost goes on in the next
+attempt with the same input. The worker builds no worktree: the agent reads the task, its input and the asset URIs in
+its prompt. When the run ends, the project's webhooks that take `task.result` get it (Outbound webhooks below).
+
 ## Outputs of runs
 
 An output is a file a run's agent made that the hub keeps for the people who read the run (`evo_agents.hub.outputs`):
@@ -4747,6 +4770,69 @@ curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1
 curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/branding/rollback \
   -d '{"version": 1}'
 ```
+
+## Outbound webhooks
+
+A project's admin sets up to 20 webhooks, each an `https` URL and the events it takes: `run.state` (a run of the
+project changed state), `task.result` (a task run ended), `chat.message` (a message in a chat of the project) and
+`curator.proposal` (the Curator proposed a change). The routes are admin-only:
+
+- `GET /v1/projects/{p}/webhooks`, `POST` to create one, `PATCH .../webhooks/{id}` (url, events, active), `DELETE`;
+- `POST .../webhooks/{id}/rotate-secret`, and `GET .../webhooks/{id}/deliveries` for the last tries.
+
+The create and rotate answers alone carry the signing secret (`evx_...`, with `Cache-Control: no-store`); the hub
+stores it sealed under `EVO_HUB_SECRETS_KEY` and answers 503 without that key. The audit log names the webhook's id,
+never its URL.
+
+Each event is written to an outbox, `webhook_deliveries`, in the transaction that made it, so a hub that stops after
+the commit still delivers it. The job `hub.deliver_webhooks` (on each such commit and every minute, on the deliveries
+queue) POSTs `{id, event, project, created_at, data}`, whose `data` holds ids and states, never a text, with:
+
+- `X-Evo-Event` and `X-Evo-Delivery`, the delivery's id, the same on every try;
+- `X-Evo-Timestamp`, the Unix time of the try;
+- `X-Evo-Signature`: `sha256=` and the hex HMAC-SHA256, under the secret, of the timestamp, a dot and the raw body.
+
+A receiver checks the signature and refuses a timestamp far from its clock:
+
+```python
+import hashlib, hmac
+
+def valid(secret: str, timestamp: str, body: bytes, header: str) -> bool:
+    expected = hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(header, "sha256=" + expected)
+```
+
+A 2xx answer delivers it. Any other answer, or none in 10 seconds, is tried again after a backoff that starts at a
+minute and doubles up to an hour; the eighth try fails it, and so does turning off or deleting its webhook. A delivery
+keeps the last status and the error's kind, never the receiver's body, and is dropped 14 days after it ended.
+
+## Data loss prevention
+
+A project's admin sets what the hub does when a model call of the project's runs carries customer or confidential
+data. `GET /v1/projects/{p}/dlp-policy` gives a reader the policy (off when none was set) and the counts of what it
+redacted and blocked; `PUT` sets it, for the admin; `POST /v1/projects/{p}/dlp/inspect` with `{"text": ...}` shows a
+reader what the policy makes of a text, and counts nothing.
+
+```bash
+curl -X PUT https://hub.example.org/v1/projects/lumen-studio/dlp-policy -H "Authorization: Bearer $EVO_HUB_TOKEN" \
+  -H "Content-Type: application/json" -d '{"mode": "redact", "keywords": ["Project Northwind"]}'
+```
+
+The rule kinds, all on unless `kinds` names fewer:
+
+- `cif`: a customer information file code, `CIF` and 6 to 12 digits;
+- `national_id`: a citizen identity card number (CCCD), 12 digits with a province code, or 9 digits after CMND;
+- `account_number`: 8 to 19 digits after a word that names an account (account, acct, a/c, STK, tai khoan);
+- `financial_figure`: an amount of at least four digits with a currency or scale (VND, USD, EUR, dong, ty, trieu,
+  million, billion) or a leading `$`;
+- `contract_keyword`: a keyword of a confidential contract, the built-in ones (`builtin_keywords`) and the policy's
+  `keywords`, whole words, case and accents aside.
+
+Years, ports and phone numbers do not match. The hub's gateway route (`/v1/messages`, `/v1/chat/completions` and the
+rest of the run-token routes) and the hub runtime apply the policy before a call leaves for a provider. In mode
+`redact` each match goes as `[REDACTED:<kind>]`; in mode `block` the call never leaves: the gateway route answers 422,
+and a hub agent's turn fails with the kinds and counts. Each redaction and block is counted by rule kind, surface and
+action in `dlp_counts`. Neither a count, a log line, an error nor the audit log holds a matched value.
 
 ## Blob store
 

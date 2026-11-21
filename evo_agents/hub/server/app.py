@@ -480,13 +480,16 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         attachments,
         curator,
         decisions,
+        dlp_policy,
         doc_versions,
         kg_worker,
         local_runs,
+        member_tasks,
         notifications,
         output_content,
         output_notices,
         overview,
+        project_webhooks,
         proposal_reads,
         proposals,
         push,
@@ -524,6 +527,9 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         attachments.worker_router,
         doc_versions.chat_router,  # the versions of a document in a chat or a run
         doc_versions.router,
+        member_tasks.router,  # tasks a member hands an agent with no Git (task runs with no agent type)
+        project_webhooks.router,  # a project's outbound webhooks (evo_agents.hub.webhook_events)
+        dlp_policy.router,  # a project's data loss prevention policy (evo_agents.hub.dlp)
     ):
         app.include_router(routes)
 

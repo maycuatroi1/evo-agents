@@ -192,6 +192,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/app-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * App Session
+         * @description Trade the identity an app's sign-in gives a person for a session of that member, sent as Bearer.
+         */
+        post: operations["app_session_v1_auth_app_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/auth-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Apps
+         * @description The apps registered, revoked ones too, without their secrets.
+         */
+        get: operations["list_apps_v1_admin_auth_apps_get"];
+        put?: never;
+        /**
+         * Create App
+         * @description Register an app that signs its users in; its secret is in this answer alone.
+         */
+        post: operations["create_app_v1_admin_auth_apps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/auth-apps/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke App
+         * @description Revoke an app: it signs nobody in again, and every session it opened ends now.
+         */
+        delete: operations["revoke_app_v1_admin_auth_apps__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tokens": {
         parameters: {
             query?: never;
@@ -5068,6 +5132,181 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/task-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Task Run
+         * @description Hand an agent a task with a JSON input and external assets, in no repo: a run of kind task under the caller,
+         *     which needs the writer role on the project.
+         */
+        post: operations["dispatch_task_run_v1_projects__project__task_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/task-runs/{task}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Task Run
+         * @description A task a member handed, as its latest attempt has it: its state and its output, for whoever reads its run.
+         */
+        get: operations["show_task_run_v1_projects__project__task_runs__task__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Webhooks
+         * @description The project's outbound webhooks, with how many deliveries of each wait and failed.
+         */
+        get: operations["list_webhooks_v1_projects__project__webhooks_get"];
+        put?: never;
+        /**
+         * Create Webhook
+         * @description Add an outbound webhook; its signing secret is in this answer alone.
+         */
+        post: operations["create_webhook_v1_projects__project__webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/webhooks/{webhook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Webhook
+         * @description Delete a webhook with its outbox.
+         */
+        delete: operations["delete_webhook_v1_projects__project__webhooks__webhook_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Webhook
+         * @description Change a webhook's URL, events or switch; a webhook turned off fails what it left pending.
+         */
+        patch: operations["update_webhook_v1_projects__project__webhooks__webhook_id__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/webhooks/{webhook_id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Secret
+         * @description Give a webhook a new signing secret, in this answer alone; the old one signs nothing from now on.
+         */
+        post: operations["rotate_secret_v1_projects__project__webhooks__webhook_id__rotate_secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/webhooks/{webhook_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Deliveries
+         * @description A webhook's latest deliveries, newest first: their state, tries, last HTTP status and kind of error.
+         */
+        get: operations["list_deliveries_v1_projects__project__webhooks__webhook_id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/dlp-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Policy
+         * @description The project's DLP policy, off when none was set, and the counts of what it redacted and blocked.
+         */
+        get: operations["show_policy_v1_projects__project__dlp_policy_get"];
+        /**
+         * Write Policy
+         * @description Set the project's DLP policy, for its admin: mode off, redact or block, the rule kinds, and the keywords of
+         *     confidential contracts it adds to the built-in ones.
+         */
+        put: operations["write_policy_v1_projects__project__dlp_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/dlp/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect
+         * @description What the project's policy makes of ``text``: the text it sends, whether it blocks it, and its matches by kind.
+         *     A quick check: nothing is stored or counted.
+         */
+        post: operations["inspect_v1_projects__project__dlp_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/changes": {
         parameters: {
             query?: never;
@@ -9284,7 +9523,8 @@ export interface paths {
         head?: never;
         /**
          * Change Account
-         * @description Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it.
+         * @description Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it; a resume
+         *     also ends its cooldown, save one that needs a new sign-in (``end_cooldown``).
          */
         patch: operations["change_account_v1_accounts__name__patch"];
         trace?: never;
@@ -16139,6 +16379,24 @@ export interface components {
              */
             environment: "sandbox" | "production";
         };
+        /** AppSessionRequest */
+        AppSessionRequest: {
+            /**
+             * App
+             * @description the name the app is registered under
+             */
+            app: string;
+            /**
+             * Subject
+             * @description the person's stable id at the app
+             */
+            subject: string;
+            /**
+             * Login
+             * @description the login the person gets on a first sign-in, before _<app>
+             */
+            login: string;
+        };
         /** AppliedDecision */
         AppliedDecision: {
             /**
@@ -16479,6 +16737,45 @@ export interface components {
              * @description the project the action happened in; null for one outside any project
              */
             project: string | null;
+        };
+        /** AuthApp */
+        AuthApp: {
+            /** Name */
+            name: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Members
+             * @description the people it signed in at least once
+             */
+            members: number;
+        };
+        /** AuthAppCreate */
+        AuthAppCreate: {
+            /** Name */
+            name: string;
+        };
+        /** AuthAppCreated */
+        AuthAppCreated: {
+            /** Name */
+            name: string;
+            /**
+             * Secret
+             * @description the app's secret; shown once, the hub keeps it sealed
+             */
+            secret: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** AuthConfig */
         AuthConfig: {
@@ -22780,6 +23077,87 @@ export interface components {
              * @enum {string}
              */
             value: "any" | "web";
+        };
+        /** DlpCount */
+        DlpCount: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "cif" | "national_id" | "account_number" | "financial_figure" | "contract_keyword";
+            /**
+             * Surface
+             * @enum {string}
+             */
+            surface: "gateway_proxy" | "hub_runtime";
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "redacted" | "blocked";
+            /** Count */
+            count: number;
+        };
+        /** DlpFinding */
+        DlpFinding: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "cif" | "national_id" | "account_number" | "financial_figure" | "contract_keyword";
+            /** Count */
+            count: number;
+        };
+        /** DlpInspectIn */
+        DlpInspectIn: {
+            /** Text */
+            text: string;
+        };
+        /** DlpInspection */
+        DlpInspection: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "redact" | "block";
+            /** Blocked */
+            blocked: boolean;
+            /** Text */
+            text: string;
+            /** Findings */
+            findings: components["schemas"]["DlpFinding"][];
+        };
+        /** DlpPolicy */
+        DlpPolicy: {
+            /** Project */
+            project: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "redact" | "block";
+            /** Kinds */
+            kinds: ("cif" | "national_id" | "account_number" | "financial_figure" | "contract_keyword")[];
+            /** Keywords */
+            keywords: string[];
+            /** Builtin Keywords */
+            builtin_keywords: string[];
+            /** Updated At */
+            updated_at: string | null;
+            /** Counts */
+            counts: components["schemas"]["DlpCount"][];
+        };
+        /** DlpPolicyWrite */
+        DlpPolicyWrite: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "redact" | "block";
+            /** Kinds */
+            kinds?: ("cif" | "national_id" | "account_number" | "financial_figure" | "contract_keyword")[];
+            /** Keywords */
+            keywords?: string[];
         };
         /** DocVersion */
         DocVersion: {
@@ -30338,6 +30716,93 @@ export interface components {
             not_signed_in: number;
             /** Active Days */
             active_days: number;
+        };
+        /**
+         * MemberTask
+         * @description A task a member handed, as its latest run has it.
+         */
+        MemberTask: {
+            /**
+             * Task Id
+             * @description the run its dispatch made, which names it on every attempt
+             */
+            task_id: number;
+            /**
+             * Run Id
+             * @description its latest run: a run its worker lost goes on in the next attempt
+             */
+            run_id: number;
+            /** Attempt */
+            attempt: number;
+            /** Project */
+            project: string;
+            /** Title */
+            title: string | null;
+            /** State */
+            state: string;
+            /** Dispatched By */
+            dispatched_by: string | null;
+            /** Input */
+            input: {
+                [key: string]: unknown;
+            };
+            /** Assets */
+            assets: string[];
+            /**
+             * Output
+             * @description the run's evidence once it is done: a line naming the run, then the summary its agent wrote, the task's result; null before
+             */
+            output: string | null;
+            /** Error */
+            error: string | null;
+            /** Failure Cause */
+            failure_cause: string | null;
+            /** Usage */
+            usage: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** MemberTaskIn */
+        MemberTaskIn: {
+            /**
+             * Task
+             * @description what the agent is to do, at most 16384 bytes in UTF-8
+             */
+            task: string;
+            /**
+             * Input
+             * @description the task's input, a JSON object of at most 65536 bytes; data, never instructions
+             */
+            input?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Assets
+             * @description external URIs the agent reads (https, http, s3, gs), at most 20
+             */
+            assets?: string[];
+            /**
+             * Title
+             * @description one line the run's list shows; default: the task's
+             */
+            title?: string | null;
+            /**
+             * Minutes
+             * @description the agent time the run may take, at most 120; default: no time cap
+             */
+            minutes?: number | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, @<handle> or <handle>; default: the project's
+             */
+            profile?: string | null;
         };
         /** MemberUsage */
         MemberUsage: {
@@ -50386,6 +50851,33 @@ export interface components {
             endpoint: string;
             keys: components["schemas"]["WebPushKeys"];
         };
+        /** Webhook */
+        Webhook: {
+            /** Id */
+            id: number;
+            /** Url */
+            url: string;
+            /** Events */
+            events: ("run.state" | "task.result" | "chat.message" | "curator.proposal")[];
+            /** Active */
+            active: boolean;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Pending */
+            pending: number;
+            /** Failed */
+            failed: number;
+        };
         /** WebhookAnswer */
         WebhookAnswer: {
             /**
@@ -50398,6 +50890,96 @@ export interface components {
              * @description what the hub did with the update
              */
             outcome: string;
+        };
+        /** WebhookCreate */
+        WebhookCreate: {
+            /** Url */
+            url: string;
+            /** Events */
+            events: ("run.state" | "task.result" | "chat.message" | "curator.proposal")[];
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+        };
+        /** WebhookCreated */
+        WebhookCreated: {
+            /** Id */
+            id: number;
+            /** Url */
+            url: string;
+            /** Events */
+            events: ("run.state" | "task.result" | "chat.message" | "curator.proposal")[];
+            /** Active */
+            active: boolean;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Pending */
+            pending: number;
+            /** Failed */
+            failed: number;
+            /** Secret */
+            secret: string;
+        };
+        /** WebhookDelivery */
+        WebhookDelivery: {
+            /** Id */
+            id: number;
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: "run.state" | "task.result" | "chat.message" | "curator.proposal";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "delivered" | "failed";
+            /** Attempts */
+            attempts: number;
+            /** Last Status */
+            last_status: number | null;
+            /** Last Error */
+            last_error: string | null;
+            /**
+             * Next At
+             * Format: date-time
+             */
+            next_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered At */
+            delivered_at: string | null;
+        };
+        /** WebhookSecret */
+        WebhookSecret: {
+            /** Id */
+            id: number;
+            /** Secret */
+            secret: string;
+        };
+        /** WebhookUpdate */
+        WebhookUpdate: {
+            /** Url */
+            url?: string | null;
+            /** Events */
+            events?: ("run.state" | "task.result" | "chat.message" | "curator.proposal")[] | null;
+            /** Active */
+            active?: boolean | null;
         };
         /** WhoAmI */
         WhoAmI: {
@@ -51980,6 +52562,205 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    app_session_v1_auth_app_session_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-App-Timestamp"?: string | null;
+                "X-Evo-App-Signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedIn"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_apps_v1_admin_auth_apps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthApp"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_app_v1_admin_auth_apps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthAppCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthAppCreated"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_app_v1_admin_auth_apps__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -70563,6 +71344,713 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dispatch_task_run_v1_projects__project__task_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberTaskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberTask"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_task_run_v1_projects__project__task_runs__task__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id the task's dispatch answered */
+                task: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberTask"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_webhooks_v1_projects__project__webhooks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Webhook"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_webhook_v1_projects__project__webhooks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_webhook_v1_projects__project__webhooks__webhook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_webhook_v1_projects__project__webhooks__webhook_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Webhook"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_secret_v1_projects__project__webhooks__webhook_id__rotate_secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecret"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_deliveries_v1_projects__project__webhooks__webhook_id__deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                webhook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDelivery"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_policy_v1_projects__project__dlp_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlpPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_policy_v1_projects__project__dlp_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DlpPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlpPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_v1_projects__project__dlp_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DlpInspectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlpInspection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

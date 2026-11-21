@@ -85,7 +85,7 @@ from sqlalchemy import func, insert, null, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
-from evo_agents.hub import judge, review, runs, tables, tiers
+from evo_agents.hub import judge, review, runs, tables, tiers, webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import VERIFY_RULE, PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
@@ -657,6 +657,8 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
                 run_id=run_id,
             )
         await ledger_lines.proposal_recorded(conn, run.project_id, proposal_id)
+        said = {"proposal_id": proposal_id, "run_id": run_id, "kind": body.kind, "tier": tier.tier}
+        await webhook_events.enqueue(conn, "curator.proposal", run.project_id, {**said, "state": values["state"]})
         await memory_promotion.recorded(conn, run, access, proposal_id, tier.tier, values["state"], promotion)
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}

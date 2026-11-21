@@ -533,6 +533,21 @@ async def deliver_plugin_events(context: JobContext, timestamp: int | None = Non
 
 
 @queue.periodic(cron="* * * * *")
+@queue.task(
+    name=jobs.DELIVER_WEBHOOKS,
+    pass_context=True,
+    queueing_lock=jobs.DELIVER_WEBHOOKS,
+    queue=jobs.DELIVERY_QUEUE,
+)
+async def deliver_webhooks(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.webhook_events import deliver
+
+    found = hub(context)
+    assert found.engine is not None  # the hub's worker opens its engine before its first job
+    return await deliver(found.engine, found.sealer)
+
+
+@queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.READ_NIGHTLY, pass_context=True, queueing_lock=jobs.READ_NIGHTLY)
 async def read_nightly(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.nightly import refresh
