@@ -11,12 +11,23 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from evo_agents.hub import runs
 from evo_agents.hub.plans import AREAS, PLAN_ID, SECTIONS, UPDATABLE
 
 
 class Problem(BaseModel):
     path: str
     message: str
+
+
+class PlanTrace(BaseModel):
+    """A trace of a system that runs the plan (``plan_systems``) and has a run active: its runs hold the plan's steps
+    until they end."""
+
+    id: int = Field(description="the trace, as GET /v1/projects/{p}/systems/{slug}/traces/{id} names it")
+    system: str = Field(description="the slug of the system it runs under")
+    run_id: int = Field(description="its active run, the latest when it has several")
+    state: runs.ActiveState
 
 
 class PlanSummary(BaseModel):
@@ -31,6 +42,11 @@ class PlanSummary(BaseModel):
     updated_by: str
     problems: list[str] = Field(
         default_factory=list, description="the codes (P-<number>) of the problems of the project its body names"
+    )
+    trace: PlanTrace | None = Field(
+        default=None,
+        description="the trace of a system the plan was handed to that has a run active (system_traces.plan_traces): "
+        "its runs are chat runs, which name no plan, so the project's runs do not show it",
     )
 
     @field_validator("problems", mode="before")

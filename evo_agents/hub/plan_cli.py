@@ -70,6 +70,7 @@ SUMMARY_KEYS = (
     "updated_at",
     "updated_by",
     "problems",
+    "trace",
 )
 HANDOFF_KEYS = (
     "project",

@@ -5878,7 +5878,8 @@
         "text": "Trace #{id} is {state}. The entry agent hands each step to the system's agents, and each step done is recorded on the plan.",
         "open": "Open the trace",
         "progress": "{done} of {total} steps done",
-        "live": "Running in system {system}: trace #{id} is {state}, {done} of {total} steps done."
+        "live": "Running in system {system}: trace #{id} is {state}, {done} of {total} steps done.",
+        "listLink": "Running in system {system}, trace #{id}: {state}"
       }
     },
     "openRun": "Open run #{id}",

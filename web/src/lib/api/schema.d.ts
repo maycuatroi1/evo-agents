@@ -35026,6 +35026,8 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project its body names
              */
             problems?: string[];
+            /** @description the trace of a system the plan was handed to that has a run active (system_traces.plan_traces): its runs are chat runs, which name no plan, so the project's runs do not show it */
+            trace?: components["schemas"]["PlanTrace"] | null;
         };
         /**
          * PlanTrace

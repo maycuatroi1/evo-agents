@@ -5878,7 +5878,8 @@
         "text": "Trace #{id} đang ở trạng thái {state}. Entry agent giao từng bước cho các agent của system, và mỗi bước xong được ghi vào plan.",
         "open": "Mở trace",
         "progress": "Xong {done}/{total} bước",
-        "live": "Đang chạy trong system {system}: trace #{id} đang ở trạng thái {state}, xong {done}/{total} bước."
+        "live": "Đang chạy trong system {system}: trace #{id} đang ở trạng thái {state}, xong {done}/{total} bước.",
+        "listLink": "Đang chạy trong system {system}, trace #{id}: {state}"
       }
     },
     "openRun": "Mở run #{id}",

@@ -28,12 +28,14 @@ import logging
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import and_, func, insert, select, update
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import system_context, system_spec, tables, wake
+from evo_agents.hub import runs, system_context, system_spec, tables, wake
 from evo_agents.hub.server import system_store
+from evo_agents.hub.server.plan_models import PlanTrace
 from evo_agents.kg.sessions import READ_META
 
 log = logging.getLogger(__name__)
@@ -456,6 +458,27 @@ async def budget_problem(conn: AsyncConnection, membership: Membership | None) -
 
 
 # The plan of a trace
+
+
+async def plan_traces(conn: AsyncConnection, project_id: int, plan_id: str | None = None) -> dict[str, PlanTrace]:
+    """The trace a system dispatch of each plan of the project opened that has a run active (its ``invoke_agent``
+    spans name its runs), with its latest active run, by plan id; ``plan_id``'s alone when given. A plan whose every
+    trace has no run active is not in it. A chat run names no plan, so the plan's own runs never show these."""
+    t, s, r = tables.system_traces, tables.system_spans, tables.runs
+    query = (
+        select(t.c.plan_id, t.c.id, t.c.system_slug, r.c.id.label("run_id"), r.c.state)
+        .join_from(t, s, and_(s.c.trace_id == t.c.id, s.c.name == system_context.INVOKE))
+        .join(r, r.c.id == s.c.run_id)
+        .where(t.c.project_id == project_id, t.c.plan_id.is_not(None), r.c.state.in_(runs.ACTIVE_STATES))
+        .ext(distinct_on(t.c.plan_id))
+        .order_by(t.c.plan_id, r.c.id.desc())
+    )
+    if plan_id is not None:
+        query = query.where(t.c.plan_id == plan_id)
+    return {
+        row.plan_id: PlanTrace(id=row.id, system=row.system_slug, run_id=row.run_id, state=row.state)
+        for row in await conn.execute(query)
+    }
 
 
 async def take_plan(conn: AsyncConnection, run_id: int, plan_id: str) -> int | None:

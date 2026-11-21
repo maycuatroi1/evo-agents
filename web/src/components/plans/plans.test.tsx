@@ -100,6 +100,18 @@ describe("PlansList", () => {
     for (const name of buttons) expect(name).toMatch(/^(Plan|Tiến độ|Revision|Sửa lần cuối)/);
   });
 
+  it("links a plan a system runs to its trace, since the trace's chat runs name no plan", () => {
+    const traced = { ...summaries[0], trace: { id: 205, system: "dev", run_id: 10703, state: "running" as const } };
+    withClient(<PlansList project="demo" initialError={null} />, (client) =>
+      client.setQueryData(planKeys.all("demo"), [traced, summaries[1]]),
+    );
+    const link = within(screen.getByTestId("plans-active")).getByTestId("plan-trace-link");
+    expect(link).toHaveAttribute("data-trace-id", "205");
+    expect(link.getAttribute("href")).toMatch(/\/systems\/dev\?mode=observe&work=205$/);
+    expect(link.getAttribute("aria-label")).toMatch(/^Đang chạy trong system dev, trace #205: /);
+    expect(within(screen.getByTestId("plans-completed")).queryByTestId("plan-trace-link")).not.toBeInTheDocument();
+  });
+
   it("filters plans by title or id", async () => {
     withClient(<PlansList project="demo" initialError={null} />, (client) =>
       client.setQueryData(planKeys.all("demo"), summaries),

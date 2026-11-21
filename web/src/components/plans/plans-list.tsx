@@ -13,14 +13,13 @@ import { Identifier, NAME_LINK } from "@/components/data/identifier";
 import { ProblemChips } from "@/components/data/problem-chips";
 import { SearchField } from "@/components/data/search-field";
 import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
-import { activePlanRun, planRunPhase } from "@/components/runs/model";
+import { activePlanRun } from "@/components/runs/model";
 import { NewPlanButton } from "@/components/runs/author-run";
-import { RunPlanButton } from "@/components/runs/plan-run";
-import { type Run, runHref, runsSummaryQuery } from "@/components/runs/queries";
+import { planActivityLink, RunPlanButton } from "@/components/runs/plan-run";
+import { IDLE_REFRESH_MS, LIVE_REFRESH_MS, type Run, runsSummaryQuery } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, NoResults, NotFoundState, TableSkeleton } from "@/components/states/states";
-import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
@@ -37,23 +36,6 @@ const NARROW_HIDDEN = { problems: "hidden lg:table-cell", revision: "hidden md:t
 
 /** The project's active runs, as the summary query reads them: which plans have a plan run, or runs of their steps. */
 type Activity = { runs: Run[]; loaded: boolean };
-
-/** A plan's active plan run as a badge with an icon and a word, linked to the run. */
-function PlanRunLink({ project, run }: { project: string; run: Run }) {
-  const t = useTranslations("runs.planRun");
-  const phase = planRunPhase(run.state);
-  return (
-    <Link
-      href={runHref(project, run.id)}
-      className="shrink-0 rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
-      aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
-      data-testid="plan-run-link"
-      data-run-id={run.id}
-    >
-      <StatusBadge kind="run" status={phase} data-testid="plan-run-phase" />
-    </Link>
-  );
-}
 
 function matches(plan: PlanSummary, needle: string): boolean {
   if (!needle) return true;
@@ -88,13 +70,14 @@ function PlansTable({
         const plan = info.row.original;
         return (
           <div className="flex items-center justify-end gap-2">
-            {activePlanRun(activity.runs, plan.plan_id) ? null : <CompletePlanButton project={project} plan={plan} />}
+            {activePlanRun(activity.runs, plan.plan_id) || plan.trace ? null : <CompletePlanButton project={project} plan={plan} />}
             <RunPlanButton
             project={project}
             planId={plan.plan_id}
             pending={plan.steps_total - plan.steps_done}
             runs={activity.runs}
             loaded={activity.loaded}
+            trace={plan.trace ?? null}
             onDispatched={onDispatched}
             size="sm"
             variant="outline"
@@ -113,7 +96,6 @@ function PlansTable({
         meta: { primary: true },
         cell: (info) => {
           const plan = info.row.original;
-          const planRun = activePlanRun(activity.runs, plan.plan_id);
           const title = plan.title ?? plan.plan_id;
           return (
             <CellMain sub={plan.title ? <span className="font-mono">{plan.plan_id}</span> : null} subTitle={plan.plan_id}>
@@ -125,7 +107,7 @@ function PlansTable({
               >
                 {title}
               </Link>
-              {planRun ? <PlanRunLink project={project} run={planRun} /> : null}
+              {planActivityLink(project, plan.plan_id, plan.trace, activity.runs)}
             </CellMain>
           );
         },
@@ -179,16 +161,16 @@ function PlansTable({
       columnClassNames={NARROW_HIDDEN}
       testId={`plans-table-${area}`}
       empty={t("noMatch")}
-      // On a phone: the plan, its active plan run, and its id with the steps done. Run plan is on the plan's page.
+      // On a phone: the plan, its active plan run or system trace, and its id with the steps done. Run plan is on the
+      // plan's page.
       mobile={(plan) => {
-        const planRun = activePlanRun(activity.runs, plan.plan_id);
         const steps = tProgress("doneOfTotal", { done: plan.steps_done, total: plan.steps_total });
         const progress = plan.problems?.length ? t("mobileProblems", { progress: steps, problems: plan.problems.join(", ") }) : steps;
         return {
           title: plan.title ?? plan.plan_id,
           titleText: plan.title ?? plan.plan_id,
           href: planHref(project, plan.plan_id),
-          status: planRun ? <PlanRunLink project={project} run={planRun} /> : null,
+          status: planActivityLink(project, plan.plan_id, plan.trace, activity.runs),
           meta: plan.title
             ? t.rich("mobileMeta", { plan: plan.plan_id, progress, id: (chunks) => <span className="font-mono">{chunks}</span> })
             : progress,
@@ -320,7 +302,14 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
 export function PlansList({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("plans");
   const tStates = useTranslations("states");
-  const state = useHubQuery(plansQuery(browserApi, project), initialError);
+  // While a system runs one of the plans, its steps move as the system's agents report them: read the list often.
+  const state = useHubQuery(
+    {
+      ...plansQuery(browserApi, project),
+      refetchInterval: (query) => (query.state.data?.some((plan) => plan.trace) ? LIVE_REFRESH_MS : IDLE_REFRESH_MS),
+    },
+    initialError,
+  );
   const counts =
     state.status === "success"
       ? {

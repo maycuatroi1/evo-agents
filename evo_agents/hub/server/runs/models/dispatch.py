@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from evo_agents.hub import author, runs, system_spec
 from evo_agents.hub.credentials import DispatchedVia
 from evo_agents.hub.plans import PLAN_ID
+from evo_agents.hub.server.plan_models import PlanTrace
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.limits import (
     ACCOUNT_HELP,
@@ -39,16 +40,6 @@ class ActiveRun(BaseModel):
     id: int
     state: runs.ActiveState
     dispatched_by: str
-
-
-class PlanTrace(BaseModel):
-    """A trace of a system that runs the plan (``plan_systems``) and has a run active: its runs hold the plan's steps
-    until they end."""
-
-    id: int = Field(description="the trace, as GET /v1/projects/{p}/systems/{slug}/traces/{id} names it")
-    system: str = Field(description="the slug of the system it runs under")
-    run_id: int = Field(description="its active run, the latest when it has several")
-    state: runs.ActiveState
 
 
 class StepReadiness(BaseModel):

@@ -284,8 +284,15 @@ async def list_plans(
         access = await project_access(conn, user, project)
         _reader(access)
         rows = (await conn.execute(_LISTED[area is None], {"project_id": access.project_id, "area": area})).all()
+        traces = await system_traces.plan_traces(conn, access.project_id) if area != "completed" else {}
     through = _sink(access, sink)
-    return page.of([PlanSummary(**row._mapping) for row in rows if access.visible(row.label, through)])
+    return page.of(
+        [
+            PlanSummary(**row._mapping, trace=traces.get(row.plan_id))
+            for row in rows
+            if access.visible(row.label, through)
+        ]
+    )
 
 
 @router.get("/{plan_id}", response_model=Plan, responses=READ_REFUSALS)
