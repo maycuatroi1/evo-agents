@@ -180,6 +180,8 @@ def _committed(conn) -> None:
 
 
 def _rolled_back(conn) -> None:
+    if conn.invalidated:  # its info went with the connection, and reading it would raise out of the rollback
+        return
     conn.info.pop(_TOUCHED, None)
 
 

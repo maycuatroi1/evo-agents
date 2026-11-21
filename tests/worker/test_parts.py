@@ -309,6 +309,16 @@ def test_the_backoff_grows_from_1_to_60_seconds():
     assert 0.8 <= jittered.next() <= 1.2 and 1.6 <= jittered.next() <= 2.4
 
 
+def test_the_backoff_stays_at_60_seconds_however_long_the_failures_go_on():
+    """A hub down for seven hours: 2**1024 does not fit a float, the backoff raised and the heartbeats ended (2026-11-21)."""
+    pytest.importorskip("aiohttp")
+    from evo_agents.worker.hubapi import Backoff
+
+    backoff = Backoff(jitter=0)
+    backoff.failures = 5000
+    assert [backoff.next() for _ in range(3)] == [60, 60, 60]
+
+
 def test_the_reads_a_run_needs_outlast_a_deploy_of_the_hub():
     """A run's leases and its plan are read again for about three minutes while the hub does not answer: run #1766
     failed on five reads, some 30 seconds of HTTP 500, while the hub deployed."""

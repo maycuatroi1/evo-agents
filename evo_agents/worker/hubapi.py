@@ -98,7 +98,8 @@ class Backoff:
         self.failures = 0
 
     def next(self) -> float:
-        delay = min(self.most, self.first * (2**self.failures))
+        # the exponent stops at 32: 2**1024 does not fit a float, and seven hours of failed heartbeats reached it
+        delay = min(self.most, self.first * 2.0 ** min(self.failures, 32))
         self.failures += 1
         return max(0.0, delay * (1 + random.uniform(-self.jitter, self.jitter)))
 

@@ -8,7 +8,10 @@ and a connection is checked before it is handed out, so the pool recovers by its
 Postgres that went away without closing its connections (its container killed on a stalled host, its address
 dropped, no reset sent) leaves them open on this side, and a query on one would wait forever: the check gives up after
 ``CHECK_TIMEOUT``, and TCP keepalives (``CONNECT_KWARGS``) fail a connection whose peer stopped answering, so the pool
-replaces it and reaches the Postgres that came back. To
+replaces it and reaches the Postgres that came back. A connection that breaks while out (Postgres restarted in the
+middle of its query) goes back to the pool too, which replaces it (``PooledConnection``): psycopg's own ``close()``
+returns at once on a broken connection, so it never went back, and a pool whose connections all broke that way served
+nothing again until the process restarted. To
 ``NullPool`` each checkout is a new connection, so the dialect's connect hook runs on every one; what it changes on
 the psycopg connection, the engine undoes as it gives the connection back (``make_engine``).
 
@@ -79,6 +82,19 @@ def _holder() -> str:
     return holder.get() if not name or name.startswith("Task-") else f"{holder.get()} task:{name}"
 
 
+class PooledConnection(psycopg.AsyncConnection):
+    """A connection of the hub's pools. Closed by the engine, it goes back to its pool even when it broke while out:
+    ``psycopg.AsyncConnection.close()`` returns at once on a closed connection, before ``close_returns`` gives it
+    back, so the pool counted it as out for good. Given back, the pool sees it broken and connects a new one."""
+
+    async def close(self) -> None:
+        pool = getattr(self, "_pool", None)
+        if self.closed and pool is not None and getattr(pool, "close_returns", False):
+            await pool.putconn(self)
+            return
+        await super().close()
+
+
 class TimedPool(AsyncConnectionPool):
     """An ``AsyncConnectionPool`` that knows, for each connection out, who took it and when: it logs a connection
     held ``HOLD_LOG_SECONDS`` or longer as it comes back, and on a ``PoolTimeout`` the connections out then, the
@@ -138,6 +154,7 @@ def create_pool(config: HubConfig, *, heartbeat: bool = False) -> AsyncConnectio
     size = (1, config.heartbeat_pool_size) if heartbeat else (config.pool_min_size, config.pool_max_size)
     pool = TimedPool(
         config.dsn,
+        connection_class=PooledConnection,
         min_size=size[0],
         max_size=size[1],
         timeout=config.pool_timeout,

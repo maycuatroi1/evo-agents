@@ -14,7 +14,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 import psycopg
-from sqlalchemy import literal, select
+from sqlalchemy import func, literal, select
 from sqlalchemy.exc import OperationalError
 
 from evo_agents.hub import db
@@ -133,3 +133,47 @@ def test_pooled_connections_carry_tcp_keepalives():
             await pool.close()
 
     assert asyncio.run(go()) == {"keepalives": "1", "keepalives_idle": "10", "tcp_user_timeout": "30000"}
+
+
+@pytest.mark.parametrize("heartbeat", [False, True], ids=["main", "heartbeat"])
+def test_connections_that_break_while_out_go_back_and_the_pool_serves_again(heartbeat):
+    """Postgres restarted under the queries of a full pool (the workers' claims on 2026-11-21): each connection broke
+    while out, and psycopg's ``close()`` returns at once on a broken connection, so none went back and the pool timed
+    out every request after, for nine hours, until the api was restarted."""
+
+    async def go():
+        config = SimpleNamespace(dsn=pg.DSN, pool_min_size=1, pool_max_size=2, pool_timeout=3.0, heartbeat_pool_size=2)
+        pool = db.create_pool(config, heartbeat=heartbeat)
+        await pool.open(wait=True, timeout=10)
+        engine = db.make_engine(pool)
+        pids: list[int] = []
+        broken = asyncio.Event()
+
+        async def held_when_postgres_restarts():
+            async with engine.begin() as conn:
+                pids.append((await conn.execute(select(func.pg_backend_pid()))).scalar_one())
+                await broken.wait()
+                await conn.execute(select(literal(1)))
+
+        async def select_one():
+            async with engine.begin() as conn:
+                return (await conn.execute(select(literal(1)))).scalar_one()
+
+        try:
+            holders = [asyncio.create_task(held_when_postgres_restarts()) for _ in range(2)]
+            while len(pids) < 2:
+                await asyncio.sleep(0.05)
+            async with await psycopg.AsyncConnection.connect(pg.DSN, autocommit=True) as admin:
+                for pid in pids:
+                    await admin.execute("SELECT pg_terminate_backend(%s)", (pid,))
+            broken.set()
+            for task in holders:
+                with pytest.raises(OperationalError):
+                    await task
+            assert pool.holders() == []  # both went back
+            assert await asyncio.wait_for(asyncio.gather(select_one(), select_one()), 10) == [1, 1]
+        finally:
+            await engine.dispose()
+            await pool.close()
+
+    asyncio.run(asyncio.wait_for(go(), 60))
