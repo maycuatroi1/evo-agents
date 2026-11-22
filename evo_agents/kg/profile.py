@@ -224,14 +224,30 @@ def _ratio(part: int, whole: int) -> float:
 
 
 def _file_edges(graph) -> tuple[set[str], set[str]]:
-    """The file nodes with a symbol that calls, and with one that inherits."""
+    """The file nodes with a symbol that calls, and with one that inherits. A symbol belongs to the node that
+    ``declares`` it or the File that ``defines`` it; a member (``member_of``) to the file of its class."""
     owner: dict[str, str] = {}
+    parent: dict[str, str] = {}
     for e in graph.edges.values():
         if e["rel"] == "declares":
             owner[e["dst"]] = e["src"]
+        elif e["rel"] == "defines" and graph.nodes.get(e["src"], {}).get("kind") == "File":
+            owner.setdefault(e["dst"], e["src"])
+        elif e["rel"] == "member_of":
+            parent[e["src"]] = e["dst"]
+
+    def file_of(sid: str) -> str | None:
+        seen = set()
+        while sid not in owner and sid in parent and sid not in seen:
+            seen.add(sid)
+            sid = parent[sid]
+        return owner.get(sid)
+
     calls, inherits = set(), set()
     for e in graph.edges.values():
-        file = owner.get(e["src"])
+        if e["rel"] not in ("calls", "inherits"):
+            continue
+        file = file_of(e["src"])
         if file is None:
             continue
         if e["rel"] == "calls":
