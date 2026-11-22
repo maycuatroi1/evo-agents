@@ -42,7 +42,7 @@ def change_branch(machine, files: dict[str, str], *, branch: str = BRANCH) -> st
     for name, text in files.items():
         target = checkout / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
+        target.write_text(text, encoding="utf-8", newline="\n")  # the bytes committed, LF on Windows too
     git("add", "-A", cwd=checkout)
     git("commit", "--quiet", "-m", "the Builder's change", cwd=checkout)
     git("push", "--quiet", "origin", branch, cwd=checkout)

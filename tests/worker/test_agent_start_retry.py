@@ -9,10 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.worker.adapter import ProfileRefused
-from evo_agents.worker.runner import agent as agent_module
-from evo_agents.worker.runner.agent import Agent
-from evo_agents.worker.runner.common import RunFailed
+pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
+
+from evo_agents.worker.adapter import ProfileRefused  # noqa: E402
+from evo_agents.worker.runner import agent as agent_module  # noqa: E402
+from evo_agents.worker.runner.agent import Agent  # noqa: E402
+from evo_agents.worker.runner.common import RunFailed  # noqa: E402
 
 
 def run() -> SimpleNamespace:

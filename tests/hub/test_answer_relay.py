@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 
 from evo_agents.hub import chat_runs, runs
-from evo_agents.hub.server import agent_asks
 from tests.hub import pg
 
 
@@ -42,6 +41,9 @@ def test_a_message_of_the_thread_reaches_the_inbox_whole():
 
 
 def test_the_thread_line_names_the_message_that_holds_the_whole_answer():
+    pytest.importorskip("fastapi", reason="the hub's server needs the hub-server extra, evo-ak[hub-server]")
+    from evo_agents.hub.server import agent_asks
+
     mark = agent_asks.THREAD_CUT_MARK.replace("{message}", "19900")
     line = runs.clip("@ea-dev answered (run #9177):\n\n" + "x" * 4_300, agent_asks.ANSWER_IN_THREAD, mark)
     assert len(line.encode()) <= agent_asks.ANSWER_IN_THREAD
@@ -53,6 +55,7 @@ if pg.DSN:
     from sqlalchemy import select
 
     from evo_agents.hub import tables
+    from evo_agents.hub.server import agent_asks
     from tests.hub import test_credentials_api as credentials_api
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401

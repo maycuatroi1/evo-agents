@@ -42,16 +42,17 @@ def make_repo(root: Path) -> Path:
     sh(root, "init", "-q", "-b", "main")
     sh(root, "remote", "add", "origin", "git@github.com:acme/app.git")
     (root / "docs").mkdir()
-    (root / "docs/guide.md").write_text("# Guide\n\nIntro.\n\n## Setup\n\nRun `app.server::serve`.\n")
+    (root / "docs/guide.md").write_text("# Guide\n\nIntro.\n\n## Setup\n\nRun `app.server::serve`.\n", newline="\n")
     (root / "app").mkdir()
     (root / "app/server.py").write_text(
         "import os\n\n\ndef serve(port=8000):\n    return port\n\n\nclass Handler:\n    def get(self):\n"
-        "        return serve()\n"
+        "        return serve()\n",
+        newline="\n",
     )
-    (root / "config.yaml").write_text("name: app\n")
+    (root / "config.yaml").write_text("name: app\n", newline="\n")
     (root / "logo.png").write_bytes(b"\x89PNG\0\0binary")
     (root / "node_modules").mkdir()
-    (root / "node_modules/x.js").write_text("ignored")
+    (root / "node_modules/x.js").write_text("ignored", newline="\n")
     sh(root, "add", "-A")
     sh(root, "commit", "-q", "-m", "init")
     return root

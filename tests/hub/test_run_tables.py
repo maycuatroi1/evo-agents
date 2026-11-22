@@ -698,9 +698,9 @@ def pairing(selector: str, name: str, **values):
             id="event-seq-taken",
         ),
         pytest.param(
-            insert_of(tables.run_inbox, run_id=RUN, sent_by=USER, body="é" * 4097),
-            errors.CheckViolation,  # 8194 bytes
-            id="message-8194-bytes",
+            insert_of(tables.run_inbox, run_id=RUN, sent_by=USER, body="é" * (runs.MAX_INBOX_BYTES // 2 + 1)),
+            errors.CheckViolation,  # 32770 bytes, past the 32 KiB of schema 0261
+            id="message-32770-bytes",
         ),
         pytest.param(
             lambda ids: update(tables.run_inbox).values(
@@ -802,7 +802,7 @@ def test_constraints_accept_good_rows(db):
         update(run)
         .values(state="failed", finished_at=func.now(), error="the lease of the last attempt ran out")
         .where(run.c.parent_run_id == lost),
-        # events of the worker, one of them cut, and a message of 8 KiB the worker has
+        # events of the worker, one of them cut, and a message of 32 KiB the worker has
         insert(events).values(
             [
                 {
@@ -823,7 +823,7 @@ def test_constraints_accept_good_rows(db):
                 },
             ]
         ),
-        insert(inbox).values(run_id=ids["run"], sent_by=ids["user"], body="é" * 4096),
+        insert(inbox).values(run_id=ids["run"], sent_by=ids["user"], body="é" * (runs.MAX_INBOX_BYTES // 2)),
         update(inbox).values(delivered_at=func.now()).where(inbox.c.run_id == ids["run"]),
         # a revoked worker's name may be used again, in any case, and labels take letters, digits and ._-
         update(workers).values(revoked_at=func.now()).where(workers.c.id == ids["worker"]),
