@@ -200,9 +200,28 @@ def yaml_dump(data) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True).rstrip()
 
 
+QUERY_TOOLS = ["kg_search", "kg_context", "kg_node", "kg_impact", "kg_path", "kg_status", "kg_more"]
+
+
+def query_tool(args) -> None:
+    """Resolve ``kg query``'s first argument: a kg_ tool, a short name of one (search, node...), or with no second
+    argument the text of kg_search, so ``kg query SnapshotCoordinator`` searches; an unknown tool before a text is
+    refused as argparse refuses an invalid choice."""
+    if args.tool in QUERY_TOOLS:
+        return
+    if f"kg_{args.tool}" in QUERY_TOOLS:
+        args.tool = f"kg_{args.tool}"
+    elif args.text is None:
+        args.tool, args.text = "kg_search", args.tool
+    else:
+        choices = ", ".join(map(repr, QUERY_TOOLS))
+        args.query_parser.error(f"argument tool: invalid choice: {args.tool!r} (choose from {choices})")
+
+
 def cmd_query(args) -> int:
     from evo_agents.hub.kg_cli import open_session
 
+    query_tool(args)
     session = open_session(args.backend, args.project, args.sink)
     params = {}
     for pair in args.arg or []:
@@ -477,7 +496,10 @@ def register(ksub, with_project) -> None:
 
     query = with_project(ksub.add_parser("query", help="call a kg tool from the shell"))
     query.add_argument(
-        "tool", choices=["kg_search", "kg_context", "kg_node", "kg_impact", "kg_path", "kg_status", "kg_more"]
+        "tool",
+        metavar="tool",
+        help=f"one of {', '.join(QUERY_TOOLS)}, or its short name (search, node...); "
+        "alone, any other word is the text of kg_search",
     )
     query.add_argument("text", nargs="?", help="query, node id (kg_path: from) or handle")
     query.add_argument("--arg", action="append", help="extra tool argument key=value (JSON values allowed)")
@@ -494,7 +516,7 @@ def register(ksub, with_project) -> None:
         default="hub",
         help="where the graph is read: the hub; auto is the same, kept for old scripts",
     )
-    query.set_defaults(func=cmd_query)
+    query.set_defaults(func=cmd_query, query_parser=query)
 
     serve = ksub.add_parser("serve", help="MCP server over stdio, bound to one project")
     serve.add_argument("--project", help="project name or harness path (default: from the session directory)")
