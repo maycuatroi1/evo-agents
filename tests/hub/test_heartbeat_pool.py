@@ -20,10 +20,17 @@ from evo_agents.hub.server.app import create_app  # noqa: E402
 from tests.hub import live  # noqa: E402
 from tests.hub.test_runs import add_worker, beat, claim, hub  # noqa: E402, F401 (fixtures)
 
+# The main pool's wait for a connection: a heartbeat or a claim that took its connection from the main pool would wait
+# this long, while one of the heartbeat pool answers in a fraction of it, on a loaded CI runner too (a bound of 1 s left
+# it little room, and the test failed in the CI of v0.73.0)
+POOL_TIMEOUT = 3.0
+
 
 @pytest.fixture
 def client(hub_db, tmp_path, github):
-    config = live.hub_config(hub_db, tmp_path, github, pool_max_size=2, pool_timeout=1.0, heartbeat_pool_size=2)
+    config = live.hub_config(
+        hub_db, tmp_path, github, pool_max_size=2, pool_timeout=POOL_TIMEOUT, heartbeat_pool_size=2
+    )
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         yield client
 
@@ -36,7 +43,7 @@ def test_heartbeats_and_claims_get_a_connection_while_the_main_pool_is_held(clie
         started = time.monotonic()
         beat(client, worker)
         assert claim(client, worker) is None  # nothing queued: the claim answered, it did not time out on the pool
-        assert time.monotonic() - started < 1.0  # under the pool's timeout: neither waited for the main pool
+        assert time.monotonic() - started < POOL_TIMEOUT  # under the pool's timeout: neither waited for the main pool
         health = client.get("/v1/health")
         assert health.status_code == 503
         body = health.json()
