@@ -33,6 +33,12 @@ def test_a_build_writes_a_profile_of_its_corpus(tmp_path, kg_env):
     assert kg_profile.render(found).startswith("items ")
 
 
+def test_the_profile_counts_the_calls_of_the_symbols_a_file_defines(tmp_path, kg_env):
+    project, _ = built(tmp_path, kg_env)
+    python = profile_of(project)["languages"]["python"]
+    assert python["calls"] > 0
+
+
 def test_the_profile_holds_counts_and_shapes_never_a_value(tmp_path, kg_env):
     project, _ = built(tmp_path, kg_env)
     app = tmp_path / "demo-app"
