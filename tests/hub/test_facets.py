@@ -444,3 +444,21 @@ def test_a_grep_right_after_a_chain_of_lookups_marks_its_searches_and_the_files_
         ]
     )
     assert later["kg"]["grep_after"] == 0 and not later["kg_labels"][0]["grep_after"], "another thread's grep"
+
+
+def test_a_kg_more_counts_as_a_lookup_only_when_a_kg_lookup_gave_its_handle():
+    more = "mcp__evo-hub__kg_more"
+    figures = "page one of the figures\n[truncated: 30000 more characters; call kg_more with handle f1]"
+    page = "x" * 3000
+    lines = [said("How do the figures look?", 0)]
+    lines += [answered("m1", 1, tool_use("c1", "mcp__evo-hub__curator_figures")), result("c1", 2, figures)]
+    lines += [answered("m2", 3, tool_use("p1", more, handle="f1")), result("p1", 4, page)]
+    alone = session_facet([("main", numbered(lines))])["kg"]
+    assert alone is None or (alone["lookups"], alone["lookup_tokens"]) == (0, []), "a page of curator_figures"
+    lines += [answered("m3", 5, tool_use("k0", KG, query="claim a job")), result("k0", 6, SEARCH_TEXT)]
+    lines += [answered("m4", 7, tool_use("p2", more, handle="h1")), result("p2", 8, page)]
+    lines += [answered("m5", 9, tool_use("p3", more, handle="f1")), result("p3", 10, page)]
+    kg = session_facet([("main", numbered(lines))])["kg"]
+    search, paged = facets.kg_tokens(SEARCH_TEXT), facets.kg_tokens(page)
+    assert (kg["lookups"], kg["lookup_tokens"], kg["tokens"]) == (2, [search, paged], search + paged)
+    assert kg["chains"] == 1 and {t["tool"]: t["calls"] for t in kg["tools"]} == {"kg_search": 1, "kg_more": 1}

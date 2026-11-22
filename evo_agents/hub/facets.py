@@ -61,6 +61,7 @@ BUCKETS_MS = (100, 300, 1000, 3000, 10_000, 30_000, 100_000, 300_000)  # the upp
 KG_TOP = 5
 KG_TOOL = re.compile(r"(?:^|__|/)(kg_[a-z_]+)$")  # mcp__<server>__kg_search, or <server>/kg_search in a run
 KG_LOOKUPS = frozenset({"kg_search", "kg_context", "kg_node", "kg_impact", "kg_path", "kg_more"})
+KG_HANDLE = re.compile(r"kg_more with handle '?([\w-]+)|\"handle\": ?\"([\w-]+)")  # a cut result's note, or its data
 SEARCH_TOOLS = frozenset({"Grep", "Glob"})
 SEARCH_PROGRAMS = frozenset({"grep", "rg", "ag", "ack", "find", "git grep", "fd"})
 MAX_ERRORS = 50
@@ -385,6 +386,8 @@ class KgTrail:
         self.labels: list[QueryLabel] = []
         self._chain: list[QueryLabel] | None = None  # the lookups since the last other call; None outside a chain
         self._queries: dict[str, str] = {}  # a kg_search call: its query
+        self._handles: set[str] = set()  # the kg_more handles a kg lookup's result gave
+        self._pages: dict[str, str] = {}  # a kg_more call: the handle it continues
 
     @property
     def used(self) -> bool:
@@ -395,12 +398,20 @@ class KgTrail:
         """A call of kg tool ``op``: a search keeps its query until its result comes."""
         if op == "kg_search" and call_id:
             self._queries[call_id] = cut(given.get("query") or given.get("q") or "", QUERY_CHARS)
+        elif op == "kg_more" and call_id:
+            self._pages[call_id] = str(given.get("handle") or "")
 
     def result(self, op: str, text: str, call_id: str = "", at=None, when: datetime | None = None) -> None:
+        """The result of a kg call; a kg_more counts only when a kg lookup's result gave its handle, not one of
+        curator_figures, plan_show or history_search, which the hub's kg_more continues too."""
+        if op == "kg_more" and self._pages.pop(call_id, None) not in self._handles:
+            return
         self.calls[op] += 1
         query = self._queries.pop(call_id, "")
         if op not in KG_LOOKUPS:
             return
+        if len(self._handles) < MAX_LOOKUPS:
+            self._handles.update(a or b for a, b in KG_HANDLE.findall(str(text or "")))
         nodes, empty = kg_nodes(text)
         self._missed = empty
         if empty:
@@ -435,6 +446,8 @@ class KgTrail:
             self._chain.append(label)
 
     def failed(self, op: str, call_id: str = "") -> None:
+        if op == "kg_more" and self._pages.pop(call_id, None) not in self._handles:
+            return
         self.calls[op] += 1
         self._queries.pop(call_id, None)
 
