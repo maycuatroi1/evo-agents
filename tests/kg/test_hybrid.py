@@ -7,10 +7,10 @@ import zlib
 from dataclasses import replace
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 pytest.importorskip("sqlalchemy", reason="the hub's semantic mode needs the hub-server extra, evo-ak[hub-server]")
+np = pytest.importorskip("numpy", reason="the semantic vectors need the semantic extra, evo-ak[semantic]")
 
 from evo_agents.cli import main  # noqa: E402
 from evo_agents.hub import kg_semantic  # noqa: E402

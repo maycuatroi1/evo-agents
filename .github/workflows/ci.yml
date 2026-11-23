@@ -22,11 +22,12 @@ concurrency:
 jobs:
   # Linux runs everything, the hub tests included, against a Postgres service container, in seven jobs that run in
   # parallel: tests/worker in one, where with the worker extra and tmux the daemon runs against a hub end to
-  # end, takeover and handback in tmux included, and the rest of the suite in six parts (EVO_TEST_SHARD, which
-  # tests/conftest.py reads: each part keeps every sixth test of the collection, so the six run each test once).
-  # Every job prints its 20 slowest tests. A test gets 300 s (pytest-timeout, pyproject.toml) and a job 30 minutes: a
+  # end, takeover and handback in tmux included, and the rest of the suite in eight parts (EVO_TEST_SHARD, which
+  # tests/conftest.py reads: each part keeps every eighth test of the collection, so the eight run each test once).
+  # Every job prints its 20 slowest tests. A test gets 300 s (pytest-timeout, pyproject.toml) and a job 40 minutes: a
   # hung test had held four parts of v0.62.0 for five hours. Four parts had grown to 18-29 minutes each by 2026-11-18,
-  # and two parts of v0.70.5 hit the 30 minutes at 96% with no test failed; six keep each part well under it.
+  # and two parts of v0.70.5 hit the 30 minutes at 96% with no test failed; six parts still reached the 30 minutes on
+  # v0.73.1 (part 1/6 cancelled at the limit, no test failed), so eight parts and 40 minutes keep each part well under it.
   #
   # The Postgres of a job is thrown away with it, so it keeps its data in memory (tmpfs) and writes nothing through:
   # every hub test creates a database from a template and drops it, and those writes cost more than most tests. It
@@ -36,9 +37,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6", worker]
+        part: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8", worker]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -274,7 +275,7 @@ jobs:
     name: test (windows-latest, 3.12)
     if: inputs.extras
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

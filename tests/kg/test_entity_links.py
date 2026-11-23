@@ -6,7 +6,6 @@ import random
 import sys
 import zlib
 
-import numpy as np
 import pytest
 import yaml
 
@@ -17,6 +16,8 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.sync import sync_project
 from tests.kg import built
 from tests.kg.projects import commit, make_project, write
+
+np = pytest.importorskip("numpy", reason="the semantic vectors need the semantic extra, evo-ak[semantic]")
 
 # The answer of the fake model to each markdown item, by a word only that item holds.
 MODEL = """import json, sys

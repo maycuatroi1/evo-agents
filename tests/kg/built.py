@@ -10,12 +10,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from evo_agents.kg import semantic
-from evo_agents.kg.build import BuildReport, build_rows, tuning_of, unchanged_rows, verify_rows
-from evo_agents.kg.clusters import Clusters
-from evo_agents.kg.project import Project, ProjectError
-from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows, edge_dict, node_dict, rows_clusters
-from evo_agents.kg.sync import sync_project
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="a hub build needs the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.kg import semantic  # noqa: E402
+from evo_agents.kg.build import BuildReport, build_rows, tuning_of, unchanged_rows, verify_rows  # noqa: E402
+from evo_agents.kg.clusters import Clusters  # noqa: E402
+from evo_agents.kg.project import Project, ProjectError  # noqa: E402
+from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows, edge_dict, node_dict, rows_clusters  # noqa: E402
+from evo_agents.kg.sync import sync_project  # noqa: E402
 
 
 @dataclass
