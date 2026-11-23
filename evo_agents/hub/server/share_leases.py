@@ -1,6 +1,7 @@
-"""Which secrets a run may be leased (``docs/credentials.md``, sections "Accounts" and "Sharing"): its principal's
-own (``own_secrets``) and those another member shared with them (``shared_secrets``), read in the transactions of
-``credentials.lease_credentials`` and ``rate_limits``; and what the hub takes back when a share ends.
+"""Which secrets a run may be leased (``docs/credentials.md``, sections "Accounts" and "Sharing"): the own secrets of
+the member who dispatched it (``own_secrets``) and those another member shared with its principal or with that member
+(``shared_secrets``), read in the transactions of ``credentials.lease_credentials`` and ``rate_limits``; and what the
+hub takes back when a share ends.
 
 The principal of a run is the member it acts for (runs.principal_id, ``run_autonomy``), the member who dispatched it
 for a run without one (a local run, one queued before schema 0113). Each lease records the principal it was made for
@@ -9,10 +10,11 @@ for a run without one (a local run, one queued before schema 0113). Each lease r
 (``run_autonomy.share_levels``).
 
 A share covers a run when it is not revoked, its end has not passed, it is for the run's project, it is for every run
-or for this one (or a run this one resumes: ``for_run``), and its grantee is the principal (``user``), a live unit
-holding the principal's live primary seat or a unit above that seat (``unit``), or anyone (``all``). Its secret is
-live, of a kind the hub leases, neither the principal's own nor the run owner's, and still bound to the project on any
-worker of its owner, unless the share is for one run: that is the value an admin of the project gave for another
+or for this one (or a run this one resumes: ``for_run``), and its grantee is the principal or the member who dispatched
+the run (``user``), a live unit holding the live primary seat of either or a unit above that seat (``unit``), or anyone
+(``all``): the run is leased the dispatcher's own secrets, so what was shared with the dispatcher goes with them. Its
+secret is live, of a kind the hub leases, not the dispatcher's own (``own_secrets`` leases those), and still bound to
+the project on any worker of its owner, unless the share is for one run: that is the value an admin of the project gave for another
 member's run, which they keep as their secret for it alone (``credential_answers``), bound nowhere; it counts as on
 this worker when it is bound to this one. ``account_choice`` takes the secret of a share for one run for its variable
 before any other, since it was given for that run. A run of the Curator and a release run never take a shared secret: their charter and their runtime's login
@@ -202,6 +204,17 @@ async def grantee_clause(conn: AsyncConnection, principal_id: int):
     )
 
 
+async def _grantees(conn: AsyncConnection, run):
+    """The shares whose grantee is the principal of ``run`` or the member who dispatched it (``grantee_clause``):
+    the run is leased the dispatcher's own secrets (``own_secrets``), so a secret shared with the dispatcher is lent too
+    when the run acts for another member. Run #2866 of a chat, dispatched by a member and acting for the member who
+    answered its decision, missed the git secret the secret's owner had shared with the dispatcher."""
+    clause = await grantee_clause(conn, run.principal)
+    if run.owner_id == run.principal:
+        return clause
+    return or_(clause, await grantee_clause(conn, run.owner_id))
+
+
 def for_run(run_id: int):
     """A share that lends to run ``run_id``: one for every run (run_id null), or one for that run or a run it resumes,
     the chain ``runs.resume_of_run_id`` follows back (0247)."""
@@ -255,8 +268,8 @@ async def shared_secrets(
             live_share(),
             for_run(run.id),
             exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == run.project_id),
-            await grantee_clause(conn, run.principal),
-            s.c.owner_id.not_in({run.owner_id, run.principal}),
+            await _grantees(conn, run),
+            s.c.owner_id != run.owner_id,  # the dispatcher's own come from own_secrets
             s.c.kind.in_(kinds),
             s.c.deleted_at.is_(None),
             _live(refreshable),

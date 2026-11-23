@@ -235,6 +235,29 @@ def test_credential_share_lease_priority_the_grantees_own_account_and_git_secret
     assert revoked and all(row[3] for row in revoked)  # the shared lease it no longer needs is taken back
 
 
+def test_credential_share_lease_lends_a_secret_shared_with_the_dispatcher_of_a_run_acting_for_another_member(
+    client, hub, hub_db, shared
+):
+    """A run is leased its dispatcher's own secrets, so a secret shared with the dispatcher is lent to it too, also
+    when the run acts for another member (a chat run that goes on as the member who answered its decision): before,
+    the share was matched to the principal alone and the secret, the principal's own, was left out of both."""
+    desk = shared["desk"]
+    value = sample("glpat-team-")
+    git_secret(client, hub["owner"], "team-gitlab", GITLAB_KB, value)
+    git_secret(
+        client, hub["owner"], "owner-only", "https://gitlab.lumenops.example/fir-gb-lumen/other", sample("glpat-")
+    )
+    found = share(client, hub["owner"], "team-gitlab")
+    run_id = run_on(client, hub["other"], desk, "lumen-kb-docs")
+    r = tables.runs
+    sql(hub_db, update(r).where(r.c.id == run_id).values(principal_id=user_id(hub_db, OWNER)))
+    leases = by_name(leased(client, desk, run_id))
+    assert leases["team-gitlab"]["value"] == value and "owner-only" not in leases  # what was not shared stays out
+    assert [row for row in share_leases(hub_db, run_id) if row[0] == "team-gitlab"] == [
+        ("team-gitlab", user_id(hub_db, OWNER), found["id"], False)
+    ]
+
+
 def test_credential_share_lease_covers_by_user_unit_or_all_on_the_shares_projects_until_it_ends(
     client, hub, hub_db, shared
 ):
