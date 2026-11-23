@@ -130,7 +130,7 @@ describe("MessageList", () => {
 
   it("shows a guest of a bridged group by the name its bridge gave, with the guest tag and no face, never as the visitor", () => {
     // The guest goes by the visitor's login: it is still not the visitor's message, and runs on from no one's.
-    const GUEST: ChatAuthor = { kind: "guest", name: "octo" };
+    const GUEST: ChatAuthor = { kind: "guest", name: "octo", deleted: false };
     render("group", [message(1, 1), message(2, 2, { author: GUEST, body: "from the group" }), message(3, 3, { author: GUEST })]);
     expect(item(2)).toHaveAttribute("data-mine", "false");
     expect(item(2)).toHaveAttribute("data-run-on", "false");
