@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
@@ -348,8 +349,10 @@ async def _thread_agent(conn: AsyncConnection, chat: ChatAccess, user: Principal
 
 
 async def _answered(conn: AsyncConnection, answered) -> Answered | None:
-    """The agent's message ``answered`` (a row of ``message_select``) that a message answers, as the inbox of the run
-    it wakes quotes it; None for a message of a person or of the hub, or none."""
+    """The agent's or the guest's message ``answered`` (a row of ``message_select``) that a message answers, as the inbox
+    of the run it wakes quotes it; None for a message of a person or of the hub, or none."""
+    if answered is not None and answered.guest_name is not None:
+        return Answered(answered.id, None, rules.guest(answered.guest_name), answered.body, answered.label, None)
     if answered is None or answered.author_profile_id is None:
         return None
     ap = tables.agent_profiles
@@ -362,7 +365,7 @@ async def _answered(conn: AsyncConnection, answered) -> Answered | None:
 async def _replied_agent(conn: AsyncConnection, chat: ChatAccess, answered: Answered | None, kept: list[dict]):
     """The mention, ``via`` reply, of the agent that wrote ``answered``, the message a message of a group chat that
     mentions no one (``kept`` is empty) answers; none otherwise, or when that agent left the chat or was deleted."""
-    if chat.kind not in (chats.GROUP, chats.WORK) or answered is None or kept:
+    if chat.kind not in (chats.GROUP, chats.WORK) or answered is None or answered.profile_id is None or kept:
         return []
     m, ap = tables.chat_members, tables.agent_profiles
     query = (

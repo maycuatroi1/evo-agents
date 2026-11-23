@@ -13,10 +13,11 @@ export const RUN_ON_MS = 5 * 60_000;
 /** Characters of the message a reply quotes, on its one line. */
 export const QUOTE_CHARS = 120;
 
-/** Who wrote a message, as one key: a person by login (any case), an agent by handle, the hub. */
+/** Who wrote a message, as one key: a person by login (any case), an agent by handle, a guest by name, the hub. */
 export function authorKey(author: Pick<ChatAuthor, "kind" | "login" | "handle" | "name">): string {
   if (author.kind === "person") return `person:${(author.login ?? author.name).toLowerCase()}`;
   if (author.kind === "agent") return `agent:${author.handle ?? author.name}`;
+  if (author.kind === "guest") return `guest:${author.name}`;
   return author.kind;
 }
 

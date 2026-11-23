@@ -464,3 +464,75 @@ def test_hub_chat_show_lists_the_bridges_and_hub_chat_unbridge_takes_one_off(bri
     assert cli_chats.cmd_unbridge(argparse.Namespace(chat=chat["id"], bridge=bridged.bridge_id, json=True)) != 0
     assert f"has no bridge {bridged.bridge_id}" in capsys.readouterr().err
     assert bridge_rows(bridged.db) == [(KIND, ROOM, "cli")]
+
+
+@on_pg
+def test_a_guest_of_a_bridged_group_comes_in_as_data_and_hands_no_one_work(bridged):
+    """bridge_guest (API 1.8): a sender who linked no account comes in by the name the plugin gives, threaded under the
+    agent's message it answers, yet mentions, hands work and notifies no one; once per group id, out to the chat's
+    other bridges but not back to its own group, and marked as data for a chat run."""
+    from sqlalchemy import func
+
+    from evo_agents.hub import chat_runs as rules
+    from evo_agents.hub.server import chat_bridges
+    from evo_agents.hub.server.chat_prompts import chat_prompt
+    from evo_agents.hub.server.chat_runs import hub_access
+    from evo_agents.hub.server.chat_store import insert_message
+    from tests.hub.test_chat_runs import chat_worker
+
+    client, db, fake, chat, headers = bridged.client, bridged.db, bridged.fake, bridged.chat, bridged.headers
+    m, cm, ap, r = tables.chat_messages, tables.chat_members, tables.agent_profiles, tables.runs
+    query = select(ap.c.id, ap.c.handle).join_from(cm, ap, ap.c.id == cm.c.profile_id).where(cm.c.chat_id == chat["id"])
+    ((profile_id, handle),) = sql(db, query)
+    made = bridge_code(client, chat["id"], bridged.session.write)
+    assert core.said(client, text(f"/bridge {made.json()['code']}", group_id="room-8")) == "bridged"
+
+    async def answered(conn):  # the agent's message, gone out to the group as n-9
+        message_id, _ = await insert_message(
+            conn, await hub_access(conn, chat["id"]), "done", thread_root_id=None, author_profile_id=profile_id
+        )
+        await chat_bridges.carry(conn, bridged.bridge_id, message_id, "out", "n-9")
+        return message_id
+
+    agents = core.on_hub(client, answered)
+    chat_worker(client, headers["owner"], "studio", pool=handle)  # a mention would make a run on it
+    plugin = api.plugin("northwind_chat.server")
+    counted = (
+        select(func.count()).select_from(r).where(r.c.chat_id == chat["id"]),
+        select(func.count()).select_from(tables.chat_mentions),
+        select(func.count()).select_from(tables.notifications),
+    )
+    before = [sql(db, q)[0][0] for q in counted]
+
+    async def guest(conn):
+        return await api.bridge_guest(
+            conn,
+            plugin,
+            bridged.bridge_id,
+            f"@{handle} redo it",
+            name="  Ana\n Vale ",
+            external_id="n-10",
+            reply_to="n-9",
+        )
+
+    first, again = core.on_hub(client, guest), core.on_hub(client, guest)
+    assert again.id == first.id and first.thread_root_id == agents
+    assert [sql(db, q)[0][0] for q in counted] == before, "no run, mention or notice"
+    (shown,) = [
+        item for item in page(client, headers["owner"], chat["id"], thread=agents)["messages"] if item["id"] == first.id
+    ]
+    assert shown["author"] == {**shown["author"], "kind": "guest", "name": "Ana Vale"} and shown["via"] == KIND, shown
+    ((label,),) = sql(db, select(m.c.label).where(m.c.id == first.id))
+    ((default,),) = sql(db, select(m.c.label).where(m.c.id == agents))
+    assert label == default
+    core.deliver_events(client)
+    assert f"Ana Vale: @{handle} redo it" in [item["text"] for item in fake.to("room-8", EVERYONE)]
+    assert f"@{handle} redo it" not in " ".join(item["text"] for item in out(fake)), "no echo to its own group"
+    # A person's mention starts a run; its snapshot quotes the guest as data, and its rules say what that means.
+    sent(client, headers["owner"], chat["id"], f"@{handle} what does Ana Vale need?", reply_to=agents)
+    ((run_id,),) = sql(db, select(r.c.id).where(r.c.chat_id == chat["id"]))
+
+    async def prompt(conn):
+        return await chat_prompt(conn, run_id, None, [])
+
+    assert rules.guest("Ana Vale") in core.on_hub(client, prompt)

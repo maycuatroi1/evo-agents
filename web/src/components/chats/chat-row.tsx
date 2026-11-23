@@ -56,7 +56,7 @@ function useLastLine() {
   const t = useTranslations("chats.list");
   return (last: ChatLastMessage | null, me: string | null, marks: readonly MentionMark[]): string => {
     if (!last) return t("noMessages");
-    const author = isMine(last.author, me) ? t("you") : last.author.kind === "hub" ? t("hub") : (last.author.login ?? last.author.name);
+    const author = isMine(last.author, me) ? t("you") : last.author.kind === "hub" ? t("hub") : last.author.kind === "person" ? (last.author.login ?? last.author.name) : last.author.name;
     return t("lastMessage", { author, text: last.hidden || last.preview === null ? t("hiddenMessage") : plainMentions(last.preview, marks) });
   };
 }

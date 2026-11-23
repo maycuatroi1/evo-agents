@@ -77,10 +77,11 @@ log = logging.getLogger(__name__)
 class Answered:
     """The agent's message a person's message answers (``reply_to``): its id, the agent's profile and handle as the
     thread names it, its text and label, and the run that wrote it. The inbox of a run quotes it unless that run's
-    session wrote it."""
+    session wrote it. A guest's message is one too, with no profile and the guest's name marked (``rules.guest``): it
+    wakes no agent, and the inbox quotes it as data."""
 
     message_id: int
-    profile_id: int
+    profile_id: int | None
     author: str
     body: str
     label: list  # as chat_messages.label holds it
@@ -852,9 +853,8 @@ async def run_profile(conn: AsyncConnection, run_id: int) -> Profile:
     return await by_id(conn, profile_id)
 
 
-async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int | None, text: str) -> int:
-    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``, or, with no root, one that
-    starts none; its id."""
+async def hub_access(conn: AsyncConnection, chat_id: int) -> ChatAccess:
+    """Chat ``chat_id`` as the hub itself writes in it: no member of its own, the projects of its agents now."""
     projects = await agent_projects(conn, chat_id)
     c, u = tables.chats, tables.users
     row = (
@@ -864,9 +864,15 @@ async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int | None, te
             .where(c.c.id == chat_id)
         )
     ).one()
-    chat = ChatAccess(
+    return ChatAccess(
         chat_id, row.title, row.created_by, row.login, row.created_at, row.event_seq, 0, 0, 0, "hub", projects, row.kind
     )
+
+
+async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int | None, text: str) -> int:
+    """A message of the hub itself in the thread of ``root_id`` of chat ``chat_id``, or, with no root, one that
+    starts none; its id."""
+    chat = await hub_access(conn, chat_id)
     message_id, _ = await insert_message(conn, chat, runs.clip(text, chats.MAX_MESSAGE_BYTES), thread_root_id=root_id)
     return message_id
 

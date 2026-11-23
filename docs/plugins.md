@@ -781,7 +781,7 @@ weights of search read them.
 ## The core plugin API
 
 A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
-version 1.7, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+version 1.8, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
 `__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
 `tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
 `tests/plugins/test_core_plugin_api.py` drives through a fake chat service; `tests/fixtures/core_plugins/northwind_ledger`
@@ -821,6 +821,7 @@ for its kind of channel fail with the reason. Its data stays. The match is exact
 | 1.5 | the pull request of branch `feat/chat-bridges` (plan chat-bridges): a group chat's bridges to a group of a plugin's channel (`bridge_code`, `bridge_link`, `bridge_find`, `bridge_read`, `bridge_unlink`, `bridge_move`, `bridge_set_state`, `bridge_message`, `bridge_file`, `bridge_sent`, `bridge_send`, `bridge_attach`, `Bridge`, `BridgeMessage`, `BridgeFile`, `BRIDGE_EVENT`) | the release after the one that carries 1.4 | none yet: a plugin of 1.4 does not load on 1.5 |
 | 1.6 | the pull request of branch `feat/decision-plugin-api` (plan jev-decisions): the manifest key `egress`, label-gated reads of a project's text (`read_run_failure`, `read_review_queue`, `read_corrections`, `read_accepted_rules`), writes as the plugin (`classify_run_failure`, `decide_graph`, `dismiss_review_item`), `EgressSink`, `Cleared` and the result types | the release after the one that carries 1.5 | none yet: a plugin of 1.5 does not load on 1.6 |
 | 1.7 | the pull request of branch `feat/review-queue-rules`: `read_review_queue(..., rules=)` keeps only the items of the review rules named (`evo_agents.kg.review.RULES`, at least one, else ValueError) and `limit` counts after that filter | the release after the one that carries 1.6 | none yet: a plugin of 1.6 does not load on 1.7 |
+| 1.8 | the pull request of branch `feat/bridge-guest-senders`: `bridge_guest` brings a bridged group's message from a sender who linked no account into the chat as a guest, and `author_kind` of `ChatMessage` and `BridgeMessage` may be `guest` | the release after the one that carries 1.7 | none yet: a plugin of 1.7 does not load on 1.8 |
 
 **A plugin of the market (1.3).** Each function takes the connection of the caller's transaction and the plugin's
 handle (`plugin(__name__)`), and works only in a project that enables the plugin: another project, or one that does not
@@ -971,6 +972,7 @@ and handle; a bridge of another plugin reads as none (404 where it is refused).
 | `bridge_file(context, plugin, bridge_id, message_id, file_id)` | the bytes of one of the `files` of `bridge_message`, under its checks again, in a transaction of its own on the context's engine: None once the message does not go out or for a file that is not its own; 503 when the hub has no blob store or it does not answer |
 | `bridge_sent(conn, plugin, bridge_id, message_id, external_id)` | records the group's id of a message that went out, so replies there thread under it |
 | `bridge_send(conn, member, bridge_id, body, *, external_id, reply_to=None, attachment_ids=())` | a group's message into the chat as the linked `member`, through the hub's chat path (its checks, mentions and runs), `via` the bridge's kind; once per `external_id`; `reply_to` a group's id the bridge carried. 403 when the member may not write to the chat or a project does not grant `chats:write` |
+| `bridge_guest(conn, plugin, bridge_id, body, *, name, external_id, reply_to=None)` (1.8) | a group's message from a sender who linked no account, into the chat as a guest: author kind `guest` with `name` (folded to one line, at most 200 characters; ValueError when blank), `via` the bridge's kind, the chat's default label, in the thread of `reply_to` as for `bridge_send`; no mention, no work for any agent and no notice; once per `external_id`, recorded `in`, out to the chat's other bridges and never back to its group (`docs/chat-bridges.md`). 404 while `chats` is off; 403 when a project does not grant `chats:write` |
 | `bridge_attach(request, member, bridge_id, name, data, media_type=None)` | a file of a group's message stored as the member's attachment, for `bridge_send`; 503 without a blob store |
 | `BRIDGE_EVENT` | `chat.bridge`, the event the bridge's plugin gets (`what`: `message`, `progress` or `reaction`, a reaction with `by_kind` and `by`, who put it or took it off), never for a message that came in by that bridge |
 

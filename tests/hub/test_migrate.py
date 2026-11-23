@@ -6580,3 +6580,40 @@ def test_0265_gives_decisions_a_label_and_deliveries_their_edits_and_going_back_
     assert not {"edit_of", "withheld", "settled_at"} & columns(hub_db, "notification_deliveries")
     assert query(hub_db, select(dl.c.id).order_by(dl.c.id)) == [(sent[still_open][1],), (first,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0265") :]
+
+
+def test_0266_gives_chat_messages_a_guest_author_and_going_back_keeps_their_words_as_the_hubs(hub_db):
+    """0266 adds chat_messages.guest_name, 1 to 200 characters, and an author is at most one of a person, an agent and
+    a guest; going back keeps a guest's message as the hub's, led by its name where that still fits."""
+    from evo_agents.hub import chats
+
+    t = hub_tables
+    m = t.chat_messages
+    move_to(hub_db, "0265")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Guests", created_by=ids["user"]).returning(t.chats.c.id))
+        before = one(
+            conn,
+            insert(m)
+            .values(chat_id=chat_id, seq=1, body="mine", label=[], author_user_id=ids["user"])
+            .returning(m.c.id),
+        )
+    move_to(hub_db, "0266")
+    assert query(hub_db, select(m.c.guest_name).where(m.c.id == before)) == [(None,)]
+    full = "x" * chats.MAX_MESSAGE_BYTES
+    with live.connect(hub_db) as conn:
+        short = one(
+            conn, insert(m).values(chat_id=chat_id, seq=2, body="hello", label=[], guest_name="Ana").returning(m.c.id)
+        )
+        long = one(
+            conn, insert(m).values(chat_id=chat_id, seq=3, body=full, label=[], guest_name="Ana").returning(m.c.id)
+        )
+    for bad in ({"guest_name": ""}, {"guest_name": "a" * 201}, {"guest_name": "Ana", "author_user_id": ids["user"]}):
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(insert(m).values(chat_id=chat_id, seq=4, body="no", label=[], **bad))
+    move_to(hub_db, "0265", down=True)
+    assert "guest_name" not in columns(hub_db, "chat_messages")
+    bodies = select(m.c.id, m.c.body, m.c.author_user_id.is_(None)).where(m.c.chat_id == chat_id).order_by(m.c.id)
+    assert query(hub_db, bodies) == [(before, "mine", False), (short, "Ana (guest): hello", True), (long, full, True)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0266") :]

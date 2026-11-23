@@ -5,7 +5,7 @@ import asyncio
 
 from evo_agents.hub.server import core_plugin_api as hub
 
-API = (1, 7)
+API = (1, 8)
 SINK = "ranker@northwind"
 CALLS: list[dict] = []
 MODE = "reverse"  # reverse, late, boom, junk or sync

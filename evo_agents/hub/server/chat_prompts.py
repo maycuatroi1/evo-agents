@@ -25,6 +25,8 @@ from evo_agents.hub.server.profile_store import Profile
 def _message(row, profiles_by_id: dict) -> dict:
     if row.author_profile_id is not None:
         author = f"@{profiles_by_id[row.author_profile_id].handle} (agent)"
+    elif row.guest_name is not None:
+        author = rules.guest(row.guest_name)
     else:
         author = row.author_login or "hub"
     return {"id": row.id, "author": author, "at": row.created_at, "body": row.body}

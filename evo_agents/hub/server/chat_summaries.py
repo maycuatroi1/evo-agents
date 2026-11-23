@@ -29,6 +29,7 @@ from evo_agents.hub.server.chat_views import (
     ChatLastMessage,
     ChatSummary,
     agent_author,
+    guest_author,
     person_author,
     profiles_by_id,
     summaries_query,
@@ -57,6 +58,7 @@ def _last_query(chat_ids: list[int]):
             cm.c.thread_root_id,
             cm.c.author_user_id,
             cm.c.author_profile_id,
+            cm.c.guest_name,
             func.substr(cm.c.body, 1, chats.PREVIEW_SOURCE).label("body"),
             cm.c.label,
             cm.c.created_at,
@@ -91,6 +93,8 @@ def _last(row, profiles: dict[int, Profile], reader: LabelReader) -> ChatLastMes
         author = agent_author(profiles[row.author_profile_id])
     elif row.author_login is not None:
         author = person_author(row.author_login, row.author_github_id)
+    elif row.guest_name is not None:
+        author = guest_author(row.guest_name)
     else:
         author = HUB_AUTHOR
     seen = reader.sees(row.label)

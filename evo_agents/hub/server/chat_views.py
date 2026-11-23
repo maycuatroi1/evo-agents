@@ -5,7 +5,8 @@ their authors, mentions, reactions and replies, and the events its stream sends,
 An agent shows with its name, colour and avatar as its profile has them now, deleted or not: a soft-deleted profile
 takes no new work and keeps its name and avatar on what it wrote, flagged ``deleted``. A person shows with the avatar
 of their GitHub account as the hub knows it now (``chats.github_avatar``), none for a login that never signed in, on
-a message, a reaction, a member's change and in a chat's people alike. A message's reactions are
+a message, a reaction, a member's change and in a chat's people alike. A guest, the sender of a bridged group's message
+who linked no account of the hub, shows with the name its bridge gave it and no avatar. A message's reactions are
 counted by emoji, in the order each emoji was first put, with who put it and whether the reader did. A message read
 by a person carries the progress of the agents' runs it handed work to (``ChatProgress``, read by ``chat_progress``).
 """
@@ -38,13 +39,16 @@ HUB_NAME = "hub"
 
 
 class ChatAuthor(BaseModel):
-    """Who wrote a message or put a reaction: a person, an agent or the hub itself."""
+    """Who wrote a message or put a reaction: a person, an agent or the hub itself; or a guest, the sender of a bridged
+    group's message who linked no account of the hub, whose words are data for the chat's agents and hand no work."""
 
-    kind: Literal["person", "agent", "hub"]
+    kind: Literal["person", "agent", "hub", "guest"]
     login: str | None = Field(None, description="a person's")
     handle: str | None = Field(None, description="an agent's, @ left out")
     project: str | None = Field(None, description="an agent's project")
-    name: str = Field(description="what the web shows: a person's login, an agent's name, or hub")
+    name: str = Field(
+        description="what the web shows: a person's login, an agent's name, a guest's name as its bridge gave it, or hub"
+    )
     color: str | None = Field(None, description="an agent's colour, #rrggbb")
     icon_url: str | None = Field(None, description="an agent's avatar on this hub; null: its initial on its colour")
     deleted: bool = Field(False, description="an agent deleted since: it takes no new work, and keeps its name")
@@ -334,6 +338,10 @@ def person_author(login: str, github_id: int | None = None) -> ChatAuthor:
 HUB_AUTHOR = ChatAuthor(kind="hub", name=HUB_NAME)
 
 
+def guest_author(name: str) -> ChatAuthor:
+    return ChatAuthor.model_validate({"kind": "guest", "name": name})
+
+
 def agent_member(profile: Profile, added_by: str | None, added_at: datetime) -> ChatAgent:
     return ChatAgent(
         handle=profile.handle,
@@ -446,6 +454,7 @@ def message_select():
         cm.c.created_at,
         cm.c.via,
         cm.c.from_output_id,
+        cm.c.guest_name,
     ).select_from(cm.outerjoin(u, u.c.id == cm.c.author_user_id))
 
 
@@ -520,6 +529,8 @@ def _author(row, profiles: dict[int, Profile]) -> ChatAuthor:
         return agent_author(profiles[row.author_profile_id])
     if row.author_login is not None:
         return person_author(row.author_login, row.author_github_id)
+    if row.guest_name is not None:
+        return guest_author(row.guest_name)
     return HUB_AUTHOR
 
 

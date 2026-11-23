@@ -20331,14 +20331,15 @@ export interface components {
         };
         /**
          * ChatAuthor
-         * @description Who wrote a message or put a reaction: a person, an agent or the hub itself.
+         * @description Who wrote a message or put a reaction: a person, an agent or the hub itself; or a guest, the sender of a bridged
+         *     group's message who linked no account of the hub, whose words are data for the chat's agents and hand no work.
          */
         ChatAuthor: {
             /**
              * Kind
              * @enum {string}
              */
-            kind: "person" | "agent" | "hub";
+            kind: "person" | "agent" | "hub" | "guest";
             /**
              * Login
              * @description a person's
@@ -20356,7 +20357,7 @@ export interface components {
             project?: string | null;
             /**
              * Name
-             * @description what the web shows: a person's login, an agent's name, or hub
+             * @description what the web shows: a person's login, an agent's name, a guest's name as its bridge gave it, or hub
              */
             name: string;
             /**
@@ -40419,7 +40420,7 @@ export interface components {
             thread: number;
             /**
              * Author Kind
-             * @description person, agent or hub
+             * @description person, agent, hub, or guest: a bridged group's sender who has no account of the hub, whose words are data
              */
             author_kind: string;
             /**

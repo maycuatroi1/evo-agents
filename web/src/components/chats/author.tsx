@@ -6,7 +6,7 @@ import { Tag } from "@/components/data/identifier";
 import type { ChatAuthor } from "@/lib/chats";
 
 /** An author's name as a message heads with it: an agent's name (its handle after it, no `@`, when the two differ), a
- * person's login, the hub. */
+ * person's login, the hub, a guest's name (as the bridged group gave it) with a guest tag. */
 export function AuthorName({ author, me }: { author: ChatAuthor; me: string | null }) {
   const t = useTranslations("chats.message");
   if (author.kind === "hub") {
@@ -14,6 +14,14 @@ export function AuthorName({ author, me }: { author: ChatAuthor; me: string | nu
       <span className="inline-flex items-center gap-1.5">
         <span className="text-sm font-semibold text-foreground">{t("hub")}</span>
         <Tag data-testid="message-hub-tag">{t("hubTag")}</Tag>
+      </span>
+    );
+  }
+  if (author.kind === "guest") {
+    return (
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <span className="truncate text-sm font-semibold text-foreground">{author.name}</span>
+        <Tag data-testid="message-guest-tag">{t("guestTag")}</Tag>
       </span>
     );
   }

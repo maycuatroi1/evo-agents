@@ -242,6 +242,8 @@ async def read_message(
         author_kind, author = "agent", profiles[row.author_profile_id].handle
     elif row.author_login is not None:
         author_kind, author = "person", row.author_login
+    elif row.guest_name is not None:
+        author_kind, author = "guest", row.guest_name
     return ChatMessage(
         row.id, row.chat_id, row.seq, row.thread_root_id, author_kind, author, row.body, row.run_id, row.created_at
     )

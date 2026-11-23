@@ -54,6 +54,7 @@ MAX_ANSWER_PROMPT_CHARS = 4000  # of a message a person sends from an interactiv
 ANSWER_PROMPTS, ANSWER_WINDOW = 6, 60  # messages a person sends from interactive answers in that many seconds
 MAX_EMOJI_CHARS = 16  # code points of one emoji: a ZWJ family with skin tones fits
 MAX_NAME_CHARS = 100  # of a mentioned name: a handle's bound
+MAX_GUEST_CHARS = 200  # of a guest's name, a bridged group's sender who linked no account of the hub (0266)
 
 EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # The reaction a run of an agent puts on the message that started it, by the state it moves to; the hub takes EYES

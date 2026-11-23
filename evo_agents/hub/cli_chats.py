@@ -99,6 +99,8 @@ def _usage(text: str) -> int:
 def _author(author: dict) -> str:
     if author["kind"] == "agent":
         return f"@{author['handle']}" + (" (deleted)" if author.get("deleted") else "")
+    if author["kind"] == "guest":
+        return f"{author['name']} (guest)"
     return author.get("login") or author["name"]
 
 

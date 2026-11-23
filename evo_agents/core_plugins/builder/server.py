@@ -306,6 +306,7 @@ async def _refused_already(conn: AsyncConnection, payload: dict, seq: int, text:
         m.c.seq > seq,
         m.c.author_user_id.is_(None),
         m.c.author_profile_id.is_(None),
+        m.c.guest_name.is_(None),
         m.c.body == text,
     )
     return (await conn.execute(query.limit(1))).first() is not None
