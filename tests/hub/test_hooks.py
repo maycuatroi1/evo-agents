@@ -375,7 +375,8 @@ def fake_evo_agents(bin_dir: Path, exit_code: int | None = None) -> Path:
         body = f'exec "{sys.executable}" -m evo_agents "$@"\n'
     else:  # 2 as argparse exits for a subcommand an older release lacks; a PreToolUse or Stop hook would block on it
         body = f"echo 'evo-agents: something broke' >&2\nexit {exit_code}\n"
-    script.write_text("#!/bin/sh\n" + body, encoding="utf-8")
+    # newline="\n": Git Bash on Windows cannot run a script whose line ends are CRLF
+    script.write_text("#!/bin/sh\n" + body, encoding="utf-8", newline="\n")
     script.chmod(0o755)
     return script
 
