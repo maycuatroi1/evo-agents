@@ -874,6 +874,7 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
     question = ask()
     question["cli"] += ["--context-file", str(context), "--recommended-reason", "Staging is shared.", "--reversible"]
     question["cli"] += ["no", "--evidence", "run:7", "--evidence", "https://example.org/staging"]
+    question["cli"] += ["--label", "internal"]
     machine.scenarios(
         {
             f"plan:{PLAN}": [
@@ -911,6 +912,7 @@ def test_a_decision_asked_then_answered_through_the_inbox_takes_the_run_from_wai
             {"key": "no", "label": "Wait"},
         ]
         assert decision["recommended"] == "no" and "Staging is shared" in decision["context"]
+        assert decision["label"] == "internal"
         assert (decision["recommended_reason"], decision["reversible"], decision["evidence"]) == (
             "Staging is shared.",
             False,

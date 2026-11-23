@@ -82,6 +82,14 @@ markdown of at most 16 KiB, and 2 to 6 options. An option has a key (letters, di
 characters, starting with a letter or digit), a label, an optional description, and whether it is the one the agent
 recommends; at most one is. The owner answers with an option, with text of their own, or with both.
 
+A decision may carry a label (`evo-agents worker ask --label LEVEL`, `decisions.label`, migration 0265): the level of
+its project's ladder the question, its options and its context sit at. The route refuses, 422, a label the ladder
+lacks and one above the run's maximum, the `max_level` of the grant of the person who dispatched the run, and keeps
+nothing of the refused question. A decision asked without one, and every decision asked before 0265, keeps NULL and
+reads as its project's default label. Every view of a decision (the API, `hub decision show --json`, the web's card)
+shows the effective label as `label`, and `label_given` says whether the agent gave it. How a label decides what
+reaches a channel is Decisions on channels, below.
+
 ### Why the agent recommends, how to undo, what it rests on
 
 So that the person asked can answer on a phone in one tap, a decision may also say why the agent recommends its
@@ -433,7 +441,7 @@ open, and a hub that stops between the two loses nothing.
 | --- | --- |
 | `notifications` | user, kind (`decision`, `notice` or `proposal`), the decision, the notice's kind and details (repo, branch, commits), or the proposal, project, run, title, body, link (a path of the hub's site), `created_at`, `read_at` |
 | `notification_channels` | user, kind (not `web`, at most one of a kind per member), `config` (JSON the channel's class reads), `enabled`, `created_at` |
-| `notification_deliveries` | notification, channel (none for the web) or push device (`device_id`, schema 0156; never both, by a CHECK), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at` |
+| `notification_deliveries` | notification, channel (none for the web) or push device (`device_id`, schema 0156; never both, by a CHECK), state (`pending`, `delivered`, `failed`), attempts, `next_at`, `last_error`, `delivered_at`; from schema 0265 `edit_of` (the delivery whose message this one edits), `withheld` (why the message went without its content: `label`, `default_label` or `project`) and `settled_at` (when the hub needed nothing more of it) |
 
 A notification of kind `proposal` (schema 0014) is a tier 2 proposal of the Curator's review run in its owner's Inbox:
 when a review run ends, its open tier 2 proposals with the most evidence become such notifications, as many as the
@@ -480,6 +488,52 @@ the unread count on a bell in the top bar and the notifications in the
 Inbox, open decisions and the Curator's open tier 2 proposals first; a proposal opens there in a sheet with its
 evidence, and an admin of its project answers it. The audit row `notification.read` names the notifications, not their
 text.
+
+### Decisions on channels
+
+A channel of a core plugin (Telegram, `docs/plugins.md`) gets a decision by its label. Its class's `prepare` calls the
+API's `prepare` with the plugin's clearance, and the hub reads which channel the pass delivers to
+(`notifications.SENDING`):
+
+- a decision with a label goes with its content when the label is at most the level of the project's sink of kind
+  `channel` named as the channel's kind (`project_sinks`, `sink_id` = `telegram`, say) and at most the plugin's
+  clearance; the label is a level alone, so locations do not enter. A project without such a sink, a label the ladder
+  lacks, or a `prepare` outside a pass keeps it off (it fails closed);
+- a decision without a label keeps the rule it had before 0265: its project's hub sink against the plugin's clearance.
+  A proposal and a notice keep that rule too.
+
+One kept off still goes, as the link to the hub alone: `extra` is `{"restricted": true, "restricted_by": ...}` with
+`label` (its label kept it off), `default_label` (a decision without a label its project kept off) or `project` (a
+proposal or a notice, or anything of no project), so the channel can say why. The delivery keeps that reason
+(`withheld`), and a button or a reply on that channel is refused, 403, before anything of the decision is read: the
+decision stays open and its message says to answer on the hub. A decision's `extra` has `label` (the effective one)
+and `label_given` restricted or not, and the decision in `extra.decision` adds `context`, `answer_option`,
+`answer_label`, `answered_by`, `answered_via`, `label` and `label_given`. Every text of a decision that reaches a channel
+(question, context, the run's title, the recommendation's reason, how to undo, the options' labels and descriptions,
+the evidence, the notification's title and body) goes through `evo_agents.hub.redact` first; the hub keeps the words as
+asked.
+
+A decision's delivery on a channel is tried for 30 minutes from its first try (`DECISION_WINDOW`): a retry never waits
+past that, and a failure after it, a `RetryAfter` included, fails the delivery with its error, since a question
+answered half an hour late on a chat is better answered on the hub.
+
+Once a decision is answered, cancelled or expired, each channel that sent its message gets one more delivery of the
+same notification that edits it (`notifications.queue_edits`, run at the start of every pass, and woken by the answer
+and by the run that ends): its `edit_of` names the first delivery, and its `extra.edit` holds that delivery's id, the
+`external_id` of the message and the decision's state. The edit is a delivery like any other: it backs off and is
+tried again when it fails, and fails for good after `MAX_DELIVERY_ATTEMPTS`. A channel that cannot edit sends it as a
+new message.
+
+An answer through a channel records the channel (`answered_via`), and its audit row adds the decision's effective
+label before the channel, as in `option=postgres label=internal via=telegram`. Only the person the decision is asked
+of answers it there: an admin who answers for the run's owner does it on the hub (403). The first answer wins and a
+later one gets 409, as on the web.
+
+Every view of a decision has `channel_deliveries`, one entry for each channel kind of the person asked: `sent` (with the
+message's `external_id`, and when the message went without its content `withheld` and a `reason`), `pending` (with
+the last error), `failed` (with the last error), or `not_sent` for a kind a core plugin contributes that got no
+delivery, with the reason (not linked, turned off, linked after the decision was asked); `edit` is the edit's state.
+`hub decision show` prints one line for each, and the web's card lists them under the decision.
 
 ## Routes
 

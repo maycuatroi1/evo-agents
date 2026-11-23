@@ -25,13 +25,15 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import and_, bindparam, delete, exists, func, insert, select, update
+from sqlalchemy import null as sqlalchemy_null
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import access, tables, telegram
+from evo_agents.hub.redact import redact
 from evo_agents.hub.server import audit, output_notices
-from evo_agents.hub.server.notifications import SESSION_ENDED, Outgoing
+from evo_agents.hub.server.notifications import SENDING, SESSION_ENDED, Outgoing
 from evo_agents.hub.server.security import WEB
 
 MAX_CONFIG_BYTES = 16 * 1024  # a channel's config, or its state, as JSON
@@ -44,7 +46,12 @@ FROM_SESSION = (
     "web and link it there"
 )
 NO_USER = "the hub has no user {login}"
+LABELLED_ANSWER = "answer this on the hub: the label {label} of decision {decision_id} keeps it off this channel"
 ANSWERABLE = ("decision", "proposal")
+# Why a message goes without its notification's content (``extra["restricted_by"]``, notification_deliveries.withheld)
+BY_LABEL = "label"  # the decision's label sits above the clearance of the channel's sink, or of its plugin
+BY_DEFAULT_LABEL = "default_label"  # a decision without a label: its project keeps it off, by the hub sink as before
+BY_PROJECT = "project"  # a proposal or a notice its project keeps off, or a decision or proposal of no project
 
 
 @dataclass(frozen=True)
@@ -296,6 +303,36 @@ async def rules_of(conn: AsyncConnection, project: str):
     return (await conn.execute(project_rules().where(tables.projects.c.name == project))).one_or_none()
 
 
+def channel_sink(project_id, channel: str | None):
+    """The clearance of the sink of kind channel named ``channel`` in project ``project_id`` (a column or a value), as
+    a scalar subquery: NULL without one, or without a channel."""
+    ps = tables.project_sinks.alias("channel_sink")
+    return (
+        select(ps.c.clearance)
+        .where(ps.c.project_id == project_id, ps.c.kind == access.CHANNEL_KIND, ps.c.sink_id == (channel or ""))
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+def effective_label(label: str | None, default_label, levels) -> str | None:
+    """A decision's label, else its project's default label's level, else the top of its ladder (what
+    ``access.ProjectRules`` reads a project without a default label as)."""
+    if label is not None:
+        return label
+    if isinstance(default_label, Mapping) and isinstance(default_label.get("level"), str):
+        return default_label["level"]
+    levels = list(levels or [])
+    return levels[-1] if levels else None
+
+
+def labelled_kept(row, level: str, below: bool = False) -> bool:
+    """Whether a decision with a label (``row`` has its label, its project's levels and ``channel_clearance``, the
+    clearance of the sink of the channel it would go to) is kept from that channel, whose plugin clears it for
+    ``level`` (``telegram.label_kept_from``)."""
+    return telegram.label_kept_from(row.label, row.levels, row.channel_clearance, level, below=below)
+
+
 async def answerable_project(
     conn: AsyncConnection,
     user_id: int,
@@ -304,15 +341,27 @@ async def answerable_project(
     level: str,
     location: str | None,
     below: bool = False,
+    *,
+    channel: str | None = None,
 ) -> str:
     """The name of the project of decision or proposal ``item_id``, once member ``user_id`` may answer it from a
-    channel cleared for ``level`` and ``location``: 404 NOT_YOURS without a grant on it, the same as for nothing by
-    that id, and 403 RESTRICTED_ANSWER for a project kept from the channel. Checked before anything of the decision
+    channel of kind ``channel`` cleared for ``level`` and ``location``: 404 NOT_YOURS without a grant on it, the same
+    as for nothing by that id; 403 LABELLED_ANSWER for a decision whose label keeps it off the channel
+    (``labelled_kept``, against the sink of kind channel named ``channel``), and 403 RESTRICTED_ANSWER for a decision
+    without a label, or a proposal, of a project kept from the channel. Checked before anything else of the decision
     or proposal is read."""
     item = tables.decisions if kind == "decision" else tables.proposals
     p, g, ps = tables.projects, tables.grants, tables.project_sinks
+    label = item.c.label if kind == "decision" else sqlalchemy_null()
     query = (
-        select(p.c.name, p.c.levels, p.c.locations, ps.c.clearance)
+        select(
+            p.c.name,
+            p.c.levels,
+            p.c.locations,
+            ps.c.clearance,
+            label.label("label"),
+            channel_sink(p.c.id, channel).label("channel_clearance"),
+        )
         .select_from(
             item.join(p, p.c.id == item.c.project_id)
             .join(g, and_(g.c.project_id == p.c.id, g.c.user_id == user_id))
@@ -323,30 +372,115 @@ async def answerable_project(
     row = (await conn.execute(query)).one_or_none()
     if row is None:
         raise HTTPException(404, NOT_YOURS)
-    if kept_from(row, level, location, below):
+    if row.label is not None:
+        if labelled_kept(row, level, below):
+            raise HTTPException(403, LABELLED_ANSWER.format(label=row.label, decision_id=item_id))
+    elif kept_from(row, level, location, below):
         raise HTTPException(403, RESTRICTED_ANSWER)
     return row.name
+
+
+def _decision_rules(decision_id: int, channel: str | None):
+    """Decision ``decision_id``'s label, its project's name, ladder, default label and hub sink's clearance, and the
+    clearance of the project's sink of channel ``channel``."""
+    d, p, ps = tables.decisions, tables.projects, tables.project_sinks
+    hub_sink = and_(ps.c.project_id == p.c.id, ps.c.kind == access.HUB_KIND)
+    return (
+        select(
+            d.c.label,
+            d.c.state,
+            p.c.name,
+            p.c.levels,
+            p.c.locations,
+            p.c.default_label,
+            ps.c.clearance,
+            channel_sink(p.c.id, channel).label("channel_clearance"),
+        )
+        .select_from(d.join(p, p.c.id == d.c.project_id).outerjoin(ps, hub_sink))
+        .where(d.c.id == decision_id)
+    )
+
+
+def _redacted(value):
+    """``value``, a text of a decision a channel sends, through ``evo_agents.hub.redact``; None stays None."""
+    return redact(value) if isinstance(value, str) else value
+
+
+def _channel_decision(row) -> dict:
+    """What a channel reads of a decision (``extra["decision"]``), every text of it redacted."""
+    found = dict(row._mapping)
+    options = []
+    for option in found.pop("options") or []:
+        shown = {**option, "label": _redacted(option.get("label"))}
+        if option.get("description") is not None:
+            shown["description"] = _redacted(option["description"])
+        options.append(shown)
+    chosen = next((item for item in options if item.get("key") == found.get("answer_option")), None)
+    texts = ("question", "context", "run_title", "recommended_reason", "undo")
+    return {
+        **found,
+        **{key: _redacted(found[key]) for key in texts},
+        "options": options,
+        "evidence": [_redacted(ref) for ref in found["evidence"] or []],
+        "answer_label": None if chosen is None else chosen["label"],
+    }
 
 
 async def prepare(
     conn: AsyncConnection, notification: Outgoing, level: str, location: str | None, below: bool = False
 ) -> Outgoing:
-    """``notification`` with what a channel cleared for ``level`` and ``location`` may send of it in ``extra``: only
-    ``{"restricted": true}`` when its project is kept from the channel (or it is a decision or proposal of no project),
-    else its decision (question, category, plan_id, step_key, options, state, run_kind, run_title, and the
-    recommended_reason, reversible, undo and evidence of ``decision_models``, an empty list for no evidence) and its
-    proposal (title, tier, kind, lens, evidence_count, state), as Telegram's channel reads them, and for a decision or
-    a notice of a run's files that carries files a channel may send, those files (``outputs``: at most
-    ``output_notices.CHANNEL_OUTPUTS``, none of source tool, each with a presigned GET of its bytes) and how many there
-    are (``outputs_count``)."""
+    """``notification`` with what a channel cleared for ``level`` and ``location`` may send of it in ``extra``.
+
+    A decision with a label is judged by that label against the clearance of its project's sink of kind channel named
+    as the channel the job's pass delivers to (``notifications.SENDING``), and against ``level`` (``labelled_kept``):
+    no such sink, or no delivery being prepared, keeps it off. A decision without a label, a proposal and a notice
+    keep the rule of the project's hub sink (``kept_from``). One kept off gets ``{"restricted": true,
+    "restricted_by": ...}`` alone: ``label`` (BY_LABEL), ``default_label`` for a decision without a label, ``project``
+    for the rest and for a decision or proposal of no project.
+
+    Else ``restricted`` is false, with its decision (question, category, plan_id, step_key, options, state, run_kind,
+    run_title, the recommended_reason, reversible, undo and evidence of ``decision_models``, an empty list for no
+    evidence, and context, answer_option, answer_label, answered_by, answered_via, label and label_given), each text
+    through ``evo_agents.hub.redact``, and its proposal (title, tier, kind, lens, evidence_count, state), as Telegram's
+    channel reads them, and for a decision or a notice of a run's files that carries files a channel may send, those
+    files (``outputs``: at most ``output_notices.CHANNEL_OUTPUTS``, none of source tool, each with a presigned GET of
+    its bytes) and how many there are (``outputs_count``).
+
+    A decision's ``extra`` has ``label``, its effective label (its own, else its project's default label's level),
+    and ``label_given`` whether it has its own, restricted or not, and its title and body are redacted. A delivery
+    that edits the message of an earlier one (``edit_of``, ``notifications.queue_edits``) adds ``edit``: the
+    ``delivery_id`` and ``external_id`` of that message and the decision's ``state``, so the channel edits it in place
+    of sending a new one."""
+    sending = SENDING.get()
+    told: dict = {}
+    if sending is not None and sending.edit_of is not None:
+        told["edit"] = {"delivery_id": sending.edit_of, "external_id": sending.edit_external_id, "state": None}
     restricted = notification.kind in ANSWERABLE
-    if notification.project is not None:
+    by = BY_PROJECT
+    rules = None
+    if notification.kind == "decision" and notification.decision_id is not None:
+        channel = None if sending is None else sending.channel
+        rules = (await conn.execute(_decision_rules(notification.decision_id, channel))).one_or_none()
+        if "edit" in told and rules is not None:
+            told["edit"]["state"] = rules.state
+    if rules is not None:
+        told["label"] = effective_label(rules.label, rules.default_label, rules.levels)
+        told["label_given"] = rules.label is not None
+        if rules.label is not None:
+            restricted, by = labelled_kept(rules, level, below), BY_LABEL
+        else:
+            restricted, by = kept_from(rules, level, location, below), BY_DEFAULT_LABEL
+    elif notification.project is not None:
         restricted = kept_from(await rules_of(conn, notification.project), level, location, below)
+    if notification.kind == "decision":  # the title and the body repeat the question
+        notification = dataclasses.replace(
+            notification, title=redact(notification.title), body=_redacted(notification.body)
+        )
     if restricted:
-        return dataclasses.replace(notification, extra={"restricted": True})
-    extra: dict = {"restricted": False}
+        return dataclasses.replace(notification, extra={"restricted": True, "restricted_by": by, **told})
+    extra: dict = {"restricted": False, **told}
     if notification.decision_id is not None:
-        d, r = tables.decisions, tables.runs
+        d, r, u = tables.decisions, tables.runs, tables.users
         query = select(
             d.c.question,
             d.c.category,
@@ -360,9 +494,14 @@ async def prepare(
             d.c.reversible,
             d.c.undo,
             d.c.evidence,
-        ).join_from(d, r, r.c.id == d.c.run_id)
+            d.c.context,
+            d.c.answer_option,
+            u.c.login.label("answered_by"),
+            d.c.answered_via,
+        ).select_from(d.join(r, r.c.id == d.c.run_id).outerjoin(u, u.c.id == d.c.answered_by))
         row = (await conn.execute(query.where(d.c.id == notification.decision_id))).one_or_none()
-        extra["decision"] = None if row is None else {**row._mapping, "evidence": row.evidence or []}
+        labelled = {"label": told.get("label"), "label_given": told.get("label_given", False)}
+        extra["decision"] = None if row is None else {**_channel_decision(row), **labelled}
     if notification.proposal_id is not None:
         p = tables.proposals
         query = select(p.c.title, p.c.tier, p.c.kind, p.c.lens, p.c.evidence_count, p.c.state)
@@ -394,6 +533,7 @@ async def delivered(conn: AsyncConnection, user_id: int, kind: str, external_id:
 
 __all__ = [
     "FROM_SESSION",
+    "LABELLED_ANSWER",
     "MAX_CONFIG_BYTES",
     "NOT_YOURS",
     "NO_USER",

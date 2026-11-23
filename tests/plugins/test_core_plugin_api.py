@@ -299,7 +299,7 @@ def test_a_decision_goes_to_the_chat_with_its_buttons_and_a_button_answers_it(no
     shown = client.get(f"/v1/projects/{PROJECT}/decisions/{decision_id}", headers=northwind.headers["owner"]).json()
     assert (shown["state"], shown["answer_option"], shown["answered_by"]) == ("answered", "postgres", OWNER)
     (row,) = audit_rows(db, "decision")
-    assert row[1].endswith(f"option=postgres via={KIND}") and row[2] == OWNER
+    assert row[1].endswith(f"option=postgres label=internal via={KIND}") and row[2] == OWNER
     # The web route's refusals come back in the route's words.
     assert said(client, button(f"d:{decision_id}:sqlite")) == "refused"
     assert f"decision {decision_id} is answered, not open" in northwind.fake.last()["text"]

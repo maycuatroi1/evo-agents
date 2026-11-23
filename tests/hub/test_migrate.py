@@ -6531,3 +6531,52 @@ def test_0261_lets_the_inbox_hold_a_whole_answer_and_going_back_cuts_the_longer_
     move_to(hub_db, "0260", down=True)
     assert query(hub_db, select(inbox.c.body).order_by(inbox.c.id)) == [("é" * 2_000,), ("",), ("A.",)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0261") :]
+
+
+def test_0265_gives_decisions_a_label_and_deliveries_their_edits_and_going_back_drops_them(hub_db):
+    """0265 gives decisions label, NULL for every decision before it, and notification_deliveries edit_of, withheld
+    and settled_at: every delivery before it is settled but those of a decision still open, a notification has one
+    first delivery a channel and each delivery at most one edit; going back deletes the edits and drops the columns."""
+    t = hub_tables
+    d, n, dl, c = t.decisions, t.notifications, t.notification_deliveries, t.notification_channels
+    move_to(hub_db, "0264")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        still_open = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        closed = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        conn.execute(update(d).values(state="cancelled").where(d.c.id == closed))
+        channel = one(conn, insert(c).values(user_id=ids["user"], kind="fake").returning(c.c.id))
+        notice = {"user_id": ids["user"], "kind": "decision", "project_id": ids["project"], "title": "Asks"}
+        sent = {}
+        for decision_id in (still_open, closed):
+            stored = insert(n).values(**notice, run_id=run_id, decision_id=decision_id).returning(n.c.id)
+            notification = one(conn, stored)
+            row = {"notification_id": notification, "channel_id": channel, "state": "delivered", "external_id": "m"}
+            row |= {"delivered_at": func.now()}
+            sent[decision_id] = (notification, one(conn, insert(dl).values(row).returning(dl.c.id)))
+    move_to(hub_db, "0265")
+    assert query(hub_db, select(d.c.label).order_by(d.c.id)) == [(None,), (None,)]
+    settled = select(dl.c.id, dl.c.settled_at.is_not(None), dl.c.edit_of, dl.c.withheld).order_by(dl.c.id)
+    assert query(hub_db, settled) == [(sent[still_open][1], False, None, None), (sent[closed][1], True, None, None)]
+    notification, first = sent[closed]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(d).values(label="internal").where(d.c.id == still_open))
+        edit = one(
+            conn, insert(dl).values(notification_id=notification, channel_id=channel, edit_of=first).returning(dl.c.id)
+        )
+        with pytest.raises(errors.UniqueViolation):  # a delivery is edited once
+            conn.execute(insert(dl).values(notification_id=notification, channel_id=channel, edit_of=first))
+        with pytest.raises(errors.UniqueViolation):  # one first delivery a notification and a channel
+            conn.execute(insert(dl).values(notification_id=notification, channel_id=channel))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(update(dl).values(withheld="secret").where(dl.c.id == first))
+        with pytest.raises(errors.CheckViolation):  # a label has 1 to 64 characters
+            conn.execute(update(d).values(label="").where(d.c.id == closed))
+        conn.execute(update(dl).values(withheld="label").where(dl.c.id == first))
+    assert query(hub_db, select(dl.c.edit_of).where(dl.c.id == edit)) == [(first,)]
+    move_to(hub_db, "0264", down=True)
+    assert "label" not in columns(hub_db, "decisions")
+    assert not {"edit_of", "withheld", "settled_at"} & columns(hub_db, "notification_deliveries")
+    assert query(hub_db, select(dl.c.id).order_by(dl.c.id)) == [(sent[still_open][1],), (first,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0265") :]

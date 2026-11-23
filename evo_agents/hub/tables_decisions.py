@@ -85,6 +85,8 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("awaits_run_id", BigInteger),  # the run asked whose end answers this wait of an agent ask (0234)
         # the kind of channel of a core plugin the answer came through, such as telegram; NULL from the web or the CLI
         Column("answered_via", Text),  # (0259), 1 to 64 characters
+        # the level the agent labelled the decision with; NULL without one: the project's default label (0265)
+        Column("label", Text),
         ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
         ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
@@ -220,6 +222,12 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         _when("delivered_at"),
         Column("external_id", Text),
         Column("device_id", BigInteger),  # a delivery to a push device, never with a channel (0156)
+        Column("edit_of", BigInteger),  # the delivery whose message this one edits, once its decision closed (0265)
+        Column("withheld", Text),  # why the message went without the notification's content (0265)
+        _when("settled_at"),  # when the hub needed nothing more of it: no edit to queue (0265)
+        ForeignKeyConstraint(
+            ["edit_of"], ["notification_deliveries.id"], ondelete="CASCADE", name="notification_deliveries_edit_of_fkey"
+        ),
         ForeignKeyConstraint(
             ["channel_id"],
             ["notification_channels.id"],
@@ -236,8 +244,24 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
             name="notification_deliveries_notification_id_fkey",
         ),
         PrimaryKeyConstraint("id", name="notification_deliveries_pkey"),
-        Index("notification_deliveries_channel_key", "notification_id", "channel_id", unique=True),
         Index("notification_deliveries_device_key", "device_id", "notification_id", unique=True),
+        Index("notification_deliveries_edit_key", "edit_of", unique=True),
+    )
+    Index(  # a notification's first delivery on a channel; its edit is another (0265)
+        "notification_deliveries_channel_key",
+        notification_deliveries.c.notification_id,
+        notification_deliveries.c.channel_id,
+        unique=True,
+        postgresql_where=notification_deliveries.c.edit_of.is_(None),
+    )
+    Index(  # the messages of decisions a sweep may have to edit (0265)
+        "notification_deliveries_unsettled_idx",
+        notification_deliveries.c.notification_id,
+        postgresql_where=notification_deliveries.c.settled_at.is_(None)
+        & notification_deliveries.c.edit_of.is_(None)
+        & notification_deliveries.c.channel_id.is_not(None)
+        & notification_deliveries.c.external_id.is_not(None)
+        & (notification_deliveries.c.state == "delivered"),
     )
     Index(  # the web's delivery: no channel and no device (0156)
         "notification_deliveries_web_key",

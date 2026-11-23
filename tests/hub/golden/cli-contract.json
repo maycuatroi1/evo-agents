@@ -8881,7 +8881,10 @@
           "waiting_on",
           "outputs",
           "credential_request",
-          "approval"
+          "approval",
+          "label",
+          "label_given",
+          "channel_deliveries"
         ],
         "schema": "Decision"
       }
@@ -9028,7 +9031,10 @@
           "waiting_on",
           "outputs",
           "credential_request",
-          "approval"
+          "approval",
+          "label",
+          "label_given",
+          "channel_deliveries"
         ],
         "schema": "Decision"
       }
@@ -28976,6 +28982,14 @@
         {
           "flags": [
             "--pull"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--label"
           ],
           "value": "string",
           "required": false,
@@ -127548,6 +127562,169 @@
           "title": "ChangeRepo",
           "description": "One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order."
         },
+        "ChannelDelivery": {
+          "properties": {
+            "channel": {
+              "type": "string",
+              "title": "Channel",
+              "description": "the kind of channel, such as telegram"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "sent",
+                "pending",
+                "not_sent",
+                "failed"
+              ],
+              "title": "State",
+              "description": "sent, with the id of the message; pending, tried again; not_sent, with the reason; failed, with the last error"
+            },
+            "external_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Id",
+              "description": "the id the channel's service gave the message"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why it was not sent (the person asked has not linked the channel, or turned it off), or why the message sent went without the decision's content (its label keeps it off the channel)"
+            },
+            "withheld": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "label",
+                    "default_label",
+                    "project"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Withheld",
+              "description": "the message went without the decision's content for this: the hub must be opened"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "the last error, while it is tried again or once it failed"
+            },
+            "attempts": {
+              "type": "integer",
+              "title": "Attempts",
+              "default": 0
+            },
+            "first_tried_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "First Tried At",
+              "description": "when it was first tried: the window starts there"
+            },
+            "sent_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sent At"
+            },
+            "edit": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChannelEdit"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the edit of the message once the decision closed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "channel",
+            "state"
+          ],
+          "title": "ChannelDelivery"
+        },
+        "ChannelEdit": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "sent",
+                "failed"
+              ],
+              "title": "State",
+              "description": "the edit of the message once the decision closed"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "the last error of the edit, while it is tried again or once it failed"
+            },
+            "sent_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sent At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "title": "ChannelEdit"
+        },
         "Charter": {
           "properties": {
             "goals": {
@@ -133481,6 +133658,32 @@
                 }
               ],
               "description": "a merge approval: the request, head and scope its answer holds for; null for any other decision, and for one asked before schema 0184"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "the effective label: the level the agent gave it, else its project's default label's level; the channels of core plugins send it by this, and an answer through one carries it"
+            },
+            "label_given": {
+              "type": "boolean",
+              "title": "Label Given",
+              "description": "whether the agent gave the decision its label",
+              "default": false
+            },
+            "channel_deliveries": {
+              "items": {
+                "$ref": "#/components/schemas/ChannelDelivery"
+              },
+              "type": "array",
+              "title": "Channel Deliveries",
+              "description": "for each channel of a core plugin, its message to the person asked: sent, pending, not sent and why, or failed with the last error; empty for a decision nobody was told of"
             }
           },
           "type": "object",
@@ -133670,6 +133873,21 @@
                 }
               ],
               "description": "category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "the level of the project's ladder the question, its options and its context sit at, at most the level of the grant of the run's owner; left out, the decision takes the project's default label. The channels of core plugins send a decision by it"
             }
           },
           "type": "object",
@@ -148644,6 +148862,21 @@
                 }
               ],
               "description": "category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label",
+              "description": "the level of the project's ladder the question, its options and its context sit at, at most the level of the grant of the run's owner; left out, the decision takes the project's default label. The channels of core plugins send a decision by it"
             }
           },
           "type": "object",

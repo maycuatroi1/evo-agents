@@ -510,6 +510,72 @@ def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypat
     assert run_line.split(None, 1)[1] == "#40 (waiting), no plan"
     assert "None" not in shown and "null" not in shown
     assert "reversible" not in shown and "Why poll" not in shown and "Evidence" not in shown
+    assert "label" not in shown  # a hub before schema 0265
+
+
+def test_decision_show_prints_the_label_and_where_its_message_stands_on_each_channel(monkeypatch, capsys, tmp_path):
+    from evo_agents.hub import decision_cli
+
+    found = {
+        "id": 12,
+        "project": "demo",
+        "run_id": 40,
+        "run_state": "waiting",
+        "plan_id": None,
+        "step_key": None,
+        "category": "scope",
+        "question": "Poll, or subscribe?",
+        "context": None,
+        "options": [{"key": "poll", "label": "Poll", "description": None, "recommended": True}],
+        "recommended": "poll",
+        "state": "answered",
+        "owner": "owner",
+        "answer_option": "poll",
+        "answer_text": None,
+        "answered_by": "owner",
+        "answered_via": "northwind",
+        "answer_run_id": None,
+        "asked_at": AT,
+        "answered_at": AT,
+        "delivered_at": None,
+        "label": "internal",
+        "label_given": True,
+        "channel_deliveries": [
+            {
+                "channel": "northwind",
+                "state": "sent",
+                "external_id": "msg-1",
+                "reason": "its label internal keeps its content off northwind: the message links to the hub",
+                "withheld": "label",
+                "attempts": 1,
+                "sent_at": AT,
+                "edit": {"state": "failed", "error": "Northwind Chat is down", "sent_at": None},
+            },
+            {"channel": "lumen", "state": "not_sent", "reason": "owner has not linked lumen", "attempts": 0},
+        ],
+    }
+
+    class Answers:
+        def call(self, method, path, body=None):
+            return found
+
+    monkeypatch.setattr(decision_cli, "signed_in", lambda: (Answers(), None))
+    shown = ok(cli(monkeypatch, capsys, tmp_path / "home", "hub", "decision", "show", "12", "--project", "demo")).out
+    lines = [line.strip() for line in shown.splitlines()]
+    assert next(line for line in lines if line.startswith("label ")).split(None, 1)[1] == "internal"
+    northwind = next(line for line in lines if line.startswith("northwind "))
+    assert "sent as msg-1" in northwind and "keeps its content off northwind" in northwind
+    assert northwind.endswith("edit failed: Northwind Chat is down")
+    assert next(line for line in lines if line.startswith("lumen ")).endswith("not sent: owner has not linked lumen")
+    printed = ok(
+        cli(monkeypatch, capsys, tmp_path / "home", "hub", "decision", "show", "12", "--project", "demo", "--json")
+    )
+    data = json.loads(printed.out)
+    assert (data["label"], data["label_given"], data["channel_deliveries"][1]["state"]) == (
+        "internal",
+        True,
+        "not_sent",
+    )
 
 
 def test_decision_show_prints_the_recommended_reason_reversible_undo_and_decision_evidence(

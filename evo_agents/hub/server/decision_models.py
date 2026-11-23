@@ -16,6 +16,12 @@ A decision of category merge may carry the approval it asks for (``approval``, `
 the pull request, its head and the hash of its scope. Its answer opens the gate of the agent's merge for that head and
 scope alone; the person asked reads what it is bound to under the context.
 
+A question may carry a label (``label``): a level of its project's ladder, at most the level the grant of the run's
+owner reaches (``decisions.checked_label``, 422 otherwise). Every view shows the effective label (``label``: the
+decision's own, else the project's default label's level) and whether the agent gave it (``label_given``). The
+channels of core plugins send a decision by that label (``member_channels.prepare``), and ``channel_deliveries`` says
+for each channel whether its message went, why not, or how it failed (``decision_channels``).
+
 A wait (category wait) shows what it waits for in ``waiting_on`` (``evo_agents.hub.server.waiting_on``), every other
 decision null there.
 """
@@ -35,6 +41,7 @@ from evo_agents.hub.server.runs.models import LINE, MAX_ID
 from evo_agents.hub.server.waiting_on import WaitingOn
 
 LABEL_CHARS = 200  # an option's label, one line
+MAX_LABEL_CHARS = 64  # a decision's label, a level of its project's ladder (decisions.label, 0265)
 DESCRIPTION_CHARS = 1000  # an option's description
 MAX_OPTIONS_BYTES = 16 * 1024  # all the options of a decision as JSON, as schema 0010 bounds them
 
@@ -150,6 +157,15 @@ class DecisionAsk(BaseModel):
         description="category merge only: the pull request, head and scope its answer holds for; a push that moves "
         "the head or changes the scope leaves the answer behind",
     )
+    label: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_LABEL_CHARS,
+        pattern=LINE,
+        description="the level of the project's ladder the question, its options and its context sit at, at most "
+        "the level of the grant of the run's owner; left out, the decision takes the project's default label. The "
+        "channels of core plugins send a decision by it",
+    )
 
     @field_validator("evidence")
     @classmethod
@@ -228,6 +244,7 @@ class DecisionAsk(BaseModel):
             "evidence": self.evidence or None,
             "credential_request": None if request is None else request.model_dump(),
             "approval": None if self.approval is None else self.approval.model_dump(),
+            "label": self.label,
         }
 
     def stored_context(self) -> str | None:
@@ -244,6 +261,34 @@ class DecisionOption(BaseModel):
     description: str | None
     recommended: bool
     waits: bool = Field(False, description="choosing it leaves the decision open: the person answers later")
+
+
+class ChannelEdit(BaseModel):
+    state: Literal["pending", "sent", "failed"] = Field(description="the edit of the message once the decision closed")
+    error: str | None = Field(None, description="the last error of the edit, while it is tried again or once it failed")
+    sent_at: datetime | None = None
+
+
+class ChannelDelivery(BaseModel):
+    channel: str = Field(description="the kind of channel, such as telegram")
+    state: Literal["sent", "pending", "not_sent", "failed"] = Field(
+        description="sent, with the id of the message; pending, tried again; not_sent, with the reason; failed, with "
+        "the last error"
+    )
+    external_id: str | None = Field(None, description="the id the channel's service gave the message")
+    reason: str | None = Field(
+        None,
+        description="why it was not sent (the person asked has not linked the channel, or turned it off), or why the "
+        "message sent went without the decision's content (its label keeps it off the channel)",
+    )
+    withheld: Literal["label", "default_label", "project"] | None = Field(
+        None, description="the message went without the decision's content for this: the hub must be opened"
+    )
+    error: str | None = Field(None, description="the last error, while it is tried again or once it failed")
+    attempts: int = 0
+    first_tried_at: datetime | None = Field(None, description="when it was first tried: the window starts there")
+    sent_at: datetime | None = None
+    edit: ChannelEdit | None = Field(None, description="the edit of the message once the decision closed")
 
 
 class WakeOn(BaseModel):
@@ -317,6 +362,17 @@ class Decision(BaseModel):
         None,
         description="a merge approval: the request, head and scope its answer holds for; null for any other decision, "
         "and for one asked before schema 0184",
+    )
+    label: str | None = Field(
+        None,
+        description="the effective label: the level the agent gave it, else its project's default label's level; the "
+        "channels of core plugins send it by this, and an answer through one carries it",
+    )
+    label_given: bool = Field(False, description="whether the agent gave the decision its label")
+    channel_deliveries: list[ChannelDelivery] = Field(
+        default_factory=list,
+        description="for each channel of a core plugin, its message to the person asked: sent, pending, not sent and "
+        "why, or failed with the last error; empty for a decision nobody was told of",
     )
 
 

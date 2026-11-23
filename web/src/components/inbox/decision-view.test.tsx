@@ -58,6 +58,7 @@ const DECISION: Decision = {
   asked_at: "2026-10-05T07:00:00Z",
   answered_at: null,
   delivered_at: null,
+  label_given: false,
 };
 
 const ANSWERED: Decision = {
@@ -440,6 +441,38 @@ describe("DecisionCard", () => {
     expect(within(head).queryByTestId("decision-plan-link")).toBeNull();
     expect(within(head).queryByTestId("decision-step-link")).toBeNull();
     expect(screen.getByTestId("decision").querySelector('a[href*="/plans/"]')).toBeNull();
+  });
+});
+
+describe("DecisionChannels", () => {
+  it("shows the label and where the message stands on each channel, with the edit once it closed", () => {
+    setup({
+      ...ANSWERED,
+      label: "internal",
+      label_given: true,
+      channel_deliveries: [
+        { channel: "telegram", state: "sent", external_id: "42", withheld: "label", attempts: 1, edit: { state: "failed", error: "Bad Request" } },
+        { channel: "northwind", state: "not_sent", reason: "octo has not linked northwind", attempts: 0 },
+        { channel: "lumen", state: "failed", error: "RetryAfter: wait", attempts: 3 },
+      ],
+    });
+    expect(screen.getByTestId("decision-label")).toHaveTextContent("Nhãn internal");
+    expect(screen.getByTestId("decision-label")).toHaveAttribute("data-given", "true");
+    const [telegram, northwind, lumen] = screen.getAllByTestId("decision-channel");
+    expect(telegram).toHaveAttribute("data-state", "sent");
+    expect(telegram).toHaveTextContent("telegram: chỉ gửi đường dẫn tới hub, vì nhãn internal không cho nội dung lên telegram");
+    expect(within(telegram).getByTestId("decision-channel-edit")).toHaveTextContent("Sửa tin nhắn thất bại: Bad Request");
+    expect(northwind).toHaveTextContent("northwind: chưa gửi: octo has not linked northwind");
+    expect(lumen).toHaveTextContent("lumen: gửi thất bại: RetryAfter: wait");
+  });
+
+  it("says a label the project gave, and shows nothing for a hub that sends neither", () => {
+    const { view } = setup({ ...DECISION, label: "public", label_given: false, channel_deliveries: [] });
+    expect(screen.getByTestId("decision-label")).toHaveTextContent("Nhãn public, nhãn mặc định của dự án");
+    expect(screen.queryByTestId("decision-channel")).toBeNull();
+    view.unmount();
+    setup(DECISION);
+    expect(screen.queryByTestId("decision-channels")).toBeNull();
   });
 });
 

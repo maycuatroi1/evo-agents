@@ -7832,6 +7832,23 @@
       "delivered": "The agent got the answer",
       "notDelivered": "Waiting for the worker to hand the answer to the agent at its next turn.",
       "hubTook": "The hub did what the answer chose.",
+      "label": "Label {label}",
+      "labelDefault": "Label {label}, the project's default",
+      "channelsTitle": "On the channels",
+      "channelSent": "{channel}: sent",
+      "channelWithheld": {
+        "label": "{channel}: sent as a link to the hub, since the label {label} keeps its content off {channel}",
+        "default_label": "{channel}: sent as a link to the hub, since its project keeps decisions without a label off {channel}",
+        "project": "{channel}: sent as a link to the hub, since its project keeps it off {channel}"
+      },
+      "channelNotSent": "{channel}: not sent: {reason}",
+      "channelPending": "{channel}: not sent yet, tried again{error, select, none {} other {; last error: {error}}}",
+      "channelFailed": "{channel}: failed: {error}",
+      "channelEdit": {
+        "pending": "The edit of the message waits to be tried again.",
+        "sent": "The message was edited once the decision closed.",
+        "failed": "The edit of the message failed: {error}"
+      },
       "resumed": "Run #{run} was parked: the answer resumed it as <link>run #{next}</link>.",
       "onlyOwner": "Only {owner}, whom this decision of run #{run} is asked of, can answer it.",
       "runGone": "Run #{run} is {state}: no agent can take an answer any more.",

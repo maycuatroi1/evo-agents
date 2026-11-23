@@ -97,6 +97,7 @@ const ASKED: Decision = {
   asked_at: "2026-10-07T03:19:00Z",
   answered_at: null,
   delivered_at: null,
+  label_given: false,
 };
 
 const ANSWERED: Decision = {

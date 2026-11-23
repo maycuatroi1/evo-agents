@@ -103,7 +103,9 @@ async def answer_decision(
 ) -> DecisionAnswer:
     """Answer decision ``decision_id`` as the member, with an option, words or both, through the code of the web's
     answer route: first 404 without a grant on its project (the same words whether it exists or not) and 403 when the
-    project is kept from a channel cleared for ``cleared``; then 422 for a body the route refuses, 403 unless the member
+    decision's label keeps it off the channel (its project's sink of kind channel named as the member's channel), or,
+    for a decision without a label, when the project is kept from a channel cleared for ``cleared``; 403 for anyone
+    but the person it is asked of (or one it was escalated to); then 422 for a body the route refuses, 403 unless the member
     dispatched its run, 409 for one no longer open, 422 for an option it lacks, 409 for a run that takes no answer, 403
     for a worker that takes steering from the web only. Words that ``evo_agents.hub.redact`` masks any part of are
     422 with ``HOLDS_SECRET`` before anything else, and nothing is kept or logged of them. Audited with
@@ -119,7 +121,14 @@ async def answer_decision(
     user = principal_of(member)
     with refusing():
         project = await member_channels.answerable_project(
-            conn, member.user_id, "decision", decision_id, cleared.level, cleared.location, cleared.below
+            conn,
+            member.user_id,
+            "decision",
+            decision_id,
+            cleared.level,
+            cleared.location,
+            cleared.below,
+            channel=member.kind,
         )
         body = decisions.AnswerIn(option=option, text=text)
         answered = await decisions.answer_decision(conn, user, project, decision_id, body, via=said)

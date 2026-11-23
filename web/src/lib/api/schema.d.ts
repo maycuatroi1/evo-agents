@@ -19906,6 +19906,70 @@ export interface components {
             /** Merged At */
             merged_at: string | null;
         };
+        /** ChannelDelivery */
+        ChannelDelivery: {
+            /**
+             * Channel
+             * @description the kind of channel, such as telegram
+             */
+            channel: string;
+            /**
+             * State
+             * @description sent, with the id of the message; pending, tried again; not_sent, with the reason; failed, with the last error
+             * @enum {string}
+             */
+            state: "sent" | "pending" | "not_sent" | "failed";
+            /**
+             * External Id
+             * @description the id the channel's service gave the message
+             */
+            external_id?: string | null;
+            /**
+             * Reason
+             * @description why it was not sent (the person asked has not linked the channel, or turned it off), or why the message sent went without the decision's content (its label keeps it off the channel)
+             */
+            reason?: string | null;
+            /**
+             * Withheld
+             * @description the message went without the decision's content for this: the hub must be opened
+             */
+            withheld?: ("label" | "default_label" | "project") | null;
+            /**
+             * Error
+             * @description the last error, while it is tried again or once it failed
+             */
+            error?: string | null;
+            /**
+             * Attempts
+             * @default 0
+             */
+            attempts: number;
+            /**
+             * First Tried At
+             * @description when it was first tried: the window starts there
+             */
+            first_tried_at?: string | null;
+            /** Sent At */
+            sent_at?: string | null;
+            /** @description the edit of the message once the decision closed */
+            edit?: components["schemas"]["ChannelEdit"] | null;
+        };
+        /** ChannelEdit */
+        ChannelEdit: {
+            /**
+             * State
+             * @description the edit of the message once the decision closed
+             * @enum {string}
+             */
+            state: "pending" | "sent" | "failed";
+            /**
+             * Error
+             * @description the last error of the edit, while it is tried again or once it failed
+             */
+            error?: string | null;
+            /** Sent At */
+            sent_at?: string | null;
+        };
         /** Charter */
         Charter: {
             /**
@@ -22614,6 +22678,22 @@ export interface components {
             credential_request?: components["schemas"]["CredentialRequest"] | null;
             /** @description a merge approval: the request, head and scope its answer holds for; null for any other decision, and for one asked before schema 0184 */
             approval?: components["schemas"]["Approval"] | null;
+            /**
+             * Label
+             * @description the effective label: the level the agent gave it, else its project's default label's level; the channels of core plugins send it by this, and an answer through one carries it
+             */
+            label?: string | null;
+            /**
+             * Label Given
+             * @description whether the agent gave the decision its label
+             * @default false
+             */
+            label_given: boolean;
+            /**
+             * Channel Deliveries
+             * @description for each channel of a core plugin, its message to the person asked: sent, pending, not sent and why, or failed with the last error; empty for a decision nobody was told of
+             */
+            channel_deliveries?: components["schemas"]["ChannelDelivery"][];
         };
         /** DecisionAsk */
         DecisionAsk: {
@@ -22674,6 +22754,11 @@ export interface components {
             credential_request?: components["schemas"]["CredentialRequest"] | null;
             /** @description category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind */
             approval?: components["schemas"]["Approval"] | null;
+            /**
+             * Label
+             * @description the level of the project's ladder the question, its options and its context sit at, at most the level of the grant of the run's owner; left out, the decision takes the project's default label. The channels of core plugins send a decision by it
+             */
+            label?: string | null;
         };
         /**
          * DecisionBoard
@@ -29191,6 +29276,11 @@ export interface components {
             credential_request?: components["schemas"]["CredentialRequest"] | null;
             /** @description category merge only: the pull request, head and scope its answer holds for; a push that moves the head or changes the scope leaves the answer behind */
             approval?: components["schemas"]["Approval"] | null;
+            /**
+             * Label
+             * @description the level of the project's ladder the question, its options and its context sit at, at most the level of the grant of the run's owner; left out, the decision takes the project's default label. The channels of core plugins send a decision by it
+             */
+            label?: string | null;
         };
         /** LocalLogin */
         LocalLogin: {

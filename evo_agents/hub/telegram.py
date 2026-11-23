@@ -140,6 +140,33 @@ def restricted_for(
     return sink_location is None or cleared_location is None or sink_location > cleared_location
 
 
+def label_kept_from(
+    label,
+    levels: Sequence[str] | None,
+    sink_clearance,
+    level: str,
+    *,
+    below: bool = False,
+) -> bool:
+    """Whether a decision labelled at level ``label``, on its project's ladder of ``levels``, is kept from a channel
+    whose sink in the project (kind channel, named as the channel) has ``sink_clearance`` and whose plugin clears it for
+    ``level`` (and with ``below``, for what sits under it): the label sits above the sink's level or the plugin's. A
+    label is a level alone, so locations do not enter. It fails closed: no sink, a sink without a level, or a label or
+    level the ladder lacks is kept from the channel; with ``below``, on a ladder that lacks ``level``, only the lowest
+    rung passes."""
+    levels = list(levels or [])
+    rank = _rank(levels, label)
+    if rank is None or not isinstance(sink_clearance, Mapping):
+        return True
+    sink_level = _rank(levels, sink_clearance.get("level"))
+    if sink_level is None or rank > sink_level:
+        return True
+    if below:
+        return rank >= _mark(levels, level)
+    cleared = _rank(levels, level)
+    return cleared is None or rank > cleared
+
+
 def web_url(public_url: str | None, link: str | None) -> str | None:
     """The absolute URL of a hub page a notification links to, when the hub knows its public URL."""
     if not public_url or not link or not link.startswith("/") or link.startswith("//"):

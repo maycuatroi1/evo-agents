@@ -91,7 +91,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, ops_events, runs, tables
 from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals, waiting_on
+from evo_agents.hub.server import (
+    audit,
+    credential_answers,
+    credential_resolver,
+    decision_channels,
+    principals,
+    waiting_on,
+)
 from evo_agents.hub.server import decision_resume as resume
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -103,7 +110,8 @@ from evo_agents.hub.server.decision_models import DecisionOption as DecisionOpti
 from evo_agents.hub.server.decision_models import OptionIn as OptionIn
 from evo_agents.hub.server.decision_models import WakeOn as WakeOn
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import decision_link, notify, one_line
+from evo_agents.hub.server.member_channels import effective_label
+from evo_agents.hub.server.notifications import decision_link, decision_settled, notify, one_line
 from evo_agents.hub.server.output_store import link_decision
 from evo_agents.hub.server.output_views import by_decision as outputs_by_decision
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -180,6 +188,9 @@ def _decisions():
         d.c.wake_on,
         d.c.credential_request,
         d.c.approval,
+        d.c.label.label("label_given"),
+        p.c.default_label,
+        p.c.levels,
     ).select_from(
         d.join(p, p.c.id == d.c.project_id)
         .join(r, r.c.id == d.c.run_id)
@@ -240,7 +251,16 @@ def _decision(row) -> Decision:
     wake_on = fields.pop("wake_on")
     shown_wake = None if wake_on is None else WakeOn(kind=wake_on["kind"], contains=wake_on.get("contains") or {})
     fields["evidence"] = fields["evidence"] or []
-    return Decision(**fields, options=shown, recommended=recommended, wake_on=shown_wake)
+    given, default_label, levels = fields.pop("label_given"), fields.pop("default_label"), fields.pop("levels")
+    label = effective_label(given, default_label, levels)
+    return Decision(
+        **fields,
+        options=shown,
+        recommended=recommended,
+        wake_on=shown_wake,
+        label=label,
+        label_given=given is not None,
+    )
 
 
 async def decision_view(conn: AsyncConnection, decision_id: int, plans: Collection[str] | None = None) -> Decision:
@@ -253,9 +273,11 @@ async def decision_view(conn: AsyncConnection, decision_id: int, plans: Collecti
 async def with_outputs(
     conn: AsyncConnection, decisions: list[Decision], plans: Collection[str] | None = None
 ) -> list[Decision]:
-    """``decisions``, each with the outputs it carries, and a wait with what it waits for (``waiting_on.fill``, with
-    the plans the reader reads)."""
+    """``decisions``, each with the outputs it carries, where its message stands on each channel
+    (``decision_channels``), and a wait with what it waits for (``waiting_on.fill``, with the plans the reader
+    reads)."""
     await waiting_on.fill(conn, decisions, plans)
+    await decision_channels.fill(conn, decisions)
     by_project: dict[str, list[int]] = {}
     for decision in decisions:
         by_project.setdefault(decision.project, []).append(decision.id)
@@ -427,6 +449,7 @@ async def store_decision(
             f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
         )
     key = await _step_of_run(conn, run_id, row, body.step_key)
+    await checked_label(conn, run_id, body.label)
     # A credential request asks the run's owner for what is theirs alone to give: a value, their account.
     asked = row.dispatched_by if body.credential_request is not None else await principals.asked_of(conn, run_id)
     stored = (
@@ -464,6 +487,38 @@ async def store_decision(
     )
     await _card_moved(conn, decision_id)
     return await decision_view(conn, decision_id)
+
+
+async def checked_label(conn: AsyncConnection, run_id: int, label: str | None) -> None:
+    """422 unless ``label``, the label a decision of run ``run_id`` asks with, is a level of the run's project's ladder
+    at most the level the grant of the run's owner on the project reaches (the run's maximum); no label passes."""
+    if label is None:
+        return
+    r, p, g = tables.runs, tables.projects, tables.grants
+    query = (
+        select(p.c.name, p.c.levels, g.c.max_level)
+        .select_from(
+            r.join(p, p.c.id == r.c.project_id).outerjoin(
+                g, and_(g.c.project_id == r.c.project_id, g.c.user_id == r.c.dispatched_by)
+            )
+        )
+        .where(r.c.id == run_id)
+    )
+    row = (await conn.execute(query)).one()
+    levels = list(row.levels or [])
+    if label not in levels:
+        raise HTTPException(
+            422,
+            f"run {run_id}: {label!r} is not a level of project {row.name}, whose levels are "
+            f"{', '.join(levels) or 'none'}: label the decision with one of them, or leave the label out",
+        )
+    reach = levels.index(row.max_level) if row.max_level in levels else -1
+    if levels.index(label) > reach:
+        raise HTTPException(
+            422,
+            f"run {run_id}: the label {label} is above what the run reaches in project {row.name}, which is up to "
+            f"{row.max_level or 'no level'}: label the decision at most that, or leave the label out",
+        )
 
 
 def _in_its_category(run_id: int, kind: str, category: str) -> None:
@@ -727,6 +782,7 @@ async def _record_answer(
         .values(read_at=func.now())
         .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
     )
+    await decision_settled(conn)
     await _card_moved(conn, decision_id)
 
 
@@ -772,6 +828,12 @@ async def answer_decision(
     route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
     plan_id, key, behalf = await _asked_of(conn, user, access, decision_id)
+    if via is not None and behalf is not None:  # a channel speaks for the person asked alone
+        raise HTTPException(
+            403,
+            f"through a channel only the person decision {decision_id} is asked of answers it: an admin answers it on "
+            "the hub",
+        )
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
@@ -813,6 +875,7 @@ async def answer_decision(
         target += f" for={behalf.owner} as={behalf.standing}"
     if inbox_run != run_id:
         target += f" resumed as run:{inbox_run}"
+    target += await _label_said(conn, decision_id, via)
     if via is not None:
         target += f" via={via}"
     await audit.record(
@@ -824,6 +887,18 @@ async def answer_decision(
         project_id=access.project_id,
     )
     return Answered(await decision_view(conn, decision_id), run_id, inbox_run)
+
+
+async def _label_said(conn: AsyncConnection, decision_id: int, via: str | None) -> str:
+    """What the audit row of an answer through a channel (``via``) adds: `` label=<level>``, the decision's effective
+    label, which the answer carries; nothing for an answer from the web or the CLI."""
+    if via is None:
+        return ""
+    d, p = tables.decisions, tables.projects
+    query = select(d.c.label, p.c.default_label, p.c.levels).join_from(d, p, p.c.id == d.c.project_id)
+    row = (await conn.execute(query.where(d.c.id == decision_id))).one()
+    label = effective_label(row.label, row.default_label, row.levels)
+    return "" if label is None else f" label={label}"
 
 
 async def _hold(
@@ -923,7 +998,9 @@ async def _answer_hub(
         .values(read_at=func.now())
         .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
     )
+    await decision_settled(conn)
     target = answer_target(project, None, None, decision_id, run_id, body.option, category)
+    target += await _label_said(conn, decision_id, via)
     access = await project_access(conn, user, project)
     await audit.record(
         conn,

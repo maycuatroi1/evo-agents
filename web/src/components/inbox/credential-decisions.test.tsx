@@ -66,6 +66,7 @@ const CREDENTIAL: Decision = {
   asked_at: "2026-10-27T07:00:00Z",
   answered_at: null,
   delivered_at: null,
+  label_given: false,
   credential_request: { env_var: VARIABLE, secret_name: "northwind-deploy-key", hub_account: true },
 };
 

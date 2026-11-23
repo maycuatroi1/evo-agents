@@ -177,6 +177,7 @@ const WAIT: Decision = {
   asked_at: "2026-10-05T07:00:00Z",
   answered_at: null,
   delivered_at: null,
+  label_given: false,
   wake_at: "2026-10-05T13:20:00Z",
   wake_on: { kind: "github.workflow_run", contains: { run_id: 991 } },
   waiting_on: { kind: "workflow_run", workflow_run: WORKFLOW },
