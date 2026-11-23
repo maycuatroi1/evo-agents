@@ -256,11 +256,6 @@ def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_
     core = manifest(id="srs", tier="core", permissions=None, config=None, contributes={})
     native = read_manifest({**core, "contributes": {"pages": [{"name": "docs", "title": "SRS", "menu": False}]}})
     assert native.pages()[0]["name"] == "docs" and native.per_project()  # a page alone: a project enables it
-    from evo_agents.hub.server.plugin_pages import pages_of
-
-    # the area of the menu a page names; one a stored manifest names that this release does not know is none (apps)
-    placed = {**core, "contributes": {"pages": [{"name": "docs", "area": "business"}, {"name": "old", "area": "x"}]}}
-    assert [page.area for page in pages_of(placed, "srs", "demo", "", True, None)] == ["business", None]
     cases = [
         (manifest(contributes={"pages": [{"name": "board"}]}), "names its entry, an HTML file of its bundle"),
         ({**core, "contributes": {"pages": [board]}}, "a core plugin's page is native"),
@@ -273,6 +268,16 @@ def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_
     for data, problem in cases:
         with pytest.raises(ManifestError, match=problem):
             read_manifest(data)
+
+
+def test_plugin_pages_placed_in_the_menu_name_the_area_each_names():
+    pytest.importorskip("psycopg", reason="the hub's pages come from the hub server, evo-ak[hub-server]")
+    from evo_agents.hub.server.plugin_pages import pages_of
+
+    core = manifest(id="srs", tier="core", permissions=None, config=None, contributes={})
+    # the area of the menu a page names; one a stored manifest names that this release does not know is none (apps)
+    placed = {**core, "contributes": {"pages": [{"name": "docs", "area": "business"}, {"name": "old", "area": "x"}]}}
+    assert [page.area for page in pages_of(placed, "srs", "demo", "", True, None)] == ["business", None]
 
 
 def test_plugin_agent_types_name_the_plugins_own_parts_each_once_and_their_handles_once():
