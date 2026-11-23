@@ -845,8 +845,11 @@ it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` h
 A run's principal is the person it acts for (`runs.principal_id`, `docs/autonomy.md`), the member who dispatched it
 for a run queued before schema 0113; each lease records it (`credential_leases.principal_id`, migration 0106). A share
 covers a run when it is not revoked, has not ended, lists the run's project, is for every run or for this one (a share
-with a `run_id` covers that run and the runs that resume it), and its grantee is the principal, a live unit holding the
-principal's live primary seat or a unit above it, or everyone. The shared secret must still be bound to the project,
+with a `run_id` covers that run and the runs that resume it), and its grantee is the principal or the member who
+dispatched the run, a live unit holding the live primary seat of either or a unit above it, or everyone. A run is
+leased its dispatcher's own secrets, so a secret shared with the dispatcher goes with them, also when the run acts for
+another member (a chat run that goes on as the member who answered its decision). The shared secret must not be the
+dispatcher's own, and must still be bound to the project,
 unless the share is for one run: the value an admin gave for that run, bound nowhere. A run of the Curator and a
 release run never take one (`evo_agents/hub/server/share_leases.py`).
 
