@@ -78,6 +78,9 @@ DECISION_KEYS = (
     "outputs",
     "credential_request",
     "approval",
+    "label",
+    "label_given",
+    "channel_deliveries",
 )
 DECISION_LIST_KEYS = ("decisions", "total", "limit", "offset")
 NOTIFICATION_LIST_KEYS = ("notifications", "total", "limit", "offset")
@@ -266,6 +269,40 @@ def _approval_lines(decision: dict) -> list[tuple[str, str]]:
     return [("holds for", f"head {approval_heads.short(approval['head'])}{pull}{scope}")]
 
 
+def _label_lines(decision: dict) -> list[tuple[str, str]]:
+    """The decision's effective label, and whether the agent gave it; a hub before schema 0265 shows none."""
+    label = decision.get("label")
+    if not label:
+        return []
+    return [("label", label + ("" if decision.get("label_given") else ", the project's default"))]
+
+
+def _channel_text(entry: dict) -> str:
+    """Where a decision's message stands on one channel (``channel_deliveries``)."""
+    state = entry["state"]
+    if state == "sent":
+        text = f"sent as {entry['external_id']}" if entry.get("external_id") else "sent"
+        if entry.get("sent_at"):
+            text += f" at {when(entry['sent_at'])} UTC"
+        if entry.get("reason"):
+            text += f"; {entry['reason']}"
+    elif state == "not_sent":
+        text = f"not sent: {entry.get('reason') or 'no reason given'}"
+    elif state == "failed":
+        text = f"failed after {entry.get('attempts', 0)} tries: {entry.get('error') or 'no error given'}"
+    else:
+        text = "pending" + (f", last error: {entry['error']}" if entry.get("error") else "")
+    edit = entry.get("edit")
+    if edit:
+        text += f"; edit {edit['state']}" + (f": {edit['error']}" if edit.get("error") else "")
+    return text
+
+
+def _channel_lines(decision: dict) -> list[tuple[str, str]]:
+    """One line for each channel of ``channel_deliveries``; a hub before schema 0265 has none."""
+    return [(entry["channel"], _channel_text(entry)) for entry in decision.get("channel_deliveries") or []]
+
+
 def _run_line(decision: dict, step: str) -> str:
     """The run of a decision, with its plan and step, or the run alone when it has put no plan."""
     run = f"#{decision['run_id']} ({decision['run_state']})"
@@ -289,6 +326,8 @@ def cmd_show(args) -> int:
         ("owner", decision["owner"]),
         ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
         ("asked", f"{when(decision['asked_at'])} UTC"),
+        *_label_lines(decision),
+        *_channel_lines(decision),
         *_request_lines(decision),
         *_approval_lines(decision),
         *_reversible_lines(decision),

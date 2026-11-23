@@ -25,6 +25,7 @@ import { DecisionCategoryBadge, DecisionStatePill } from "./badges";
 import { ContextFold } from "./context-fold";
 import { useCredentialAnswer } from "./credential-decisions";
 import { DecisionGrounds } from "./decision-grounds";
+import { DecisionChannels } from "./decision-channels";
 import { ClosedNote, DecisionFiles, DeliveryNote, NoFormNote } from "./decision-notes";
 import { type HeadingLevel, OptionList, Question } from "./decision-options";
 import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
@@ -377,6 +378,7 @@ export function DecisionCard({
         <DecisionFiles decision={decision} />
         {decision.state === "answered" ? <AnswerSummary decision={decision} /> : null}
         <ClosedNote decision={decision} />
+        <DecisionChannels decision={decision} />
         {open && access !== "answer" ? (
           <>
             <OptionList decision={decision} />

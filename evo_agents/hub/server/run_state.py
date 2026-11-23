@@ -71,7 +71,7 @@ from sqlalchemy import Integer, case, cast, extract, func, insert, null, or_, se
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import ops_events, plugin_events, review, runs, tables, wake
+from evo_agents.hub import bus, jobs, ops_events, plugin_events, review, runs, tables, wake
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -270,7 +270,9 @@ async def move_run(
     if new in runs.TERMINAL_STATES and decisions is not None:
         d = tables.decisions
         own = (d.c.run_id == run_id, d.c.state == "open", d.c.category.not_in(runs.OUTLIVING_DECISION_CATEGORIES))
-        await conn.execute(update(d).values(state=decisions).where(*own))
+        closed = await conn.execute(update(d).values(state=decisions).where(*own).returning(d.c.id))
+        if closed.first() is not None:  # the channels that sent their messages edit them (notifications.queue_edits)
+            await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)
     if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 

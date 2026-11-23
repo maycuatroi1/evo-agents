@@ -375,6 +375,8 @@ def cmd_ask(args) -> int:
         body["step_key"] = args.step
     if getattr(args, "pull", None) is not None:
         body["approval"] = asked_approval(args.category, args.pull)
+    if getattr(args, "label", None) is not None:
+        body["label"] = args.label
     body.update(output_cli.attached(agent.home, agent.run_id, args.attach))  # the outputs the question carries
     if args.recommended is None:
         print(NO_RECOMMENDED, file=sys.stderr)
@@ -698,6 +700,13 @@ def _register_ask(wsub) -> None:
         metavar="REF",
         help="with --category merge: the pull request to merge (number, URL or branch); the answer holds for its head "
         "and scope now alone, and a push that changes them asks again",
+    )
+    ask.add_argument(
+        "--label",
+        metavar="LEVEL",
+        help="the level of the project's ladder the question, its options and its context sit at, such as internal, "
+        "at most what the run reaches; the channels send the decision by it, and left out it takes the project's "
+        "default label",
     )
     output_cli.attach_option(ask, "the question")
     ask.set_defaults(func=cmd_ask)

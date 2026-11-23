@@ -7832,6 +7832,23 @@
       "delivered": "Agent đã nhận câu trả lời",
       "notDelivered": "Đang chờ worker chuyển câu trả lời cho agent ở lượt kế tiếp.",
       "hubTook": "Hub đã làm điều câu trả lời chọn.",
+      "label": "Nhãn {label}",
+      "labelDefault": "Nhãn {label}, nhãn mặc định của dự án",
+      "channelsTitle": "Trên các kênh",
+      "channelSent": "{channel}: đã gửi",
+      "channelWithheld": {
+        "label": "{channel}: chỉ gửi đường dẫn tới hub, vì nhãn {label} không cho nội dung lên {channel}",
+        "default_label": "{channel}: chỉ gửi đường dẫn tới hub, vì dự án không cho quyết định không nhãn lên {channel}",
+        "project": "{channel}: chỉ gửi đường dẫn tới hub, vì dự án không cho nó lên {channel}"
+      },
+      "channelNotSent": "{channel}: chưa gửi: {reason}",
+      "channelPending": "{channel}: chưa gửi được, sẽ thử lại{error, select, none {} other {; lỗi gần nhất: {error}}}",
+      "channelFailed": "{channel}: gửi thất bại: {error}",
+      "channelEdit": {
+        "pending": "Việc sửa tin nhắn đang chờ thử lại.",
+        "sent": "Tin nhắn đã được sửa khi quyết định đóng.",
+        "failed": "Sửa tin nhắn thất bại: {error}"
+      },
       "resumed": "Run #{run} đang tạm gác: câu trả lời đã cho run chạy tiếp thành <link>run #{next}</link>.",
       "onlyOwner": "Chỉ {owner}, người được hỏi quyết định này của run #{run}, mới trả lời được.",
       "runGone": "Run #{run} đang ở trạng thái {state}: không còn agent nào nhận câu trả lời.",

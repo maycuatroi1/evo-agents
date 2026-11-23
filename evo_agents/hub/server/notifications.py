@@ -31,6 +31,21 @@ outbox and the job stay as they are. A class may read more of a notification fir
 delivery's transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's
 ``external_id``. A database error in one delivery is a failed try of that delivery alone: the others of the pass go on.
 
+A delivery of a decision on a channel, and the edit of its message, is tried for DECISION_WINDOW from when it was
+stored, which is its first try since the job runs once the transaction commits (question #99): its retries keep to
+RetryAfter or the backoff above, each ``next_at`` no later than the end of the window, and a try that fails at or
+after that end fails the delivery with its error, RetryAfter included. The decision stays open on the hub, and its
+view says the channel failed (``decision_channels``). While a class's ``prepare`` runs, SENDING holds the delivery it
+prepares for: its id, the kind of its channel, and for an edit the delivery it edits and that message's id, which
+``member_channels.prepare`` reads to judge a decision by its label against the channel's sink and to tell the class to
+edit. A delivery sent without the notification's content (``extra["restricted"]``) keeps why in ``withheld``.
+
+Once a decision is answered, cancelled or expired, each channel that sent its message (a delivery with the message's
+id) gets one delivery more of the same notification, ``edit_of`` naming the first: ``queue_edits``, at the start of
+each pass and queued by each transaction that answers a decision, stores them and marks the first ``settled_at``. The
+edit goes out as any delivery does, under the same window, so a class that failed to edit its message after an answer
+is tried again without touching the answer.
+
 Before a channel of a row gets a notification, the job checks two things as they stand at the delivery, not as they
 stood when it was stored. The member must still hold a grant on the notification's project (NO_GRANT fails the
 delivery at once; the channel stays). And a channel bound to the web session that linked it (``token_id``), or of a
@@ -88,6 +103,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -129,6 +145,8 @@ NO_GRANT = "the member holds no grant on the notification's project any more"
 PASS_BLOBS: ContextVar[BlobStore | None] = ContextVar("notification_pass_blobs", default=None)
 SESSION_ENDED = "the web session that linked this channel ended (signed out, revoked or expired): link it again"
 DECISION_CLOSED = "the decision was answered or closed before its push went out"
+DECISION_WINDOW = timedelta(minutes=30)  # a channel's delivery of a decision, or its edit, is tried this long
+EDIT_BATCH = 500  # first deliveries one sweep of queue_edits gives an edit
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/me", tags=["notifications"], responses={401: {"model": ErrorBody}})
@@ -234,6 +252,21 @@ async def notify(
 
 
 # Channels
+
+
+@dataclass(frozen=True)
+class Sending:
+    """The delivery a channel's ``prepare`` prepares for (SENDING): its id, the kind of its channel, and for an edit
+    the delivery whose message it edits and that message's id."""
+
+    delivery_id: int
+    channel: str
+    edit_of: int | None = None
+    edit_external_id: str | None = None
+
+
+# The delivery of the job's pass whose class is preparing now; None outside a pass's prepare.
+SENDING: ContextVar[Sending | None] = ContextVar("notification_sending", default=None)
 
 
 @dataclass(frozen=True)
@@ -366,7 +399,9 @@ def _lock_due(delivery_id: int):
     device does (``device_live``); no row when another pass holds it."""
     deliveries, channels, devices = tables.notification_deliveries, tables.notification_channels, tables.push_devices
     stored, users, projects = tables.notifications, tables.users, tables.projects
-    grants, tokens = tables.grants, tables.tokens
+    grants, tokens, decisions = tables.grants, tables.tokens, tables.decisions
+    edited = deliveries.alias("edited")
+    decision_open = exists().where(decisions.c.id == stored.c.decision_id, decisions.c.state == "open")
     granted = or_(
         stored.c.project_id.is_(None),
         exists().where(grants.c.user_id == stored.c.user_id, grants.c.project_id == stored.c.project_id),
@@ -408,10 +443,15 @@ def _lock_due(delivery_id: int):
             devices.c.address.label("device_address"),
             devices.c.params.label("device_params"),
             push_store.device_live(devices).label("device_live"),
+            deliveries.c.edit_of,
+            edited.c.external_id.label("edit_external_id"),
+            decision_open.label("decision_open"),
+            (deliveries.c.created_at + DECISION_WINDOW <= func.now()).label("past_window"),
         )
         .select_from(
             deliveries.join(stored, stored.c.id == deliveries.c.notification_id)
             .join(users, users.c.id == stored.c.user_id)
+            .outerjoin(edited, edited.c.id == deliveries.c.edit_of)
             .outerjoin(channels, channels.c.id == deliveries.c.channel_id)
             .outerjoin(devices, devices.c.id == deliveries.c.device_id)
             .outerjoin(projects, projects.c.id == stored.c.project_id)
@@ -421,7 +461,9 @@ def _lock_due(delivery_id: int):
     )
 
 
-def _delivered(delivery_id: int, external_id: str | None = None):
+def _delivered(delivery_id: int, external_id: str | None = None, *, withheld: str | None = None, settled: bool = True):
+    """Delivery ``delivery_id`` delivered as ``external_id``, sent without the notification's content for
+    ``withheld``; ``settled`` unless its message may need an edit later (a decision still open)."""
     deliveries = tables.notification_deliveries
     return (
         update(deliveries)
@@ -430,15 +472,28 @@ def _delivered(delivery_id: int, external_id: str | None = None):
             delivered_at=func.now(),
             attempts=deliveries.c.attempts + 1,
             external_id=external_id[:MAX_EXTERNAL_ID_CHARS] if external_id else None,
+            withheld=withheld,
+            settled_at=func.now() if settled else None,
         )
         .where(deliveries.c.id == delivery_id)
     )
 
 
-def _later(delivery_id: int, wait: timedelta, error: str):
+def _next_at(wait: timedelta, windowed: bool):
+    """``wait`` from now, no later than the end of the delivery's window when it has one (DECISION_WINDOW)."""
+    deliveries = tables.notification_deliveries
+    later = func.now() + wait
+    return func.least(later, deliveries.c.created_at + DECISION_WINDOW) if windowed else later
+
+
+def _later(delivery_id: int, wait: timedelta, error: str, windowed: bool = False):
     """Try delivery ``delivery_id`` again ``wait`` from now, as its service asked, without counting a failed try."""
     deliveries = tables.notification_deliveries
-    return update(deliveries).values(next_at=func.now() + wait, last_error=error).where(deliveries.c.id == delivery_id)
+    return (
+        update(deliveries)
+        .values(next_at=_next_at(wait, windowed), last_error=error)
+        .where(deliveries.c.id == delivery_id)
+    )
 
 
 def _held(delivery_id: int, until: datetime):
@@ -463,11 +518,11 @@ def _turn_off(channel_id: int, reason: str):
     )
 
 
-def _retry(delivery_id: int, wait: timedelta, error: str):
+def _retry(delivery_id: int, wait: timedelta, error: str, windowed: bool = False):
     deliveries = tables.notification_deliveries
     return (
         update(deliveries)
-        .values(attempts=deliveries.c.attempts + 1, next_at=func.now() + wait, last_error=error)
+        .values(attempts=deliveries.c.attempts + 1, next_at=_next_at(wait, windowed), last_error=error)
         .where(deliveries.c.id == delivery_id)
     )
 
@@ -544,8 +599,13 @@ async def _not_sent(conn: AsyncConnection, delivery_id: int, row, kind: str, exc
     """What becomes of a delivery whose class raised ``exc``: tried later, or failed (and its channel or device gone
     for ChannelGone)."""
     where = {"delivery_id": delivery_id, "channel": kind}
+    windowed = _windowed(row)
+    if windowed and row.past_window:  # tried DECISION_WINDOW since its first try: it fails with this error
+        await conn.execute(_failed(delivery_id, _error_text(exc) or "the channel failed"))
+        log.warning("notification delivery of a decision failed past its window", extra=where)
+        return "failed"
     if isinstance(exc, RetryAfter):
-        await conn.execute(_later(delivery_id, timedelta(seconds=exc.seconds), _error_text(exc)))
+        await conn.execute(_later(delivery_id, timedelta(seconds=exc.seconds), _error_text(exc), windowed))
         log.info("notification delivery waits as its channel asked", extra=where)
         return "retried"
     error = _error_text(exc) or "the channel failed"
@@ -559,9 +619,27 @@ async def _not_sent(conn: AsyncConnection, delivery_id: int, row, kind: str, exc
         await conn.execute(_failed(delivery_id, error))
         log.warning("notification delivery failed", extra=where)
         return "failed"
-    await conn.execute(_retry(delivery_id, backoff(row.attempts + 1), error))
+    await conn.execute(_retry(delivery_id, backoff(row.attempts + 1), error, windowed))
     log.info("notification delivery to try again", extra=where)
     return "retried"
+
+
+def _windowed(row) -> bool:
+    """Whether a locked delivery is tried within DECISION_WINDOW: a decision's, on a channel."""
+    return bool(row.has_channel) and row.decision_id is not None
+
+
+def _withheld(row, notification: Outgoing) -> str | None:
+    """Why a channel's delivery went without the notification's content, as its ``prepare`` said, or None."""
+    extra = notification.extra or {}
+    if not row.has_channel or extra.get("restricted") is not True:
+        return None
+    said = extra.get("restricted_by")
+    return said if said in WITHHELD else None
+
+
+# Why a message went without its notification's content: notification_deliveries.withheld (0265)
+WITHHELD = ("label", "default_label", "project")
 
 
 async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict, config) -> str | None:
@@ -592,16 +670,59 @@ async def _deliver_one(conn: AsyncConnection, delivery_id: int, instances: dict,
     channel = await _instance(conn, delivery_id, kind, cls, instances, config)
     if channel is None:
         return "failed"
+    token = SENDING.set(Sending(delivery_id, kind, row.edit_of, row.edit_external_id))
     try:
         async with conn.begin_nested():  # a statement of prepare that fails rolls back its savepoint alone
             notification = await channel.prepare(conn, notification)
         sent = await asyncio.wait_for(channel.send(notification, target), SEND_TIMEOUT_SECONDS)
     except Exception as exc:  # any failure of a channel is the delivery's, never the job's
         return await _not_sent(conn, delivery_id, row, kind, exc)
-    await conn.execute(_delivered(delivery_id, sent))
+    finally:
+        SENDING.reset(token)
+    settled = not (row.has_channel and row.decision_open and row.edit_of is None)
+    await conn.execute(_delivered(delivery_id, sent, withheld=_withheld(row, notification), settled=settled))
     if row.device_id is not None:
         await push_store.sent(conn, row.device_id)
     return "delivered"
+
+
+async def queue_edits(conn: AsyncConnection, batch: int = EDIT_BATCH) -> int:
+    """Give each channel's message of a decision that is no longer open (answered, cancelled or expired) its edit, in
+    the caller's transaction: a delivery of the same notification on the same channel whose ``edit_of`` names the
+    first, due now, and the first marked settled. The first deliveries are those delivered with the message's id and
+    not settled; how many got an edit."""
+    deliveries, stored, decisions = tables.notification_deliveries, tables.notifications, tables.decisions
+    found = (
+        select(deliveries.c.id, deliveries.c.notification_id, deliveries.c.channel_id)
+        .join(stored, stored.c.id == deliveries.c.notification_id)
+        .join(decisions, decisions.c.id == stored.c.decision_id)
+        .where(
+            deliveries.c.settled_at.is_(None),
+            deliveries.c.edit_of.is_(None),
+            deliveries.c.channel_id.is_not(None),
+            deliveries.c.external_id.is_not(None),
+            deliveries.c.state == "delivered",
+            decisions.c.state != "open",
+        )
+        .order_by(deliveries.c.id)
+        .limit(batch)
+        .with_for_update(of=deliveries, skip_locked=True)
+    )
+    rows = (await conn.execute(found)).all()
+    if not rows:
+        return 0
+    edits = [{"notification_id": row.notification_id, "channel_id": row.channel_id, "edit_of": row.id} for row in rows]
+    await conn.execute(pg_insert(deliveries).values(edits).on_conflict_do_nothing(index_elements=["edit_of"]))
+    ids = [row.id for row in rows]
+    await conn.execute(update(deliveries).values(settled_at=func.now()).where(deliveries.c.id.in_(ids)))
+    log.info("edits of channel messages queued", extra={"count": len(rows)})
+    return len(rows)
+
+
+async def decision_settled(conn: AsyncConnection) -> None:
+    """Once ``conn``'s transaction, which answered or closed a decision, commits, a pass of the job runs, whose
+    sweep queues the edits of the messages channels sent of it (``queue_edits``)."""
+    await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)
 
 
 async def _database_failed(engine, delivery_id: int, exc: SQLAlchemyError) -> str:
@@ -634,6 +755,7 @@ async def deliver_notifications(
     were delivered, are to be tried again, and failed."""
     report = {"delivered": 0, "retried": 0, "failed": 0}
     async with engine.begin() as conn:
+        await queue_edits(conn)
         due = (await conn.execute(_due(batch))).scalars().all()
     instances: dict[str, Channel] = {}
     token = PASS_BLOBS.set(blobs)

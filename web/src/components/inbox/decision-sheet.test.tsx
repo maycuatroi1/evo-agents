@@ -60,6 +60,7 @@ const DECISION: Decision = {
   asked_at: "2026-10-05T07:00:00Z",
   answered_at: null,
   delivered_at: null,
+  label_given: false,
 };
 
 /** A page that opens the sheet from a button and closes it, as Home's Needs you does; the Inbox's with `screen`. */
