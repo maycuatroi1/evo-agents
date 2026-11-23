@@ -22,8 +22,8 @@ A run of the Curator (a review run, a judge run, or a run of a plan the Curator 
 less, and from elsewhere: its GitHub token comes from the Curator's App (EVO_HUB_CURATOR_APP_*), whose installation
 tokens the rulesets of the repos keep off their default branches, never from the workers' App, and without the Curator's
 App it gets none, every repo on GitHub missing with that reason; no git secret answers for an origin on GitHub; for
-other origins only the git secret the charter names (``git_secret``) is leased, and of the env secrets only those the
-charter lists (``env_secrets``). A KG run on a node of the shared KG pool whose charter gives no model login, as a
+other origins only the git secret the charter names (``git_secret``) is leased, for a review or judge run also those
+it lists to read with (``read_git_secrets``), and of the env secrets only those the charter lists (``env_secrets``). A KG run on a node of the shared KG pool whose charter gives no model login, as a
 project fed by uploads alone has none, is leased the pool owner's own logins bound to that pool instead
 (``share_leases.kg_pool_logins``). Each ask of a Builder of the Curator checks again, with the Curator's App, that the
 ruleset of each of its repos on GitHub still keeps that App off the default branch (``pulls.check_ruleset``, kept as the
@@ -556,13 +556,13 @@ def row_k7(row) -> tuple[str, str | None, str | None]:
 
 
 def _allowed(policy: CuratorPolicy | None) -> set[tuple[str, str]] | None:
-    """(kind, name) of the secrets a run of the Curator may be leased: the charter's git secret and env secrets; None
-    for any other run, which may be leased all its owner bound."""
+    """(kind, name) of the secrets a run of the Curator may be leased: the charter's git secret, for a review or judge
+    run its read_git_secrets too (``CuratorPolicy.git_secrets``), and its env secrets; None for any other run, which
+    may be leased all its owner bound."""
     if policy is None:
         return None
     allowed = {("env", name) for name in policy.env_secrets}
-    if policy.git_secret:
-        allowed.add(("git", policy.git_secret))
+    allowed |= {("git", name) for name in policy.git_secrets}
     return allowed
 
 
@@ -603,10 +603,28 @@ def _choose(survey: _Survey) -> None:
             )
         elif survey.run.release:
             survey.missing[repo] = RELEASE_OFF_GITHUB.format(origin=origin)
+        elif survey.run.curator is not None:
+            survey.missing[repo] = curator_git_missing(survey.run.curator, survey.run.owner, survey.run.project, origin)
         else:
             survey.missing[repo] = (
                 f"no git secret of {survey.run.owner} bound to project {survey.run.project} covers {origin}"
             )
+
+
+def curator_git_missing(policy: CuratorPolicy, owner: str, project: str, origin: str) -> str:
+    """Why a run of the Curator gets no git secret for ``origin``: the charter names none that covers it, live and
+    bound to the project. A run of the Curator is leased only the git secrets its charter names
+    (``CuratorPolicy.git_secrets``), never the owner's others, so the reason says which ones it looked at."""
+    named = ", ".join(policy.git_secrets)
+    looked = (
+        f"of the git secrets the charter names for a {policy.role} ({named})" if named else "the charter names none"
+    )
+    return (
+        f"a run of the Curator reads {origin} with a git secret of {owner} its charter names, live and bound to project "
+        f"{project}, and {looked}"
+        + (" none covers it" if named else "")
+        + ": name one in git_secret, or for a review or judge run in read_git_secrets"
+    )
 
 
 # Asking

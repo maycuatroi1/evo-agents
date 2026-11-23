@@ -254,8 +254,10 @@ keep the workers' App and their default branch. Without the Curator's App config
 GitHub token at all ("a run of the Curator gets its GitHub token from the Curator's App alone, and this hub has none:
 ... not set"). A review run's and a judge run's token reads only. No `git` secret answers for an origin on github.com
 in a run of the Curator; for other origins (GitLab) it gets only the `git` secret the charter names (`git_secret`, the
-owner's, which should hold the Developer role and so cannot push to a protected default branch either), and of the
-`env` secrets only those the charter lists (`env_secrets`). The hub's own calls for the Curator's pull requests (open
+owner's, which should hold the Developer role and so cannot push to a protected default branch either), a review or
+judge run also the `git` secrets the charter lists to read with (`read_git_secrets`, for a project whose repos sit under
+several GitLab paths that one secret does not cover), and of the `env` secrets only those the charter lists
+(`env_secrets`). An origin none of them covers is missing with that reason, and the run's clone of it fails. The hub's own calls for the Curator's pull requests (open
 one, read its files and CI, write the Judge's check run, merge) use tokens of the workers' App made for that one call,
 with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
 it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.

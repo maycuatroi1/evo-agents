@@ -12,7 +12,8 @@ the hub reads as its own:
 - ``judge_setup``: so did they, the last one failing before its agent ran (``SETUP_CAUSES``);
 - ``judge_silent``: the Judge's agent ended without the verdict its last message must hold;
 - ``base_fails``: every check that failed also fails on the base branch alone, where the worker ran it again
-  (``base_exit_code`` of a verify or hidden result);
+  (``base_exit_code`` of a verify or hidden result), and a verify of them passes on the pull request's head alone or
+  was not run there (a verify that fails on the head too is skipped before: ``unchanged``);
 - ``no_security``: the security pass gave no result.
 
 A failed verdict has these causes only when nothing of the pull request fails it too (``verdict_causes``): the
@@ -54,10 +55,28 @@ def no_verdict_cause(failure_cause: str | None) -> str:
     return JUDGE_SETUP if failure_cause in SETUP_CAUSES else NO_VERDICT
 
 
+def _failed_code(code) -> bool:
+    return isinstance(code, int) and not isinstance(code, bool) and code != 0
+
+
 def base_failed(item: Mapping) -> bool:
     """Whether the check of result ``item`` failed, and failed on the base branch alone too."""
-    base = item.get("base_exit_code")
-    return item.get("exit_code") != 0 and isinstance(base, int) and not isinstance(base, bool) and base != 0
+    return item.get("exit_code") != 0 and _failed_code(item.get("base_exit_code"))
+
+
+def unchanged(item: Mapping) -> bool:
+    """Whether the verify of result ``item`` fails on the merge result, on the base branch alone and on the pull
+    request's head alone (``head_exit_code``): the pull request changes nothing it reads. Such a verify reads what lies
+    outside the worktree (another repo, GitHub, the hub) with a login only the plan run had, and passed when its step
+    was done; a merge check skips it instead of failing the pull request or holding the check for the hub's triage,
+    where no round can fix it (pull request #35 of a harness held three rounds on four such verifies of steps done in
+    other repos). A verify of new work the merge breaks passes on the head alone and still fails the check."""
+    return base_failed(item) and _failed_code(item.get("head_exit_code"))
+
+
+def without_unchanged(items: Iterable[Mapping]) -> list[dict]:
+    """``items`` with each verify the pull request does not change (``unchanged``) taken as passed."""
+    return [{**item, "exit_code": 0} if unchanged(item) else dict(item) for item in items]
 
 
 def without_base(items: Iterable[Mapping]) -> list[dict]:

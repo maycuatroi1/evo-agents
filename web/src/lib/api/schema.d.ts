@@ -20077,6 +20077,11 @@ export interface components {
              * @description the owner's env secrets the Curator's runs get, by name; they get no other
              */
             env_secrets?: string[];
+            /**
+             * Read Git Secrets
+             * @description more of the owner's git secrets the Curator's review and judge runs read with, for origins not on GitHub that git_secret does not cover (a project whose repos sit under several GitLab paths); a Builder pushes with git_secret alone
+             */
+            read_git_secrets?: string[];
             /** Project */
             project: string;
             /** Revision */
@@ -20216,6 +20221,11 @@ export interface components {
              * @description the owner's env secrets the Curator's runs get, by name; they get no other
              */
             env_secrets?: string[];
+            /**
+             * Read Git Secrets
+             * @description more of the owner's git secrets the Curator's review and judge runs read with, for origins not on GitHub that git_secret does not cover (a project whose repos sit under several GitLab paths); a Builder pushes with git_secret alone
+             */
+            read_git_secrets?: string[];
         };
         /** Chat */
         Chat: {
@@ -50812,6 +50822,11 @@ export interface components {
              * @description a merge check's failed check: its exit code on the base branch alone, where it ran again
              */
             base_exit_code?: number | null;
+            /**
+             * Head Exit Code
+             * @description a merge check's verify the base fails too: its exit code on the pull request's head alone, where it ran a third time; failing there too, the pull request changes nothing it reads (merge_infra.unchanged)
+             */
+            head_exit_code?: number | null;
         };
         /** VerifyRun */
         VerifyRun: {

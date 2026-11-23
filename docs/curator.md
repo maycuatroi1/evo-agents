@@ -104,7 +104,7 @@ What `charter show --json` prints can be written back as it is: the keys it adds
 `updated_by`, `updated_at`, `worker_id`, `pool_id`, `schedule_owner`) are ignored in a write. A body equal to the newest revision
 writes nothing. The web shows the charter with its revisions under `/p/{project}/curator/charter`, and its form to an
 admin; the form writes the whole body, the replays (`replay`) and the history run (`history`) included, but not the
-owner's secrets (`git_secret`, `env_secrets`): a revision written from the form has none, so a charter that names them
+owner's secrets (`git_secret`, `read_git_secrets`, `env_secrets`): a revision written from the form has none, so a charter that names them
 is written from the command line.
 
 A charter, as YAML:
@@ -174,6 +174,7 @@ env_secrets: [claude-oauth]
 | `evolve.exposure_limit` | null | review runs that show an entry of the playbook never found helpful before the hub retires it; null for 30, 0 for never (Memory, below) |
 | `git_secret` | null | the owner's `git` secret the Curator's runs use for origins not on GitHub (GitLab); without it no Builder runs there |
 | `env_secrets` | none | the owner's `env` secrets the Curator's runs get, by name; they get no other |
+| `read_git_secrets` | none | more of the owner's `git` secrets the Curator's review and judge runs read with, for origins not on GitHub that `git_secret` does not cover; a Builder pushes with `git_secret` alone |
 
 **The node on duty.** The charter names no worker and no pool. The night shift runs on the pool of the project's
 default agent (`agent-<handle>`, `docs/agents.md`, Where an agent's runs go), and the member who owns that pool owns

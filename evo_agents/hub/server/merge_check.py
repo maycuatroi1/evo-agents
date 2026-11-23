@@ -20,7 +20,10 @@ and its base branch, with ``merge_result``: the worker merges the current base i
 conflict fails the check with "needs a rebase", and the verify of the plan's done steps in the repo
 (``merge_gate.done_verify_of``: a step not done yet, such as the one that merges and deploys, is not the pull
 request's to prove) and the project's hidden checks run on that merge result, while the Judge reads the pull
-request's own diff. Its prompt is ``merge_gate.build_prompt`` for a pull request (``prompt``), it reads its inputs
+request's own diff. A verify that fails there runs again on the base alone, and when the base fails it too, on the
+pull request's head alone: failing on all three, the pull request changes nothing it reads (a verify of a step done in
+another repo, or one that calls GitHub or the hub with a login only the plan run had), and the check skips it
+(``merge_infra.unchanged``), naming it in the verdict, instead of failing the pull request or holding it for triage. Its prompt is ``merge_gate.build_prompt`` for a pull request (``prompt``), it reads its inputs
 from GET /v1/worker/runs/{id}/merge-judge and posts its verdict to
 POST /v1/worker/runs/{id}/merge-verdict, the merge queue's routes, which hand a run of a check to this module. The
 verdict is read as the queue reads its own (``merge_judge.Judged``: the checks, the Judge's dimensions, the findings of
@@ -627,6 +630,7 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
             ledger=findings.ledger_of(row.verdict),
             run_id=run_id,
             signs_weighed=True,
+            skip_unchanged=True,
         )
         entry, ledger, causes = found.entry(run_id, run.model), found.ledger, found.infra_causes()
     stored = {**(row.verdict or {}), ("second" if second else "first"): entry, "findings": ledger}

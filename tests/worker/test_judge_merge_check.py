@@ -206,23 +206,36 @@ def test_github_merge_check_is_not_stopped_by_a_protected_file_the_base_changed(
 def test_github_merge_check_runs_each_failed_check_again_on_the_base_alone(machine):  # noqa: F811
     """A check that fails on the base branch alone too is the base's, not the pull request's (a flaky test of main
     failed pull request #462 on 2026-11-05): the worker runs each failed check again on origin's base, posts its exit
-    code there, and tells the Judge; a check that passed runs once."""
+    code there, and tells the Judge; a check that passed runs once. A verify the base fails too runs a third time on the
+    head alone: failing there as well, the pull request changes nothing it reads (a verify of a step done in another
+    repo, or one that needs a login the Judge does not get); passing there, the merge breaks it."""
     head = change_branch(machine, {"tests/test_wait.py": TEST_FILE})
     base_moved(machine, {"docs/base-only.md": "The base moved on.\n"})
     broken, changed = "test -f docs/broken-on-main.md", "test ! -f tests/test_wait.py"
+    merge_breaks = "test ! -f docs/base-only.md && test -f tests/test_wait.py"
     found = judged(
         machine,
         head,
-        {**judge_inputs(head, ["test -f docs/never.md"], [broken, changed, "true"]), "queue_id": 3},
+        {**judge_inputs(head, ["test -f docs/never.md"], [broken, changed, "true", merge_breaks]), "queue_id": 3},
         [{"say": '{"verdict": "pass", "reasons": "Fine."}'}],
         claim=CHECK,
     )
     (sent,) = found["hub"].verdicts
-    assert [(item["exit_code"], item.get("base_exit_code")) for item in sent["verify"]] == [(1, 1), (1, 0), (0, None)]
+    codes = [(item["exit_code"], item.get("base_exit_code"), item.get("head_exit_code")) for item in sent["verify"]]
+    assert codes == [(1, 1, 1), (1, 0, None), (0, None, None), (1, 1, 0)]
     assert [(item["exit_code"], item.get("base_exit_code")) for item in sent["hidden"]] == [(1, 1)]
+    assert "head_exit_code" not in sent["hidden"][0], "a hidden check does not run on the head"
     (start,) = [item for item in machine.starts() if item["run"] == found["run"]][:1]
-    assert f"verify `{broken}` exited 1, and exited 1 on the base branch alone too" in start["prompt"]
+    assert (
+        f"verify `{broken}` exited 1, exited 1 on the base branch alone and 1 on the pull request's head"
+        in start["prompt"]
+    )
     assert f"verify `{changed}` exited 1, and exited 0 on the base branch alone: the change fails it" in start["prompt"]
+    assert (
+        f"verify `{merge_breaks}` exited 1, exited 1 on the base branch alone and 0 on the pull request's"
+        in start["prompt"]
+    )
     texts = found["hub"].texts(found["run"])
     assert any("hidden check 1 exited 1 on origin's main alone: the base fails it too" in text for text in texts), texts
+    assert any(f"`{broken}` exited 1 on the pull request's head alone" in text for text in texts), texts
     assert not any("docs/never.md" in text for text in texts), "a hidden check is named by its number alone"

@@ -833,14 +833,41 @@ def test_curator_plan_a_gitlab_builder_gets_the_charters_git_secret_and_env_secr
     assert one_change(world)["reason"].endswith(
         f"and owner has no live git secret gitlab-gone bound to project {PROJECT}"
     )
-    written(world.client, owner, curator_charter(git_secret="gitlab-dev", env_secrets=["claude-oauth"]))
+    charter = curator_charter(
+        git_secret="gitlab-dev", env_secrets=["claude-oauth"], read_git_secrets=["gitlab-maintainer"]
+    )
+    written(world.client, owner, charter)
     assert fire(world.client, NIGHT)["builder"] == 1
     spec = claim(world.client, world.worker)
     assert spec["curator"]["forge"] == "gitlab"
     got = leased(world.client, world.worker, spec["id"])
     names = sorted(item["name"] for item in got["leases"])
-    assert names == ["claude-oauth", "gitlab-dev"]  # neither the maintainer's token nor GH_TOKEN
+    assert names == ["claude-oauth", "gitlab-dev"]  # neither GH_TOKEN nor a secret to read with: a Builder pushes
     assert {item["value"] for item in got["leases"]} == {developer, oauth}
+
+
+def test_curator_review_reads_a_gitlab_origin_git_secret_misses_with_a_secret_the_charter_lists_to_read_with(world):
+    """A review run of the Curator gets the git secrets of read_git_secrets too: one git_secret covers one GitLab path,
+    and a project with repos under several paths had every review run fail its clone."""
+    from tests.hub.test_credentials_api import GITLAB_KB, sample
+
+    owner = world.headers["owner"]
+    harness, docs = sample("glpat-harness-"), sample("glpat-docs-")
+    git_secret(
+        world.client, owner, "gitlab-harness", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-harness", harness
+    )
+    git_secret(world.client, owner, "gitlab-docs", GITLAB_KB, docs)
+    written(world.client, owner, curator_charter(git_secret="gitlab-harness"))
+    run_id = review_run(world)
+    got = leased(world.client, world.worker, run_id)
+    assert "gitlab-docs" not in {item["name"] for item in got["leases"]}  # bound to the project, but not the charter's
+    reason = {item["repo"]: item["reason"] for item in got["missing"]}["lumen-kb-docs"]
+    assert "for a reviewer (gitlab-harness) none covers it" in reason and "read_git_secrets" in reason
+    written(world.client, owner, curator_charter(git_secret="gitlab-harness", read_git_secrets=["gitlab-docs"]))
+    got = leased(world.client, world.worker, run_id)  # the charter is read at each ask
+    lease = next(item for item in got["leases"] if item["name"] == "gitlab-docs")
+    assert lease["value"] == docs and lease["url_prefix"] == GITLAB_KB
+    assert "lumen-kb-docs" not in {item["repo"] for item in got["missing"]}
 
 
 # The pull request and the Judge
