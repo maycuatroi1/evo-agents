@@ -6332,6 +6332,7 @@
           "judge",
           "git_secret",
           "env_secrets",
+          "read_git_secrets",
           "project",
           "revision",
           "updated_by",
@@ -6400,6 +6401,7 @@
           "judge",
           "git_secret",
           "env_secrets",
+          "read_git_secrets",
           "project",
           "revision",
           "updated_by",
@@ -127949,6 +127951,17 @@
               "title": "Env Secrets",
               "description": "the owner's env secrets the Curator's runs get, by name; they get no other"
             },
+            "read_git_secrets": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "a secret of the schedule's owner"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Read Git Secrets",
+              "description": "more of the owner's git secrets the Curator's review and judge runs read with, for origins not on GitHub that git_secret does not cover (a project whose repos sit under several GitLab paths); a Builder pushes with git_secret alone"
+            },
             "project": {
               "type": "string",
               "title": "Project"
@@ -128231,6 +128244,17 @@
               "maxItems": 20,
               "title": "Env Secrets",
               "description": "the owner's env secrets the Curator's runs get, by name; they get no other"
+            },
+            "read_git_secrets": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "a secret of the schedule's owner"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Read Git Secrets",
+              "description": "more of the owner's git secrets the Curator's review and judge runs read with, for origins not on GitHub that git_secret does not cover (a project whose repos sit under several GitLab paths); a Builder pushes with git_secret alone"
             }
           },
           "additionalProperties": false,
@@ -198414,6 +198438,18 @@
               ],
               "title": "Base Exit Code",
               "description": "a merge check's failed check: its exit code on the base branch alone, where it ran again"
+            },
+            "head_exit_code": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Exit Code",
+              "description": "a merge check's verify the base fails too: its exit code on the pull request's head alone, where it ran a third time; failing there too, the pull request changes nothing it reads (merge_infra.unchanged)"
             }
           },
           "type": "object",

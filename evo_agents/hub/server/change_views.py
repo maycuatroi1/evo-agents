@@ -349,18 +349,29 @@ async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id
 
 # What a run of the Curator gets
 
+READING_ROLES = ("reviewer", "judge")  # the Curator's runs that read their repos and push nothing
+
 
 @dataclass(frozen=True)
 class CuratorPolicy:
     """A run of the Curator, and what its charter lets it have: its role, the owner's git secret it uses on other
-    forges than GitHub, the env secrets it gets, and the charter's protected paths (a Builder's without those its
-    accepted proposal lists, ``_left_protected``)."""
+    forges than GitHub, the more git secrets a run that only reads may read with (``read_git_secrets``), the env
+    secrets it gets, and the charter's protected paths (a Builder's without those its accepted proposal lists,
+    ``_left_protected``)."""
 
     role: str  # reviewer, builder, judge or replay
     git_secret: str | None
     env_secrets: tuple[str, ...]
     protected: tuple[str, ...]
     change_id: int | None = None
+    read_git_secrets: tuple[str, ...] = ()
+
+    @property
+    def git_secrets(self) -> tuple[str, ...]:
+        """The names of the owner's git secrets this run may be leased: the charter's git_secret, and for a run that
+        only reads (READING_ROLES) its read_git_secrets too."""
+        named = (self.git_secret,) if self.git_secret else ()
+        return named + (self.read_git_secrets if self.role in READING_ROLES else ())
 
 
 async def curator_policy(
@@ -391,6 +402,9 @@ async def curator_policy(
         env_secrets=tuple(name for name in charter.get("env_secrets") or [] if isinstance(name, str)),
         protected=protected,
         change_id=None if change is None else change.id,
+        read_git_secrets=tuple(
+            name for name in charter.get("read_git_secrets") or [] if isinstance(name, str) and name
+        ),
     )
 
 

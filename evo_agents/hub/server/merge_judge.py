@@ -478,22 +478,27 @@ class Judged:
         ledger: list[dict] | None = None,
         run_id: int | None = None,
         signs_weighed: bool = False,
+        skip_unchanged: bool = False,
     ):
         """``signs_weighed``: the Judge weighed the signs of score hacking against the plan (``judge.WEIGH_SIGNS``: a
         merge check of a pull request, or a merge request of the queue whose gate 3 an admin passed at the head
         judged, ``merge_pass.covers``), so they fail nothing by themselves; any other signs of the queue hold at gate
-        3."""
+        3. ``skip_unchanged``: a merge check's, whose verify of done steps the pull request does not change
+        (``merge_infra.unchanged``) count as passed, each named in the entry (``unchanged``)."""
         self.body, self.second = body, second
         self.signs_weighed = signs_weighed
         self.expected, self.hidden_count = expected, hidden_count
         self.verify = [item.model_dump(exclude_none=True) for item in body.verify]
+        self.unchanged = [item["command"] for item in self.verify if skip_unchanged and merge_infra.unchanged(item)]
+        counted = merge_infra.without_unchanged(self.verify) if skip_unchanged else self.verify
+        self.counted = counted
         self.hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
         self.signs = [sign.model_dump() for sign in body.signs]
         self.dimensions = {name: item.model_dump() for name, item in (body.dimensions or {}).items()}
         self.dimensions[merge_gate.SECURITY] = security_dimension(body.security)
         self.checks_ok, self.checks_why = judge.final_verdict(
             agent="pass",
-            verify=self.verify,
+            verify=counted,
             expected_verify=expected,
             hidden=self.hidden,
             hidden_count=hidden_count,
@@ -534,7 +539,7 @@ class Judged:
         names, ledger, new = self.round
         checks_ok_without_base, _ = judge.final_verdict(
             agent="pass",
-            verify=merge_infra.without_base(self.verify),
+            verify=merge_infra.without_base(self.counted),
             expected_verify=self.expected,
             hidden=merge_infra.without_base(self.hidden),
             hidden_count=self.hidden_count,
@@ -568,6 +573,7 @@ class Judged:
             "dimensions": self.dimensions,
             "head_sha": self.body.head_sha,
             "verify": self.verify,
+            "unchanged": self.unchanged,
             "hidden": self.hidden,
             "signs": self.signs,
             "signs_weighed": self.signs_weighed,

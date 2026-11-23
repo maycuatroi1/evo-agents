@@ -47,6 +47,7 @@ def judged(**body) -> Judged:
         hidden_count=len(values["hidden"]),
         head=HEAD,
         signs_weighed=True,
+        skip_unchanged=True,
     )
 
 
@@ -75,12 +76,32 @@ FAILED_ON_BOTH = [{"command": VERIFY, "exit_code": 1, "base_exit_code": 1}]
         ({"verdict": "fail", "security": None}, []),
         ({"security": {**SECURITY, "verdict": "fail", "reason": "a token in a log"}}, []),
         ({"head_sha": "b2" * 20, "security": None}, []),  # the Judge read another head
+        # Failing on the merge result, the base and the head alike, a verify of a done step reads what the pull request
+        # does not change (another repo, GitHub, the hub with a login the Judge does not get): skipped, not the hub's
+        ({"verify": [{**FAILED_ON_BOTH[0], "head_exit_code": 4}]}, []),
+        # ... but one that passes on the head alone is broken by the merge: as before
+        ({"verify": [{**FAILED_ON_BOTH[0], "head_exit_code": 0}]}, [merge_infra.BASE_FAILS]),
     ],
 )
 def test_merge_infra_a_verdict_is_the_hubs_only_when_nothing_of_the_pull_request_fails_it(body, causes):
     found = judged(**body)
-    assert found.passed is (not causes and not body)
+    skipped = [item["command"] for item in body.get("verify", []) if item.get("head_exit_code")]
+    assert found.passed is (not causes and (not body or bool(skipped)))
     assert found.infra_causes() == causes
+    assert found.entry(1, None)["unchanged"] == skipped
+
+
+def test_merge_infra_a_verify_the_pull_request_does_not_change_is_skipped_by_a_merge_check_alone():
+    unchanged = {"command": VERIFY, "exit_code": 1, "base_exit_code": 1, "head_exit_code": 1}
+    assert merge_infra.unchanged(unchanged)
+    assert not merge_infra.unchanged({**unchanged, "head_exit_code": 0})
+    assert not merge_infra.unchanged({**unchanged, "base_exit_code": 0})
+    assert not merge_infra.unchanged({k: v for k, v in unchanged.items() if k != "head_exit_code"})  # an older worker
+    body = MergeVerdictIn(verdict="pass", head_sha=HEAD, verify=[unchanged], security=SECURITY)
+    queue = Judged(body=body, second=False, expected=[VERIFY], hidden_count=0, head=HEAD, signs_weighed=True)
+    assert not queue.checks_ok and queue.entry(1, None)["unchanged"] == []  # the queue of GitLab keeps its rule
+    text = judge.results_text([unchanged], [], [])
+    assert "1 on the pull request's head alone: the pull request changes nothing it reads" in text
 
 
 def test_merge_infra_reads_a_check_failing_on_the_base_and_the_cause_of_judge_runs_without_a_verdict():

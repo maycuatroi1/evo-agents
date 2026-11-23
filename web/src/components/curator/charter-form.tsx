@@ -36,8 +36,9 @@ function useOwnTimeZone(): string | null {
 /**
  * The charter as a form, for an admin of the project: its goals, its window, its budget and
  * caps, the plans the night may run and what it may change, the review, the replays and the history run, and the
- * runtimes of the three roles; the owner's secrets the runs get (`git_secret`, `env_secrets`) are not in it. Every
- * field repeats the hub's limits, so nothing goes out while one is wrong, and the first wrong field takes focus. Saving
+ * runtimes of the three roles; the owner's secrets the runs get (`git_secret`, `read_git_secrets`, `env_secrets`) are
+ * not in it. Every field repeats the hub's limits, so nothing goes out while one is wrong, and the first wrong field
+ * takes focus. Saving
  * writes a new revision (the hub keeps every one); a body equal to the newest revision writes none. A refusal of the
  * hub (a time zone Postgres does not know) shows above the buttons.
  */

@@ -31,7 +31,8 @@ Judge's agent starts and weighs each sign against the plan (``judge.WEIGH_SIGNS`
 For a merge check, each check that failed on the merge result runs again on origin's base branch alone (``on_base``):
 its exit code there goes with its result (``base_exit_code``), and the Judge reads that a check the base fails too is
 not the change's. The hub then holds such a failure for its triage (``evo_agents.hub.merge_infra``) instead of handing
-it to the plan run, which cannot fix the base.
+it to the plan run, which cannot fix the base. A verify the base fails too runs once more on the pull request's head
+alone (``head_exit_code``): one that fails there as well is one the pull request does not change, which the hub skips.
 
 Once a verdict exists and no sign fails the change, the run also does the security pass (``run_security_pass``,
 ``evo_agents.hub.security_pass``): a find turn and one false-positive filter turn per finding, each a new session of the
@@ -539,8 +540,11 @@ class JudgeRun:
 
     async def on_base(self, cwd: Path, results: list[dict], commands: list[str], *, hidden: bool = False) -> None:
         """For a merge check, run each of ``commands`` whose result in ``results`` (the same order) failed again on
-        origin's base branch alone, and add its exit code there to that result (``base_exit_code``). A hidden check is
-        named by its number alone, as in ``run_hidden``."""
+        origin's base branch alone, and add its exit code there to that result (``base_exit_code``). A verify the base
+        fails too runs a third time on the pull request's head alone (``head_exit_code``): failing there as well, the
+        pull request changes nothing it reads, as a verify that reads another repo, GitHub or the hub with a login the
+        Judge does not get (``merge_infra.unchanged``). A hidden check is named by its number alone, as in
+        ``run_hidden``, and does not run on the head."""
         if not self.merge_result or self.base_tip is None:
             return
         for result, command in zip(results, commands, strict=False):
@@ -552,6 +556,17 @@ class JudgeRun:
             name = f"hidden check {result.get('index')}" if hidden else f"verify `{command}`"
             then = "the base fails it too, not the change" if code != 0 else "it passes there, so the change fails it"
             self.run.note(f"The failed {name} exited {code} on origin's {self.base_branch} alone: {then}.")
+            if hidden or code == 0 or self.head is None:
+                continue
+            self.run.check()
+            code, _ = await self.run_untrusted(command, cwd, at=self.head)
+            result["head_exit_code"] = code
+            then = (
+                "it fails with the pull request and without it alike, so the pull request changes nothing it reads"
+                if code != 0
+                else "it passes there, so merging the base breaks it"
+            )
+            self.run.note(f"The failed {name} exited {code} on the pull request's head alone: {then}.")
 
     async def run_hidden(self, cwd: Path, checks: list[str]) -> list[dict]:
         """Run each hidden check of the project in the worktree, first, as code the worker does not trust: each one's

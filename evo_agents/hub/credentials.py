@@ -15,7 +15,8 @@ read only (``github_permissions``). A run of the Curator (a review run, a judge 
 made, ``evo_agents.hub.judge``) gets its token from a second App, the Curator's own (EVO_HUB_CURATOR_APP_ID and
 EVO_HUB_CURATOR_APP_PRIVATE_KEY), which the rulesets of the repos keep off their default branches, and never from the
 first: without the Curator's App it gets none. On other forges it gets the one git secret the charter names
-(``git_secret``) and the env secrets the charter lists (``env_secrets``), none of the owner's others. A release run
+(``git_secret``, and for a review or judge run ``read_git_secrets`` too) and the env secrets the charter lists
+(``env_secrets``), none of the owner's others. A release run
 (kind release, ``evo_agents.hub.releases``) gets only the env secrets of its runtime's login (RELEASE_ENV_VARS) and, for
 its repo on GitHub, a token of the first App with ``GITHUB_PERMISSIONS`` and never GITHUB_WORKFLOW_PERMISSIONS
 (``github_workflows``), no git secret of its owner: like the Curator's, its agent holds nothing that pushes, and only

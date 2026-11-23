@@ -818,9 +818,17 @@ def _on_base(item: dict) -> str:
     base = item.get("base_exit_code")
     if not isinstance(base, int) or isinstance(base, bool):
         return ""
-    if base != 0:
-        return f", and exited {base} on the base branch alone too: the base fails it, not the change"
-    return ", and exited 0 on the base branch alone: the change fails it"
+    if base == 0:
+        return ", and exited 0 on the base branch alone: the change fails it"
+    head = item.get("head_exit_code")
+    if isinstance(head, int) and not isinstance(head, bool):
+        if head != 0:
+            return (
+                f", exited {base} on the base branch alone and {head} on the pull request's head alone: the pull "
+                "request changes nothing it reads, so the hub skips it"
+            )
+        return f", exited {base} on the base branch alone and 0 on the pull request's head alone: the merge breaks it"
+    return f", and exited {base} on the base branch alone too: the base fails it, not the change"
 
 
 def results_text(verify: list[dict], hidden: list[dict], signs: list[dict]) -> str:

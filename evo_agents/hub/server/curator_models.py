@@ -229,6 +229,13 @@ class CharterBody(BaseModel):
         max_length=curator.MAX_ENV_SECRETS,
         description="the owner's env secrets the Curator's runs get, by name; they get no other",
     )
+    read_git_secrets: list[SecretName] = Field(
+        default_factory=list,
+        max_length=curator.MAX_READ_GIT_SECRETS,
+        description="more of the owner's git secrets the Curator's review and judge runs read with, for origins not "
+        "on GitHub that git_secret does not cover (a project whose repos sit under several GitLab paths); a Builder "
+        "pushes with git_secret alone",
+    )
 
     @field_validator("goals")
     @classmethod
@@ -239,7 +246,7 @@ class CharterBody(BaseModel):
             raise ValueError(f"goal ids are named once each: {', '.join(repeated)}")
         return goals
 
-    @field_validator("night_plans", "protected_paths", "env_secrets")
+    @field_validator("night_plans", "protected_paths", "env_secrets", "read_git_secrets")
     @classmethod
     def _once(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))

@@ -97,6 +97,7 @@ CHARTER_BODY_KEYS = (
     "judge",
     "git_secret",
     "env_secrets",
+    "read_git_secrets",
 )
 CHARTER_KEYS = CHARTER_BODY_KEYS + CHARTER_META
 REVISION_KEYS = ("revision", "updated_by", "updated_at")
@@ -296,6 +297,8 @@ def _print_charter(charter: dict) -> None:
     lines.append(("hidden checks", "shown to admins only" if checks is None else str(len(checks))))
     lines.append(("git secret", charter.get("git_secret") or "none: no Builder on GitLab"))
     lines.append(("env secrets", ", ".join(charter.get("env_secrets") or []) or "none"))
+    read = charter.get("read_git_secrets") or []
+    lines.append(("read git", ", ".join(read) + " (review and judge runs)" if read else "none"))
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         print(f"  {label:<{width}}  {text}")

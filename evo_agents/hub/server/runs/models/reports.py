@@ -28,6 +28,11 @@ class VerifyResult(BaseModel):
     base_exit_code: int | None = Field(
         None, description="a merge check's failed check: its exit code on the base branch alone, where it ran again"
     )
+    head_exit_code: int | None = Field(
+        None,
+        description="a merge check's verify the base fails too: its exit code on the pull request's head alone, where "
+        "it ran a third time; failing there too, the pull request changes nothing it reads (merge_infra.unchanged)",
+    )
 
 
 class Diffstat(BaseModel):
