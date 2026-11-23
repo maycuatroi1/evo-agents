@@ -523,7 +523,7 @@ async def _chat_hits(conn, user: Principal, access, through, query, since, until
     vector = history_index.vector(m.c.body)
     rank = func.ts_rank(vector, query)
     member = and_(cm.c.chat_id == m.c.chat_id, cm.c.user_id == user.user_id, cm.c.removed_at.is_(None))
-    author = func.coalesce(u.c.login, ap.c.handle)
+    author = func.coalesce(u.c.login, ap.c.handle, m.c.guest_name)
     where = [vector.bool_op("@@")(query), m.c.label.contains([{"projects": [access.name]}])]
     where += _between(m.c.created_at, since, until)
     if login is not None:
@@ -535,6 +535,7 @@ async def _chat_hits(conn, user: Principal, access, through, query, since, until
             m.c.created_at,
             m.c.label,
             m.c.author_profile_id,
+            m.c.guest_name,
             c.c.title,
             author.label("author"),
             _headline(m.c.body, query).label("snippet"),
@@ -568,7 +569,7 @@ async def _chat_hits(conn, user: Principal, access, through, query, since, until
                 HistoryHit(
                     source="chat",
                     at=row.created_at,
-                    role="agent" if row.author_profile_id is not None else "person",
+                    role="agent" if row.author_profile_id is not None else "guest" if row.guest_name else "person",
                     text=row.snippet,
                     rank=float(row.rank),
                     evidence=None,

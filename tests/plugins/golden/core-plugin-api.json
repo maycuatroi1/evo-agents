@@ -1,7 +1,7 @@
 {
   "api_version": [
     1,
-    7
+    8
   ],
   "names": {
     "ANSWER_EVENT": {
@@ -265,7 +265,7 @@
         },
         {
           "name": "author_kind",
-          "annotation": "Literal['person', 'agent', 'hub']",
+          "annotation": "Literal['person', 'agent', 'hub', 'guest']",
           "default": null
         },
         {
@@ -449,7 +449,7 @@
         },
         {
           "name": "author_kind",
-          "annotation": "Literal['person', 'agent', 'hub']",
+          "annotation": "Literal['person', 'agent', 'hub', 'guest']",
           "default": null
         },
         {
@@ -3337,6 +3337,54 @@
         }
       ],
       "returns": "Bridge | None"
+    },
+    "bridge_guest": {
+      "kind": "async function",
+      "params": [
+        {
+          "name": "conn",
+          "kind": "positional_or_keyword",
+          "annotation": "AsyncConnection",
+          "default": null
+        },
+        {
+          "name": "plugin",
+          "kind": "positional_or_keyword",
+          "annotation": "Plugin",
+          "default": null
+        },
+        {
+          "name": "bridge_id",
+          "kind": "positional_or_keyword",
+          "annotation": "int",
+          "default": null
+        },
+        {
+          "name": "body",
+          "kind": "positional_or_keyword",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "name",
+          "kind": "keyword_only",
+          "annotation": "str",
+          "default": null
+        },
+        {
+          "name": "external_id",
+          "kind": "keyword_only",
+          "annotation": "str | int",
+          "default": null
+        },
+        {
+          "name": "reply_to",
+          "kind": "keyword_only",
+          "annotation": "str | int | None",
+          "default": "None"
+        }
+      ],
+      "returns": "SentMessage"
     },
     "bridge_link": {
       "kind": "async function",

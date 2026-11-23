@@ -52,7 +52,7 @@ export function useAuthorLabel() {
   return (author: ChatAuthor, me: string | null) => {
     if (isMine(author, me)) return t("youName");
     if (author.kind === "hub") return t("hub");
-    return author.kind === "agent" ? author.name : (author.login ?? author.name);
+    return author.kind === "person" ? (author.login ?? author.name) : author.name;
   };
 }
 

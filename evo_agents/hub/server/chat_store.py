@@ -176,11 +176,13 @@ async def insert_message(
     via_bridge: int | None = None,
     from_output_id: int | None = None,
     copied_from_id: int | None = None,
+    guest_name: str | None = None,
 ) -> tuple[int, int]:
-    """Store a message of a person, an agent or the hub (neither) in the chat, with the chat's label now, and its
-    event, hand it to the chat's bridges but ``via_bridge``, the one it came in by (``via`` its kind of channel), and
-    queue the builds of the graphs that hold it; (its id, its seq). ``from_output_id`` is the interactive answer a
-    person sent it from, ``copied_from_id`` the message of another chat it copies (``work_chats``)."""
+    """Store a message of a person, an agent, a guest (``guest_name``) or the hub (none of them) in the chat, with the
+    chat's label now, and its event, hand it to the chat's bridges but ``via_bridge``, the one it came in by (``via``
+    its kind of channel), and queue the builds of the graphs that hold it; (its id, its seq). ``from_output_id`` is the
+    interactive answer a person sent it from, ``copied_from_id`` the message of another chat it copies
+    (``work_chats``)."""
     seq = await next_seq(conn, chat.chat_id)
     cm = tables.chat_messages
     statement = (
@@ -197,12 +199,14 @@ async def insert_message(
             via=via,
             from_output_id=from_output_id,
             copied_from_id=copied_from_id,
+            guest_name=guest_name,
         )
         .returning(cm.c.id)
     )
     message_id = (await conn.execute(statement)).scalar_one()
     await write_event(conn, chat.chat_id, "message", {"message_id": message_id}, seq)
     by = "person" if author_user_id is not None else "agent" if author_profile_id is not None else "hub"
+    by = "guest" if guest_name is not None else by
     said = {"chat_id": chat.chat_id, "message_id": message_id, "seq": seq, "thread_root_id": thread_root_id, "by": by}
     for project in chat.projects:  # the projects of its agents, its label's: a chat of people alone belongs to none
         await plugin_events.emit(conn, "chat.message", project.id, {**said, "run_id": run_id})

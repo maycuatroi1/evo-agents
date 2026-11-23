@@ -1,4 +1,4 @@
-"""The API of the hub for core plugins, version 1.7: the one module of ``evo_agents.hub`` a core plugin imports
+"""The API of the hub for core plugins, version 1.8: the one module of ``evo_agents.hub`` a core plugin imports
 (``from evo_agents.hub.server import core_plugin_api as hub``), whose ``__all__`` is the whole of it. ``docs/plugins.md``
 (The core plugin API) is the contract; ``tests/plugins/golden/core-plugin-api.json`` holds its surface.
 
@@ -66,6 +66,10 @@ Version 1.7 gave ``read_review_queue`` the keyword ``rules``: only the items of 
 (``evo_agents.kg.review.RULES``) come back and ``limit`` counts after the filter, so a plugin reaches the rules the
 hub lists late.
 
+Version 1.8 added ``bridge_guest``: a bridged group's message of a sender who linked no account of the hub comes in to
+the chat as a guest's, with the name the plugin gives, as context alone (no mention read, no work handed, no notice),
+and ``guest`` as a value of ``author_kind`` of ``ChatMessage`` and ``BridgeMessage``.
+
 Versions. ``require(major, minor)`` passes when this hub serves exactly that version, and raises UnsupportedApi
 naming both otherwise; a plugin calls it in the function its entry point names, so a hub of another version leaves the
 plugin out with that reason. A change that only adds to the surface takes the next minor version, one that removes or
@@ -115,6 +119,7 @@ from evo_agents.hub.server.core_plugin_api._bridges import (
     bridge_code,
     bridge_file,
     bridge_find,
+    bridge_guest,
     bridge_link,
     bridge_message,
     bridge_move,
@@ -313,7 +318,7 @@ from evo_agents.hub.server.notifications import (
     Undeliverable,
 )
 
-API_VERSION: tuple[int, int] = (1, 7)
+API_VERSION: tuple[int, int] = (1, 8)
 
 WebSession = Annotated[Session, Depends(web_session)]
 Caller = Annotated[Session, Depends(caller)]
@@ -456,6 +461,7 @@ __all__ = [
     "bridge_code",
     "bridge_file",
     "bridge_find",
+    "bridge_guest",
     "bridge_link",
     "bridge_message",
     "bridge_move",

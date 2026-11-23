@@ -39,7 +39,8 @@ export function PersonAvatar({ login, src, size = "default", label, className }:
 
 /**
  * Who wrote a message or put a reaction, as a face (web/DESIGN.md, Chats): an agent's avatar or its initial on its
- * colour, a person's GitHub avatar or initials on a neutral round, the hub's mark. Decorative beside the name.
+ * colour, a person's GitHub avatar or initials on a neutral round, the hub's mark, for a guest of a bridged group an
+ * empty round (no avatar: the hub knows no face of theirs). Decorative beside the name.
  */
 export function AuthorAvatar({ author, size = "default", className }: { author: Face; size?: FaceSize; className?: string }) {
   if (author.kind === "agent") {
@@ -52,5 +53,8 @@ export function AuthorAvatar({ author, size = "default", className }: { author: 
     );
   }
   if (author.kind === "hub") return <BrandMark className={cn(BOX[size], className)} />;
+  if (author.kind === "guest") {
+    return <span className={cn("block shrink-0 rounded-full border border-dashed", BOX[size], className)} aria-hidden="true" data-testid="guest-face" />;
+  }
   return <PersonAvatar login={author.login ?? author.name} src={author.avatar_url} size={size} className={className} />;
 }

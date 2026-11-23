@@ -1780,7 +1780,8 @@ evo-agents hub chat react 3 41 👍
 
 Schema 0031 adds the chats (`evo_agents/hub/tables_chats.py`): `chats`; `chat_members`, a person or an agent, who
 added them (a person, or the run of an agent), when they left, and how far a person read; `chat_messages`, each with
-the event that brought it, the first message of its thread, its author (a person, an agent or the hub), the run of the
+the event that brought it, the first message of its thread, its author (a person, an agent or the hub; from 0266 a
+guest of a bridged group too, `docs/chat-bridges.md`), the run of the
 agent that wrote it, its body and its label; `chat_mentions`, what a message mentions as the hub read it when it was
 sent, with the member it reached and the run it made, or why it reached none; `chat_reactions`; and `chat_events`, what
 happened in a chat in order. It adds the notices `chat_mention` and `chat_added` too. Going back to 0030 deletes those

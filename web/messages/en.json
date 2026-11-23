@@ -4506,6 +4506,7 @@
     "message": {
       "hub": "Hub",
       "hubTag": "Automatic",
+      "guestTag": "Guest",
       "deleted": "Deleted",
       "you": "(you)",
       "reply": "Reply in thread",

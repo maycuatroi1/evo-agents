@@ -1,5 +1,6 @@
 """Bridges of group chats to groups of the plugin's channel through the API (1.5): the code a chat admin makes,
-linking, finding and unlinking a bridge, the state it keeps, what goes out to its group and what comes in from it.
+linking, finding and unlinking a bridge, the state it keeps, what goes out to its group and what comes in from it: a
+linked member's message (``bridge_send``), or a guest's (1.8, ``bridge_guest``), a sender who linked no account.
 Private to ``core_plugin_api``; ``evo_agents.hub.server.chat_bridges`` holds the queries, ``docs/chat-bridges.md``
 the contract."""
 
@@ -13,12 +14,14 @@ from typing import Any, Literal
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import attachments, blob_gc, chats, outputs
+from evo_agents.hub import attachments, blob_gc, chats, features, outputs
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server import attachment_store, chat_bridges, member_channels
+from evo_agents.hub.server import attachment_store, audit, chat_bridges, hub_settings, member_channels
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.chat_access import agent_projects, channel_cleared, chat_access
+from evo_agents.hub.server.chat_runs import hub_access
+from evo_agents.hub.server.chat_store import insert_message
 from evo_agents.hub.server.chat_views import message_rows, profiles_by_id
 from evo_agents.hub.server.chats import ChatMessageIn, deliver_message
 from evo_agents.hub.server.core_plugin_api._acts import NO_PROJECT, READS, WRITES, chat_grants, feature_on, granting
@@ -193,6 +196,8 @@ async def _going_out(conn: AsyncConnection, plugin: Plugin, bridge_id: int, mess
         author_kind, author = "agent", profiles[message.author_profile_id].handle
     elif message.author_login is not None:
         author_kind, author = "person", message.author_login
+    elif message.guest_name is not None:
+        author_kind, author = "guest", message.guest_name
     root = message.thread_root_id
     reply_to = None if root is None else await chat_bridges.group_message(conn, row.id, root)
     attached = (await attachment_store.of_messages(conn, [message.id])).get(message.id, [])
@@ -306,6 +311,64 @@ async def bridge_send(
         (sent,) = await message_rows(conn, chat.chat_id, [message_id])
     await chat_bridges.carry(conn, row.id, message_id, "in", group_message)
     return SentMessage(sent.id, sent.seq, sent.thread_root_id)
+
+
+def _guest(name: str) -> str:
+    if not isinstance(name, str) or not " ".join(name.split()):
+        raise ValueError("a guest has a name")
+    return " ".join(name.split())[: chats.MAX_GUEST_CHARS]
+
+
+async def _chats_on(conn: AsyncConnection) -> None:
+    """404 when chats are off on the hub, as ``feature_on`` answers a member."""
+    feature = features.BY_ID["chats"]
+    if not features.enabled(feature, *await hub_settings.feature_values(conn)):
+        raise Refused(404, hub_settings.off_message(feature, None))
+
+
+async def bridge_guest(
+    conn: AsyncConnection,
+    plugin: Plugin,
+    bridge_id: int,
+    body: str,
+    *,
+    name: str,
+    external_id: str | int,
+    reply_to: str | int | None = None,
+) -> SentMessage:
+    """The group's message ``external_id`` of a sender who linked no account of the hub comes in to the bridge's chat
+    (1.8) as a guest's, named ``name`` (its whitespace folded, cut to ``chats.MAX_GUEST_CHARS``; ValueError when
+    blank), ``via`` the bridge's kind: context alone. The hub reads no mention in it, hands no agent work, not even for
+    a reply to an agent's message, and sends no notice; it carries the chat's label now, goes out to the chat's other
+    bridges, not back to the group, and the agents that read it read it marked as a guest's, data. A reply to a
+    group's message the bridge carried (``reply_to``) goes in its thread. The same ``external_id`` again is the message
+    it came in as. 404 while chats are off on the hub, 403 unless the project of every agent of the chat grants the
+    plugin ``chats:write``, 422 for a body ``send_message`` refuses. Audited as chat.message, by no one, with the
+    plugin."""
+    own_plugin(plugin)
+    row = await _own_bridge(conn, plugin.id, bridge_id)
+    guest = _guest(name)
+    group_message = _external(external_id)
+    known = await chat_bridges.hub_message(conn, row.id, group_message)
+    if known is not None:
+        (found,) = await message_rows(conn, row.chat_id, [known])
+        return SentMessage(found.id, found.seq, found.thread_root_id)
+    await _chats_on(conn)
+    with refusing():
+        message = ChatMessageIn.model_validate({"body": body})
+    chat = await hub_access(conn, row.chat_id)
+    await chat_grants(conn, plugin.id, chat, WRITES)
+    root = None
+    answered = None if reply_to is None else await chat_bridges.hub_message(conn, row.id, _external(reply_to))
+    for replied in await message_rows(conn, row.chat_id, [] if answered is None else [answered]):
+        root = replied.thread_root_id or replied.id
+    message_id, seq = await insert_message(
+        conn, chat, message.body, thread_root_id=root, via=row.kind, via_bridge=row.id, guest_name=guest
+    )
+    await chat_bridges.carry(conn, row.id, message_id, "in", group_message)
+    target = f"chat:{chat.chat_id} message:{message_id} plugin:{plugin.id}"
+    await audit.record(conn, actor_id=None, token_id=None, action=audit.CHAT_MESSAGE, target=target)
+    return SentMessage(message_id, seq, root)
 
 
 async def bridge_attach(

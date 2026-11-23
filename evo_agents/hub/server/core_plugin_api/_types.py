@@ -116,8 +116,8 @@ class ChatMessage:
     chat_id: int
     seq: int
     thread_root_id: int | None
-    author_kind: Literal["person", "agent", "hub"]
-    author: str | None  # a person's login, an agent's handle; None for the hub
+    author_kind: Literal["person", "agent", "hub", "guest"]
+    author: str | None  # a person's login, an agent's handle, a guest's name (1.8); None for the hub
     body: str
     run_id: int | None  # the run of the agent that wrote it
     created_at: datetime
@@ -211,8 +211,8 @@ class BridgeMessage:
     chat_id: int
     bridge_id: int
     thread_root_id: int | None
-    author_kind: Literal["person", "agent", "hub"]
-    author: str | None  # a person's login, an agent's handle; None for the hub
+    author_kind: Literal["person", "agent", "hub", "guest"]
+    author: str | None  # a person's login, an agent's handle, a guest's name (1.8); None for the hub
     body: str
     run_id: int | None
     via: str | None  # the kind of channel it came in by, plugin from an isolated plugin, None when sent on the hub

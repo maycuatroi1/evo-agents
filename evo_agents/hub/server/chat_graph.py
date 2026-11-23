@@ -11,7 +11,8 @@ part of P is:
   plugin chats), named by the hub ``#<id> <login or @handle> <UTC time>``: the id chat_message and ``chat show`` call
   it by, not its seq in the chat. Its text is the message's body, which search indexes and the link stage reads for
   mentions; no tool returns it (it is free text). Its props: ``chat``, ``thread`` (the id of the thread's first
-  message), ``seq``, ``author_kind`` (person, agent or hub), ``author`` (a login, an @handle, or hub), ``sent_at``
+  message), ``seq``, ``author_kind`` (person, agent, hub or guest), ``author`` (a login, an @handle, a guest's name marked
+  as such, or hub), ``sent_at``
   and, for an agent's, ``run``, the run that posted it. Its parent is its thread.
 - labelled with P's part (its level, location and integrity), P alone, and the audience ``chat:<id>`` with
   ``grant:<Q>:<level>`` for the part of each other project Q: a reader sees it while they are in the chat and hold
@@ -36,6 +37,7 @@ from datetime import UTC
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import effective_grant, enabled_in
 from evo_agents.hub.server.chat_access import LabelProject, projects_named
@@ -67,6 +69,7 @@ def _messages(project: str):
             c.c.title,
             u.c.login,
             ap.c.handle,
+            cm.c.guest_name,
         )
         .select_from(joined)
         .where(cm.c.label.contains([{"projects": [project]}]))
@@ -119,6 +122,8 @@ def _author(row) -> tuple[str, str]:
         return "person", row.login
     if row.handle is not None:
         return "agent", f"@{row.handle}"
+    if row.guest_name is not None:
+        return "guest", rules.guest(row.guest_name)
     return "hub", "hub"
 
 

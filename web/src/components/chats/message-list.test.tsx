@@ -128,6 +128,19 @@ describe("MessageList", () => {
     expect(within(item(1)).getByTestId("message-agent-handle")).toHaveTextContent(/^reviewer$/);
   });
 
+  it("shows a guest of a bridged group by the name its bridge gave, with the guest tag and no face, never as the visitor", () => {
+    // The guest goes by the visitor's login: it is still not the visitor's message, and runs on from no one's.
+    const GUEST: ChatAuthor = { kind: "guest", name: "octo" };
+    render("group", [message(1, 1), message(2, 2, { author: GUEST, body: "from the group" }), message(3, 3, { author: GUEST })]);
+    expect(item(2)).toHaveAttribute("data-mine", "false");
+    expect(item(2)).toHaveAttribute("data-run-on", "false");
+    expect(item(3)).toHaveAttribute("data-run-on", "true");
+    expect(within(item(2)).getByTestId("message-guest-tag")).toHaveTextContent("Khách");
+    expect(within(item(2)).getByText("octo")).toBeInTheDocument();
+    expect(within(item(2)).queryByTestId("person-avatar")).toBeNull();
+    expect(within(item(2)).queryByTestId("agent-avatar")).toBeNull();
+  });
+
   it("tells a direct chat with nothing yet that every message goes to its agent", () => {
     render("direct", []);
     expect(screen.getByTestId("chat-empty")).toHaveTextContent("mọi tin đều tới Code reviewer");
