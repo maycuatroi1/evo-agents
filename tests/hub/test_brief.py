@@ -286,7 +286,7 @@ def test_the_brief_goes_to_the_owners_channel_and_a_restricted_project_gets_the_
     cleared(hub_db, {"level": "customer"})
     assert briefed(client, BRIEF + timedelta(days=1)) == {"brief": 1}
     deliver(client)
-    assert northwind.outgoing[-1].extra == {"restricted": True}
+    assert northwind.outgoing[-1].extra == {"restricted": True, "restricted_by": "project"}
     assert northwind.chat.last()["text"] == f"Something of {PROJECT} waits for you: {url}"
 
 
