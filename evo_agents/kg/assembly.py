@@ -287,7 +287,7 @@ def _key_errors(graph: Graph) -> list[str]:
 def strength(f: dict) -> tuple[float, float]:
     """The pair a fact's strength is ordered by: its status's rank, then its confidence."""
     conf = f.get("conf")
-    return (STATUS_RANK.get(f.get("status"), 0), float(conf) if conf is not None else 0.0)
+    return (STATUS_RANK.get(str(f.get("status")), 0), float(conf) if conf is not None else 0.0)
 
 
 def _strongest(current: dict, new: dict) -> None:

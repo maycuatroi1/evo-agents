@@ -492,7 +492,7 @@ def symbol_key(record: dict, source_id: str, path: str, qualname: str) -> list[s
     return [(record.get("props") or {}).get("repo") or source_id, path, qualname]
 
 
-def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: dict[str, str]) -> list[dict]:
+def symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: dict[str, str]) -> list[dict]:
     """The Symbol node of one definition, its ``member_of`` or ``defines`` edge, and its ident. The ident
     names the file, and the package the definition is in when its language has packages: the link stage
     finds a symbol by file or package and qualified name. A class's ident also carries its ``bases``, the
@@ -577,7 +577,7 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
 
     by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
-        facts += _symbol_facts(record, source_id, sym, unit_for(sym["top"]), by_qual)
+        facts += symbol_facts(record, source_id, sym, unit_for(sym["top"]), by_qual)
     for name, qual in (result.get("aliases") or {}).items():
         if qual in by_qual:  # `print_json = _print_json`: an import of `print_json` reaches `_print_json`
             facts.append({"t": "ident", "type": "alias", "key": f"{item_id}::{name}", "node": by_qual[qual]})
@@ -725,7 +725,7 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
     by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
         doc = leading_comment(lines, sym["line"])
-        facts += _symbol_facts(record, source_id, {**sym, "doc": doc} if doc else sym, unit, by_qual)
+        facts += symbol_facts(record, source_id, {**sym, "doc": doc} if doc else sym, unit, by_qual)
     for call in result["calls"]:
         caller, callee = by_qual.get(call["caller"]), by_qual.get(call["callee"])
         if caller and callee and caller != callee:

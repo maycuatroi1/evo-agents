@@ -90,13 +90,18 @@ def _packed(value) -> list[int]:
     return out
 
 
-def _text(value: bytes) -> str:
-    return value.decode("utf-8", "replace")
+def _blob(value: int | bytes) -> bytes:
+    """A length-delimited value; a field of another wire type where one is expected reads as empty."""
+    return value if isinstance(value, bytes) else b""
 
 
-def _relationship(data: bytes) -> dict:
+def _text(value: int | bytes) -> str:
+    return _blob(value).decode("utf-8", "replace")
+
+
+def _relationship(data: int | bytes) -> dict:
     out = {"symbol": "", "implementation": False}
-    for number, _, value in _fields(data):
+    for number, _, value in _fields(_blob(data)):
         if number == 1:
             out["symbol"] = _text(value)
         elif number == 3:
@@ -104,9 +109,9 @@ def _relationship(data: bytes) -> dict:
     return out
 
 
-def _symbol_information(data: bytes) -> dict:
+def _symbol_information(data: int | bytes) -> dict:
     out: dict = {"symbol": "", "relationships": []}
-    for number, _, value in _fields(data):
+    for number, _, value in _fields(_blob(data)):
         if number == 1:
             out["symbol"] = _text(value)
         elif number == 4:
@@ -114,9 +119,9 @@ def _symbol_information(data: bytes) -> dict:
     return out
 
 
-def _occurrence(data: bytes) -> dict:
+def _occurrence(data: int | bytes) -> dict:
     out: dict = {"range": [], "symbol": "", "roles": 0, "enclosing": []}
-    for number, _, value in _fields(data):
+    for number, _, value in _fields(_blob(data)):
         if number == 1:
             out["range"] += _packed(value)
         elif number == 2:
@@ -128,9 +133,9 @@ def _occurrence(data: bytes) -> dict:
     return out
 
 
-def _document(data: bytes) -> dict:
+def _document(data: int | bytes) -> dict:
     out: dict = {"path": "", "language": "", "occurrences": [], "symbols": []}
-    for number, _, value in _fields(data):
+    for number, _, value in _fields(_blob(data)):
         if number == 1:
             out["path"] = _text(value)
         elif number == 2:

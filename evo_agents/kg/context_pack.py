@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import heapq
 import math
-from collections import Counter
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
@@ -51,7 +51,9 @@ class Objective:
     def __init__(self, given: Mapping[str, int] | None = None, facet_weights: Mapping[str, float] | None = None):
         self.given = given or {}
         self.weights = facet_weights or {}
-        self.covered: Counter = Counter()  # facet: discounted number of nodes of S that touch it
+        self.covered: defaultdict[str, float] = defaultdict(
+            float
+        )  # facet: discounted number of nodes of S that touch it
 
     def discount(self, item: Item) -> float:
         return repeat_discount(self.given.get(item.id, 0))

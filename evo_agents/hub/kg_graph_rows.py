@@ -26,7 +26,7 @@ import base64
 import hashlib
 import json
 import zlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import Text, cast, delete, func, select
@@ -178,7 +178,7 @@ def _guarded(row) -> tuple:
     return (*row[:11], None if guards is None else _json(guards))
 
 
-def _row_values(name: str, key: str, row: tuple) -> dict:
+def _row_values(name: str, key: str, row: Sequence) -> dict:
     if name in ("kg_nodes", "kg_edges"):
         keys = NODE_KEYS if name == "kg_nodes" else EDGE_KEYS
         guards = json.loads(row[11]) if len(row) > 11 and row[11] is not None else None

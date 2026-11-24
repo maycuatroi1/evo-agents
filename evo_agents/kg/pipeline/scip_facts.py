@@ -13,7 +13,7 @@ from a symbol to each one the index says it implements.
 from __future__ import annotations
 
 from evo_agents.kg.extract.scip_index import symbol_kind
-from evo_agents.kg.pipeline.stages import _symbol_facts, frag_unit, item_unit, ref
+from evo_agents.kg.pipeline.stages import frag_unit, item_unit, ref, symbol_facts
 
 STATUS = "introspected"
 
@@ -45,7 +45,7 @@ def _own_symbols(record: dict, source_id: str, defs: list, unit_of, known: dict[
             "end": end,
             "parent": parent if parent in known else None,
         }
-        facts += _symbol_facts(record, source_id, sym, unit_of(sym["top"]), known)
+        facts += symbol_facts(record, source_id, sym, unit_of(sym["top"]), known)
     return facts
 
 
