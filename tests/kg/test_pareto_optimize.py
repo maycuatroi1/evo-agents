@@ -102,3 +102,62 @@ def test_the_bootstrap_is_paired_and_seeded_and_refuses_other_questions():
     short = {k: v[:10] for k, v in other.items()}
     with pytest.raises(ValueError):
         opt.paired_bootstrap(base, short)
+
+
+def _proposal(weight: float = 2.0) -> dict:
+    """What ``best_weight`` says from the tune split: move to ``weight``."""
+    return {
+        "weight": weight,
+        "changed": True,
+        "tried": {},
+        "reason": "hit@5 on the tune split 70% at 2 against 60% at 1",
+    }
+
+
+def _holdout(base: dict, **moved) -> dict:
+    return {"ids": [f"q{i}" for i in range(len(base["hit@5"]))], **paired(base, **moved)}
+
+
+def test_the_loop_keeps_the_current_weight_when_the_candidate_is_worse_on_an_axis_beyond_noise():
+    base = series(random.Random(0), 200, 0.6, 400, 20)
+    # the tune split liked weight 2, but on the holdout it loses hits while it is cheaper and faster
+    runs = {
+        "1": {"ids": [f"q{i}" for i in range(200)], **base},
+        "2": _holdout(base, hit_gain=-0.4, token_gain=60, ms_gain=8),
+    }
+    kept = opt.gate_weight(_proposal(), runs, 1.0)
+    assert kept["changed"] is False and kept["weight"] == 1.0
+    assert "hit@5" in kept["pareto"]["rejected"]["2"] and "stays" in kept["reason"]
+
+
+def test_the_loop_applies_the_weight_when_it_dominates_on_the_holdout():
+    base = series(random.Random(0), 200, 0.6, 400, 20)
+    runs = {"1": {"ids": [f"q{i}" for i in range(200)], **base}, "2": _holdout(base, hit_gain=0.5)}
+    moved = opt.gate_weight(_proposal(), runs, 1.0)
+    assert moved["changed"] is True and moved["weight"] == 2.0
+    assert moved["pareto"]["choice"] == "2"
+
+
+def test_the_loop_keeps_the_weight_without_a_paired_holdout_or_when_nothing_was_proposed():
+    base = series(random.Random(0), 50, 0.6, 400, 20)
+    here = {"ids": [f"q{i}" for i in range(50)], **base}
+    other = {**_holdout(base, hit_gain=0.5), "ids": [f"z{i}" for i in range(50)]}
+    assert opt.gate_weight(_proposal(), {"1": here, "2": other}, 1.0)["changed"] is False
+    assert opt.gate_weight(_proposal(), None, 1.0)["changed"] is False
+    idle = {"weight": 1.0, "changed": False, "tried": {}, "reason": "no weight is better"}
+    assert opt.gate_weight(idle, None, 1.0) == {**idle, "pareto": None}
+
+
+def test_the_eval_returns_per_question_series_of_a_method_in_question_order():
+    from types import SimpleNamespace as NS
+
+    from evo_agents.hub import kg_health_eval
+
+    def outcome(qid, ranks, tokens, ms, skipped=None):
+        within = [r for r in ranks if r is not None and r <= 5]
+        return NS(question=NS(id=qid), skipped=skipped, hit=lambda k, w=within: bool(w), tokens=tokens, ms=ms)
+
+    got = kg_health_eval.question_series(
+        [outcome("a", [1], 100, 5.0), outcome("b", [None], 80, 7.5), outcome("c", [2], 1, 1.0, skipped="x")]
+    )
+    assert got == {"ids": ["a", "b"], "hit@5": [1.0, 0.0], "tokens_per_file": [100.0, 80.0], "p95_ms": [5.0, 7.5]}

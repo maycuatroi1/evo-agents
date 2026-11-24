@@ -269,14 +269,17 @@ def score(
     question_set: dict | None = None,
     sink: str | None = None,
     holdout: Iterable[str] = (),
+    series: bool = False,
 ) -> dict:
     """The score of ``questions`` asked through ``session`` (a ``evo_agents.kg.serve.Session``): {types, questions,
     plan_steps, available (plan-step questions before the cut), skipped, skipped_by {reason: n}, dropped (the share of
     the plan steps with commits that ask nothing), reasons, answers_from, limit, sink, set, methods: {method: {n,
     hit@5, recall@1, recall@5, capped_recall@5, mrr, empty, errors, correct_per_1k_tokens, mean_tokens,
     tokens_per_hit, tokens_per_file, p95_ms}}, by_type: {type: {method: the same}}, holdout: {method: the same} over
-    the questions whose ids ``holdout`` names (the holdout part of the set), None when it names none, digest}."""
+    the questions whose ids ``holdout`` names (the holdout part of the set), None when it names none, digest; with
+    ``series``, series: {method: question_series}}."""
     methods: dict = {}
+    per_question: dict = {}
     by_type: dict = {}
     held: dict = {}
     holdout = set(holdout)
@@ -288,6 +291,9 @@ def score(
                 methods[row["method"]] = numbers
             else:
                 by_type.setdefault(row["type"], {})[row["method"]] = numbers
+        if series:
+            for method in METHODS:
+                per_question[method] = question_series([o for o in report.outcomes if o.method == method])
         for method in METHODS:
             picked = [o for o in report.outcomes if o.method == method and o.question.id in holdout]
             if picked:
@@ -312,6 +318,21 @@ def score(
         "by_type": by_type,
         "holdout": held or None,
         "digest": questions_digest(questions),
+        **({"series": per_question} if series else {}),
+    }
+
+
+def question_series(outcomes: Iterable) -> dict:
+    """The per-question figures of ``outcomes`` of one method, in question order, the series the Pareto choice of the
+    optimize loop pairs between configurations: {ids, hit@5 (1.0 when an answer is in the first 5), tokens_per_file
+    (the tokens the question's answer cost), p95_ms (its time, whose p95 the loop reads)}. A question the method
+    skipped is left out; one that failed counts as a miss."""
+    ran = [o for o in outcomes if o.skipped is None]
+    return {
+        "ids": [o.question.id for o in ran],
+        "hit@5": [1.0 if o.hit(5) else 0.0 for o in ran],
+        "tokens_per_file": [float(o.tokens) for o in ran],
+        "p95_ms": [float(o.ms) for o in ran],
     }
 
 

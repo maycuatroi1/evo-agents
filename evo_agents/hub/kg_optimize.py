@@ -145,6 +145,34 @@ def best_weight(tuned: Mapping[str, Mapping | None], current: float, new_labels:
     return {"weight": weight, "changed": True, "tried": tried, "reason": reason}
 
 
+def gate_weight(proposal: Mapping, runs: Mapping[str, Mapping | None] | None, current: float) -> dict:
+    """``proposal`` (``best_weight``'s answer from the tune split) kept only when the Pareto choice on the holdout
+    accepts it: ``runs`` is the per-question series of the holdout (``kg_health_eval.question_series``) at each weight
+    (the weight as text). A weight that is worse on any axis beyond the noise, or not better on one, leaves
+    ``current`` in effect. {**proposal, pareto: {choice, front, rejected} | None}."""
+    if not proposal.get("changed"):
+        return {**proposal, "pareto": None}
+    stay = {**proposal, "weight": current, "changed": False}
+    key, now = f"{proposal['weight']:g}", f"{current:g}"
+    series = {k: v for k, v in (runs or {}).items() if v and k in (key, now)}
+    if key not in series or now not in series or series[key].get("ids") != series[now].get("ids"):
+        return {**stay, "reason": "the holdout was not measured for both weights: the weight stays", "pareto": None}
+    axes = {k: {a: v[a] for a, _, _ in AXES if a in v} for k, v in series.items()}
+    try:
+        chosen = pareto_select(now, axes)
+    except ValueError as exc:
+        return {**stay, "reason": f"the holdout cannot pair both weights ({exc}): the weight stays", "pareto": None}
+    verdict = {"choice": chosen["choice"], "front": chosen["front"], "rejected": chosen["rejected"]}
+    if chosen["choice"] == key:
+        return {**proposal, "pareto": verdict}
+    why = chosen["rejected"].get(key) or "not better on any axis beyond the noise"
+    return {
+        **stay,
+        "reason": f"{proposal['reason']}, but on the holdout {key} is {why}: {current:g} stays",
+        "pareto": verdict,
+    }
+
+
 def _statistic(kind: str, values: Sequence[float]) -> float:
     if kind == "p95":
         ordered = sorted(values)
