@@ -380,7 +380,9 @@ def test_task_budget_refuses_a_dispatch_once_the_runs_of_a_day_cost_the_cap(clie
     set_run(hub_db, second["run_id"], usage={"total_cost_usd": 1.75})
     refused = hand(client, key)
     said = message(refused, 429)
-    assert "cost $3.25 in the last 24 hours and runs not ended hold $1.75" in said and "under the floor of $1.00" in said
+    assert (
+        "cost $3.25 in the last 24 hours and runs not ended hold $1.75" in said and "under the floor of $1.00" in said
+    )
     count = select(func.count()).select_from(tables.runs).where(tables.runs.c.kind == "task")
     assert sql(hub_db, count) == [(2,)]
     enabled(client, hub["owner"], daily_usd=6)  # the cap raised
@@ -547,5 +549,8 @@ def test_task_branch_problem_takes_a_branch_of_its_own_and_no_default_branch():
     assert "default branch" in task_runs.branch_problem("trunk", default_branch="trunk")
     for name in ("", "-x", "a b", "a..b", "a/", "a.lock", "x@{1}", "a//b", "a/.b", "release/1.0", "evo-run/3/x"):
         assert task_runs.branch_problem(name) is not None, name
-    assert task_runs.run_budget(2.5) == {"max_usd": 2.5} and task_runs.run_budget(2.5, 10) == {"max_usd": 2.5, "max_seconds": 600}
+    assert task_runs.run_budget(2.5) == {"max_usd": 2.5} and task_runs.run_budget(2.5, 10) == {
+        "max_usd": 2.5,
+        "max_seconds": 600,
+    }
     assert task_runs.run_timeout() == task_runs.run_timeout(task_runs.MAX_MINUTES) == runs.LONGEST_TIMEOUT_MIN * 60

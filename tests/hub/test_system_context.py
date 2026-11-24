@@ -126,7 +126,12 @@ def test_the_budget_of_a_trace_is_its_runs_and_its_cost():
     assert system_context.limits_of(spec) == (system_spec.UNLIMITED_USD, system_spec.UNLIMITED_RUNS)
     assert system_context.limits_of({}) == (system_spec.UNLIMITED_USD, system_spec.UNLIMITED_RUNS), "an old spec"
     assert system_context.budget_problem(spec, 10_000, 1e6) is None, "no limit on the runs or the cost by default"
-    assert system_context.trace_row(spec, usd=1e6, runs=3, max_hop=2, budget_refusals=0, threads={}, crossings=[])["over_usd"] is None
+    assert (
+        system_context.trace_row(spec, usd=1e6, runs=3, max_hop=2, budget_refusals=0, threads={}, crossings=[])[
+            "over_usd"
+        ]
+        is None
+    )
     capped = checked({**SPEC, "limits": {"trace_runs": 12, "trace_usd": 2}})
     assert system_context.budget_problem(capped, 11, 1.99) is None
     assert "budget of 12 runs (limits.trace_runs" in system_context.budget_problem(capped, 12, 0)

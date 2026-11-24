@@ -443,9 +443,11 @@ def test_export_for_the_hook_keeps_a_hand_edited_copy(tmp_path, renders):
     held = edited.read_bytes()
     reads = []
     real_read_bytes = Path.read_bytes
+
     def tracked_read_bytes(self):
         reads.append(self.name)
         return real_read_bytes(self)
+
     renders.clear()
     monkeypatch_ctx = pytest.MonkeyPatch()
     monkeypatch_ctx.setattr(Path, "read_bytes", tracked_read_bytes)
