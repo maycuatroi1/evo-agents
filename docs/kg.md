@@ -215,6 +215,7 @@ The text is what an agent's model reads, so it is kept short and readable:
   also leave out the name of a section its anchor spells and the number of a step its id holds.
 - `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,
   and says how many nodes and edges it reached that did not fit (`left_out` in the structured result).
+  What fills the budget is chosen, not walked: see "The subgraph of kg_context".
 - Each tool takes, besides its own argument names, those agents often use for them (`evo_agents/kg/refs.py`,
   ALIASES): `files`, `targets`, `target`, `changed` or `name` for kg_impact's `paths`, `budget` or `max_tokens` for
   kg_context's `budget_tokens`, `source` and `target` for kg_path's `from` and `to`. Any other unknown name is an
@@ -530,6 +531,47 @@ The index is built in memory with each snapshot, from the full-text and code row
 content hash covers the graph's schema and what the index holds, so two builds with the same hash answer searches
 alike. Each row keeps the audience of its node (`label_aud`, `evo_agents/kg/policy.py`), and `node_fts_aud` holds the
 index rows of nodes with an audience apart, so they never weigh in the ranking a reader without that audience gets.
+
+The index keeps its postings as compressed sparse rows: per token, the rows holding it (ascending) and the raw count of
+each column, with BM25 computed at query time. With numpy a query of one phrase, or of phrases ORed, runs Block-Max
+WAND over blocks of 512 rows: a block whose upper bound cannot reach the `k`-th score so far is skipped, which gives the
+same top `k` as scoring every row (`snapshot_fts.wand_top_k`). Other queries, and every query without numpy, score all
+rows the standard-library way, in the same order. The Personalized PageRank walk runs as a sparse matrix-vector product
+over the snapshot's CSR edges (`ppr.run_csr`, `evo_agents/kg/snapshot_csr.py`). Who reads each element is compiled
+once per build into numbered policies, and once per reader into one byte per policy (`evo_agents/kg/snapshot_masks.py`),
+so a read looks a byte up per element instead of evaluating its label.
+
+On the hub, `kg_search`, `kg_context`, `kg_impact`, `kg_path` and the web's graph reads run on a bounded thread pool
+(`evo_agents/hub/kg_pool.py`, 2 to 8 threads), off the asyncio loop, so a burst of reads does not stall the loop or the
+workers' heartbeats. A build that changed few rows puts what it changed in its notice (`changes`, compressed JSON), and
+the hub's snapshot coordinator applies it to the snapshot in memory (`Snapshot.apply_changes`,
+`evo_agents/kg/snapshot_delta.py`, `evo_agents/hub/kg_graph_delta.py`): only the changed rows are read again and only
+the new text is cut into tokens. A notice without changes (too large, embeddings changed, no base snapshot, or the head
+moved on) reads the whole build as before.
+
+## The subgraph of kg_context
+
+Past its seeds, `kg_context` chooses the nodes that fill `budget_tokens` (`evo_agents/kg/serve_pack.py`,
+`evo_agents/kg/context_pack.py`):
+
+- **Reach.** The neighbours of the seeds are read best first: a node's relevance passes on divided by
+  `ln(2 + degree)`, so a hub is dear but never skipped. A seed is expanded even when it is a hub (500 edges read
+  around it, 300 around any other node, 40 nodes expanded). `in_source` and `part_of`, which every item has, weigh
+  little.
+- **Bridges.** Seeds are joined by the cheapest paths from a growing tree, a prize-collecting Steiner approximation:
+  entering a node `u` costs `ln(2 + deg(u))`, a path costs at most 12, and a search reads at most 200 nodes. A seed no
+  such path reaches stays apart. This replaces the hard cut at `HUB_DEGREE`, which kg_path and the web's graph pages
+  still use.
+- **Greedy by marginal gain per byte.** The objective of a set S is
+  `f(S) = sum d(v) * relevance(v) + 0.5 * sum_f w_f * (1 - 0.5 ** c_f(S))`, where the facets `f` are the words of the
+  question and the neighbourhoods of the seeds and `c_f(S)` counts the nodes of S that touch `f`. It is monotone and
+  submodular, so the greedy that adds, while the budget lasts, the node of best `marginal_gain / token_cost`, then
+  compares its set with the best single node, keeps at least `(1 - 1/e) / 2` of the best set the budget allows.
+  Seeds and bridge nodes are always in.
+- **Session discount.** A node an earlier `kg_context` of the same session gave is worth `d(v) = 0.2` per earlier give,
+  so a follow-up question gets new nodes rather than the same ones. A request repeated as it was reads the discount
+  from before its first call, so a retry answers the same. On the hub the nodes given are kept per owner for the
+  lifetime of a result handle (at most 2,000).
 
 ## After grep
 
@@ -917,7 +959,18 @@ that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with
    above words alone, tokens per answer file not higher, p95 under 1 s. The loop only records the advice. It does not
    change the mode: the Curator's next kg_init run decides (see "The kg_init run"). The weight of the asked column that
    ranks the tune split best is kept on the run once 30 tune questions and 20 new labels back it; the next build writes
-   it into the graph.
+   it into the graph. A weight that differs from the current one is kept only when the Pareto gate on the holdout
+   accepts it (`kg_optimize.gate_weight`, `pareto_select`): the holdout is asked at each weight too, and each
+   candidate is compared with the current weight on three axes, hit@5 (higher), tokens per file and p95 ms (lower),
+   by a paired bootstrap of 1,000 resamples of the same questions. A candidate that 95% of the resamples find worse on
+   any axis is rejected; among the rest, those no other dominates form the front, and the one that 95% of the resamples
+   find better on some axis is chosen, else the current weight stays. The gate covers the asked weight only; the
+   semantic advice stays advice. The run records the front, the choice and why each candidate was rejected.
+   The reward of the 5% exploration channel of `kg_search` (`evo_agents/kg/explore.py`) is estimated from the
+   sessions by clipped inverse propensity scoring (`rank.clipped_ips`): an explored candidate counts 1 when the agent
+   opened it and did not grep after, weighed by `1 / max(p, 0.02)` for the chance `p` it had to be put there; the
+   report gives the self-normalised estimate, its effective sample size and the estimate per explored rank, over at
+   most 5,000 explored searches a run.
 3. **Review run.** The worker on duty gets a review run through the `kg_health` lens: the night's run adds the lens to
    the rotation's, an asked-for run looks through it alone. Its agent proposes fixes of the KG code, which the Builder
    makes on a branch and the Judge checks before the auto-merge; a change that touches a protected path of the charter

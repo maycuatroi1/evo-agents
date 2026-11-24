@@ -5,7 +5,7 @@ Checked through the kg_* tools of REST and /mcp, kg_more, and the web's graph ro
 sees no node, edge, count or search result of one; a member who joined a chat after the agent of another project left
 reads its later messages, not those that need a grant on that project; a member taken out of a chat, or whose grant no
 longer clears its label, loses it at the next read, with no build, and kg_more no longer continues a result that named
-it; what is derived from messages of two chats shows only to who is in both; the agent of a chat run that went to the
+it; what is derived from messages of two chats shows to a member of either, through the chat they read; the agent of a chat run that went to the
 worker of another member reads what both people hold; a run's agent of another kind reads as its owner.
 
 The graph is built in memory, as the hub builds it, from items that carry the audiences the chats of this hub give
@@ -317,16 +317,18 @@ def test_a_member_who_joined_later_reads_what_they_clear_and_not_what_needs_a_gr
     assert {n["id"] for n in web(hub, "bob", "neighbourhood", id=PLAN)["nodes"]} == {PLAN, "source:chat", M2}
 
 
-def test_what_is_derived_from_two_chats_shows_only_to_who_is_in_both(hub):
-    both = sorted([f"chat:{hub.one}", f"chat:{hub.two}", GB])
+def test_what_is_derived_from_two_chats_shows_to_a_member_of_either_with_the_label_of_the_chat_they_read(hub):
     for read in (rest, mcp):
-        assert data(read(hub, "alice", "kg_node", id=K7))["node"]["label"]["audience"] == both
-        assert seen(read(hub, "dave", "kg_node", id=K7)) and not seen(read(hub, "bob", "kg_node", id=K7))
+        # K-7 is derived from m2 (chat one) and m3 (chat two): its policy is the disjunction of both labels, and
+        # each reader sees it through the branch they hold, with that branch's label.
+        assert data(read(hub, "alice", "kg_node", id=K7))["node"]["label"]["audience"] == [f"chat:{hub.one}"]
+        assert data(read(hub, "bob", "kg_node", id=K7))["node"]["label"]["audience"] == [f"chat:{hub.one}"]
+        assert seen(read(hub, "dave", "kg_node", id=K7)) and not seen(read(hub, "carol", "kg_node", id=K7))
         assert mentions(data(read(hub, "alice", "kg_node", id=M3)), "out") == {M2}
         assert mentions(data(read(hub, "bob", "kg_node", id=M2)), "in") == set()  # m3 is of chat two
         assert data(read(hub, "alice", "kg_path", **{"from": M3, "to": PLAN}))["found"]
-    assert web(hub, "bob", "node", 404, id=K7) is not None
-    assert "Code" not in {k["kind"] for k in web(hub, "bob", "graph")["kinds"]}  # K-9 is of m1 alone
+    assert web(hub, "bob", "node", id=K7)["node"]["id"] == K7
+    assert web(hub, "carol", "node", 404, id=K7) is not None
     assert {k["kind"]: k["count"] for k in web(hub, "alice", "graph")["kinds"]}["Code"] == 2
 
 
@@ -446,8 +448,9 @@ def test_the_agent_of_a_chat_run_on_another_members_worker_reads_what_both_peopl
     run_id = chat_run(hub, studio, "alice", asked["id"])  # bob asked; it runs on alice's worker
     assert found(mcp(hub, "alice", "kg_search", query="kiwi rollout")) == {M1, M2, PLAN}
     assert found(agent(hub, studio, run_id, "kg_search", query="kiwi rollout")) == {M2, PLAN}
-    for hidden in (M1, M3, K7):  # m1 needs a grant on aud-b, m3 and K-7 chat two: bob holds neither
+    for hidden in (M1, M3):  # m1 needs a grant on aud-b, m3 chat two: bob holds neither
         assert not seen(agent(hub, studio, run_id, "kg_node", id=hidden))
+    assert seen(agent(hub, studio, run_id, "kg_node", id=K7))  # K-7 is also of m2, which both people read
     principal = Principal(
         user_id(hub, "alice"), "alice", False, 0, "worker", "", RunScope(run_id, A, "writer", "internal", "chat")
     )
