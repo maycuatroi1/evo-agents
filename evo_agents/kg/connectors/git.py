@@ -10,7 +10,8 @@ Source config (knowledge.yaml)::
       include: ["docs/*", "*.py"]         # optional globs; default: markdown, yaml, text, code
       exclude: ["tests/fixtures/*"]
       allow: [".claude/CLAUDE.md"]        # optional globs exempt from DEFAULT_EXCLUDE
-      code: {backend: auto}               # python-ast, graphify-ast (needs the graphify extra) or none
+      code: {backend: auto}               # python-ast, graphify-ast (needs the graphify extra), scip or none
+                                          # scip: {backend: scip, scip_index: index.scip}, type-resolved calls
 
 Paths matching ``DEFAULT_EXCLUDE`` (build output, lock files, virtualenvs, ``.claude/``, ``.agents/``, ...)
 at any depth, and ``state/`` at the root only, are skipped unless they match an ``allow`` glob. The source's
@@ -72,6 +73,7 @@ from pathlib import Path
 from evo_agents import __version__
 from evo_agents.kg.connectors import gitcli, github
 from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
+from evo_agents.kg.extract.scip_index import Scip
 from evo_agents.kg.protocol import canonical_json, finalize_item, hello, sha256
 from evo_agents.kg.redact import redact_file
 
@@ -381,6 +383,7 @@ def run(ctx):
     origin = entry.get("origin", "")
     branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
     repo_name = ctx.source.get("repo") or repo.name
+    scip = Scip(ctx.source, repo)  # the SCIP index of the checkout, when the source's code backend reads one
 
     count = 0
     batch = 200
@@ -401,7 +404,7 @@ def run(ctx):
                 continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
             # No commit in props: it would change every item's hash on every commit.
             item["props"]["repo"] = repo_name
-            yield finalize_item(item)
+            yield finalize_item(scip.annotate(item))
             count += 1
     for sha, path in others:  # known by path only: never read, so no blob fetch
         uri = gitcli.web_url(origin, branch, path) if origin else None

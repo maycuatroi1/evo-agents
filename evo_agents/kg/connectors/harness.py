@@ -38,6 +38,7 @@ from evo_agents.kg.connectors._files import (
     matches,
     selected,
 )
+from evo_agents.kg.extract.scip_index import Scip
 from evo_agents.kg.ids import epoch_to_iso
 from evo_agents.kg.protocol import finalize_item, hello
 
@@ -169,6 +170,7 @@ def run(ctx):
 
     assets = ctx.source.get("assets", True)
     from_hub, cursor = yield from hub_plans.read(ctx, root)
+    scip = Scip(ctx.source, root)  # the SCIP index of the tree, when the source's code backend reads one
     count = 0
     for full, rel in walk(root):
         kind = harness_kind(rel, bindings)
@@ -191,7 +193,7 @@ def run(ctx):
                 f"{sid}:file:{rel}", rel, text, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, kind=kind
             )
         item["props"]["repo"] = repo_name
-        yield finalize_item(item)
+        yield finalize_item(scip.annotate(item))
         count += 1
     for plan_id, plan in sorted(from_hub.items()):
         if selected(f"plans/{plan['area']}/{plan_id}.yaml", include or ["*.yaml"], exclude):

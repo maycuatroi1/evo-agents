@@ -34,6 +34,7 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "def": {},  # "<file item>::<qualname>" -> the symbol it defines there
         "pkgdef": defaultdict(list),  # "<package>::<qualname>" -> the symbols there, "jvm:com.acme.a::A.f"
         "tsconfig": {},  # "<repo>:<dir>" -> baseUrl and paths of the tsconfig.json there
+        "scip": {},  # a SCIP symbol string -> the Symbol node its index defines
         "classes": {},  # class symbol -> (its file item, its qualname)
     }
     with_bases: list[dict] = []
@@ -160,6 +161,8 @@ def _learn(index: dict, f: dict) -> None:
             index["modsuffix"][".".join(parts[i:])].append({"node": f["node"], "source": f["source"]})
     elif kind == "symbol":
         _learn_symbol(index, f)
+    elif kind == "scip":
+        index["scip"].setdefault(f["key"], f["node"])
     elif kind == "alias":  # a module-level name bound to a def of its file
         index["def"].setdefault(f["key"], f["node"])
     elif kind == "tsconfig":

@@ -145,6 +145,15 @@ What each row takes as evidence:
   another class's attribute or an attribute a base class sets), `isinstance` narrowing, `getattr` and other dynamic
   calls, and an override reached through `self.m()` in its base class. Receiver types come from the `python-ast`
   backend, the default for Python; a source that sets `graphify-ast` gets none of them.
+- Type-resolved calls (`code: {backend: scip, scip_index: index.scip}`, or `auto` with an `index.scip` or
+  `.scip/index.scip` in the tree): the `git` and `harness` connectors read a SCIP index (binary, or protobuf JSON as
+  `index.json`) of `scip-python` or `scip-typescript` and put the compact per-file data in `props.scip`; the hub never
+  runs a compiler. The build adds `calls`, `references` and `implements` edges at `introspected`, confidence 1, for what
+  the compilers resolved: a call through an untyped variable, a loop variable, `with ... as`, a callback, a method of a
+  TypeScript interface. A file that has no TypeScript symbols from `graphify-ast` gets its Symbol nodes from the index.
+  The tools run on the syncing machine for `backend: scip`, and for `auto` only with `EVO_KG_SCIP_TOOLS=1`; without an
+  index or a tool the code is read by `python-ast` and `graphify-ast`, and `kg status` says so for `scip`
+  (`code.scip`, a warning). The index is read from the working tree, so keep it current with the ref the source reads.
 - TypeScript, JavaScript and Vue: named, default and namespace imports and `require()`, relative or through the
   `paths` and `baseUrl` of the nearest `tsconfig.json`; a receiver typed with an imported class. `extends` and
   `implements` are read off the class header, since graphify reports none for JS and TS; `this.m()` and `super.m()`.

@@ -233,8 +233,13 @@
                 "auto",
                 "python-ast",
                 "graphify-ast",
+                "scip",
                 "none"
               ]
+            },
+            "scip_index": {
+              "type": "string",
+              "minLength": 1
             }
           }
         },

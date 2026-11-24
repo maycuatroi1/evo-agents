@@ -265,6 +265,10 @@ class RefResolver(PathResolver):
                     break
             if found is None:
                 return  # a package import or a file outside the sources: not a dangling link
+        elif ttype == "scip":
+            found = self.index["scip"].get(target["value"])
+            if found is None or found == f["src"]:
+                return  # a symbol of a library or of a file outside the sources: not a dangling link
         elif ttype in ("module", "commit"):
             found = self._module_or_commit(ttype, target)
             if found is None:
