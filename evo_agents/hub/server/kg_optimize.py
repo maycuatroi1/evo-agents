@@ -40,7 +40,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, insert, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -58,8 +58,8 @@ from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.tables_kg import OPTIMIZE_ACTIVE
+from evo_agents.kg import explore, rank, semantic
 from evo_agents.kg import search as text_search
-from evo_agents.kg import semantic
 from evo_agents.kg.evaluate import TUNE
 
 log = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ AFTER_WAIT = timedelta(hours=6)  # and this long for a build after the review ru
 MAX_DECISIONS = 25  # graph decisions a run applies
 MAX_LISTED = 10  # runs GET lists
 ERROR_CHARS = 2000
+MAX_EXPLORED = 5000  # explored searches a run reads to estimate their reward
 NOTICE = "kg_optimize"  # runs.NOTICE_KINDS
 KG_OPTIMIZE = "kg.optimize"  # the audit action of an asked-for run
 
@@ -107,13 +108,16 @@ def _measure_graph(
             return {"why": f"build {graph.build_id} holds no ready graph"}
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
 
-        def asked(questions, *, meaning: bool, at: float):
+        def asked(questions, *, meaning: bool, at: float, kept: dict | None = None):
             store.asked_weight = at
             session.semantic = meaning
-            found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
+            found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink, series=kept is not None)
+            if kept is not None:
+                kept[f"{at:g}"] = (found.get("series") or {}).get("kg_search")
             return model.figures((found.get("methods") or {}).get("kg_search"))
 
-        words = asked(holdout, meaning=False, at=weight)
+        held: dict = {}  # the holdout's per-question series at each weight, for the Pareto choice
+        words = asked(holdout, meaning=False, at=weight, kept=held if tune else None)
         meaning, why = None, None
         info = store.vector_info()
         if info is None:
@@ -130,6 +134,9 @@ def _measure_graph(
             questions = [q for q in question_set.part(TUNE) if q.project in (None, project)][:MAX_TUNE]
             if questions:
                 tuned = {f"{w:g}": asked(questions, meaning=False, at=w) for w in model.WEIGHTS}
+                for w in model.WEIGHTS:
+                    if f"{w:g}" not in held:
+                        asked(holdout, meaning=False, at=w, kept=held)
         return {
             "build_id": graph.build_id,
             "content_hash": graph.content_hash,
@@ -137,6 +144,7 @@ def _measure_graph(
             "meaning": meaning,
             "why_meaning": why,
             "tuned": tuned,
+            "holdout_series": held,
         }
 
 
@@ -188,8 +196,19 @@ async def _sessions(conn: AsyncConnection, project_id: int, since: datetime) -> 
         )
     ).one()
     new = await conn.scalar(select(func.count()).where(t.c.project_id == project_id, t.c.created_at >= since))
+    logged = await conn.execute(
+        select(t.c.results, t.c.clicks, t.c.grep_after)
+        .where(
+            t.c.project_id == project_id,
+            when >= since,
+            or_(*(t.c.results.contains([{"explored": r}]) for r in explore.RANKS)),
+        )
+        .limit(MAX_EXPLORED)
+    )
+    explored = rank.explore_estimate({"results": r, "clicks": c, "grep_after": g} for r, c, g in logged)
     searches = row.searches or 0
     return {
+        "explore": explored,
         "since": since.isoformat(),
         "searches": searches,
         "click_rate": round(row.clicked / searches, 4) if searches else None,
@@ -353,6 +372,7 @@ async def _measuring(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure
         gate["previous"] = settings.mode
         gate["applied"] = False  # the gate advises; the Curator's kg_init run decides the mode
         asked = model.best_weight(graph.get("tuned") or {}, weight, sessions["new_labels"])
+        asked = model.gate_weight(asked, graph.get("holdout_series"), weight)
         asked["previous"] = weight
         body = {
             "before": {

@@ -3,12 +3,9 @@ budget of text, or from one node along chains and to another."""
 
 from __future__ import annotations
 
-from collections import deque
-
-from evo_agents.kg import locate, ppr
+from evo_agents.kg import ppr
 from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
-    CONTEXT_MIN_LINE,
     CONTEXT_NOTE_BYTES,
     CONTEXT_QUERY_SHOWN,
     Room,
@@ -16,18 +13,16 @@ from evo_agents.kg.budget import (
 )
 from evo_agents.kg.refs import readable
 from evo_agents.kg.search import through_entities
-from evo_agents.kg.serve_text import SessionText
+from evo_agents.kg.serve_pack import SEED_EDGES, STATUS_RANK, PackTools
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.snapshot import SnapshotView
 
-STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 HUB_DEGREE = 150
 CHAIN_RELS = ("implements", "schedules", "verifies", "has_step", "touches")
 PATH_SKIP = ("in_source",)  # every item hangs off its source: a path through one says nothing
-SEED_EDGES = 500  # edges read around a seed or a path's start, which are expanded even when they are hubs
 
 
-class WalkTools(SessionText):
+class WalkTools(PackTools):
     """kg_context and kg_path."""
 
     def tool_kg_context(
@@ -54,19 +49,11 @@ class WalkTools(SessionText):
                 room.left_nodes.add(sid)
         if not room.nodes:
             raise ToolError("budget_tokens holds none of the seeds: raise it, or pass fewer ids")
-        frontier = deque((s, 0) for s in room.nodes)
         walk = ppr.of(store.tuning.walk, store.tuning.entity_code)
-        if walk is not None and walk.context:  # the walk fills the budget past the seeds, not hops from them
-            self._context_walk(store, b, query, room, walk)
-            frontier.clear()
-        while frontier:
-            if room.size - room.used < CONTEXT_MIN_LINE:
-                room.beyond = any(depth < hops for _, depth in frontier)  # full: what lies past them is not read
-                break
-            current, depth = frontier.popleft()
-            if depth >= hops or (depth > 0 and store.degree(current, b) > HUB_DEGREE):
-                continue  # do not expand hubs: they would fill the budget with neighbours of everything
-            self._context_from(store, b, current, depth, room, frontier)
+        key = (query, tuple(seeds), size, hops)
+        before = self._given_before(key)
+        self._context_pack(store, b, query, room, hops, walk, before)
+        self._remember(room, key, before)
         shared, label_line = self._labels(room.nodes.values())
         lines = [header(len(room.nodes), len(room.edges)), *label_line]
         lines += [self._line(n, shared) for n in room.nodes.values()]
@@ -115,70 +102,6 @@ class WalkTools(SessionText):
         if not seeds:
             raise ToolError("nothing visible matches; try kg_search")
         return seeds, stood
-
-    def _context_walk(self, store: SnapshotView, b: int, query, room: Room, walk) -> None:
-        """Fill ``room`` past its seeds with the visible nodes a walk settles on most (``evo_agents.kg.ppr``), best
-        first, each with up to two visible edges to the nodes already in. The walk restarts at the query's text matches
-        and at the seeds."""
-        scored = store.search_scored(str(query), b, limit=walk.seeds, deprecated=self.deprecated) if query else []
-        base = locate._rels(scored) if scored else {}
-        for sid in room.nodes:
-            base[sid] = max(base.get(sid, 0.0), 1.0)
-        found = ppr.run(store, b, base, walk, self.seen)
-        order = [i for i in sorted(found, key=lambda i: (-found[i], i)) if i not in room.nodes][: walk.keep * 4]
-        nodes = store.nodes(order, b)
-        for nid in order:
-            if room.size - room.used < CONTEXT_MIN_LINE:
-                room.beyond = True
-                break
-            node = nodes.get(nid)
-            if node is None or not self.seen(node):
-                continue
-            links = []
-            for e in store.edges_of(nid, b, limit=300):
-                other = e["dst"] if e["src"] == nid else e["src"]
-                if other in room.nodes and self.seen(e) and e["id"] not in room.edges:
-                    links.append(e)
-            links.sort(key=lambda e: (-STATUS_RANK.get(e["status"], 0), e["rel"], e["src"], e["dst"]))
-            links = links[:2]
-            cost = line_size(self._line(node)) + sum(line_size(self._edge_line(e)) for e in links)
-            if room.take_node(nid, node, cost):
-                for e in links:
-                    room.edges[e["id"]] = e
-            else:
-                room.left_nodes.add(nid)
-
-    def _context_from(self, store: SnapshotView, b: int, current: str, depth: int, room: Room, frontier: deque) -> None:
-        """Put the visible edges of ``current`` into ``room``, strongest first, each with the neighbour it brings
-        when that one is new; what does not fit is counted as left out, and a new neighbour joins the frontier."""
-        edges = [e for e in store.edges_of(current, b, limit=300) if self.seen(e)]
-        edges.sort(
-            key=lambda e: (
-                -STATUS_RANK.get(e["status"], 0),
-                e["rel"] in ("in_source", "part_of"),
-                e["rel"],
-                e["src"],
-                e["dst"],
-            )
-        )
-        neighbours = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in edges}, b)
-        for e in edges:
-            other = e["dst"] if e["src"] == current else e["src"]
-            node = neighbours.get(other)
-            if node is None or not self.seen(node) or e["id"] in room.edges:
-                continue
-            cost = line_size(self._edge_line(e))
-            if other in room.nodes:
-                if room.take(cost):
-                    room.edges[e["id"]] = e
-                else:
-                    room.left_edges.add(e["id"])
-            elif room.take_node(other, node, cost + line_size(self._line(node))):
-                room.edges[e["id"]] = e
-                frontier.append((other, depth + 1))
-            else:
-                room.left_nodes.add(other)
-                room.left_edges.add(e["id"])
 
     def _walk(
         self, store: SnapshotView, b: int, start: dict, max_hops: int, rels: tuple | None, goal: str | None

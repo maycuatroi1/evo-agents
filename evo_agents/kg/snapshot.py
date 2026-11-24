@@ -21,17 +21,36 @@ from __future__ import annotations
 
 import copy
 import json
-import struct
 from array import array
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg import snapshot_text
-from evo_agents.kg.graph_model import Clusters, label_columns, stored_audience, within
+from evo_agents.kg import snapshot_csr, snapshot_masks, snapshot_text
+from evo_agents.kg.graph_model import (
+    Clusters,
+    guards_text,
+    label_columns,
+    read_as,
+    stored_audience,
+    stored_guards,
+    within,
+)
 from evo_agents.kg.pacing import let_go, paced, paced_sorted
 from evo_agents.kg.policy import audience_below, audience_join
+from evo_agents.kg.snapshot_rows import (  # noqa: F401  (read from here too)
+    CLUSTER,
+    LINK,
+    MEMBER,
+    UNIT_KEYS,
+    StoreRows,
+    asked_order,
+    cluster_order,
+    cluster_rows,
+    rows_clusters,
+    rows_vectors,
+)
 
 
 def _node_dict(row) -> dict:
@@ -45,6 +64,7 @@ def _node_dict(row) -> dict:
         "conf": row[5],
         "label": (row[6], row[7], row[8], stored_audience(row[10])),
         "aliases": json.loads(row[9] or "[]"),
+        **_guarded(row, 11),
     }
 
 
@@ -59,7 +79,14 @@ def _edge_dict(row) -> dict:
         "status": row[5],
         "conf": row[6],
         "label": (row[7], row[8], row[9], stored_audience(row[10])),
+        **_guarded(row, 11),
     }
+
+
+def _guarded(row, i: int) -> dict:
+    """``guards`` of a row whose ``label_guards`` (column ``i``) holds some (``graph_model.stored_guards``)."""
+    guards = stored_guards(row[i]) if len(row) > i else None
+    return {"guards": guards} if guards else {}
 
 
 def node_dict(row) -> dict:
@@ -96,6 +123,11 @@ class Shared:
         return e
 
 
+def edge_order(e: dict) -> tuple:
+    """The order of a snapshot's edges: (rel, src, dst, edge id)."""
+    return e["rel"], e["src"], e["dst"], e["id"]
+
+
 def label_pair(label) -> tuple[int, int]:
     """The level and location of a label."""
     return int(label[0]), int(label[1])
@@ -104,6 +136,11 @@ def label_pair(label) -> tuple[int, int]:
 def _label_row(label) -> tuple:
     columns = label_columns(label)
     return columns["label_lvl"], columns["label_loc"], columns["label_int"], columns.get("label_aud")
+
+
+def _guards_row(x: dict) -> str | None:
+    """The ``label_guards`` of element ``x`` of a graph or of a snapshot (``_guarded``), as a row holds it."""
+    return guards_text(x["guards"]) if x.get("guards") else None
 
 
 def node_row(nid: str, n: dict) -> tuple:
@@ -122,6 +159,7 @@ def node_row(nid: str, n: dict) -> tuple:
         integrity,
         json.dumps(n.get("aliases", [])),
         aud,
+        _guards_row(n),
     )
 
 
@@ -129,7 +167,7 @@ def edge_row(eid: str, e: dict) -> tuple:
     """The EDGE_COLUMNS row of edge ``e`` of a graph."""
     lvl, loc, integrity, aud = _label_row(e["label"])
     props = json.dumps(e["props"], ensure_ascii=False, sort_keys=True)
-    return (eid, e["src"], e["rel"], e["dst"], props, e["status"], e["conf"], lvl, loc, integrity, aud)
+    return (eid, e["src"], e["rel"], e["dst"], props, e["status"], e["conf"], lvl, loc, integrity, aud, _guards_row(e))
 
 
 @dataclass(frozen=True)
@@ -166,7 +204,10 @@ def _csr(count: int, keys: list[tuple[int, int, int]]) -> tuple[array, array]:
     return start, array("I", (edge for _, _, edge in paced_sorted(keys)))
 
 
-def _partitions(count: int, src: array, dst: array, groups: dict[tuple[str, str], list[int]]) -> MappingProxyType:
+def partitions_of(count: int, src: array, dst: array, groups: dict[tuple[str, str], list[int]]) -> MappingProxyType:
+    fast = snapshot_csr.index(count, src, dst, groups)
+    if fast is not None:
+        return MappingProxyType({k: Partition(*k, *v) for k, v in fast.items()})
     out = {}
     for (rel, status), edges in sorted(groups.items()):
         out_start, out_edges = _csr(count, [(src[e], dst[e], e) for e in paced(edges)])
@@ -176,9 +217,11 @@ def _partitions(count: int, src: array, dst: array, groups: dict[tuple[str, str]
 
 
 def _graph_counts(nodes: list[dict], edges: list[dict], src: array, dst: array) -> tuple[tuple, tuple, tuple]:
-    """(node_counts, edge_counts, shape) grouped by label, so kind_counts, shape_counts and seen walk labels, not rows."""
-    node_counts = tuple((*k, c) for k, c in Counter((n["kind"], n["label"]) for n in paced(nodes)).items())
-    edge_counts = tuple(Counter(e["label"][3] for e in paced(edges)).items())
+    """(node_counts, edge_counts, shape) grouped by label, so kind_counts, shape_counts and seen walk labels, not rows:
+    nodes and edges by policy (``snapshot_masks.policy``: a reader of any guard of an element counts it)."""
+    policy = snapshot_masks.policy
+    node_counts = tuple((*k, c) for k, c in Counter((n["kind"], policy(n)) for n in paced(nodes)).items())
+    edge_counts = tuple(Counter(policy(e) for e in paced(edges)).items())
     shapes = Counter(
         (
             nodes[src[i]]["kind"],
@@ -193,7 +236,7 @@ def _graph_counts(nodes: list[dict], edges: list[dict], src: array, dst: array) 
     return node_counts, edge_counts, tuple((*k, c) for k, c in shapes.items())
 
 
-def _unit_counts(units) -> tuple[tuple, tuple, tuple, frozenset[str]]:
+def count_units(units) -> tuple[tuple, tuple, tuple, frozenset[str]]:
     """(unit_counts, item_counts, mixed_items, audience_sources) of live units for ``SnapshotView.seen``."""
     parsed: dict[str | None, frozenset[str]] = {None: frozenset()}
     unit_auds: Counter = Counter()
@@ -263,8 +306,8 @@ class Snapshot:
     asked_weight: float | None = None  # the weight of an asked match the build recorded
     found: Clusters | None = None  # the build's clusters
     review: tuple[dict, ...] = ()  # the build's review items
-    node_counts: tuple[tuple, ...] = ()  # (kind, label, count) for kind_counts and seen
-    edge_counts: tuple[tuple, ...] = ()  # (audience, count) for seen
+    node_counts: tuple[tuple, ...] = ()  # (kind, policy, count) for kind_counts and seen
+    edge_counts: tuple[tuple, ...] = ()  # (policy, count) for seen
     shape: tuple[tuple, ...] = ()  # (src_kind, rel, dst_kind, e_label, s_label, d_label, count) for shape_counts
     unit_counts: tuple[tuple, ...] = ()  # (audience, count) for seen
     item_counts: tuple[tuple, ...] = ()  # (source, audience, count) of single-audience items for seen
@@ -289,15 +332,30 @@ class Snapshot:
         kept out of the CSR indexes but read by its id, as a read of a node's edges never meets it."""
         read = paced_sorted(map(_node_dict, nodes), key=lambda n: n["id"])
         ids = tuple(n["id"] for n in read)
-        index = {nid: i for i, nid in enumerate(paced(ids))}
-        one = Shared(ids)
+        one, alive = Shared(ids), frozenset(ids)
         for n in paced(read):
             n["kind"], n["status"], n["label"] = one.text(n["kind"]), one.text(n["status"]), one.label(n["label"])
         held = paced_sorted(
-            (one.edge(e) for e in map(_edge_dict, edges) if e["src"] in index and e["dst"] in index),
-            key=lambda e: (e["rel"], e["src"], e["dst"], e["id"]),
+            (one.edge(e) for e in map(_edge_dict, edges) if e["src"] in alive and e["dst"] in alive), key=edge_order
         )
         del one
+        return cls.made(content_hash, read, held, text, vectors, build, top)
+
+    @classmethod
+    def made(
+        cls,
+        content_hash: str,
+        read: list[dict],
+        held: list[dict],
+        text: snapshot_text.TextIndex,
+        vectors: snapshot_text.Vectors | None = None,
+        build: int = 0,
+        top: tuple[tuple[int, int], frozenset[str]] | None = None,
+    ) -> Snapshot:
+        """A snapshot of node dicts ``read`` by id and edge dicts ``held`` by ``edge_order``, each edge's ends among
+        the nodes (``from_rows``, ``snapshot_delta.apply``)."""
+        ids = tuple(n["id"] for n in read)
+        index = {nid: i for i, nid in enumerate(paced(ids))}
         src = array("I", (index[e["src"]] for e in paced(held)))
         dst = array("I", (index[e["dst"]] for e in paced(held)))
         groups: dict[tuple[str, str], list[int]] = defaultdict(list)
@@ -320,7 +378,7 @@ class Snapshot:
                 audience = audience_join(audience, label[3])
             top = ((max((x[0] for x in labels), default=0), max((x[1] for x in labels), default=0)), audience)
         node_counts, edge_counts, shape = _graph_counts(read, held, src, dst)
-        return cls(
+        snap = cls(
             content_hash=content_hash,
             ids=ids,
             index=MappingProxyType(index),
@@ -328,7 +386,7 @@ class Snapshot:
             edges=tuple(held),
             src=src,
             dst=dst,
-            partitions=_partitions(len(ids), src, dst, groups),
+            partitions=partitions_of(len(ids), src, dst, groups),
             names=MappingProxyType({k: tuple(sorted(v)) for k, v in paced(names.items())}),
             aliases=MappingProxyType({alias: ids[i] for alias, i in paced(aliased.items())}),
             text=text,
@@ -340,6 +398,8 @@ class Snapshot:
             edge_counts=edge_counts,
             shape=shape,
         )
+        snapshot_masks.of(snap)  # its policies compiled with it, not at its first read
+        return snap
 
     @classmethod
     def from_graph(cls, graph, build: int = 0) -> Snapshot:
@@ -373,8 +433,8 @@ class Snapshot:
             derived[elem].append((units, needs))
         bodies = {key: (row[4], row[5] if len(row) > 5 else None) for key, row in paced(rows.keyed)}
         units = MappingProxyType({r[0]: tuple(r) for r in paced(rows.units)})
-        unit_counts, item_counts, mixed_items, audience_sources = _unit_counts(units.values())
-        return replace(
+        unit_counts, item_counts, mixed_items, audience_sources = count_units(units.values())
+        made = replace(
             snap,
             units=units,
             where=MappingProxyType({k: tuple(v) for k, v in paced(where.items())}),
@@ -390,6 +450,7 @@ class Snapshot:
             mixed_items=mixed_items,
             audience_sources=audience_sources,
         )
+        return snapshot_masks.carried(snap, made)
 
     def view(
         self,
@@ -403,92 +464,12 @@ class Snapshot:
     def rels(self) -> list[str]:
         return sorted({rel for rel, _ in self.partitions})
 
+    def apply_changes(self, delta) -> Snapshot:
+        """This snapshot with ``delta`` (``snapshot_delta.Delta``, what a build changed) applied: the snapshot a full
+        read of the changed rows would make, made from this one's parts."""
+        from evo_agents.kg import snapshot_delta
 
-@dataclass(frozen=True)
-class StoreRows:
-    """What a snapshot is made of, the rows of one build: its content hash, its live node and edge rows
-    (NODE_COLUMNS, EDGE_COLUMNS), its full-text rows keyed as ``node_fts_rows`` keeps them (folded), the folded text
-    of its code by file node id, and its top label and audience."""
-
-    content_hash: str
-    nodes: tuple[tuple, ...]
-    edges: tuple[tuple, ...]
-    keyed: tuple[tuple[str, tuple], ...]
-    code: dict[str, str]
-    top: tuple[tuple[int, int], frozenset[str]]
-    units: tuple[tuple, ...] = ()  # live units: UNIT_KEYS, then label_aud, label_lvl, label_loc
-    wheres: tuple[tuple, ...] = ()  # live where-provenance: (element, unit, span), by element, unit, span
-    derivations: tuple[tuple, ...] = ()  # live derivations: (element, units JSON, needs JSON), by element, deriv id
-    summary: dict = field(default_factory=dict)  # ``SnapshotView.summary``
-    vectors: tuple[tuple, ...] = ()  # the rows of node_vec: (key, node id, kind, aud, vector bytes), by key
-    vector_info: dict | None = None  # ``semantic.Info`` of them as a dict; None without vectors
-    # the rows of the asked index (node id, level, location, audience, prior, words), by ``asked_order``, and the
-    # weight of an asked match the build recorded; empty and None without them
-    asked: tuple[tuple, ...] = ()
-    asked_weight: float | None = None
-    # the build's clusters as ``cluster_rows`` gives them, and its review items
-    # by fingerprint; empty without them
-    clusters: tuple[tuple, ...] = ()
-    review: tuple[dict, ...] = ()
-
-    def __del__(self) -> None:
-        let_go(self)  # as a snapshot's parts (``Snapshot.__del__``)
-
-
-UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
-
-
-def asked_order(rows) -> tuple[tuple, ...]:
-    """Asked rows in one order whatever read them: by node, then by the JSON of the rest (an audience may be None)."""
-    return tuple(sorted((tuple(r) for r in rows), key=lambda r: (r[0], json.dumps(r[1:]))))
-
-
-CLUSTER, MEMBER, LINK = "k", "m", "l"  # the kinds of a ``cluster_rows`` row
-
-
-def cluster_rows(found: Clusters | None) -> tuple[tuple, ...]:
-    """``found`` as rows: (CLUSTER, id, its dict), (MEMBER, node id, [top, sub]), (LINK, [level, a, b], weight)."""
-    if found is None:
-        return ()
-    rows: list[tuple] = [(CLUSTER, cid, c) for cid, c in found.clusters.items()]
-    rows += [(MEMBER, nid, list(m)) for nid, m in found.members.items()]
-    rows += [(LINK, list(key), w) for key, w in found.links.items()]
-    return cluster_order(rows)
-
-
-def cluster_order(rows) -> tuple[tuple, ...]:
-    """``cluster_rows`` rows in one order whatever read them: by kind, then by the JSON of the key."""
-    return tuple(sorted(rows, key=lambda r: (r[0], json.dumps(r[1]))))
-
-
-def rows_clusters(rows) -> Clusters | None:
-    """The clusters of ``cluster_rows`` rows; None without a cluster, as ``SnapshotView.clusters``."""
-    out = Clusters()
-    for kind, key, value in paced(rows):
-        if kind == CLUSTER:
-            out.clusters[key] = dict(value)
-        elif kind == MEMBER:
-            out.members[key] = (value[0], value[1])
-        else:
-            out.links[(key[0], key[1], key[2])] = value
-    return out if out.clusters else None
-
-
-def rows_vectors(rows: StoreRows) -> snapshot_text.Vectors | None:
-    """The vectors of ``rows`` (``StoreRows.vectors``), None without them."""
-    from evo_agents.kg import semantic
-
-    if not rows.vectors or not rows.vector_info:
-        return None
-    found = semantic.Info(**rows.vector_info)
-    unpack = struct.Struct(f"<{found.dim}e").unpack
-    return snapshot_text.Vectors(
-        found,
-        tuple(r[1] for r in paced(rows.vectors)),
-        tuple(r[2] for r in paced(rows.vectors)),
-        tuple(r[3] for r in paced(rows.vectors)),
-        tuple(array("f", unpack(bytes(r[4]))) for r in paced(rows.vectors)),
-    )
+        return snapshot_delta.apply(self, delta)
 
 
 class SnapshotView:
@@ -502,6 +483,15 @@ class SnapshotView:
         self._seen: tuple[frozenset[str], dict] | None = None
         self.asked_clearance: tuple[int, int] | None = None  # search reads the asked rows within it
         self.asked_weight: float | None = None  # the weight of an asked match in place of the build's (an eval)
+        self._sight: snapshot_masks.Sight | None = None
+
+    @property
+    def sight(self) -> snapshot_masks.Sight:
+        """What the reader reads of the snapshot's policies, a byte per policy (``snapshot_masks``), made again when
+        a caller set another ``reader`` since."""
+        if self._sight is None or self._sight.reader != self.reader:
+            self._sight = snapshot_masks.Sight(snapshot_masks.of(self.snap), self.reader)
+        return self._sight
 
     def close(self) -> None:
         """Nothing to close: a view reads RAM."""
@@ -509,20 +499,33 @@ class SnapshotView:
     # -- what the reader sees ---------------------------------------------------------------------------------------
 
     def sees(self, x: dict) -> bool:
-        """Whether the row's audience is within the reader's."""
+        """Whether the row's audience, or that of one of its guards, is within the reader's."""
+        if "guards" in x:
+            return any(audience_below(g[0][3], self.reader) for g in x["guards"])
         return audience_below(x["label"][3], self.reader)
 
     def under(self, e: dict, ceiling: tuple[int, int] | None) -> bool:
+        """Whether the row's label is at most ``ceiling``: for a row with guards, one the reader sees."""
+        if "guards" in e:
+            return ceiling is None or any(
+                audience_below(g[0][3], self.reader) and g[0][0] <= ceiling[0] and g[0][1] <= ceiling[1]
+                for g in e["guards"]
+            )
         return ceiling is None or (e["label"][0] <= ceiling[0] and e["label"][1] <= ceiling[1])
+
+    def read(self, x: dict, ceiling: tuple[int, int] | None = None) -> dict:
+        """The row as the reader reads it, one it ``sees``: of one with guards, the label and props of the guard it
+        reads within ``ceiling``, the view's when None (``graph_model.read_as``)."""
+        return read_as(x, self.reader, ceiling if ceiling is not None else self.ceiling) or x
 
     # -- nodes ------------------------------------------------------------------------------------------------------
 
     def nodes(self, ids, b: int = 0) -> dict[str, dict]:
-        out = {}
+        out, sees, policy = {}, self.sight.sees, self.sight.policies.node
         for nid in ids:
             i = self.snap.index.get(nid)
-            if i is not None and self.sees(self.snap.nodes[i]):
-                out[nid] = dict(self.snap.nodes[i])
+            if i is not None and sees[policy[i]]:
+                out[nid] = dict(self.read(self.snap.nodes[i]))
         return out
 
     def node(self, node_id: str, b: int = 0) -> dict | None:
@@ -533,11 +536,11 @@ class SnapshotView:
 
     def exact(self, query: str, b: int = 0, limit: int = 50, kinds=()) -> list[str]:
         """Live nodes the reader sees whose id, alias or name is ``query``, by id."""
-        wanted = set(kinds or ())
+        wanted, sees, policy = set(kinds or ()), self.sight.sees, self.sight.policies.node
         found = sorted(
             self.snap.ids[i]
             for i in self.snap.names.get(query, ())
-            if self.sees(self.snap.nodes[i]) and (not wanted or self.snap.nodes[i]["kind"] in wanted)
+            if sees[policy[i]] and (not wanted or self.snap.nodes[i]["kind"] in wanted)
         )
         return found[:limit]
 
@@ -570,28 +573,26 @@ class SnapshotView:
 
     def edges_of(self, node_id: str, b: int = 0, direction: str = "both", limit: int = 200) -> list[dict]:
         """The live edges of a node, within ``ceiling`` and the reader's audience, filtered before the limit."""
-        out = []
+        out, within, policy = [], self.sight.within(self.ceiling), self.sight.policies.edge
         for e in self._numbers(node_id, direction):
-            edge = self.snap.edges[e]
-            if self.sees(edge) and self.under(edge, self.ceiling):
-                out.append(dict(edge))
+            if within[policy[e]]:
+                out.append(dict(self.read(self.snap.edges[e])))
                 if len(out) >= limit:
                     break
         return out
 
     def _into(self, node_id: str, rels, statuses, ceiling) -> list[dict]:
         found = self._numbers(node_id, "in", set(rels), set(statuses))
-        return [
-            self.snap.edges[e]
-            for e in found
-            if self.sees(self.snap.edges[e]) and self.under(self.snap.edges[e], ceiling)
-        ]
+        within, policy = self.sight.within(ceiling), self.sight.policies.edge
+        return [self.snap.edges[e] for e in found if within[policy[e]]]
 
     def edges_into(
         self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int], *, limit: int, offset: int = 0
     ) -> list[dict]:
         """One page of the edges ``count_into`` counts, in the order of ``edges_of``."""
-        return [dict(e) for e in self._into(node_id, rels, statuses, ceiling)[offset : offset + limit]]
+        return [
+            dict(self.read(e, ceiling)) for e in self._into(node_id, rels, statuses, ceiling)[offset : offset + limit]
+        ]
 
     def count_into(self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int]) -> int:
         """How many live edges lead into a node with one of ``rels`` and ``statuses``, under ``ceiling``."""
@@ -604,21 +605,20 @@ class SnapshotView:
         if i is None:
             return 0
         held = {e for p in self.snap.partitions.values() for e in (*p.out_of(i), *p.into(i))}
-        return sum(1 for e in held if self.sees(self.snap.edges[e]))
+        sees, policy = self.sight.sees, self.sight.policies.edge
+        return sum(1 for e in held if sees[policy[e]])
 
     def degrees(self, ids, b: int, ceiling: tuple[int, int]) -> dict[str, int]:
         """How many edges at most ``ceiling`` touch each of ``ids``, the reader's audience within, an edge from a node
         to itself twice; ids without one are left out."""
         out: dict[str, int] = {}
+        within, policy = self.sight.within(ceiling), self.sight.policies.edge
         for nid in dict.fromkeys(ids):
             i = self.snap.index.get(nid)
             if i is None:
                 continue
             count = sum(
-                1
-                for p in self.snap.partitions.values()
-                for e in (*p.out_of(i), *p.into(i))
-                if self.sees(self.snap.edges[e]) and self.under(self.snap.edges[e], ceiling)
+                1 for p in self.snap.partitions.values() for e in (*p.out_of(i), *p.into(i)) if within[policy[e]]
             )
             if count:
                 out[nid] = count
@@ -652,14 +652,15 @@ class SnapshotView:
     def plain_search(self, query: str, limit: int, kinds: list[str] | None = None) -> list[str]:
         """Ids of the nodes plain BM25 ranks for ``query``, best first, from the rows without an audience."""
         from evo_agents.kg import search as text_search
+        from evo_agents.kg.snapshot_fts import wand_top_k
 
         fts_query = text_search.plain_query(query)
-        if fts_query is None:
-            return []
         wanted = {k for k in kinds or text_search.PLAIN_KINDS if isinstance(k, str)}
+        if fts_query is None or not wanted:
+            return []
         text = self.snap.text
-        found = text.public.search(
-            fts_query, text_search.PLAIN_WEIGHTS[2:], lambda n: text.public_rows[n].kind in wanted
+        found = wand_top_k(
+            text.public, fts_query, text_search.PLAIN_WEIGHTS[2:], limit * 4, text.kept("public", wanted)
         )
         ranked = sorted(found, key=lambda x: (x[1], text.public_rows[x[0]].node_id))[: limit * 4]
         return list(dict.fromkeys(text.public_rows[n].node_id for n, _ in ranked))[:limit]
@@ -687,8 +688,9 @@ class SnapshotView:
 
     def kind_counts(self, b: int = 0) -> list[tuple[str, int, int, str, int]]:
         counts: dict[tuple, int] = defaultdict(int)
-        for kind, label, count in self.snap.node_counts:
-            if audience_below(label[3], self.reader):
+        for kind, key, count in self.snap.node_counts:
+            label = snapshot_masks.label_read(key, self.reader, self.ceiling)
+            if label is not None:
                 counts[(kind, *label[:3])] += count
         return [(*key, count) for key, count in counts.items()]
 
@@ -858,7 +860,7 @@ class SnapshotView:
             i = self.snap.index.get(nid)
             if i is None or not self.sees(self.snap.nodes[i]):
                 continue
-            n = self.snap.nodes[i]
+            n = self.read(self.snap.nodes[i])
             path = n["props"].get("path")
             out.append(
                 {
@@ -890,6 +892,7 @@ class SnapshotView:
                 s, d = nodes[src[k]], nodes[dst[k]]
                 if not (self.sees(e) and self.sees(s) and self.sees(d)):
                     continue
+                e, s, d = self.read(e), self.read(s), self.read(d)
                 a, z = self._owner(s), self._owner(d)
                 if a == z or a not in members or z not in members:
                     continue
@@ -901,10 +904,12 @@ class SnapshotView:
         label), by source, type and target."""
         nodes = [
             {"id": n["id"], "kind": n["kind"], "name": n["name"], "owner": self._owner(n), "label": n["label"]}
-            for n in paced(self.snap.nodes)
+            for n in map(self.read, paced(self.snap.nodes))
             if self.sees(n)
         ]
-        edges = paced_sorted((e["src"], e["rel"], e["dst"], e["label"]) for e in paced(self.snap.edges) if self.sees(e))
+        edges = paced_sorted(
+            (e["src"], e["rel"], e["dst"], e["label"]) for e in map(self.read, paced(self.snap.edges)) if self.sees(e)
+        )
         return nodes, edges
 
     def review_items(self, b: int = 0) -> list[dict]:
@@ -916,7 +921,7 @@ class SnapshotView:
         if self._edge_ids is None:
             self._edge_ids = {e["id"]: e for e in self.snap.edges}
         e = self._edge_ids.get(edge_id)
-        return e["label"] if e is not None and self.sees(e) else None
+        return self.read(e)["label"] if e is not None and self.sees(e) else None
 
     def summary(self) -> dict:
         return dict(self.snap.summary) if self.snap.summary else {"ready": False}
@@ -935,8 +940,8 @@ class SnapshotView:
             if any(audience_below(a, reader) for a in auds):
                 items[source] += 1
         out = {
-            "nodes": sum(c for _, label, c in snap.node_counts if audience_below(label[3], reader)),
-            "edges": sum(c for aud, c in snap.edge_counts if audience_below(aud, reader)),
+            "nodes": sum(c for _, key, c in snap.node_counts if snapshot_masks.seen_by(key, reader)),
+            "edges": sum(c for key, c in snap.edge_counts if snapshot_masks.seen_by(key, reader)),
             "units": sum(c for aud, c in snap.unit_counts if audience_below(aud, reader)),
             "items": dict(items),
             "audience": set(snap.audience_sources),
@@ -947,12 +952,12 @@ class SnapshotView:
     def walk_edges(self, ids: list[str], b: int = 0):
         """The edges the walk of ``evo_agents.kg.ppr`` reads for ``ids``: those out of one of them, then those into
         one, the reader's audience within, whatever the ceiling (``ppr.Reader.edges``)."""
+        sees, policy = self.sight.sees, self.sight.policies.edge
         for direction in ("out", "in"):
             for nid in ids:
                 for e in self._numbers(nid, direction):
-                    edge = self.snap.edges[e]
-                    if self.sees(edge):
-                        yield edge
+                    if sees[policy[e]]:
+                        yield self.read(self.snap.edges[e])
 
     # -- the ranking by meaning ------------------------------------------------------------------------------------
 

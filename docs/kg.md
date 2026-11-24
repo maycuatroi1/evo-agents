@@ -145,6 +145,15 @@ What each row takes as evidence:
   another class's attribute or an attribute a base class sets), `isinstance` narrowing, `getattr` and other dynamic
   calls, and an override reached through `self.m()` in its base class. Receiver types come from the `python-ast`
   backend, the default for Python; a source that sets `graphify-ast` gets none of them.
+- Type-resolved calls (`code: {backend: scip, scip_index: index.scip}`, or `auto` with an `index.scip` or
+  `.scip/index.scip` in the tree): the `git` and `harness` connectors read a SCIP index (binary, or protobuf JSON as
+  `index.json`) of `scip-python` or `scip-typescript` and put the compact per-file data in `props.scip`; the hub never
+  runs a compiler. The build adds `calls`, `references` and `implements` edges at `introspected`, confidence 1, for what
+  the compilers resolved: a call through an untyped variable, a loop variable, `with ... as`, a callback, a method of a
+  TypeScript interface. A file that has no TypeScript symbols from `graphify-ast` gets its Symbol nodes from the index.
+  The tools run on the syncing machine for `backend: scip`, and for `auto` only with `EVO_KG_SCIP_TOOLS=1`; without an
+  index or a tool the code is read by `python-ast` and `graphify-ast`, and `kg status` says so for `scip`
+  (`code.scip`, a warning). The index is read from the working tree, so keep it current with the ref the source reads.
 - TypeScript, JavaScript and Vue: named, default and namespace imports and `require()`, relative or through the
   `paths` and `baseUrl` of the nearest `tsconfig.json`; a receiver typed with an imported class. `extends` and
   `implements` are read off the class header, since graphify reports none for JS and TS; `this.m()` and `super.m()`.
@@ -206,6 +215,7 @@ The text is what an agent's model reads, so it is kept short and readable:
   also leave out the name of a section its anchor spells and the number of a step its id holds.
 - `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,
   and says how many nodes and edges it reached that did not fit (`left_out` in the structured result).
+  What fills the budget is chosen, not walked: see "The subgraph of kg_context".
 - Each tool takes, besides its own argument names, those agents often use for them (`evo_agents/kg/refs.py`,
   ALIASES): `files`, `targets`, `target`, `changed` or `name` for kg_impact's `paths`, `budget` or `max_tokens` for
   kg_context's `budget_tokens`, `source` and `target` for kg_path's `from` and `to`. Any other unknown name is an
@@ -247,9 +257,40 @@ principal or holds a string of neither form cannot be read, and counts as the hi
 the item is kept and nobody sees it (fail closed). The schema marks the key as a warning, so a sync keeps such an item
 instead of refusing its run.
 
-A node or an edge that several items derive shows to a reader who sees one of its derivations whole
-(`policy.any_of`): it takes the least audience among the derivations at the lowest level and location, else the union
-of theirs. A node that both chat 5 and chat 6 derive shows to a member of either chat, never to someone in neither.
+### Who reads an element several items derive
+
+A node or an edge that several items derive shows to a reader who may read one of its derivations whole. Its policy
+(`policy.PolicyDNF`) is a disjunction of labels, the atoms, kept as an antichain: no atom covers another, where `p`
+covers `q` when `p`'s level, location, projects and audience are each at or below `q`'s. A reader `(level, location,
+holds)` passes an atom when the atom's level and location are within the reader's, and its projects and audience are
+subsets of what the reader holds; it passes the policy when it passes one atom (`PolicyDNF.allows`).
+
+- `disjoin` is the union of the atoms, normalized: atoms of the same level, location, projects and audience are one,
+  and an atom another covers is dropped. It is commutative, associative and idempotent, with `PolicyDNF.never()` (no
+  atom) as its unit. It merges no two atoms: a node that both chat 5 and chat 6 derive keeps an atom for each and shows
+  to a member of either, and a node derived at (1, 0) and at (0, 1) never shows to a reader at (0, 0).
+- `conjoin` joins each atom of one policy with each of the other (`Label.join`), normalized the same way. Within one
+  derivation, the labels of its units and the policies of the nodes it needs are conjoined, so a derivation of one atom
+  each is the join of its labels as before. It is commutative, associative and idempotent, with `PolicyDNF.always()`
+  as its unit and `never()` as its zero.
+- The readers a policy lets through are a homomorphism of both: those of `p.disjoin(q)` are the union of `p`'s and
+  `q`'s, those of `p.conjoin(q)` their intersection.
+- Integrity is no condition on a reader and stays outside this order: every atom of a policy has the policy's
+  integrity, trusted when one disjoined derivation is, untrusted when one conjoined part is not.
+
+An element whose policy has one atom is written as before. One with several keeps the first atom (lowest level, then
+location, projects and audience) in its single label, which every reader that passes it may read, and its props are
+those of the first derivation that atom admits, so the ontology's checks see the props of a real derivation. Its
+`guards` list each atom with the props of the first derivation it admits, and a read projects the element to the first
+guard its reader passes (`graph_model.read_as`): the reader sees that branch's label and props, and an element no guard
+admits is hidden. The guards are kept in `label_guards` (JSON, migration 0267 on the hub); a reader that knows only the
+single label columns reads the first atom, which is sound and misses only the readers of the other atoms. The
+full-text row of such a node keeps its audiences as a list of lists, `[["chat:5"],["chat:6"]]`, that a reader within
+one of them matches and an older reader cannot parse, so it fails closed.
+
+Facts that state the same element merge their strength as one pair: the fact whose `(STATUS_RANK[status], conf)` is the
+greater, compared in that order, gives both its status and its conf (`assembly.strength`). A proposed fact at 0.9 never
+lifts a resolved fact at 0.3 over the confidence floor (`locate.CONF_FLOOR`), as an independent maximum of each did.
 
 The rows of a build keep the audience of each unit, node and edge (`label_aud`), and a snapshot is read as the
 session's audience (`SnapshotView.reader`, none unless set), so a hidden element fills no limit, page or count, and
@@ -490,6 +531,47 @@ The index is built in memory with each snapshot, from the full-text and code row
 content hash covers the graph's schema and what the index holds, so two builds with the same hash answer searches
 alike. Each row keeps the audience of its node (`label_aud`, `evo_agents/kg/policy.py`), and `node_fts_aud` holds the
 index rows of nodes with an audience apart, so they never weigh in the ranking a reader without that audience gets.
+
+The index keeps its postings as compressed sparse rows: per token, the rows holding it (ascending) and the raw count of
+each column, with BM25 computed at query time. With numpy a query of one phrase, or of phrases ORed, runs Block-Max
+WAND over blocks of 512 rows: a block whose upper bound cannot reach the `k`-th score so far is skipped, which gives the
+same top `k` as scoring every row (`snapshot_fts.wand_top_k`). Other queries, and every query without numpy, score all
+rows the standard-library way, in the same order. The Personalized PageRank walk runs as a sparse matrix-vector product
+over the snapshot's CSR edges (`ppr.run_csr`, `evo_agents/kg/snapshot_csr.py`). Who reads each element is compiled
+once per build into numbered policies, and once per reader into one byte per policy (`evo_agents/kg/snapshot_masks.py`),
+so a read looks a byte up per element instead of evaluating its label.
+
+On the hub, `kg_search`, `kg_context`, `kg_impact`, `kg_path` and the web's graph reads run on a bounded thread pool
+(`evo_agents/hub/kg_pool.py`, 2 to 8 threads), off the asyncio loop, so a burst of reads does not stall the loop or the
+workers' heartbeats. A build that changed few rows puts what it changed in its notice (`changes`, compressed JSON), and
+the hub's snapshot coordinator applies it to the snapshot in memory (`Snapshot.apply_changes`,
+`evo_agents/kg/snapshot_delta.py`, `evo_agents/hub/kg_graph_delta.py`): only the changed rows are read again and only
+the new text is cut into tokens. A notice without changes (too large, embeddings changed, no base snapshot, or the head
+moved on) reads the whole build as before.
+
+## The subgraph of kg_context
+
+Past its seeds, `kg_context` chooses the nodes that fill `budget_tokens` (`evo_agents/kg/serve_pack.py`,
+`evo_agents/kg/context_pack.py`):
+
+- **Reach.** The neighbours of the seeds are read best first: a node's relevance passes on divided by
+  `ln(2 + degree)`, so a hub is dear but never skipped. A seed is expanded even when it is a hub (500 edges read
+  around it, 300 around any other node, 40 nodes expanded). `in_source` and `part_of`, which every item has, weigh
+  little.
+- **Bridges.** Seeds are joined by the cheapest paths from a growing tree, a prize-collecting Steiner approximation:
+  entering a node `u` costs `ln(2 + deg(u))`, a path costs at most 12, and a search reads at most 200 nodes. A seed no
+  such path reaches stays apart. This replaces the hard cut at `HUB_DEGREE`, which kg_path and the web's graph pages
+  still use.
+- **Greedy by marginal gain per byte.** The objective of a set S is
+  `f(S) = sum d(v) * relevance(v) + 0.5 * sum_f w_f * (1 - 0.5 ** c_f(S))`, where the facets `f` are the words of the
+  question and the neighbourhoods of the seeds and `c_f(S)` counts the nodes of S that touch `f`. It is monotone and
+  submodular, so the greedy that adds, while the budget lasts, the node of best `marginal_gain / token_cost`, then
+  compares its set with the best single node, keeps at least `(1 - 1/e) / 2` of the best set the budget allows.
+  Seeds and bridge nodes are always in.
+- **Session discount.** A node an earlier `kg_context` of the same session gave is worth `d(v) = 0.2` per earlier give,
+  so a follow-up question gets new nodes rather than the same ones. A request repeated as it was reads the discount
+  from before its first call, so a retry answers the same. On the hub the nodes given are kept per owner for the
+  lifetime of a result handle (at most 2,000).
 
 ## After grep
 
@@ -877,7 +959,18 @@ that run (200; a new run answers 201). `--status` (or `GET`) lists the runs with
    above words alone, tokens per answer file not higher, p95 under 1 s. The loop only records the advice. It does not
    change the mode: the Curator's next kg_init run decides (see "The kg_init run"). The weight of the asked column that
    ranks the tune split best is kept on the run once 30 tune questions and 20 new labels back it; the next build writes
-   it into the graph.
+   it into the graph. A weight that differs from the current one is kept only when the Pareto gate on the holdout
+   accepts it (`kg_optimize.gate_weight`, `pareto_select`): the holdout is asked at each weight too, and each
+   candidate is compared with the current weight on three axes, hit@5 (higher), tokens per file and p95 ms (lower),
+   by a paired bootstrap of 1,000 resamples of the same questions. A candidate that 95% of the resamples find worse on
+   any axis is rejected; among the rest, those no other dominates form the front, and the one that 95% of the resamples
+   find better on some axis is chosen, else the current weight stays. The gate covers the asked weight only; the
+   semantic advice stays advice. The run records the front, the choice and why each candidate was rejected.
+   The reward of the 5% exploration channel of `kg_search` (`evo_agents/kg/explore.py`) is estimated from the
+   sessions by clipped inverse propensity scoring (`rank.clipped_ips`): an explored candidate counts 1 when the agent
+   opened it and did not grep after, weighed by `1 / max(p, 0.02)` for the chance `p` it had to be put there; the
+   report gives the self-normalised estimate, its effective sample size and the estimate per explored rank, over at
+   most 5,000 explored searches a run.
 3. **Review run.** The worker on duty gets a review run through the `kg_health` lens: the night's run adds the lens to
    the rotation's, an asked-for run looks through it alone. Its agent proposes fixes of the KG code, which the Builder
    makes on a branch and the Judge checks before the auto-merge; a change that touches a protected path of the charter

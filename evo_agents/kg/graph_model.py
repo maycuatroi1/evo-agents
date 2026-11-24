@@ -16,8 +16,10 @@ from evo_agents.kg.protocol import canonical_json, sha256
 # label_aud, node_fts_aud came; 3: node_fts kind and path
 SCHEMA_VERSION = "4"
 KEYED_KINDS = ("Symbol",)  # kinds whose props.key is unique; keep in step with the nodes_key index
-NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
-EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
+NODE_COLUMNS = (
+    "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud, label_guards"
+)
+EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud, label_guards"
 UNIT_FIELDS = [
     "unit_id",
     "item_id",
@@ -43,12 +45,14 @@ NODE_FIELDS = [
     "label_int",
     "aliases",
     "label_aud",
+    "label_guards",
 ]
 EDGE_FIELDS = ["edge_id", "src", "rel", "dst", "props", "status", "conf"] + [
     "label_lvl",
     "label_loc",
     "label_int",
     "label_aud",
+    "label_guards",
 ]
 CLUSTER_FIELDS = ["cluster_id", "level", "parent", "label", "size", "kinds"]
 REVIEW_FIELDS = ["fingerprint", "rule", "cluster_id", "evidence", "clusters", "action", "detail"]
@@ -122,8 +126,75 @@ def stored_audience(text: str | None) -> frozenset[str]:
 
 
 def within(reader: frozenset[str], text: str | None) -> bool:
-    """Whether the audience a ``label_aud`` holds is within ``reader``."""
+    """Whether the audience a ``label_aud`` holds is within ``reader``; for the audience of a full-text row of an
+    element with guards, a list of audiences (``row_audience``), whether one of them is."""
+    if text is not None and text.startswith("[["):
+        try:
+            found = json.loads(text)
+        except ValueError:
+            return False
+        return any(audience_below(audience_of(a), reader) for a in found) if isinstance(found, list) else False
     return audience_below(stored_audience(text), reader)
+
+
+def guard_columns(x: dict) -> dict:
+    """The ``label_guards`` column of the row of an element with guards (``evo_agents.kg.assembly``), none for one of
+    one atom, so its row keeps the content it had before guards came."""
+    guards = x.get("guards")
+    return {"label_guards": guards_text(guards)} if guards else {}
+
+
+def guards_text(guards) -> str:
+    """``label_guards`` as JSON text: each atom by its label columns, with the props of its branch."""
+    rows = []
+    for label, props in guards:
+        lvl, loc, integrity, audience = (
+            label if isinstance(label, tuple) else (label.level, label.location, label.integrity, label.audience)
+        )
+        row = {"lvl": lvl, "loc": loc, "int": integrity, "props": props}
+        rows.append({**row, "aud": sorted(audience)} if audience else row)
+    return json.dumps(rows, ensure_ascii=False, sort_keys=True)
+
+
+def stored_guards(text: str | None) -> tuple[tuple[tuple, dict], ...] | None:
+    """The guards a ``label_guards`` holds, each (label as a snapshot keeps it, props); None for none. One that cannot
+    be read is one guard no reader passes (fail closed)."""
+    if text is None:
+        return None
+    try:
+        rows = json.loads(text)
+        return tuple(
+            ((int(r["lvl"]), int(r["loc"]), str(r["int"]), audience_of(r.get("aud"))), dict(r.get("props") or {}))
+            for r in rows
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return (((0, 0, "U", TOP_AUDIENCE), {}),)
+
+
+def read_as(x: dict, reader: frozenset[str], ceiling: tuple[int, int] | None) -> dict | None:
+    """Element ``x`` of a snapshot as a reader of audience ``reader`` reads it: with no guards, ``x`` itself; with
+    guards, a copy without them, with the label and props of the first guard whose audience is within ``reader`` and whose level and
+    location are at most ``ceiling`` (any level when None), else of the first whose audience is; None when no guard's
+    audience is within ``reader``."""
+    guards = x.get("guards")
+    if not guards:
+        return x
+    seen = [g for g in guards if audience_below(g[0][3], reader)]
+    if not seen:
+        return None
+    under = [g for g in seen if ceiling is None or (g[0][0] <= ceiling[0] and g[0][1] <= ceiling[1])]
+    label, props = (under or seen)[0]
+    return {**{k: v for k, v in x.items() if k != "guards"}, "label": label, "props": props}
+
+
+def row_audience(n: dict) -> str | None:
+    """The audience a full-text row of node ``n`` ends with: its label's, or for a node with guards the list of their
+    audiences, read by ``within`` as one of them; none when the node or one guard has none."""
+    guards = n.get("guards")
+    if guards:
+        audiences = sorted({tuple(sorted(label.audience)) for label, _ in guards})
+        return json.dumps([list(a) for a in audiences]) if all(audiences) else None
+    return label_columns(n["label"]).get("label_aud")
 
 
 def row_content(row: dict) -> str:
@@ -162,6 +233,7 @@ def node_columns(nid: str, n: dict) -> dict:
         "conf": n["conf"],
         **label_columns(n["label"]),
         "aliases": json.dumps(n.get("aliases", [])),
+        **guard_columns(n),
     }
 
 
@@ -175,6 +247,7 @@ def edge_columns(eid: str, e: dict) -> dict:
         "status": e["status"],
         "conf": e["conf"],
         **label_columns(e["label"]),
+        **guard_columns(e),
     }
 
 
@@ -197,7 +270,9 @@ def top_label_of(graph: Graph) -> list[int]:
 def top_audience_of(graph: Graph) -> dict:
     """``top_audience``, the join of the audiences of ``graph``'s nodes, edges and units, when one of them has one."""
     found = frozenset()
-    for audience in [e["label"].audience for e in (*graph.nodes.values(), *graph.edges.values())] + [
+    elements = (*graph.nodes.values(), *graph.edges.values())
+    labels = [label for e in elements for label in ([g for g, _ in e["guards"]] if e.get("guards") else [e["label"]])]
+    for audience in [label.audience for label in labels] + [
         stored_audience(u.get("label_aud")) for u in graph.units.values()
     ]:
         found = audience_join(found, audience)
@@ -252,7 +327,8 @@ def search_rows(graph: Graph) -> tuple[list[tuple], list[tuple[str, tuple]]]:
     rows: list[tuple] = []
     keyed: list[tuple[str, tuple]] = []
     for nid, n in sorted(graph.nodes.items()):
-        aud = (label_columns(n["label"])["label_aud"],) if n["label"].audience else ()
+        audience = row_audience(n)
+        aud = (audience,) if audience is not None else ()
         name, path = text_search.index_text(n["name"] or ""), text_search.fold(graph.paths.get(nid, ""))
         row = (nid, n["kind"], name, path, text_search.index_text(graph.texts.get(nid, ""))) + aud
         rows.append(row)

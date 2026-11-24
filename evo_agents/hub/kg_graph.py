@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -368,6 +369,8 @@ class Handles:
         self.limit = limit
         self._lock = threading.Lock()
         self._owned: dict[tuple, dict[str, tuple]] = {}  # owner: handle: as ``Session.handles`` keeps it
+        # owner: (made, nodes kg_context gave, times): the session discount of ``evo_agents.kg.context_pack``
+        self._given: dict[tuple, tuple[float, Counter]] = {}
 
     def call(self, session: Session, owner: tuple, name: str, arguments: dict) -> dict:
         handle = arguments.get("handle") if name == "kg_more" else None
@@ -378,6 +381,9 @@ class Handles:
                 del mine[key]
             if isinstance(handle, str) and handle in mine:
                 session.handles[handle] = mine[handle]
+            for key in [key for key, (made, _) in self._given.items() if now - made > self.ttl]:
+                del self._given[key]
+            session.given = Counter(self._given.get(owner, (0.0, Counter()))[1])
         result = session.call(name, arguments)
         with self._lock:
             mine = self._owned.setdefault(owner, {})
@@ -388,6 +394,8 @@ class Handles:
                 del mine[key]
             if not mine:
                 del self._owned[owner]
+            if session.given and (owner in self._given or len(self._given) < self.limit):
+                self._given[owner] = (time.monotonic(), session.given)
         return result
 
 

@@ -136,7 +136,7 @@ def read(view: SnapshotView, b: int = 0) -> LinkGraph:
     g = LinkGraph()
     for n in view.snap.nodes:  # by id
         if view.sees(n):
-            path = n["props"].get("path")
+            path = view.read(n)["props"].get("path")
             g.add_node(n["id"], n["kind"], n["name"], path if isinstance(path, str) else None)
     edges = sorted((e for e in view.snap.edges if view.sees(e)), key=lambda e: (e["src"], e["rel"], e["dst"], e["id"]))
     for e in edges:

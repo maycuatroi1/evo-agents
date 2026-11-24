@@ -206,12 +206,17 @@ async def _graphs(conn: AsyncConnection, project_id: int) -> dict[str, list[int]
 
 def _graph_rows(project_id: int):
     """The rows of the project's main graph in the hub's tables that hold text, as pairs (text, JSON text), as
-    ``evo_agents.sqlite_legacy.GRAPH_QUERIES`` reads them from a graph file."""
+    ``evo_agents.sqlite_legacy.GRAPH_QUERIES`` reads them from a graph file, and the guards of the elements that have
+    some, whose props a reader of a branch is given."""
     nodes, edges, text = tables.kg_nodes, tables.kg_edges, tables.kg_text_rows
     scope = lambda t: (t.c.project_id == project_id, t.c.branch_id == MAIN)  # noqa: E731
     return (
         select(nodes.c.name, nodes.c.props).where(*scope(nodes)),
         select(edges.c.props, literal(None)).where(*scope(edges)),
+        *(
+            select(literal(None), cast(t.c.label_guards, Text)).where(*scope(t), t.c.label_guards.is_not(None))
+            for t in (nodes, edges)
+        ),
         select(literal(None), cast(text.c.row, Text)).where(*scope(text)),
     )
 

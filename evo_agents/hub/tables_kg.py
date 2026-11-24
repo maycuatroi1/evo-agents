@@ -798,6 +798,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("conf", Double),
         *_label_columns(),
         Column("aliases", Text, nullable=False, server_default="[]"),
+        Column("label_guards", JSONB(none_as_null=True)),  # 0267: the atoms of a PolicyDNF, else NULL
     )
     edges = _scoped(
         "kg_edges",
@@ -810,6 +811,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("status", Text),
         Column("conf", Double),
         *_label_columns(),
+        Column("label_guards", JSONB(none_as_null=True)),  # 0267: as kg_nodes.label_guards
     )
     Index("kg_edges_src_idx", edges.c.project_id, edges.c.branch_id, edges.c.src)
     Index("kg_edges_dst_idx", edges.c.project_id, edges.c.branch_id, edges.c.dst)

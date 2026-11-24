@@ -40,6 +40,7 @@ STRUCTURE_VERSION = "14"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
+SCIP_MARK = "+scip"  # an extractor that also read the item's SCIP data (``pipeline.scip_facts``)
 GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
 
 # Props of a commit, a pull request, a ticket, a chat's item or a document of the hub that its node keeps, besides path
@@ -491,7 +492,7 @@ def symbol_key(record: dict, source_id: str, path: str, qualname: str) -> list[s
     return [(record.get("props") or {}).get("repo") or source_id, path, qualname]
 
 
-def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: dict[str, str]) -> list[dict]:
+def symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: dict[str, str]) -> list[dict]:
     """The Symbol node of one definition, its ``member_of`` or ``defines`` edge, and its ident. The ident
     names the file, and the package the definition is in when its language has packages: the link stage
     finds a symbol by file or package and qualified name. A class's ident also carries its ``bases``, the
@@ -576,7 +577,7 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
 
     by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
-        facts += _symbol_facts(record, source_id, sym, unit_for(sym["top"]), by_qual)
+        facts += symbol_facts(record, source_id, sym, unit_for(sym["top"]), by_qual)
     for name, qual in (result.get("aliases") or {}).items():
         if qual in by_qual:  # `print_json = _print_json`: an import of `print_json` reaches `_print_json`
             facts.append({"t": "ident", "type": "alias", "key": f"{item_id}::{name}", "node": by_qual[qual]})
@@ -602,18 +603,23 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
 
 
 def code_extractor(record: dict, backend: str) -> str:
-    """Which extractor a code item gets, with its version: part of the structure task's memo key."""
+    """Which extractor a code item gets, with its version: part of the structure task's memo key. ``+scip`` follows the
+    base extractor of an item that carries SCIP data (``props.scip``) under the ``scip`` and ``auto`` backends."""
     from evo_agents.kg.extract import graphify as gfy
 
-    path = (record.get("props") or {}).get("path") or ""
+    props = record.get("props") or {}
+    path = props.get("path") or ""
     if record.get("kind") != "code" or backend == "none":
         return "none"
     is_python = PurePosixPath(path).suffix == ".py"
-    if backend == "python-ast" or (backend == "auto" and is_python):
-        return "python-ast" if is_python else "none"
-    if gfy.available() and gfy.supports(path):
-        return f"graphify-ast@{gfy.version()}"
-    return "none"
+    if backend == "python-ast" or (backend in ("auto", "scip") and is_python):
+        base = "python-ast" if is_python else "none"
+    elif gfy.available() and gfy.supports(path):
+        base = f"graphify-ast@{gfy.version()}"
+    else:
+        base = "none"
+    # The index data the connector read from a SCIP file rides on the item: the build reads that, never a compiler.
+    return f"{base}{SCIP_MARK}" if backend in ("auto", "scip") and props.get("scip") else base
 
 
 def missing_graphify(source_id: str) -> str:
@@ -624,6 +630,12 @@ def missing_graphify(source_id: str) -> str:
     )
 
 
+SCIP_MISSING = (
+    "code backend scip found no SCIP index data for any code item (no index file, or no scip-python or scip-typescript"
+    " here), so the code was read with python-ast and graphify-ast; set code.scip_index or install the tools"
+)
+
+
 def code_coverage(backend: str, items: Sequence[tuple[dict, str]]) -> dict:
     """What the code backend of one source did with its code items, given as (record, extractor) pairs:
     items per extractor (``none``: no symbols), and, when ``auto`` ran without graphify, the non-Python
@@ -632,8 +644,12 @@ def code_coverage(backend: str, items: Sequence[tuple[dict, str]]) -> dict:
     from evo_agents.kg.extract import graphify as gfy
 
     extractors: dict[str, int] = {}
+    typed = 0
     for _, extractor in items:
-        name = extractor.partition("@")[0]  # the backend, without the version the memo key carries
+        typed += extractor.endswith(SCIP_MARK)
+        name = extractor.removesuffix(SCIP_MARK).partition("@")[
+            0
+        ]  # the backend, without the version the memo key carries
         extractors[name] = extractors.get(name, 0) + 1
     fallback: dict[str, int] = {}
     if backend == "auto" and not gfy.available():
@@ -650,7 +666,7 @@ def code_coverage(backend: str, items: Sequence[tuple[dict, str]]) -> dict:
             f"graphify is not installed, so code backend auto fell back to python-ast:"
             f" {skipped} non-Python code item(s) got no symbols ({languages}); install the extra: {GRAPHIFY_INSTALL}"
         )
-    return {
+    out = {
         "backend": backend,
         "items": len(items),
         "extractors": dict(sorted(extractors.items(), key=lambda kv: (kv[0] == "none", kv[0]))),
@@ -658,6 +674,11 @@ def code_coverage(backend: str, items: Sequence[tuple[dict, str]]) -> dict:
         "fallback_languages": dict(sorted(fallback.items())),
         "warning": warning,
     }
+    if typed or backend == "scip":
+        out["scip"] = {"items": typed, "without": len(items) - typed}
+        if backend == "scip" and not typed and items:
+            out["warning"] = warning or SCIP_MISSING
+    return out
 
 
 COMMENT_LINE = re.compile(r"(?:///?|/\*+|\*+/?|#(?![!\[])|--)\s?")  # a line of a comment, by how it starts
@@ -704,7 +725,7 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
     by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
         doc = leading_comment(lines, sym["line"])
-        facts += _symbol_facts(record, source_id, {**sym, "doc": doc} if doc else sym, unit, by_qual)
+        facts += symbol_facts(record, source_id, {**sym, "doc": doc} if doc else sym, unit, by_qual)
     for call in result["calls"]:
         caller, callee = by_qual.get(call["caller"]), by_qual.get(call["callee"])
         if caller and callee and caller != callee:
@@ -872,9 +893,13 @@ def _structure_of_kind(
     if kind == "code" and text is not None:
         extractor = code_extractor(record, code_backend)
         facts: list[dict] = []
-        if extractor == "python-ast":
+        if extractor.startswith("python-ast"):
             facts = _python(record, source_id, text)
         elif extractor.startswith("graphify-ast"):
             facts = _graphify(record, source_id, text)
+        if extractor.endswith(SCIP_MARK):
+            from evo_agents.kg.pipeline.scip_facts import scip_facts
+
+            facts += scip_facts(record, source_id, facts)
         return facts + _comments(record, text, identifiers)
     return []

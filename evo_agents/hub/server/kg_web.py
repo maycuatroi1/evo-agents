@@ -35,7 +35,6 @@ those of an audience the member does not hold.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Annotated, Literal
@@ -43,7 +42,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub import kg_branches, kg_named_graphs, kg_snapshots
+from evo_agents.hub import kg_branches, kg_named_graphs, kg_pool, kg_snapshots
 from evo_agents.hub.kg_entity_graph import (
     CITATIONS,
     CODE_LINKS,
@@ -256,7 +255,7 @@ async def read_graph(request: Request, user, project: str, reader):
         snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
         with pacing(busy=kg_snapshots.requests_waiting):
-            data, graph = await asyncio.to_thread(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
+            data, graph = await kg_pool.run(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except GraphProblem as exc:

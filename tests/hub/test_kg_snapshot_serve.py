@@ -105,8 +105,9 @@ def test_a_private_chat_item_is_invisible_to_a_member_outside_its_audience(hub_d
     # what a reader within some chats reads of the items: the ones it may read, and the counts of what it sees
     reads = {
         frozenset(): ({"chat:text:plan"}, (2, 1, 1)),
-        frozenset({"chat:1"}): ({"chat:text:m2", "chat:text:plan"}, (3, 3, 2)),
-        frozenset({"chat:1", aud.GB}): ({"chat:text:m1", "chat:text:m2", "chat:text:plan"}, (5, 5, 3)),
+        # K-7, mentioned in chat one and in chat two, is read by a reader of either (its label guards)
+        frozenset({"chat:1"}): ({"chat:text:m2", "chat:text:plan"}, (4, 3, 2)),
+        frozenset({"chat:1", aud.GB}): ({"chat:text:m1", "chat:text:m2", "chat:text:plan"}, (6, 5, 3)),
     }
     for reader, (readable, counts) in reads.items():
         view = Snapshot.from_stored(rows).view(reader)
@@ -173,7 +174,8 @@ def test_each_reader_gets_a_view_of_its_own_over_the_one_snapshot(hub, tmp_path,
 def aud_view_of(tmp_path, monkeypatch):
     """The graph of aud with the items of chats 1 and 2 (``tests.hub.test_kg_audience``), built in memory, and the
     ids of what each reader below sees of it: the plan and the source have no audience, #1 is in chat 1 and the grant
-    of aud-b, #2 in chat 1 alone, #3 in chat 2 and the grant, K-9 is mentioned by #1 alone."""
+    of aud-b, #2 in chat 1 alone, #3 in chat 2 and the grant, K-9 is mentioned by #1 alone, K-7 by #2 and #3 (a reader
+    of either reads it)."""
     from tests.hub import test_kg_audience as aud
     from tests.kg import built
 
@@ -182,8 +184,8 @@ def aud_view_of(tmp_path, monkeypatch):
     public = {aud.PLAN, "source:chat"}
     sees = {
         frozenset(): public,
-        frozenset({"chat:1"}): public | {aud.M2},
-        frozenset({"chat:1", aud.GB}): public | {aud.M1, aud.M2, aud.K9},
+        frozenset({"chat:1"}): public | {aud.M2, aud.K7},
+        frozenset({"chat:1", aud.GB}): public | {aud.M1, aud.M2, aud.K7, aud.K9},
     }
     return built.snapshot_of(project), sees
 
@@ -221,7 +223,7 @@ def test_the_entity_map_reads_of_a_view_hold_what_its_reader_sees_under_the_ceil
             clears = ceiling is not None and ceiling >= INTERNAL  # every row is labelled internal
             assert {r[0] for r in reads.node_rows(view, ceiling)} == (seen if clears else set())
             assert [r[0] for r in reads.node_rows(view, ceiling, ("Code",))] == (
-                [aud.K9] if clears and aud.K9 in seen else []
+                sorted(seen & {aud.K7, aud.K9}) if clears else []
             )
             found = list(reads.item_rows(view, ceiling))
             assert [r[0] for r in found] == sorted(items)  # each item, the ones the reader does not see as 0
@@ -360,14 +362,14 @@ def test_loads_putting_the_rows_together_leave_the_pool_to_the_workers_heartbeat
     build(hub, caplog)
     pid = project_id(hub)
     release, assembling = threading.Event(), threading.Semaphore(0)
-    assembled = kg_graph_rows._assembled
+    assembled = kg_graph_rows.assembled_rows
 
     def slow(*args, **kwargs):
         assembling.release()
         assert release.wait(30)
         return assembled(*args, **kwargs)
 
-    monkeypatch.setattr(kg_graph_rows, "_assembled", slow)
+    monkeypatch.setattr(kg_graph_rows, "assembled_rows", slow)
 
     async def run():
         pool = AsyncConnectionPool(
@@ -405,7 +407,7 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
     pid = project_id(hub)
     monkeypatch.setattr(kg_graph_rows, "READ_BATCH", 2, raising=False)
     ticks, seen, loads = [0], [], set()
-    pairs, rows_json = kg_graph_rows._row_pairs, kg_graph_rows._ROW_JSON
+    pairs, rows_json = kg_graph_rows.row_pairs, kg_graph_rows._ROW_JSON
 
     def counted(name, part):
         for pair in pairs(name, part):
@@ -417,7 +419,7 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
         loads.add(threading.current_thread() is threading.main_thread())
         return rows_json.decode(text)
 
-    monkeypatch.setattr(kg_graph_rows, "_row_pairs", counted)
+    monkeypatch.setattr(kg_graph_rows, "row_pairs", counted)
     monkeypatch.setattr(kg_graph_rows, "_ROW_JSON", type("Json", (), {"decode": staticmethod(decoded)}))
 
     async def run():

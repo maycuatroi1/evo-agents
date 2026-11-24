@@ -1,9 +1,15 @@
 """The assembly stage of a build (``kg.build.run_pipeline``): the facts of every item merged into one graph.
 
-Facts merge by id, the strongest status winning; entity resolution applies only declared identities (``same_as``),
-the smallest id representing its class; an edge lives only while every element it names does; a node's or an edge's
-label is the meet over its derivations of the join over what each uses; and a key two nodes would share fails the
-build.
+Facts merge by id, the strongest (status, confidence) pair winning (``stronger``); entity resolution applies only
+declared identities (``same_as``), the smallest id representing its class; an edge lives only while every element it
+names does; and a key two nodes would share fails the build.
+
+Who reads a node or an edge is a ``PolicyDNF``: the disjunction over its derivations of the conjunction of what each
+uses (the labels of its units, joined, and the policies of the nodes it needs). Its first atom is the element's
+``label``, and an element of more than one atom also keeps ``guards``: each atom with the props of the first derivation
+that atom reads, so a reader is given the props of a branch it may read and no other (``graph_model.read_as``). The
+element's own ``props`` are those of its first atom's branch, which the ontology's key and required-props checks read:
+an element some derivation states is never left without its props.
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from dataclasses import dataclass, field
 
 from evo_agents.kg.graph_model import Graph, edge_id, key_conflicts
 from evo_agents.kg.pipeline import curation
-from evo_agents.kg.policy import Label, any_of, audience_below, join_all
+from evo_agents.kg.policy import Label, PolicyDNF, join_all
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 UNSEARCHED_FIELDS = ("title", "verify", "evidence")  # the name already; commands and run output
@@ -227,38 +233,41 @@ def _drop_dangling(merged: Merged) -> int:
 
 
 def _write_labelled(graph: Graph, facts: Facts, merged: Merged, unit_labels: dict[str, Label]) -> None:
-    """Labels: the meet over derivations (any_of: an audience a reader sees one of whole) of the join over what each
-    derivation uses."""
+    """Labels: the disjunction over derivations of the conjunction of what each uses (module docstring)."""
     derivs = facts.derivs
-    node_label: dict[str, Label] = {}
+    node_policy: dict[str, PolicyDNF] = {}
     for nid in merged.nodes:
-        node_label[nid] = _any_of([_deriv_label(d, unit_labels, node_label) for d in _dedupe(derivs[nid])])
+        node_policy[nid] = _element_policy(_dedupe(derivs[nid]), unit_labels, node_policy)
     for item_id, found in facts.item_mentions.items():
         graph.mentions.setdefault(merged.remap(item_id), found)
     for nid, n in merged.nodes.items():
-        # The props of the first derivation the node's label reads, so a node a public item also states shows none
-        # of what a restricted item said of it.
-        readable = (
-            p for d, p in facts.props_of[nid] if _reads(node_label[nid], _deriv_label(d, unit_labels, node_label))
-        )
-        n = {**n, "props": next(readable, {})}
-        graph.nodes[nid] = {**n, "label": node_label[nid], "aliases": sorted(merged.aliases.get(nid, []))}
+        branches = [(_deriv_policy(d, unit_labels, node_policy), p) for d, p in facts.props_of[nid]]
+        labelled = _labelled(n, node_policy[nid], branches)
+        graph.nodes[nid] = {**labelled, "aliases": sorted(merged.aliases.get(nid, []))}
         graph.derivations[nid] = _dedupe(derivs[nid])
         graph.where[nid] = sorted(facts.where[nid])
     for (src, rel, dst), e in merged.edges.items():
         eid = edge_id(src, rel, dst)
         ds = _dedupe(merged.edge_derivs[(src, rel, dst)])
-        label = _any_of([_deriv_label(d, unit_labels, node_label) for d in ds])
-        # As a node's: the props of the first derivation the edge's label reads, none of a restricted item's.
-        readable = (
-            p
+        branches = [
+            (_deriv_policy(d, unit_labels, node_policy), p)
             for d, p in merged.edge_props[(src, rel, dst)]
-            if all(n in node_label for n in d["needs"]) and _reads(label, _deriv_label(d, unit_labels, node_label))
-        )
-        e = {**e, "props": next(readable, {})}
-        graph.edges[eid] = {"src": src, "rel": rel, "dst": dst, **e, "label": label}
+            if all(n in node_policy for n in d["needs"])
+        ]
+        labelled = _labelled(e, _element_policy(ds, unit_labels, node_policy), branches)
+        graph.edges[eid] = {"src": src, "rel": rel, "dst": dst, **labelled}
         graph.derivations[eid] = ds
         graph.where[eid] = sorted(merged.edge_where[(src, rel, dst)])
+
+
+def _labelled(x: dict, policy: PolicyDNF, branches: list[tuple[PolicyDNF, dict]]) -> dict:
+    """``x`` with the label and props of ``policy``'s first atom, and ``guards`` when it has more than one: each atom
+    with the props of the first branch (a derivation's policy and props) it reads, so a node a public item also states
+    shows none of what a restricted item said of it."""
+    guards = [(atom, next((p for d, p in branches if d.admits(atom)), {})) for atom in policy]
+    out = {**x, "props": guards[0][1], "label": guards[0][0]}
+    out.pop("guards", None)
+    return {**out, "guards": guards} if len(guards) > 1 else out
 
 
 def _key_errors(graph: Graph) -> list[str]:
@@ -275,10 +284,20 @@ def _key_errors(graph: Graph) -> list[str]:
     return errors
 
 
+def strength(f: dict) -> tuple[float, float]:
+    """The pair a fact's strength is ordered by: its status's rank, then its confidence."""
+    conf = f.get("conf")
+    return (STATUS_RANK.get(str(f.get("status")), 0), float(conf) if conf is not None else 0.0)
+
+
 def _strongest(current: dict, new: dict) -> None:
-    if STATUS_RANK.get(new["status"], 0) > STATUS_RANK.get(current["status"], 0):
-        current["status"] = new["status"]
-    current["conf"] = max(current["conf"], new["conf"])
+    """Keep in ``current`` the status and confidence of the stronger of two facts, the greater ``strength`` in the
+    order of pairs (rank first): the merge picks one fact's pair whole, never the status of one and the confidence of
+    another, so a ``proposed`` guess does not lift the confidence of a weak ``resolved`` edge over ``CONF_FLOOR``
+    (``evo_agents.kg.locate``). A choice of the maximum, it is commutative, associative and idempotent, and the merged
+    fact passes the floor exactly when the fact it took does."""
+    if strength(new) > strength(current):
+        current["status"], current["conf"] = new["status"], new["conf"]
 
 
 def _dedupe(ds: list[dict]) -> list[dict]:
@@ -289,27 +308,23 @@ def _dedupe(ds: list[dict]) -> list[dict]:
     return [seen[k] for k in sorted(seen)]
 
 
-def _any_of(labels: list[Label]) -> Label:
-    """``any_of`` of the labels of an element's derivations; a node has one at least, a live edge too."""
-    found = any_of(labels)
-    assert found is not None, "an element without a derivation"
+def _deriv_policy(d: dict, unit_labels: dict[str, Label], node_policy: dict[str, PolicyDNF]) -> PolicyDNF:
+    """The conjunction of what a derivation uses: the join of its units' labels with the policy of each node it needs.
+    One without any (no unit of the corpus, no labelled node) has no policy, and its element could not be labelled:
+    the build stops there."""
+    units = join_all(unit_labels[u] for u in d["units"] if u in unit_labels)
+    needs = [node_policy[n] for n in d["needs"] if n in node_policy]
+    assert units is not None or needs, f"a derivation without a labelled unit or node: {d}"
+    found = PolicyDNF.of(units) if units is not None else needs.pop(0)
+    for policy in needs:
+        found = found.conjoin(policy)
     return found
 
 
-def _deriv_label(d: dict, unit_labels: dict[str, Label], node_label: dict[str, Label]) -> Label:
-    """The join of the labels of what a derivation uses. One without any (no unit of the corpus, no labelled node)
-    has no label, and its element could not be labelled: the build stops there."""
-    parts = [unit_labels[u] for u in d["units"] if u in unit_labels]
-    parts += [node_label[n] for n in d["needs"] if n in node_label]
-    found = join_all(parts)
-    assert found is not None, f"a derivation without a labelled unit or node: {d}"
+def _element_policy(ds: list[dict], unit_labels: dict[str, Label], node_policy: dict[str, PolicyDNF]) -> PolicyDNF:
+    """The disjunction of the policies of an element's derivations; a node has one at least, a live edge too."""
+    found = PolicyDNF.never()
+    for d in ds:
+        found = found.disjoin(_deriv_policy(d, unit_labels, node_policy))
+    assert found.atoms, "an element without a derivation"
     return found
-
-
-def _reads(reader: Label, label: Label) -> bool:
-    """Whether a reader of ``reader``'s level, location and audience reads what is labelled ``label``."""
-    return (
-        label.level <= reader.level
-        and label.location <= reader.location
-        and audience_below(label.audience, reader.audience)
-    )

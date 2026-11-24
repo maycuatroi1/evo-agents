@@ -21,14 +21,15 @@ def node_rows(view, ceiling: tuple[int, int] | None, kinds=()) -> Iterator[tuple
     """(node_id, kind, name, props) of the nodes of ``view`` of ``kinds`` (every kind when empty) the reader sees."""
     wanted = set(kinds)
     for n in view.snap.nodes:
-        if (not wanted or n["kind"] in wanted) and view.sees(n) and _under(n["label"], ceiling):
+        if (not wanted or n["kind"] in wanted) and view.sees(n) and ceiling is not None and view.under(n, ceiling):
+            n = view.read(n, ceiling)
             yield n["id"], n["kind"], n["name"], json.dumps(n["props"])
 
 
 def edge_rows(view, ceiling: tuple[int, int] | None, rel: str) -> Iterator[tuple[str, str]]:
     """(src, dst) of the edges of ``view`` with ``rel`` the reader sees."""
     for e in view.snap.edges:
-        if e["rel"] == rel and view.sees(e) and _under(e["label"], ceiling):
+        if e["rel"] == rel and view.sees(e) and ceiling is not None and view.under(e, ceiling):
             yield e["src"], e["dst"]
 
 

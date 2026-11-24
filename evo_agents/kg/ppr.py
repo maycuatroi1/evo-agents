@@ -24,13 +24,18 @@ The walk, as ``Walk`` sets it:
   a reached node that is no text match ranks by its score divided by log2(2 + its edges in the subgraph), so a hub
   that touches every seed cannot outrank the best matches by the mass it gathers alone.
 
-Nothing here calls a model, reads a question set, or needs a library outside the standard one.
+Nothing here calls a model or reads a question set; numpy, when it is installed, only makes the walk faster.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, fields, replace
+
+try:
+    import numpy as _np
+except ImportError:  # the walk then runs as a loop of the standard library
+    _np = None
 
 ENTITY_PREFIX = "entity:"  # the ids of the nodes the entities step states (evo_agents.kg.entities.entity_id)
 DEFAULT_REL = 1.0  # a relation the table does not list: one a project's ontology adds or a model stated
@@ -234,11 +239,31 @@ def subgraph(reader: Reader, seeds: dict[str, float], walk: Walk) -> dict[str, d
 
 
 def personalized(adj: dict[str, dict[str, float]], seeds: dict[str, float], walk: Walk) -> dict[str, float]:
-    """The walk's resting score of each node of ``adj``, restarting at ``seeds`` by their weight."""
+    """The walk's resting score of each node of ``adj``, restarting at ``seeds`` by their weight (``run_csr``)."""
+    return run_csr(adj, seeds, walk)
+
+
+TOL = 1e-12  # the L1 change of the scores of one step under which the walk has settled and stops early
+
+
+def run_csr(
+    adj: dict[str, dict[str, float]], seeds: dict[str, float], walk: Walk, tol: float = TOL
+) -> dict[str, float]:
+    """``personalized``'s walk as a sparse matrix-vector product over ``adj`` in compressed rows: at each step the
+    mass of each node follows its edges by their share of its weight, a node of no edge gives its mass back to the
+    seeds, and ``1 - damping`` restarts there. It stops after ``walk.steps`` steps, or once a step changes the
+    scores by under ``tol`` in all. With numpy the product is vectorised; without it a loop of the standard library
+    computes the same. A node is in the result when the walk reached it (a seed always is)."""
     total = sum(seeds.values())
     if not adj or total <= 0:
         return {}
     restart = {i: w / total for i, w in seeds.items() if w > 0}
+    if _np is None:
+        return _walk_loop(adj, restart, walk, tol)
+    return _walk_np(adj, restart, walk, tol)
+
+
+def _walk_loop(adj, restart: dict[str, float], walk: Walk, tol: float) -> dict[str, float]:
     out_w = {i: sum(links.values()) for i, links in adj.items()}
     rank = dict(restart)
     for _ in range(walk.steps):
@@ -251,8 +276,42 @@ def personalized(adj: dict[str, dict[str, float]], seeds: dict[str, float], walk
             share = walk.damping * r / ow
             for o, w in adj[i].items():
                 nxt[o] = nxt.get(o, 0.0) + share * w
+        moved = sum(abs(r - rank.get(i, 0.0)) for i, r in nxt.items())
         rank = nxt
+        if moved < tol:
+            break
     return rank
+
+
+def _walk_np(adj, restart: dict[str, float], walk: Walk, tol: float) -> dict[str, float]:
+    assert _np is not None
+    ids = list(dict.fromkeys([*restart, *adj, *(o for links in adj.values() for o in links)]))
+    at = {i: n for n, i in enumerate(ids)}
+    src, dst, w = [], [], []
+    for i, links in adj.items():
+        for o, x in links.items():
+            src.append(at[i])
+            dst.append(at[o])
+            w.append(x)
+    n = len(ids)
+    src_a, dst_a, w_a = _np.asarray(src, dtype=_np.int64), _np.asarray(dst, dtype=_np.int64), _np.asarray(w, float)
+    out_w = _np.bincount(src_a, weights=w_a, minlength=n) if len(src) else _np.zeros(n)
+    lone = out_w <= 0
+    share = _np.divide(w_a, out_w[src_a], out=_np.zeros_like(w_a), where=out_w[src_a] > 0)
+    seed = _np.zeros(n)
+    for i, r in restart.items():
+        seed[at[i]] = r
+    rank, reached = seed.copy(), seed > 0
+    for _ in range(walk.steps):
+        nxt = seed * (1 - walk.damping + walk.damping * float(rank[lone].sum()))
+        if len(src):
+            nxt += _np.bincount(dst_a, weights=walk.damping * rank[src_a] * share, minlength=n)
+            reached[dst_a[(rank[src_a] > 0) & (out_w[src_a] > 0)]] = True
+        moved = float(_np.abs(nxt - rank).sum())
+        rank = nxt
+        if moved < tol:
+            break
+    return {ids[k]: float(rank[k]) for k in _np.flatnonzero(reached)}
 
 
 # -- the seeds -------------------------------------------------------------------------------------------------------

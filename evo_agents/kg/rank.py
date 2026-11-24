@@ -30,6 +30,7 @@ import os
 import re
 from bisect import bisect_left
 from collections import Counter, deque
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -226,6 +227,55 @@ class Ranker:
         chosen = [ids[i] for i in sorted(range(len(ids)), key=lambda i: (-got[i], i))][:SLOTS]
         seen = set(chosen)
         return chosen + [i for i in locate.place(ranked, params) if i not in seen]
+
+
+# -- the reward of the exploration channel ---------------------------------------------------------------------------
+
+IPS_CLIP = 0.02  # a propensity under this counts as this: no sample weighs more than 1 / IPS_CLIP
+
+
+def explore_samples(labels: Iterable[Mapping]) -> list[tuple[float, float, int]]:
+    """(reward, propensity, rank) of each label of a kg_search that explored (``evo_agents.kg.explore``: its results
+    name the candidate put at rank 4 or 5 and the chance ``p`` it had to go there). The reward is 1 when the agent
+    opened that candidate and did not go back to grep after the lookup (the lookup spared the search), else 0."""
+    found = []
+    for label in labels:
+        clicked = {c.get("id") for c in label.get("clicks") or () if isinstance(c, Mapping)}
+        for result in label.get("results") or ():
+            p = result.get("explored") is not None and result.get("p")
+            if isinstance(p, (int, float)) and not isinstance(p, bool) and p > 0:
+                won = result.get("id") in clicked and not label.get("grep_after")
+                found.append((1.0 if won else 0.0, float(p), int(result["explored"])))
+    return found
+
+
+def clipped_ips(samples: Iterable[tuple[float, float, int]], clip: float = IPS_CLIP) -> dict:
+    """The reward of putting a candidate in an explored rank, from ``samples`` logged under chance ``p``, each weighed
+    by the inverse of its chance clipped at ``clip`` (clipped inverse propensity scoring: a rare draw cannot drown the
+    rest, at the price of a small bias towards zero). ``ips`` is the mean of weight x reward over the samples,
+    ``snips`` the self-normalised estimate in [0, 1], ``ess`` the effective sample size ``(sum w) ** 2 / sum w ** 2``,
+    ``ranks`` the ``snips`` of each explored rank."""
+    rows = [(reward, 1.0 / max(p, clip), rank) for reward, p, rank in samples]
+    if not rows:
+        return {"n": 0, "ips": None, "snips": None, "ess": 0.0, "clipped": 0, "ranks": {}}
+    total = sum(w for _, w, _ in rows)
+    ranks = {}
+    for rank in sorted({r for _, _, r in rows}):
+        part = [(reward, w) for reward, w, r in rows if r == rank]
+        ranks[rank] = round(sum(reward * w for reward, w in part) / sum(w for _, w in part), 4)
+    return {
+        "n": len(rows),
+        "ips": round(sum(reward * w for reward, w, _ in rows) / len(rows), 4),
+        "snips": round(sum(reward * w for reward, w, _ in rows) / total, 4),
+        "ess": round(total * total / sum(w * w for _, w, _ in rows), 2),
+        "clipped": sum(1 for p in (p for _, p, _ in samples) if p < clip),
+        "ranks": ranks,
+    }
+
+
+def explore_estimate(labels: Iterable[Mapping], clip: float = IPS_CLIP) -> dict:
+    """``clipped_ips`` of the exploration the ``labels`` (the body of a kg_query_labels row) logged."""
+    return clipped_ips(explore_samples(labels), clip)
 
 
 # -- the features ----------------------------------------------------------------------------------------------------

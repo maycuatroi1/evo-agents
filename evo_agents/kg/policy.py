@@ -109,21 +109,126 @@ def meet_all(labels) -> Label | None:
     return out
 
 
-def any_of(labels) -> Label | None:
-    """The label of an element that any one of its derivations, labelled ``labels``, reveals: ``meet_all`` in level,
-    location, integrity and projects. In audience the meet (the intersection) would show the element to a reader in
-    neither of two chats, so it takes the least audience of the derivations at the lowest level and location, else the
-    join of theirs: a reader then sees the element only when it sees one derivation whole."""
+def covers(p: Label, q: Label) -> bool:
+    """Whether every reader ``q`` lets read also reads under ``p``: ``p`` is at most ``q`` in level, location, projects
+    and audience, the dimensions a reader is checked on (``PolicyDNF.allows``). Integrity is no condition on a reader."""
+    return (
+        p.level <= q.level
+        and p.location <= q.location
+        and p.projects <= q.projects
+        and audience_below(p.audience, q.audience)
+    )
+
+
+def _readable_key(label: Label) -> tuple:
+    """The dimensions ``covers`` compares, in the order ``PolicyDNF`` sorts its atoms by: lowest level and location
+    first."""
+    return (label.level, label.location, tuple(sorted(label.projects)), tuple(sorted(label.audience)))
+
+
+def _antichain(labels, integrity: str | None = None) -> tuple[Label, ...]:
+    """The minimal normal form of the disjunction of ``labels``: the atoms no other atom covers, one for each readable
+    dimensions, sorted by ``_readable_key``, all of integrity ``integrity`` (by default ``T`` when one of ``labels``
+    is). An atom a different one covers is dropped, as every reader it lets read the other already lets. A function of
+    the set of ``labels`` alone, so the disjunction it normalizes is commutative, associative and idempotent."""
     labels = list(labels)
-    low = meet_all(labels)
-    if low is None:
+    if integrity is None:
+        integrity = "T" if any(label.integrity == "T" for label in labels) else "U"
+    by_key = {_readable_key(label): label for label in labels}
+    atoms = list(by_key.values())
+    if len(atoms) > 1:
+        atoms = [a for a in atoms if not any(b is not a and covers(b, a) for b in atoms)]
+    return tuple(
+        a if a.integrity == integrity else Label(a.level, a.location, integrity, a.projects, a.audience)
+        for a in sorted(atoms, key=_readable_key)
+    )
+
+
+@dataclass(frozen=True)
+class PolicyDNF:
+    """Who may read an element some derivations reveal: a disjunction of atoms, each a ``Label`` a reader must all be
+    within, kept as an antichain under ``covers`` (no atom lets read a reader another one does not), sorted lowest
+    level and location first.
+
+    ``disjoin`` is the union of independent derivations (the element shows when one of them does), ``conjoin`` the
+    join of what one derivation needs (it shows when all of them do: ``join_all`` within one derivation, distributed
+    over the atoms). Integrity is no condition on a reader and is kept apart from the atoms' order: every atom of a
+    policy has the policy's, ``T`` when one derivation is trusted (the meet) and ``U`` when one thing a derivation
+    uses is not (the join). Both are commutative, associative and idempotent, and ``allows`` is a homomorphism of the
+    semiring into the booleans: ``allows(P.disjoin(Q), r) == allows(P, r) or allows(Q, r)`` and
+    ``allows(P.conjoin(Q), r) == allows(P, r) and allows(Q, r)``. The empty disjunction (``never``) lets nobody read;
+    ``always`` (the least label) lets every reader. Unlike the meet of labels, the disjunction never takes the level of
+    one derivation and the location of another, so an element of derivations at (1, 0) and (0, 1) is hidden from a
+    reader at (0, 0); nor does it join the audiences of two chats, so a member of either chat alone sees it.
+
+    The first atom is the element's ``summary``: the label the single-label columns of its row hold (``label_lvl``,
+    ``label_loc``, ``label_int``, ``label_aud``), so a reader that knows no other atom reads it only when that atom
+    lets it."""
+
+    atoms: tuple[Label, ...] = ()
+
+    @classmethod
+    def of(cls, *labels: Label) -> PolicyDNF:
+        return cls(_antichain(labels))
+
+    @classmethod
+    def never(cls) -> PolicyDNF:
+        return cls(())
+
+    @classmethod
+    def always(cls) -> PolicyDNF:
+        return cls((Label(0, 0, "T", frozenset()),))
+
+    def __iter__(self):
+        return iter(self.atoms)
+
+    def __len__(self) -> int:
+        return len(self.atoms)
+
+    @property
+    def integrity(self) -> str:
+        """``T`` when what the element says is trusted: one atom's, as every atom has the same (``_antichain``)."""
+        return self.atoms[0].integrity if self.atoms else "T"
+
+    def disjoin(self, other: PolicyDNF) -> PolicyDNF:
+        if not other.atoms or other.atoms == self.atoms:
+            return self
+        if not self.atoms:
+            return other
+        return PolicyDNF(_antichain((*self.atoms, *other.atoms)))
+
+    def conjoin(self, other: PolicyDNF) -> PolicyDNF:
+        if len(self.atoms) == 1 and len(other.atoms) == 1:
+            return PolicyDNF((self.atoms[0].join(other.atoms[0]),))
+        if not self.atoms or not other.atoms:
+            return PolicyDNF.never()
+        integrity = "U" if "U" in (self.integrity, other.integrity) else "T"
+        return PolicyDNF(_antichain((p.join(q) for p in self.atoms for q in other.atoms), integrity))
+
+    def allows(self, level: int, location: int, holds: frozenset[str] = frozenset()) -> bool:
+        """Whether a reader up to ``level`` and ``location`` that holds ``holds`` (the projects and principals it is)
+        reads: one atom at most that level and location whose projects and audience are within ``holds``."""
+        return self.first(level, location, holds) is not None
+
+    def first(self, level: int, location: int, holds: frozenset[str] = frozenset()) -> int | None:
+        """The index of the first atom that lets the reader of ``allows`` read, None when none does."""
+        for i, atom in enumerate(self.atoms):
+            if (
+                atom.level <= level
+                and atom.location <= location
+                and atom.projects <= holds
+                and audience_below(atom.audience, holds)
+            ):
+                return i
         return None
-    lowest = [label.audience for label in labels if (label.level, label.location) == (low.level, low.location)]
-    lowest = lowest or [label.audience for label in labels]
-    least = next((a for a in lowest if all(audience_below(a, b) for b in lowest)), None)
-    if least is None:
-        least = frozenset().union(*lowest)
-    return Label(low.level, low.location, low.integrity, low.projects, least)
+
+    def admits(self, reader: Label) -> bool:
+        """Whether one atom lets read every reader ``reader`` stands for (``covers``)."""
+        return any(covers(atom, reader) for atom in self.atoms)
+
+    @property
+    def summary(self) -> Label | None:
+        return self.atoms[0] if self.atoms else None
 
 
 @dataclass(frozen=True)

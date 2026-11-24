@@ -13,7 +13,8 @@ TOKEN_NOISE_FLOOR: an eval of a few dozen questions moves by more than a point b
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+import random
+from collections.abc import Mapping, Sequence
 
 NOISE_FLOOR_POINTS = 1.0  # hit@5, in percentage points: a change under this is noise however many questions
 TOKEN_NOISE_FLOOR = 0.05  # the tokens per hit: a change under this share is noise
@@ -23,6 +24,12 @@ SEMANTIC_P95_MS = 1000.0  # a12: kg_search on the hub answers within this at the
 WEIGHTS = (0.0, 0.5, 1.0, 2.0)  # the weights of the asked column the loop tries on the tune split
 MIN_TUNE_QUESTIONS = 30  # fewer questions on the tune split keep the weight as it is
 MIN_NEW_LABELS = 20  # fewer labels since the weight was last tuned keep it as it is
+
+BOOTSTRAP_SAMPLES = 1000  # paired resamples of the holdout questions
+BOOTSTRAP_CONFIDENCE = 0.95  # a candidate is worse on an axis when this share of the resamples say so
+# The three axes of a configuration, each a per-question series of the holdout in the same order for every
+# configuration: (key, better is higher, statistic of a resample).
+AXES = (("hit@5", True, "mean"), ("tokens_per_file", False, "mean"), ("p95_ms", False, "p95"))
 
 ON, OFF, KEEP, UNAVAILABLE = "on", "off", "keep", "unavailable"  # what the semantic gate says
 
@@ -138,6 +145,116 @@ def best_weight(tuned: Mapping[str, Mapping | None], current: float, new_labels:
     return {"weight": weight, "changed": True, "tried": tried, "reason": reason}
 
 
+def gate_weight(proposal: Mapping, runs: Mapping[str, Mapping | None] | None, current: float) -> dict:
+    """``proposal`` (``best_weight``'s answer from the tune split) kept only when the Pareto choice on the holdout
+    accepts it: ``runs`` is the per-question series of the holdout (``kg_health_eval.question_series``) at each weight
+    (the weight as text). A weight that is worse on any axis beyond the noise, or not better on one, leaves
+    ``current`` in effect. {**proposal, pareto: {choice, front, rejected} | None}."""
+    if not proposal.get("changed"):
+        return {**proposal, "pareto": None}
+    stay = {**proposal, "weight": current, "changed": False}
+    key, now = f"{proposal['weight']:g}", f"{current:g}"
+    series = {k: v for k, v in (runs or {}).items() if v and k in (key, now)}
+    if key not in series or now not in series or series[key].get("ids") != series[now].get("ids"):
+        return {**stay, "reason": "the holdout was not measured for both weights: the weight stays", "pareto": None}
+    axes = {k: {a: v[a] for a, _, _ in AXES if a in v} for k, v in series.items()}
+    try:
+        chosen = pareto_select(now, axes)
+    except ValueError as exc:
+        return {**stay, "reason": f"the holdout cannot pair both weights ({exc}): the weight stays", "pareto": None}
+    verdict = {"choice": chosen["choice"], "front": chosen["front"], "rejected": chosen["rejected"]}
+    if chosen["choice"] == key:
+        return {**proposal, "pareto": verdict}
+    why = chosen["rejected"].get(key) or "not better on any axis beyond the noise"
+    return {
+        **stay,
+        "reason": f"{proposal['reason']}, but on the holdout {key} is {why}: {current:g} stays",
+        "pareto": verdict,
+    }
+
+
+def _statistic(kind: str, values: Sequence[float]) -> float:
+    if kind == "p95":
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)]
+    return sum(values) / len(values)
+
+
+def paired_bootstrap(
+    base: Mapping[str, Sequence[float]],
+    other: Mapping[str, Sequence[float]],
+    samples: int = BOOTSTRAP_SAMPLES,
+    seed: int = 0,
+) -> dict[str, dict]:
+    """For each axis of AXES, the change ``other`` makes to ``base`` (both: axis key to the per-question values of the
+    same holdout, in the same order), signed so that a positive number is better, with its paired bootstrap: the same
+    ``samples`` resamples of the questions for both. {axis: {delta, worse (share of resamples under 0), better (share
+    over 0)}}."""
+    rng = random.Random(seed)
+    size = len(next(iter(base.values()))) if base else 0
+    axes = [(key, up, kind) for key, up, kind in AXES if key in base and key in other]
+    if not size or any(len(base[k]) != size or len(other[k]) != size for k, _, _ in axes):
+        raise ValueError("the configurations must be measured on the same questions")
+    sign = {key: 1.0 if up else -1.0 for key, up, _ in axes}
+    wins = {key: [0, 0] for key, _, _ in axes}  # resamples where other is worse, better
+    for _ in range(samples):
+        pick = [rng.randrange(size) for _ in range(size)]
+        for key, _, kind in axes:
+            diff = sign[key] * (
+                _statistic(kind, [other[key][i] for i in pick]) - _statistic(kind, [base[key][i] for i in pick])
+            )
+            wins[key][0] += diff < 0
+            wins[key][1] += diff > 0
+    return {
+        key: {
+            "delta": round(sign[key] * (_statistic(kind, other[key]) - _statistic(kind, base[key])), 4),
+            "worse": wins[key][0] / samples,
+            "better": wins[key][1] / samples,
+        }
+        for key, _, kind in axes
+    }
+
+
+def _dominates(a: Mapping[str, float], b: Mapping[str, float]) -> bool:
+    """Whether point ``a`` (axis to value, higher better) is no worse than ``b`` on every axis and better on one."""
+    return all(a[k] >= b[k] for k in a) and any(a[k] > b[k] for k in a)
+
+
+def pareto_select(
+    current: str,
+    runs: Mapping[str, Mapping[str, Sequence[float]]],
+    samples: int = BOOTSTRAP_SAMPLES,
+    confidence: float = BOOTSTRAP_CONFIDENCE,
+    seed: int = 0,
+) -> dict:
+    """The configuration to leave in effect, among ``runs`` (name to the per-question series of the holdout on the
+    axes of AXES: hit@5 high, tokens_per_file low, p95_ms low, the same questions in the same order). A candidate is
+    out when, by a paired bootstrap against ``current``, ``confidence`` of the resamples find it worse on any axis:
+    the loop never applies a configuration that degrades an axis beyond the noise. Among the others, those no other
+    dominates form the front; the one on it that most resamples find better on some axis than ``current`` (and by the
+    most) is chosen, else ``current`` stays. {choice, changed, front, rejected: {name: why}, axes: {name: bootstrap}}."""
+    if current not in runs:
+        raise KeyError(current)
+    axes = {
+        name: paired_bootstrap(runs[current], series, samples, seed) for name, series in runs.items() if name != current
+    }
+    rejected = {}
+    for name, result in axes.items():
+        bad = [key for key, found in result.items() if found["worse"] >= confidence]
+        if bad:
+            rejected[name] = "worse beyond the noise on " + ", ".join(bad)
+    left = [name for name in axes if name not in rejected]
+    points = {n: {k: v["delta"] for k, v in axes[n].items()} for n in left} | {current: {k: 0.0 for k, _, _ in AXES}}
+    front = sorted(n for n in points if not any(_dominates(points[m], points[n]) for m in points if m != n))
+    gains = {n: max(axes[n][k]["better"] for k in axes[n]) for n in front if n != current}
+    best = max(
+        (n for n in gains if gains[n] >= confidence),
+        key=lambda n: (gains[n], sum(points[n].values()), n),
+        default=current,
+    )
+    return {"choice": best, "changed": best != current, "front": front, "rejected": rejected, "axes": axes}
+
+
 def _figure_text(found: Mapping | None) -> str:
     if not found:
         return "not measured"
@@ -185,6 +302,12 @@ def report_text(project: str, run_id: int, body: Mapping, state: str) -> str:
         f"- Real sessions: click_rate {sessions.get('click_rate')}, {sessions.get('searches', 0)} searches, "
         f"{sessions.get('new_labels', 0)} new labels."
     )
+    explored = sessions.get("explore") or {}
+    if explored.get("n"):
+        lines.append(
+            f"- Exploration (5% channel), clipped IPS: {explored['n']} explored searches, reward {explored['snips']} "
+            f"(effective sample {explored['ess']}), by rank {explored.get('ranks')}."
+        )
     gate = body.get("semantic") or {}
     if gate:
         lines.append(

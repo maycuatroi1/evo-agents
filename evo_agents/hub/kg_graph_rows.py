@@ -11,7 +11,9 @@ A build writes, for one branch (0 is main):
 - the rows of its asked index (``evo_agents.kg.asked.Row``) to kg_asked, and its clusters and review items to
   kg_review_rows;
 - its build, content hash and weight of an asked match to kg_graph_heads, and a notice on the channel ``kg_graph`` (``CHANNEL``) naming the
-  project, branch and build, which a reader listens for to load the new snapshot.
+  project, branch and build, which a reader listens for to load the new snapshot. On main the notice also names the
+  rows the build wrote or deleted (``change_note``, plan kg-sound-fast-optimal), so a reader holding the snapshot
+  before it reads only those (``kg_graph_delta``); a notice too large for the channel names none.
 
 kg_memo_entries holds what an extractor made of a row hash (``memo_get``, ``memo_put``), so an item whose row hash
 an earlier build read is not extracted again. The content hash of the head is the build's, so a snapshot read from
@@ -20,9 +22,11 @@ these tables hashes as one read from the build's file."""
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
-from collections.abc import Iterator
+import zlib
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import Text, cast, delete, func, select
@@ -125,9 +129,9 @@ def table_rows(rows: StoreRows, name: str) -> dict[str, tuple]:
     table at a time: those of every table at once, on top of the build's own rows and of a table read back, took
     as much memory again as the build's rows."""
     if name == "kg_nodes":
-        return {r[0]: tuple(r) for r in rows.nodes}
+        return {r[0]: _guarded(r) for r in rows.nodes}
     if name == "kg_edges":
-        return {r[0]: tuple(r) for r in rows.edges}
+        return {r[0]: _guarded(r) for r in rows.edges}
     if name == "kg_text_rows":
         text: dict[str, tuple] = {}
         for key, row in rows.keyed:
@@ -164,11 +168,21 @@ def table_rows(rows: StoreRows, name: str) -> dict[str, tuple]:
     raise ValueError(f"no graph table {name}")
 
 
-def _row_values(name: str, key: str, row: tuple) -> dict:
-    if name == "kg_nodes":
-        return {**dict(zip(NODE_KEYS, row[:10], strict=True)), "label_aud": row[10]}
-    if name == "kg_edges":
-        return {**dict(zip(EDGE_KEYS, row[:10], strict=True)), "label_aud": row[10]}
+def _guarded(row) -> tuple:
+    """A node or edge row (``graph_model.NODE_COLUMNS``, ``EDGE_COLUMNS``) as both sides of ``diff`` hold it: its
+    ``label_guards`` last, None or the JSON ``_json`` writes, however it was read (jsonb comes back parsed, or as
+    Postgres writes it)."""
+    guards = row[11] if len(row) > 11 else None
+    if isinstance(guards, str):
+        guards = json.loads(guards)
+    return (*row[:11], None if guards is None else _json(guards))
+
+
+def _row_values(name: str, key: str, row: Sequence) -> dict:
+    if name in ("kg_nodes", "kg_edges"):
+        keys = NODE_KEYS if name == "kg_nodes" else EDGE_KEYS
+        guards = json.loads(row[11]) if len(row) > 11 and row[11] is not None else None
+        return {**dict(zip(keys, row[:10], strict=True)), "label_aud": row[10], "label_guards": guards}
     if name == "kg_embeddings":
         return {"row_key": key, **dict(zip(("node_id", "kind", "aud", "vector"), row, strict=True))}
     return {"row_key": key, ROW_TABLES[name]: row[0], "row": json.loads(row[1])}
@@ -177,9 +191,9 @@ def _row_values(name: str, key: str, row: tuple) -> dict:
 def _stored(name: str, values) -> tuple:
     """A row of table ``name`` as ``graph_rows`` gives it."""
     if name == "kg_nodes":
-        return tuple(values[k] for k in (*NODE_KEYS, "label_aud"))
+        return _guarded(tuple(values[k] for k in (*NODE_KEYS, "label_aud", "label_guards")))
     if name == "kg_edges":
-        return tuple(values[k] for k in (*EDGE_KEYS, "label_aud"))
+        return _guarded(tuple(values[k] for k in (*EDGE_KEYS, "label_aud", "label_guards")))
     if name == "kg_embeddings":
         return (values["node_id"], values["kind"], values["aud"], bytes(values["vector"]))
     return (values[ROW_TABLES[name]], _json(values["row"]))
@@ -198,39 +212,41 @@ async def _read(conn: AsyncConnection, name: str, project_id: int, branch_id: in
     return found
 
 
-def _read_columns(name: str) -> list:
-    """What ``_read_rows`` selects of table ``name``: the key, then the columns of a row as ``_stored`` gives it."""
+def read_columns(name: str) -> list:
+    """What ``read_table_rows`` selects of table ``name``: the key, then the columns of a row as ``_stored`` gives it."""
     table = getattr(tables, name)
     key = table.primary_key.columns.values()[-1]
     if name == "kg_nodes":
-        return [key, *(table.c[k] for k in (*NODE_KEYS, "label_aud"))]
+        return [key, *(table.c[k] for k in (*NODE_KEYS, "label_aud", "label_guards"))]
     if name == "kg_edges":
-        return [key, *(table.c[k] for k in (*EDGE_KEYS, "label_aud"))]
+        return [key, *(table.c[k] for k in (*EDGE_KEYS, "label_aud", "label_guards"))]
     if name == "kg_embeddings":
         return [key, table.c.node_id, table.c.kind, table.c.aud, table.c.vector]
     return [key, table.c[ROW_TABLES[name]], cast(table.c.row, Text)]
 
 
-async def _read_rows(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
-    """The rows of table ``name`` of a branch, by key, as ``_assembled`` reads them, fetched as ``_read`` does. A
-    JSON row comes as the text Postgres keeps it in, parsed once in ``_assembled``'s thread: ``_read`` parses it, and
+async def read_table_rows(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
+    """The rows of table ``name`` of a branch, by key, as ``assembled_rows`` reads them, fetched as ``_read`` does. A
+    JSON row comes as the text Postgres keeps it in, parsed once in ``assembled_rows``'s thread: ``_read`` parses it, and
     writes it again with its keys sorted for ``diff``, on the event loop, which was half the minute or two the rows of
     a large graph held the api's loop for."""
     table = getattr(tables, name)
-    columns = _read_columns(name)
+    columns = read_columns(name)
     query = (
         select(*columns).where(table.c.project_id == project_id, table.c.branch_id == branch_id).order_by(columns[0])
     )
     found: dict[str, tuple] = {}
     async for part in (await conn.stream(query.execution_options(yield_per=READ_BATCH))).partitions():
-        found.update(_row_pairs(name, part))
+        found.update(row_pairs(name, part))
     return found
 
 
-def _row_pairs(name: str, part) -> Iterator[tuple[str, tuple]]:
-    """(key, row) of each row of a batch ``_read_rows`` fetched of table ``name``."""
+def row_pairs(name: str, part) -> Iterator[tuple[str, tuple]]:
+    """(key, row) of each row of a batch ``read_table_rows`` fetched of table ``name``."""
     if name == "kg_embeddings":
         return ((r[0], (r[1], r[2], r[3], bytes(r[4]))) for r in part)
+    if name in ("kg_nodes", "kg_edges"):
+        return ((r[0], _guarded(tuple(r[1:]))) for r in part)
     return ((r[0], tuple(r[1:])) for r in part)
 
 
@@ -266,13 +282,19 @@ async def write_graph(
     """Write the rows of a build to the tables of ``branch_id``, only what changed, then its head, and notify
     ``CHANNEL``; what each table changed (``Changes.counts``). Within the caller's transaction."""
     changed = {}
+    heads = tables.kg_graph_heads
+    base = await conn.scalar(
+        select(heads.c.content_hash).where(heads.c.project_id == project_id, heads.c.branch_id == branch_id)
+    )
+    keys: dict[str, object] = {}
     for name in WRITE_ORDER:
         fresh = table_rows(rows, name)
-        changes = diff(await _read(conn, name, project_id, branch_id), fresh)
+        old = await _read(conn, name, project_id, branch_id)
+        changes = diff(old, fresh)
         await _apply(conn, name, project_id, branch_id, fresh, changes)
         changed[name] = changes.counts()
-        del fresh, changes
-    heads = tables.kg_graph_heads
+        keys[name] = touched(name, old, fresh, changes)
+        del fresh, changes, old
     (level, location), audience = rows.top
     head = {
         "build_id": build_id,
@@ -286,15 +308,58 @@ async def write_graph(
     }
     stmt = pg_insert(heads).values(project_id=project_id, branch_id=branch_id, **head)
     await conn.execute(stmt.on_conflict_do_update(index_elements=[heads.c.project_id, heads.c.branch_id], set_=head))
-    await notify(conn, project_id, branch_id, build_id)
+    await notify(conn, project_id, branch_id, build_id, change_note(base, rows.content_hash, keys))
     return changed
 
 
-async def notify(conn: AsyncConnection, project_id: int, branch_id: int, build_id: int | None) -> None:
-    """Tell the readers listening on ``CHANNEL`` that the graph of a branch has a new build; sent at commit, on
-    Postgres or on the event bus (``evo_agents.hub.wake``)."""
-    payload = json.dumps({"project_id": project_id, "branch_id": branch_id, "build_id": build_id})
-    await wake.notify(conn, CHANNEL, payload)
+def touched(name: str, old: dict[str, tuple], fresh: dict[str, tuple], changes: Changes):
+    """What a write of table ``name`` touched, as ``change_note`` names it: the keys of the nodes and edges, the
+    (kind, key, digest of the row now or None) of the full-text rows, the elements of the provenance rows, and of
+    the other tables whether any row changed."""
+    if name in ("kg_nodes", "kg_edges"):
+        return sorted({*changes.new, *changes.changed, *changes.deleted})
+    if name == "kg_text_rows":
+        rows: dict[tuple[str, str], str | None] = {(k[0], old[k][0]): None for k in changes.deleted}
+        rows.update(((k[0], fresh[k][0]), k[-16:]) for k in (*changes.new, *changes.changed))
+        return sorted([kind, key, digest] for (kind, key), digest in rows.items())
+    if name == "kg_provenance":
+        return sorted({*(fresh[k][0] for k in (*changes.new, *changes.changed)), *(old[k][0] for k in changes.deleted)})
+    return bool(changes.new or changes.changed or changes.deleted)
+
+
+NOTE_BYTES = 7900  # the most a notice's payload holds: Postgres's NOTIFY takes less than 8000 bytes
+
+
+def change_note(base: str | None, content_hash: str, keys: dict[str, object]) -> str | None:
+    """What a build changed of the rows of a graph whose content hash was ``base`` (``touched``, per table), as the
+    text a notice carries (``evo_agents.hub.kg_graph_delta.note_of`` reads it): JSON, compressed, in base 85. None
+    when the rows held before were none, when its vectors changed (a reader then reads the rows whole), or when it
+    does not fit in a notice."""
+    if base is None or keys.get("kg_embeddings"):
+        return None
+    note = {
+        "base": base,
+        "hash": content_hash,
+        "nodes": keys.get("kg_nodes", []),
+        "edges": keys.get("kg_edges", []),
+        "text": keys.get("kg_text_rows", []),
+        "provenance": keys.get("kg_provenance", []),
+        "asked": bool(keys.get("kg_asked")),
+        "review": bool(keys.get("kg_review_rows")),
+    }
+    text = base64.b85encode(zlib.compress(json.dumps(note, separators=(",", ":")).encode(), 9)).decode()
+    return text if len(text) < NOTE_BYTES - 200 else None
+
+
+async def notify(
+    conn: AsyncConnection, project_id: int, branch_id: int, build_id: int | None, changes: str | None = None
+) -> None:
+    """Tell the readers listening on ``CHANNEL`` that the graph of a branch has a new build, and what it changed
+    when that fits (``change_note``); sent at commit, on Postgres or on the event bus (``evo_agents.hub.wake``)."""
+    note: dict[str, object] = {"project_id": project_id, "branch_id": branch_id, "build_id": build_id}
+    if changes is not None:
+        note["changes"] = changes
+    await wake.notify(conn, CHANNEL, json.dumps(note))
 
 
 async def _head(conn: AsyncConnection, project_id: int, branch_id: int):
@@ -322,13 +387,13 @@ async def read_head(conn: AsyncConnection, project_id: int, branch_id: int = MAI
     if head is None:
         return None
     read = {name: {} for name in GRAPH_TABLES}
-    read["kg_review_rows"] = await _read_rows(conn, "kg_review_rows", project_id, branch_id)
-    return await asyncio.to_thread(_assembled, head, read)
+    read["kg_review_rows"] = await read_table_rows(conn, "kg_review_rows", project_id, branch_id)
+    return await asyncio.to_thread(assembled_rows, head, read)
 
 
 async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
     """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build. The
-    rows are fetched a batch at a time (``_read_rows``) and parsed and put together in a thread (``_assembled``), so a
+    rows are fetched a batch at a time (``read_table_rows``) and parsed and put together in a thread (``assembled_rows``), so a
     large graph does not hold the event loop."""
     fetched = await fetch_graph(conn, project_id, branch_id)
     return None if fetched is None else await assemble_graph(fetched)
@@ -341,12 +406,12 @@ async def fetch_graph(conn: AsyncConnection, project_id: int, branch_id: int = M
     head = await _head(conn, project_id, branch_id)
     if head is None:
         return None
-    return head, {name: await _read_rows(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
+    return head, {name: await read_table_rows(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
 
 
 async def assemble_graph(fetched: tuple) -> StoreRows:
     """The ``StoreRows`` of what ``fetch_graph`` read, put together in a thread; it needs no connection."""
-    return await asyncio.to_thread(_assembled, *fetched)
+    return await asyncio.to_thread(assembled_rows, *fetched)
 
 
 GRAPH_TABLES = (
@@ -370,7 +435,7 @@ WRITE_ORDER = (
 )  # the order ``write_graph`` writes them in
 
 
-def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
+def assembled_rows(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
     """The ``StoreRows`` of the head of a branch and the rows of its tables (``GRAPH_TABLES``) by key."""
     keyed, code = [], {}
     for _, row in paced(read["kg_text_rows"].items()):

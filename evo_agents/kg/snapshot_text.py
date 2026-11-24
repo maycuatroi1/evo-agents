@@ -29,11 +29,19 @@ from pathlib import PurePosixPath
 
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
-from evo_agents.kg import semantic
-from evo_agents.kg.graph_model import stored_audience
+from evo_agents.kg import semantic, snapshot_fts
+from evo_agents.kg.graph_model import within
 from evo_agents.kg.pacing import paced
-from evo_agents.kg.policy import audience_below
-from evo_agents.kg.snapshot_fts import Table, code_words, trigrams, words
+from evo_agents.kg.snapshot_fts import (
+    Phrase,
+    QueryError,
+    Table,
+    code_words,
+    parse,
+    trigrams,
+    wand_top_k,
+    words,
+)
 
 IndexRow = tuple[str, str, str]  # (kind, name, path) of a node's own row, as ``TextIndex.index_row`` reads it
 
@@ -120,6 +128,26 @@ class TextIndex:
                 pure = PurePosixPath(r.path)
                 for word in {pure.name, pure.stem}:
                     self.files.setdefault(word, []).append(r)
+        self._kinds: dict[str, tuple] = {}  # per table, its rows' kinds as numbers (``kept``)
+
+    def kept(self, table: str, wanted):
+        """What keeps the rows of ``table`` ("public", "audience" or "tri") of a kind in ``wanted``: None for any kind,
+        else a mask over them, or a callable of a row without numpy."""
+        rows = {"public": self.public_rows, "audience": self.audience_rows, "tri": self.tri_rows}[table]
+        if not wanted:
+            return None
+        np = snapshot_fts._np
+        if np is None:
+            return lambda n: rows[n].kind in wanted
+        held = self._kinds.get(table)
+        if held is None:
+            numbers: dict[str, int] = {}
+            codes = np.fromiter(
+                (numbers.setdefault(r.kind, len(numbers)) for r in rows), dtype=np.int32, count=len(rows)
+            )
+            held = self._kinds[table] = (numbers, codes)
+        numbers, codes = held
+        return np.isin(codes, [numbers[k] for k in wanted if k in numbers])
 
     @classmethod
     def build(cls, keyed: list[tuple[str, tuple]], code: dict[str, str], folded: bool = False) -> TextIndex:
@@ -131,15 +159,21 @@ class TextIndex:
             rows.append(Row(key, row[0], row[1], row[2] or "", row[3] or "", aud))
             (public if aud is None else audience).append((row[2] or "", row[3] or "", row[4] or ""))
         tri_rows = [r for r in rows if r.aud is None and r.own]
-        tri = Table(
-            [(text_search.tri_text(r.name.split("\n", 1)[0]), text_search.tri_text(r.path)) for r in paced(tri_rows)],
-            trigrams,
-        )
+        tri = Table([tri_texts(r) for r in paced(tri_rows)], trigrams)
         code_ids = tuple(sorted(code))
         code_table = Table(
             [(code[nid] if folded else text_search.fold(code[nid]),) for nid in paced(code_ids)], code_words
         )
         return cls(rows, Table(public, words), Table(audience, words), tri, tri_rows, code_table, code_ids)
+
+    def updated(self, keyed: Sequence[tuple[str, tuple]], gone, code: dict[str, str], code_gone) -> TextIndex:
+        """The index with the rows of the keys ``gone`` dropped and the rows ``keyed`` (key, row as ``build`` reads
+        it) added, and the code of the files ``code_gone`` dropped and ``code`` (folded) set: what ``build`` makes of
+        the rows then, of this index's tables with the new rows alone cut into tokens (``Table.updated``). Raises
+        ValueError when a key would be held twice."""
+        from evo_agents.kg import snapshot_text_update
+
+        return snapshot_text_update.updated(self, keyed, frozenset(gone), code, code_gone)
 
     def index_row(self, node_id: str) -> IndexRow:
         r = self.own.get(node_id)
@@ -150,6 +184,11 @@ class TextIndex:
 
         i = bisect_left(self.code_ids, node_id)
         return self.code.rows[i][0] if i < len(self.code_ids) and self.code_ids[i] == node_id else None
+
+
+def tri_texts(r: Row) -> tuple[str, str]:
+    """A row's texts in the trigram table: the first line of its name, and its path."""
+    return text_search.tri_text(r.name.split("\n", 1)[0]), text_search.tri_text(r.path)
 
 
 class Ranker:
@@ -272,8 +311,6 @@ class Ranker:
     def matched(self, ids: list[str], query: str) -> dict[str, dict]:
         """What matched, without the passages: per node of ``ids`` with an own row the reader reads, how many of
         the query's words its name, path or body holds whole (``words``), of ``of``."""
-        from evo_agents.kg.snapshot_fts import QueryError, matching, parse
-
         query_words = text_search.query_words(query)
         if not ids or not query_words:
             return {}
@@ -287,13 +324,13 @@ class Ranker:
                     phrases, tree = parse(next(text_search.fts_queries([word])))
                 except QueryError:
                     continue
-                for n in matching(tree, [table.hits(p) for p in phrases]) & held.keys():
+                for n in table.matching_rows(phrases, tree, set(held)):
                     held[n] += 1
             out.update({rows[n].node_id: {"words": count, "of": len(query_words)} for n, count in held.items()})
         return out
 
     def _readable(self, aud: str | None) -> bool:
-        return aud is None or (bool(self.view.reader) and audience_below(stored_audience(aud), self.view.reader))
+        return aud is None or (bool(self.view.reader) and within(self.view.reader, aud))
 
     def ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float, IndexRow]]:
         """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first."""
@@ -301,7 +338,7 @@ class Ranker:
         wanted = set(kinds)
         text = self.text
         found: list[tuple[Row, float]] = []
-        public = text.public.search(fts_query, self.weights, lambda n: not wanted or text.public_rows[n].kind in wanted)
+        public = wand_top_k(text.public, fts_query, self.weights, pool, text.kept("public", wanted))
         found += [
             (text.public_rows[n], s) for n, s in sorted(public, key=lambda x: (x[1], text.public_rows[x[0]].node_id))
         ][:pool]
@@ -321,27 +358,28 @@ class Ranker:
     def _audience(self, fts_query: str, pool: int, wanted: set[str]) -> list[tuple[Row, float]]:
         """The best ``pool`` rows with an audience the reader reads, by their own BM25, each scored again with the IDF
         the rows without one give each phrase."""
-        from evo_agents.kg.snapshot_fts import Phrase
-
         text = self.text
         rows = text.audience_rows
+        kinds = text.kept("audience", wanted)
 
         def keep(n: int) -> bool:
-            return (not wanted or rows[n].kind in wanted) and self._readable(rows[n].aud)
+            return (kinds is None or bool(kinds[n] if not callable(kinds) else kinds(n))) and self._readable(
+                rows[n].aud
+            )
 
-        first = sorted(text.audience.search(fts_query, self.weights, keep), key=lambda x: (x[1], rows[x[0]].node_id))
-        first = first[:pool]
+        found = wand_top_k(text.audience, fts_query, self.weights, pool, keep)
+        first = sorted(found, key=lambda x: (x[1], rows[x[0]].node_id))[:pool]
         phrases = [
             Phrase(p.rstrip("*")[1:-1].replace('""', '"'), p.endswith("*")) for p in text_search.phrases(fts_query)
         ]
         scores = dict.fromkeys((n for n, _ in first), 0.0)
         for phrase in phrases:
-            public_hits, own_hits = text.public.hits(phrase), text.audience.hits(phrase)
-            idf = text.public.idf(len(public_hits))
-            for n in scores:
-                part = text.audience.score(n, [own_hits], [text.audience.idf(len(own_hits))], self.weights)
-                if n in own_hits:
-                    scores[n] += part * idf / text.audience.idf(len(own_hits))
+            idf = text.public.idf(text.public.count(phrase))
+            held, own_hits = text.audience.held_by(phrase, scores)
+            own_idf = text.audience.idf(held)
+            for n in own_hits:
+                part = text.audience.score(n, [own_hits], [own_idf], self.weights)
+                scores[n] += part * idf / own_idf
         return [(rows[n], scores[n]) for n, _ in first]
 
     def _trigram_ranked(self, words_of, limit, kinds, hits) -> dict[str, float]:
@@ -350,7 +388,8 @@ class Ranker:
             return {}
         rows = self.text.tri_rows
         wanted = set(kinds)
-        found = self.text.tri.search(fts_query, self.weights[:2], lambda n: not wanted or rows[n].kind in wanted)
+        pool = max(limit, text_search.RERANK_POOL)
+        found = wand_top_k(self.text.tri, fts_query, self.weights[:2], pool, self.text.kept("tri", wanted))
         found = sorted(found, key=lambda x: (x[1], rows[x[0]].node_id))[: max(limit, text_search.RERANK_POOL)]
         prior = text_search.PRIOR
         return {rows[n].node_id: s * prior.get(rows[n].kind, 1.0) for n, s in found if rows[n].node_id not in hits}
