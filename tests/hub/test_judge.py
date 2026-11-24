@@ -801,7 +801,13 @@ def test_curator_plan_progress_is_all_a_write_may_change():
         "steps": [{"id": 1, "what": "w", "verify": "v", "status": "pending"}],
     }
     done = {**body, "status": "done", "steps": [{**body["steps"][0], "status": "done", "evidence": "e", "note": "n"}]}
+    descoped = {
+        **body,
+        "status": "completed",
+        "steps": [{**body["steps"][0], "status": "descoped", "descoped_at": "2026-11-24", "evidence": "e"}],
+    }
     assert judge.progress_free(done) == judge.progress_free(body)
+    assert judge.progress_free(descoped) == judge.progress_free(body)
     for changed in ({"goal": "other"}, {"context": "c"}, {"steps": [{**body["steps"][0], "what": "x"}]}):
         assert judge.progress_free({**body, **changed}) != judge.progress_free(body)
     assert judge.is_curator_plan_id("curator-7-x") and not judge.is_curator_plan_id("my-curator")

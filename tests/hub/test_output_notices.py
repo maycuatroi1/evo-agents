@@ -290,7 +290,8 @@ def test_a_restricted_projects_channel_gets_neither_files_nor_their_names(client
     sent(client, prefix, hub["owner"], [(REPORT, item(REPORT, "northwind-terms.md", "text/markdown"))])
     due_now(hub_db)
     assert deliver(client)["delivered"] == 3, "the question on the web and the channel, the notice on the web alone"
-    assert [n.extra for n in recording.sent] == [{"restricted": True}]
+    restricted = {"restricted": True, "restricted_by": "default_label", "label": "internal", "label_given": False}
+    assert [n.extra for n in recording.sent] == [restricted], "a decision without a label goes by its project's sink"
 
 
 def test_telegrams_message_of_a_restricted_projects_files_holds_the_project_the_kind_and_the_link_alone():

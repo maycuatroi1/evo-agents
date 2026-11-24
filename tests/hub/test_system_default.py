@@ -114,7 +114,11 @@ def test_only_an_admin_sets_the_default_list_marks_it_and_deleting_it_leaves_non
     assert refused.status_code == 403, refused.text
     assert c.put(path(hub, "default-system"), json={"slug": "nope"}, headers=hub["owner"]).status_code == 404
     found = c.put(path(hub, "default-system"), json={"slug": "support"}, headers=hub["owner"]).json()
-    assert (found["slug"], found["ops"]["enabled"], found["limits"]["ops_daily_usd"]) == ("support", False, system_spec.UNLIMITED_USD)
+    assert (found["slug"], found["ops"]["enabled"], found["limits"]["ops_daily_usd"]) == (
+        "support",
+        False,
+        system_spec.UNLIMITED_USD,
+    )
     assert c.put(path(hub, "default-system"), json={"slug": "spare"}, headers=hub["owner"]).status_code == 200
     listed = c.get(path(hub, "systems"), headers=hub["reader"]).json()
     assert [(s["slug"], s["default"]) for s in listed] == [("spare", True), ("support", False)]
