@@ -65,7 +65,9 @@ class SearchTools(SessionText):
         hits = self._search_hits(store, b, query, kinds, limit, repo)
         stood: dict[str, list[str]] = {}  # a source document -> the matched entities it stands for
         if not kinds:  # an entity gives its place to the documents that mention it (search.through_entities)
-            hits, stood = through_entities(store, b, hits, self.seen, store.tuning.entity_code)
+            hits, stood = through_entities(
+                store, b, hits, self.seen, store.tuning.entity_code, query, store.tuning.entity_words
+            )
             hits = [n for n in hits if in_repo(n, repo)]
         results, via = with_mentions(
             store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds

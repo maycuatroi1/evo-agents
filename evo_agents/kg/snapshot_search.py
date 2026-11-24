@@ -81,7 +81,9 @@ class SnapshotSearch:
         hits = self._hits(query, kinds, limit, repo)
         stood: dict[str, list[str]] = {}
         if not kinds:
-            hits, stood = through_entities(view, b, hits, self.seen, view.tuning.entity_code)
+            hits, stood = through_entities(
+                view, b, hits, self.seen, view.tuning.entity_code, query, view.tuning.entity_words
+            )
             hits = [n for n in hits if in_repo(n, repo)]
         results, via = with_mentions(
             view, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds

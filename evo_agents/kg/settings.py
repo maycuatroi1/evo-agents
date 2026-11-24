@@ -7,7 +7,7 @@ kg_context by Personalized PageRank (``walk``, ``evo_agents.kg.ppr``; off unless
 A project that set nothing gets the constants the code has always used, so it ranks as before. ``Tuning`` holds the
 values in effect; a settings file holds only what differs from the default. Two kinds of key:
 
-- query keys (``semantic_weight``, ``bm25_name``, ``bm25_path``, ``bm25_body``, ``walk``, ``entity_code``,
+- query keys (``semantic_weight``, ``bm25_name``, ``bm25_path``, ``bm25_body``, ``walk``, ``entity_code``, ``entity_words``,
   ``semantic_mode`` between index and on) change how ``kg_search`` reads a graph that exists: they take effect at once and can be measured on the newest build;
 - build keys (``passage_from``, ``passage_chars``, ``embed_chars``, ``semantic_model``, ``strategy``, and
   ``semantic_mode`` to or from off) change what a build writes: they take effect with the next build, and measuring one
@@ -51,6 +51,7 @@ class Tuning:
         None  # the Personalized PageRank walk of kg_search and kg_context (evo_agents.kg.ppr); None: off
     )
     entity_code: bool = False  # a matched entity also brings the code it points to, and the walk weighs implemented_by
+    entity_words: bool = False  # an unranked source of a matched entity must hold a word of the query
 
     @property
     def bm25(self) -> tuple[float, float, float, float, float]:
@@ -141,6 +142,7 @@ _CHECKS = {
     "walk": _walk,
     "strategy": _strategy,
     "entity_code": _flag("entity_code"),
+    "entity_words": _flag("entity_words"),
 }
 
 

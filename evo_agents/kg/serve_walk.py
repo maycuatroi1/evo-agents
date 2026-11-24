@@ -94,7 +94,9 @@ class WalkTools(PackTools):
                 hits = store.search(query, b, limit=5, deprecated=self.deprecated)[:5]
             nodes = store.nodes(hits, b)
             found = [nodes[h] for h in hits if h in nodes and self.seen(nodes[h])]
-            found, stood = through_entities(store, b, found, self.seen, store.tuning.entity_code)
+            found, stood = through_entities(
+                store, b, found, self.seen, store.tuning.entity_code, query, store.tuning.entity_words
+            )
             seeds = {n["id"]: n for n in found[:5]}
             stood = {sid: why for sid, why in stood.items() if sid in seeds}
         else:

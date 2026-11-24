@@ -126,3 +126,28 @@ def test_an_entity_brings_a_commit_or_pull_request_only_when_the_search_ranked_i
     out, why = search.through_entities(Graph(), 0, [{"id": "entity:Place:paris"}, {"id": "commit:1"}], lambda _: True)
     assert [n["id"] for n in out] == ["commit:1", "doc:3", "entity:Place:paris"]  # a ranked commit is still a source
     assert why == {"commit:1": ["entity:Place:paris"], "doc:3": ["entity:Place:paris"]}
+
+
+def test_entity_words_keeps_an_unranked_source_only_when_it_holds_a_query_word():
+    held = {"doc:with": {"words": 1, "of": 1}, "doc:without": {"words": 0, "of": 1}}
+
+    class Graph:
+        def edges_of(self, node_id, b, direction, limit):
+            return [{"src": s, "rel": "mentions", "dst": node_id, "conf": 0.9} for s in ("doc:with", "doc:without")]
+
+        def nodes(self, ids, b):
+            return {i: {"id": i, "kind": "File"} for i in ids}
+
+        def matched(self, ids, query):
+            assert query == "quasar"
+            return {i: held[i] for i in ids if i in held}
+
+    hits = [{"id": "entity:Place:paris"}]
+    off, _ = search.through_entities(Graph(), 0, hits, lambda _: True, False, "quasar", False)
+    assert [n["id"] for n in off] == ["doc:with", "doc:without", "entity:Place:paris"]  # off: as before
+    on, why = search.through_entities(Graph(), 0, hits, lambda _: True, False, "quasar", True)
+    assert [n["id"] for n in on] == ["doc:with", "entity:Place:paris"]
+    assert why == {"doc:with": ["entity:Place:paris"]}
+    ranked = [{"id": "entity:Place:paris"}, {"id": "doc:without"}]  # a ranked source stays whatever it holds
+    on, _ = search.through_entities(Graph(), 0, ranked, lambda _: True, False, "quasar", True)
+    assert [n["id"] for n in on] == ["doc:without", "doc:with", "entity:Place:paris"]
