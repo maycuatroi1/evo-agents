@@ -5,6 +5,8 @@ the tests and benches (``evo_agents.kg.bench.rows_file.RowsSession``); this one 
 
 from __future__ import annotations
 
+from collections import Counter
+
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 from evo_agents.kg.policy import Label, audience_below
@@ -27,6 +29,12 @@ class SessionView:
         self.project = project
         self.sink = sink
         self.error = error
+        self.given: Counter = (
+            Counter()
+        )  # node id: times kg_context gave it in this session (evo_agents.kg.context_pack)
+        self.last_context: tuple[tuple, Counter] | None = (
+            None  # the last kg_context: its request, what was given before
+        )
         self.handles: dict[str, tuple] = {}  # handle: (made, chunks left, audience its result revealed)
         self.policy = project.policy if project else None
         self.clearance = None

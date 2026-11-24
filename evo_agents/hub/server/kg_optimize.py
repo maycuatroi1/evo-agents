@@ -40,7 +40,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, insert, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -58,8 +58,8 @@ from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 from evo_agents.hub.tables_kg import OPTIMIZE_ACTIVE
+from evo_agents.kg import explore, rank, semantic
 from evo_agents.kg import search as text_search
-from evo_agents.kg import semantic
 from evo_agents.kg.evaluate import TUNE
 
 log = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ AFTER_WAIT = timedelta(hours=6)  # and this long for a build after the review ru
 MAX_DECISIONS = 25  # graph decisions a run applies
 MAX_LISTED = 10  # runs GET lists
 ERROR_CHARS = 2000
+MAX_EXPLORED = 5000  # explored searches a run reads to estimate their reward
 NOTICE = "kg_optimize"  # runs.NOTICE_KINDS
 KG_OPTIMIZE = "kg.optimize"  # the audit action of an asked-for run
 
@@ -188,8 +189,19 @@ async def _sessions(conn: AsyncConnection, project_id: int, since: datetime) -> 
         )
     ).one()
     new = await conn.scalar(select(func.count()).where(t.c.project_id == project_id, t.c.created_at >= since))
+    logged = await conn.execute(
+        select(t.c.results, t.c.clicks, t.c.grep_after)
+        .where(
+            t.c.project_id == project_id,
+            when >= since,
+            or_(*(t.c.results.contains([{"explored": r}]) for r in explore.RANKS)),
+        )
+        .limit(MAX_EXPLORED)
+    )
+    explored = rank.explore_estimate({"results": r, "clicks": c, "grep_after": g} for r, c, g in logged)
     searches = row.searches or 0
     return {
+        "explore": explored,
         "since": since.isoformat(),
         "searches": searches,
         "click_rate": round(row.clicked / searches, 4) if searches else None,
