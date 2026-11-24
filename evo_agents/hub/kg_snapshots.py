@@ -6,7 +6,8 @@ told the graph is loading (``ready``), as a large graph takes minutes and an age
 the api opens, it loads the snapshot of the project searched most in the last WARM_DAYS (``warm``, WARM_PROJECTS), so
 the first call after a deploy finds it held. A build that writes the tables notifies ``kg_graph``
 (``kg_graph_rows.notify``); the coordinator, subscribed on the process's listener (``evo_agents.hub.server.listen``),
-then builds the project's new snapshot in a background task and swaps it in with one assignment: a reader holds the
+then builds the project's new snapshot in a background task (from the rows the notice names changed, applied to
+the snapshot held, ``kg_graph_delta``, when it can; from every row otherwise) and swaps it in with one assignment: a reader holds the
 snapshot it was given until it is done. A reader that found a build newer than the snapshot held waits up to
 FRESH_WAIT for that load, so a graph read right after a build answers from it, and is given the older one after. After the listener (re)connects, every project
 held is read again, since a notification sent while nobody listened is lost. A snapshot is the whole graph: each
@@ -30,7 +31,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import db, kg_branches, tables
+from evo_agents.hub import db, kg_branches, kg_graph_delta, tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, assemble_graph, fetch_graph
 from evo_agents.kg import pacing as kg_pacing
 from evo_agents.kg import settings as kg_settings
@@ -521,24 +522,30 @@ class SnapshotCoordinator:
             self._watch(self._branches.pop(next(iter(self._branches)))[1].snapshot)
         return found[1]
 
-    def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
+    def _load(self, project_id: int, fresh: bool = False, changes: str | None = None) -> asyncio.Task:
         """The task loading the project's snapshot; ``fresh``: one that reads the tables after this call, queued
-        behind a load already running, which may have read them before the build that notified."""
+        behind a load already running, which may have read them before the build that notified; ``changes``: what
+        that build changed (``kg_graph_rows.change_note``), applied to the snapshot held when it is the one the build
+        changed (``_patched``)."""
         self._loop = asyncio.get_running_loop()
         task = self._loading.get(project_id)
         if task is None or task.done() or fresh:
-            build = self._build(project_id, None if task is None or task.done() else task)
+            build = self._build(project_id, None if task is None or task.done() else task, changes)
             task = asyncio.get_running_loop().create_task(build, name=f"kg-snapshot-{project_id}")
             self._loading[project_id] = task
             self._began[project_id] = asyncio.get_running_loop().time()
         return task
 
-    async def _build(self, project_id: int, after: asyncio.Task | None = None) -> Held | None:
+    async def _build(
+        self, project_id: int, after: asyncio.Task | None = None, changes: str | None = None
+    ) -> Held | None:
         if after is not None:
             await asyncio.gather(after, return_exceptions=True)
         assert self.engine is not None
         try:
-            held = await load(self.engine, project_id)
+            held = await self._patched(project_id, changes)
+            if held is None:
+                held = await load(self.engine, project_id)
         finally:
             if self._loading.get(project_id) is asyncio.current_task():
                 del self._loading[project_id]  # a finished load is not kept; a fresh one queued behind it stays
@@ -559,6 +566,29 @@ class SnapshotCoordinator:
         )
         self._ease()
         return held
+
+    async def _patched(self, project_id: int, changes: str | None) -> Held | None:
+        """The snapshot held with what a build changed applied (``kg_graph_delta``): the rows it touched read, not
+        every row. None, for a load of every row, without ``changes``, when the snapshot held is not the one the build
+        changed, when a later build wrote meanwhile, or when applying them fails."""
+        note = kg_graph_delta.note_of(changes)
+        old = self._held.get(project_id)
+        if note is None or old is None or old.snapshot.content_hash != note.base:
+            return None
+        assert self.engine is not None
+        start = time.perf_counter()
+        try:
+            async with self.engine.connect() as conn:
+                found = await kg_graph_delta.read(conn, project_id, note)
+            if found is None:
+                return None
+            with uncollected():
+                snapshot = await asyncio.to_thread(kg_graph_delta.applied, old.snapshot, found)
+        except Exception:
+            log.warning("kg snapshot changes not applied; reading every row", exc_info=True)
+            return None
+        log.info("kg snapshot changes applied", extra={"project_id": project_id, "s": time.perf_counter() - start})
+        return Held(found.build_id, snapshot)
 
     def _keep(self, project_id: int, held: Held) -> None:
         """Hold ``held`` as the project's snapshot, the most recently read, and drop the least recently read ones
@@ -624,6 +654,7 @@ class SnapshotCoordinator:
 
     def notified(self, payload: str | None) -> None:
         """A listener's handler: rebuild the snapshot a notification names, or each held one after a reconnection."""
+        changes = None
         if payload is None:
             projects = list(self._held)
         else:
@@ -634,8 +665,9 @@ class SnapshotCoordinator:
             if note.get("branch_id", MAIN) != MAIN or note.get("project_id") not in self._held:
                 return  # a project nobody read yet is loaded on its first read
             projects = [note["project_id"]]
+            changes = note.get("changes")
         for project_id in projects:
-            task = self._load(project_id, fresh=True)
+            task = self._load(project_id, fresh=True, changes=changes)
             self._tasks.add(task)
             task.add_done_callback(self._done)
 

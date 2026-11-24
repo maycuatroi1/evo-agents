@@ -76,7 +76,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import kg_branches, kg_named_graphs, kg_settings, tables
+from evo_agents.hub import kg_branches, kg_named_graphs, kg_pool, kg_settings, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -859,7 +859,7 @@ async def tool_result(
         snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
         with pacing(busy=requests_waiting):
-            result = await asyncio.to_thread(
+            result = await kg_pool.run(
                 answer,
                 state.kg_handles,
                 (user.user_id, project),
@@ -928,7 +928,7 @@ async def unknown_refs(
         snapshot,
     )
     try:
-        return await asyncio.to_thread(unknown, *looked)
+        return await kg_pool.run(unknown, *looked)
     except GraphUnavailable as exc:
         return UnknownRefs(*every, str(exc))
 
@@ -946,7 +946,7 @@ async def visible_nodes(state, access: ProjectAccess, user: Principal, project: 
     snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     looked = (project, access.rules.policy, ceiling, sink, graphs, ids, snapshot)
     try:
-        return await asyncio.to_thread(node_kinds, *looked)
+        return await kg_pool.run(node_kinds, *looked)
     except (GraphUnavailable, ToolError) as exc:
         raise HTTPException(409, str(exc)) from None
 
@@ -975,7 +975,7 @@ async def delivery_evidence(
     snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     looked = (project, access.rules.policy, ceiling, through, graphs, codes, snapshot)
     try:
-        return await asyncio.to_thread(mentioning, *looked), None
+        return await kg_pool.run(mentioning, *looked), None
     except (GraphUnavailable, ToolError) as exc:
         return None, str(exc)
 
