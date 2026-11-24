@@ -487,8 +487,9 @@ class SnapshotView:
 
     @property
     def sight(self) -> snapshot_masks.Sight:
-        """What the reader reads of the snapshot's policies, a byte per policy (``snapshot_masks``)."""
-        if self._sight is None:
+        """What the reader reads of the snapshot's policies, a byte per policy (``snapshot_masks``), made again when
+        a caller set another ``reader`` since."""
+        if self._sight is None or self._sight.reader != self.reader:
             self._sight = snapshot_masks.Sight(snapshot_masks.of(self.snap), self.reader)
         return self._sight
 
