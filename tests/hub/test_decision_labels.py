@@ -16,6 +16,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
+from evo_agents.hub.server.decision_channels import contributed_kinds
 from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
 from tests.hub.test_decisions import ask, asked, client, decision, hub  # noqa: F401 (fixtures)
@@ -30,7 +31,12 @@ def stored_label(db, decision_id: int):
 def test_a_decision_asked_with_a_label_keeps_it_and_every_view_shows_it(client, hub, hub_db):
     worker, run = started(client, hub)
     found = asked(client, worker, run["id"], label="internal")
-    assert (found["label"], found["label_given"], found["channel_deliveries"]) == ("internal", True, [])
+    assert (found["label"], found["label_given"]) == ("internal", True)
+    # no channel is linked: one entry not sent for each kind the installed core plugins contribute, none without them
+    not_linked = [(d["channel"], d["state"], d["reason"]) for d in found["channel_deliveries"]]
+    assert not_linked == [
+        (kind, "not_sent", f"{found['asked_of']} has not linked {kind}") for kind in contributed_kinds()
+    ]
     assert stored_label(hub_db, found["id"]) == "internal"
     assert decision(client, hub["reader"], found["id"])["label"] == "internal"
 

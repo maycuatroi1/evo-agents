@@ -167,7 +167,7 @@ def is_curator_branch(name: str | None) -> bool:
     return not re.search(r"\.\.|[\x00-\x20~^:?*\[\\]|//|/$|\.lock$|@\{", name)
 
 
-STEP_PROGRESS = ("status", "done_at", "evidence", "proofs", "note")  # what a draft's step may say of progress, dropped
+STEP_PROGRESS = ("status", "done_at", "descoped_at", "evidence", "proofs", "note")  # progress keys a draft omits
 # A criterion id as a draft may write it (A1): the plan keeps a<number>, the only id a proof can name (proofs.CRITERION_ID).
 DRAFT_CRITERION_ID = re.compile(r"[Aa](\d+)")
 

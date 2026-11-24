@@ -437,7 +437,9 @@ def test_a_restricted_projects_author_notice_on_a_channel_holds_its_name_and_the
         moved(client, worker, run_id, "running")
         asked(client, worker, run_id)
         assert deliver(client)["failed"] == 0
-        assert northwind.outgoing[-1].extra == {"restricted": True}, clearance  # nothing of it but what waits
+        assert northwind.outgoing[-1].extra == {"restricted": True, "restricted_by": "project"}, (
+            clearance
+        )  # nothing of it but what waits
         url = f"https://hub.test/p/{PROJECT}/runs/{run_id}?tab=chat"
         message = northwind.chat.last()
         assert message["text"] == f"Something of {PROJECT} waits for you: {url}", clearance
