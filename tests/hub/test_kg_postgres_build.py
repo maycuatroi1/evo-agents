@@ -23,7 +23,8 @@ from sqlalchemy.pool import NullPool
 from evo_agents.hub import kg_graph_rows, tables
 from evo_agents.kg import asked
 from evo_agents.kg.graph_rows import with_asked
-from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows
+from evo_agents.kg.policy import Label
+from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows, edge_row, node_row
 from tests.hub.live import add_project
 from tests.hub.test_kg import (  # noqa: F401 (hub is a fixture)
     Machine,
@@ -35,6 +36,7 @@ from tests.hub.test_kg import (  # noqa: F401 (hub is a fixture)
     run_jobs,
 )
 from tests.kg import built as memory
+from tests.kg.test_policy_dnf import _node, assembled
 
 
 def make_engine(db):
@@ -376,3 +378,49 @@ def test_the_head_of_a_graph_reads_its_clusters_and_none_of_its_other_rows(hub_d
     assert (head.content_hash, head.summary, head.top) == (rows.content_hash, rows.summary, rows.top)
     assert (head.clusters, head.review) == (rows.clusters, rows.review)
     assert (head.nodes, head.keyed, head.code, head.derivations) == ((), (), {}, ())
+
+
+def test_an_element_two_chats_reveal_keeps_its_guards_and_a_second_write_changes_no_row(hub_db):
+    """Migration 0267: the guards of a node and an edge each chat states with its own props are kept in
+    ``label_guards``, read back to the props of the chat their reader is in, and compare equal once read back."""
+    units = {
+        "u5": Label(1, 0, "U", frozenset({"demo"}), frozenset({"chat:5"})),
+        "u6": Label(1, 0, "U", frozenset({"demo"}), frozenset({"chat:6"})),
+    }
+    facts = [_node(n, u, {"said": u}) for n in ("code:J", "code:K") for u in units]
+    for u in units:
+        facts.append({**_node("", u, {"said": u}), "t": "edge", "src": "code:J", "rel": "uses", "dst": "code:K"})
+    graph = assembled(units, facts)
+    edge, (nid, node) = next(iter(graph.edges.values())), next(iter(graph.nodes.items()))
+    assert "guards" in node and "guards" in edge
+    rows = StoreRows(
+        "sha256:guards",
+        tuple(node_row(n, x) for n, x in graph.nodes.items()),
+        tuple(edge_row(e, x) for e, x in graph.edges.items()),
+        (),
+        {},
+        ((0, 0), frozenset()),
+    )
+    pid = add_project(hub_db, "guards")
+
+    async def run():
+        engine = make_engine(hub_db)
+        try:
+            counts = []
+            for _ in range(2):
+                async with engine.begin() as conn:
+                    counts.append(await kg_graph_rows.write_graph(conn, pid, None, rows))
+            async with engine.connect() as conn:
+                return counts, await kg_graph_rows.read_graph(conn, pid)
+        finally:
+            await engine.dispose()
+
+    (_, second), back = asyncio.run(run())
+    assert all(c == {"new": 0, "changed": 0, "deleted": 0} for c in second.values()), second
+    snap = Snapshot.from_stored(back)
+    for chat, said in (("chat:5", "u5"), ("chat:6", "u6")):
+        view = snap.view(frozenset({chat}), (1, 0))
+        assert view.node(nid)["props"] == {"said": said}
+        (out,) = view.edges_of("code:J")
+        assert out["props"] == {"said": said}
+    assert snap.view(frozenset({"chat:7"}), (1, 0)).node(nid) is None

@@ -29,7 +29,15 @@ from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
-from evo_agents.kg.graph_model import Clusters, label_columns, stored_audience, within
+from evo_agents.kg.graph_model import (
+    Clusters,
+    guards_text,
+    label_columns,
+    read_as,
+    stored_audience,
+    stored_guards,
+    within,
+)
 from evo_agents.kg.pacing import let_go, paced, paced_sorted
 from evo_agents.kg.policy import audience_below, audience_join
 
@@ -45,6 +53,7 @@ def _node_dict(row) -> dict:
         "conf": row[5],
         "label": (row[6], row[7], row[8], stored_audience(row[10])),
         "aliases": json.loads(row[9] or "[]"),
+        **_guarded(row, 11),
     }
 
 
@@ -59,7 +68,14 @@ def _edge_dict(row) -> dict:
         "status": row[5],
         "conf": row[6],
         "label": (row[7], row[8], row[9], stored_audience(row[10])),
+        **_guarded(row, 11),
     }
+
+
+def _guarded(row, i: int) -> dict:
+    """``guards`` of a row whose ``label_guards`` (column ``i``) holds some (``graph_model.stored_guards``)."""
+    guards = stored_guards(row[i]) if len(row) > i else None
+    return {"guards": guards} if guards else {}
 
 
 def node_dict(row) -> dict:
@@ -106,6 +122,11 @@ def _label_row(label) -> tuple:
     return columns["label_lvl"], columns["label_loc"], columns["label_int"], columns.get("label_aud")
 
 
+def _guards_row(x: dict) -> str | None:
+    """The ``label_guards`` of element ``x`` of a graph or of a snapshot (``_guarded``), as a row holds it."""
+    return guards_text(x["guards"]) if x.get("guards") else None
+
+
 def node_row(nid: str, n: dict) -> tuple:
     """The NODE_COLUMNS row of node ``n`` of a graph."""
     lvl, loc, integrity, aud = _label_row(n["label"])
@@ -122,6 +143,7 @@ def node_row(nid: str, n: dict) -> tuple:
         integrity,
         json.dumps(n.get("aliases", [])),
         aud,
+        _guards_row(n),
     )
 
 
@@ -129,7 +151,7 @@ def edge_row(eid: str, e: dict) -> tuple:
     """The EDGE_COLUMNS row of edge ``e`` of a graph."""
     lvl, loc, integrity, aud = _label_row(e["label"])
     props = json.dumps(e["props"], ensure_ascii=False, sort_keys=True)
-    return (eid, e["src"], e["rel"], e["dst"], props, e["status"], e["conf"], lvl, loc, integrity, aud)
+    return (eid, e["src"], e["rel"], e["dst"], props, e["status"], e["conf"], lvl, loc, integrity, aud, _guards_row(e))
 
 
 @dataclass(frozen=True)
@@ -509,11 +531,24 @@ class SnapshotView:
     # -- what the reader sees ---------------------------------------------------------------------------------------
 
     def sees(self, x: dict) -> bool:
-        """Whether the row's audience is within the reader's."""
+        """Whether the row's audience, or that of one of its guards, is within the reader's."""
+        if "guards" in x:
+            return any(audience_below(g[0][3], self.reader) for g in x["guards"])
         return audience_below(x["label"][3], self.reader)
 
     def under(self, e: dict, ceiling: tuple[int, int] | None) -> bool:
+        """Whether the row's label is at most ``ceiling``: for a row with guards, one the reader sees."""
+        if "guards" in e:
+            return ceiling is None or any(
+                audience_below(g[0][3], self.reader) and g[0][0] <= ceiling[0] and g[0][1] <= ceiling[1]
+                for g in e["guards"]
+            )
         return ceiling is None or (e["label"][0] <= ceiling[0] and e["label"][1] <= ceiling[1])
+
+    def read(self, x: dict, ceiling: tuple[int, int] | None = None) -> dict:
+        """The row as the reader reads it, one it ``sees``: of one with guards, the label and props of the guard it
+        reads within ``ceiling``, the view's when None (``graph_model.read_as``)."""
+        return read_as(x, self.reader, ceiling if ceiling is not None else self.ceiling) or x
 
     # -- nodes ------------------------------------------------------------------------------------------------------
 
@@ -522,7 +557,7 @@ class SnapshotView:
         for nid in ids:
             i = self.snap.index.get(nid)
             if i is not None and self.sees(self.snap.nodes[i]):
-                out[nid] = dict(self.snap.nodes[i])
+                out[nid] = dict(self.read(self.snap.nodes[i]))
         return out
 
     def node(self, node_id: str, b: int = 0) -> dict | None:
@@ -574,7 +609,7 @@ class SnapshotView:
         for e in self._numbers(node_id, direction):
             edge = self.snap.edges[e]
             if self.sees(edge) and self.under(edge, self.ceiling):
-                out.append(dict(edge))
+                out.append(dict(self.read(edge)))
                 if len(out) >= limit:
                     break
         return out
@@ -591,7 +626,9 @@ class SnapshotView:
         self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int], *, limit: int, offset: int = 0
     ) -> list[dict]:
         """One page of the edges ``count_into`` counts, in the order of ``edges_of``."""
-        return [dict(e) for e in self._into(node_id, rels, statuses, ceiling)[offset : offset + limit]]
+        return [
+            dict(self.read(e, ceiling)) for e in self._into(node_id, rels, statuses, ceiling)[offset : offset + limit]
+        ]
 
     def count_into(self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int]) -> int:
         """How many live edges lead into a node with one of ``rels`` and ``statuses``, under ``ceiling``."""
@@ -858,7 +895,7 @@ class SnapshotView:
             i = self.snap.index.get(nid)
             if i is None or not self.sees(self.snap.nodes[i]):
                 continue
-            n = self.snap.nodes[i]
+            n = self.read(self.snap.nodes[i])
             path = n["props"].get("path")
             out.append(
                 {
@@ -890,6 +927,7 @@ class SnapshotView:
                 s, d = nodes[src[k]], nodes[dst[k]]
                 if not (self.sees(e) and self.sees(s) and self.sees(d)):
                     continue
+                e, s, d = self.read(e), self.read(s), self.read(d)
                 a, z = self._owner(s), self._owner(d)
                 if a == z or a not in members or z not in members:
                     continue
@@ -901,10 +939,12 @@ class SnapshotView:
         label), by source, type and target."""
         nodes = [
             {"id": n["id"], "kind": n["kind"], "name": n["name"], "owner": self._owner(n), "label": n["label"]}
-            for n in paced(self.snap.nodes)
+            for n in map(self.read, paced(self.snap.nodes))
             if self.sees(n)
         ]
-        edges = paced_sorted((e["src"], e["rel"], e["dst"], e["label"]) for e in paced(self.snap.edges) if self.sees(e))
+        edges = paced_sorted(
+            (e["src"], e["rel"], e["dst"], e["label"]) for e in map(self.read, paced(self.snap.edges)) if self.sees(e)
+        )
         return nodes, edges
 
     def review_items(self, b: int = 0) -> list[dict]:
@@ -916,7 +956,7 @@ class SnapshotView:
         if self._edge_ids is None:
             self._edge_ids = {e["id"]: e for e in self.snap.edges}
         e = self._edge_ids.get(edge_id)
-        return e["label"] if e is not None and self.sees(e) else None
+        return self.read(e)["label"] if e is not None and self.sees(e) else None
 
     def summary(self) -> dict:
         return dict(self.snap.summary) if self.snap.summary else {"ready": False}
@@ -952,7 +992,7 @@ class SnapshotView:
                 for e in self._numbers(nid, direction):
                     edge = self.snap.edges[e]
                     if self.sees(edge):
-                        yield edge
+                        yield self.read(edge)
 
     # -- the ranking by meaning ------------------------------------------------------------------------------------
 

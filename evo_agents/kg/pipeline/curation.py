@@ -116,10 +116,10 @@ def apply(graph: Graph) -> dict:
         if target is None:
             orphans += 1
             continue
-        target["props"] = {
-            **(target.get("props") or {}),
-            "deprecated": {"reason": f["reason"], "decision": f["decision"]},
-        }
+        deprecated = {"reason": f["reason"], "decision": f["decision"]}
+        target["props"] = {**(target.get("props") or {}), "deprecated": deprecated}
+        if target.get("guards"):  # each branch a reader may be given (``evo_agents.kg.assembly``)
+            target["guards"] = [(label, {**props, "deprecated": deprecated}) for label, props in target["guards"]]
         marked += 1
     return {"deprecated": marked, "orphans": orphans}
 

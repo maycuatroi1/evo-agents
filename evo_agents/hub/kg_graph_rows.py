@@ -125,9 +125,9 @@ def table_rows(rows: StoreRows, name: str) -> dict[str, tuple]:
     table at a time: those of every table at once, on top of the build's own rows and of a table read back, took
     as much memory again as the build's rows."""
     if name == "kg_nodes":
-        return {r[0]: tuple(r) for r in rows.nodes}
+        return {r[0]: _guarded(r) for r in rows.nodes}
     if name == "kg_edges":
-        return {r[0]: tuple(r) for r in rows.edges}
+        return {r[0]: _guarded(r) for r in rows.edges}
     if name == "kg_text_rows":
         text: dict[str, tuple] = {}
         for key, row in rows.keyed:
@@ -164,11 +164,21 @@ def table_rows(rows: StoreRows, name: str) -> dict[str, tuple]:
     raise ValueError(f"no graph table {name}")
 
 
+def _guarded(row) -> tuple:
+    """A node or edge row (``graph_model.NODE_COLUMNS``, ``EDGE_COLUMNS``) as both sides of ``diff`` hold it: its
+    ``label_guards`` last, None or the JSON ``_json`` writes, however it was read (jsonb comes back parsed, or as
+    Postgres writes it)."""
+    guards = row[11] if len(row) > 11 else None
+    if isinstance(guards, str):
+        guards = json.loads(guards)
+    return (*row[:11], None if guards is None else _json(guards))
+
+
 def _row_values(name: str, key: str, row: tuple) -> dict:
-    if name == "kg_nodes":
-        return {**dict(zip(NODE_KEYS, row[:10], strict=True)), "label_aud": row[10]}
-    if name == "kg_edges":
-        return {**dict(zip(EDGE_KEYS, row[:10], strict=True)), "label_aud": row[10]}
+    if name in ("kg_nodes", "kg_edges"):
+        keys = NODE_KEYS if name == "kg_nodes" else EDGE_KEYS
+        guards = json.loads(row[11]) if len(row) > 11 and row[11] is not None else None
+        return {**dict(zip(keys, row[:10], strict=True)), "label_aud": row[10], "label_guards": guards}
     if name == "kg_embeddings":
         return {"row_key": key, **dict(zip(("node_id", "kind", "aud", "vector"), row, strict=True))}
     return {"row_key": key, ROW_TABLES[name]: row[0], "row": json.loads(row[1])}
@@ -177,9 +187,9 @@ def _row_values(name: str, key: str, row: tuple) -> dict:
 def _stored(name: str, values) -> tuple:
     """A row of table ``name`` as ``graph_rows`` gives it."""
     if name == "kg_nodes":
-        return tuple(values[k] for k in (*NODE_KEYS, "label_aud"))
+        return _guarded(tuple(values[k] for k in (*NODE_KEYS, "label_aud", "label_guards")))
     if name == "kg_edges":
-        return tuple(values[k] for k in (*EDGE_KEYS, "label_aud"))
+        return _guarded(tuple(values[k] for k in (*EDGE_KEYS, "label_aud", "label_guards")))
     if name == "kg_embeddings":
         return (values["node_id"], values["kind"], values["aud"], bytes(values["vector"]))
     return (values[ROW_TABLES[name]], _json(values["row"]))
@@ -203,9 +213,9 @@ def _read_columns(name: str) -> list:
     table = getattr(tables, name)
     key = table.primary_key.columns.values()[-1]
     if name == "kg_nodes":
-        return [key, *(table.c[k] for k in (*NODE_KEYS, "label_aud"))]
+        return [key, *(table.c[k] for k in (*NODE_KEYS, "label_aud", "label_guards"))]
     if name == "kg_edges":
-        return [key, *(table.c[k] for k in (*EDGE_KEYS, "label_aud"))]
+        return [key, *(table.c[k] for k in (*EDGE_KEYS, "label_aud", "label_guards"))]
     if name == "kg_embeddings":
         return [key, table.c.node_id, table.c.kind, table.c.aud, table.c.vector]
     return [key, table.c[ROW_TABLES[name]], cast(table.c.row, Text)]
@@ -231,6 +241,8 @@ def _row_pairs(name: str, part) -> Iterator[tuple[str, tuple]]:
     """(key, row) of each row of a batch ``_read_rows`` fetched of table ``name``."""
     if name == "kg_embeddings":
         return ((r[0], (r[1], r[2], r[3], bytes(r[4]))) for r in part)
+    if name in ("kg_nodes", "kg_edges"):
+        return ((r[0], _guarded(tuple(r[1:]))) for r in part)
     return ((r[0], tuple(r[1:])) for r in part)
 
 

@@ -30,9 +30,8 @@ from pathlib import PurePosixPath
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
-from evo_agents.kg.graph_model import stored_audience
+from evo_agents.kg.graph_model import within
 from evo_agents.kg.pacing import paced
-from evo_agents.kg.policy import audience_below
 from evo_agents.kg.snapshot_fts import Table, code_words, trigrams, words
 
 IndexRow = tuple[str, str, str]  # (kind, name, path) of a node's own row, as ``TextIndex.index_row`` reads it
@@ -293,7 +292,7 @@ class Ranker:
         return out
 
     def _readable(self, aud: str | None) -> bool:
-        return aud is None or (bool(self.view.reader) and audience_below(stored_audience(aud), self.view.reader))
+        return aud is None or (bool(self.view.reader) and within(self.view.reader, aud))
 
     def ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float, IndexRow]]:
         """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first."""

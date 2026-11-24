@@ -14,10 +14,8 @@ from evo_agents.kg.policy import (
     TOP_AUDIENCE,
     Label,
     Policy,
-    any_of,
     audience_below,
     audience_of,
-    meet_all,
 )
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import SCHEMAS, finalize_item, hello, item_hash, validate_message
@@ -66,18 +64,6 @@ def test_the_audience_order_is_a_lattice_whose_top_no_reader_reaches():
     assert label(TOP_AUDIENCE).meet(label([C5])).audience == {C5}  # a sink's clearance keeps the reader's audience
     assert not audience_below(TOP_AUDIENCE, frozenset({C5, C6, GA, GB}))
     assert Label(1, 0, "U", frozenset(), frozenset({"*", C5})).audience == TOP_AUDIENCE
-
-
-def test_an_element_any_derivation_reveals_shows_to_whoever_sees_one_derivation_whole():
-    assert any_of([label([]), label([C5])]).audience == frozenset()  # one derivation needs no audience
-    assert any_of([label([C5]), label([C5, C6])]).audience == {C5}
-    # Two chats: the intersection would show it to a reader in neither; it shows to a reader in both.
-    assert any_of([label([C5]), label([C6])]).audience == {C5, C6}
-    # The lower level comes from the chat 5 derivation, so its audience comes with it.
-    low = any_of([label([], level=2), label([C5], level=0)])
-    assert (low.level, low.audience) == (0, {C5})
-    plain = [label([], level=2), Label(1, 0, "T", frozenset({"demo"}))]
-    assert any_of(plain) == meet_all(plain)  # without audiences, the meet as before
 
 
 @pytest.mark.parametrize(
@@ -316,15 +302,16 @@ def test_a_reader_who_leaves_loses_the_chat_at_the_next_call_without_a_build(cha
     assert after["build"] == build and ids(after) == set() and not seen(session, M2)
 
 
-def test_what_is_derived_from_several_items_shows_only_to_who_sees_them_all(chats):
+def test_what_needs_several_items_shows_only_to_who_sees_them_all_and_what_either_states_to_its_readers(chats):
     five, six, both = reading(chats, LATE), reading(chats, {C6, GA}), reading(chats, BOTH)
     # m3 (chat 6) mentions m2 (chat 5): the edge needs both, so it carries the join of their audiences.
     assert [e["node"] for e in data(both, "kg_node", id=M3)["out"] if e["rel"] == "mentions"] == [M2]
     assert [e for e in data(six, "kg_node", id=M3)["out"] if e["rel"] == "mentions"] == []
     assert [e for e in data(five, "kg_node", id=M2)["in"] if e["rel"] == "mentions"] == []
-    # K-7 is declared by a message of each chat: neither reader of one chat alone sees it, a reader of both does.
-    assert not seen(five, CODE) and not seen(six, CODE) and seen(both, CODE)
-    assert data(both, "kg_node", id=CODE)["node"]["label"]["audience"] == [C5, C6]
+    # K-7 is declared by a message of each chat, either of which reveals it: a reader of one chat sees it as that
+    # chat states it.
+    assert seen(five, CODE) and seen(six, CODE) and seen(both, CODE)
+    assert data(six, "kg_node", id=CODE)["node"]["label"]["audience"] == [C6]
     assert data(both, "kg_path", **{"from": M3, "to": PLAN})["found"]
     assert not data(six, "kg_path", **{"from": M3, "to": PLAN})["found"]
     store, b = both._store()

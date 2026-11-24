@@ -247,9 +247,40 @@ principal or holds a string of neither form cannot be read, and counts as the hi
 the item is kept and nobody sees it (fail closed). The schema marks the key as a warning, so a sync keeps such an item
 instead of refusing its run.
 
-A node or an edge that several items derive shows to a reader who sees one of its derivations whole
-(`policy.any_of`): it takes the least audience among the derivations at the lowest level and location, else the union
-of theirs. A node that both chat 5 and chat 6 derive shows to a member of either chat, never to someone in neither.
+### Who reads an element several items derive
+
+A node or an edge that several items derive shows to a reader who may read one of its derivations whole. Its policy
+(`policy.PolicyDNF`) is a disjunction of labels, the atoms, kept as an antichain: no atom covers another, where `p`
+covers `q` when `p`'s level, location, projects and audience are each at or below `q`'s. A reader `(level, location,
+holds)` passes an atom when the atom's level and location are within the reader's, and its projects and audience are
+subsets of what the reader holds; it passes the policy when it passes one atom (`PolicyDNF.allows`).
+
+- `disjoin` is the union of the atoms, normalized: atoms of the same level, location, projects and audience are one,
+  and an atom another covers is dropped. It is commutative, associative and idempotent, with `PolicyDNF.never()` (no
+  atom) as its unit. It merges no two atoms: a node that both chat 5 and chat 6 derive keeps an atom for each and shows
+  to a member of either, and a node derived at (1, 0) and at (0, 1) never shows to a reader at (0, 0).
+- `conjoin` joins each atom of one policy with each of the other (`Label.join`), normalized the same way. Within one
+  derivation, the labels of its units and the policies of the nodes it needs are conjoined, so a derivation of one atom
+  each is the join of its labels as before. It is commutative, associative and idempotent, with `PolicyDNF.always()`
+  as its unit and `never()` as its zero.
+- The readers a policy lets through are a homomorphism of both: those of `p.disjoin(q)` are the union of `p`'s and
+  `q`'s, those of `p.conjoin(q)` their intersection.
+- Integrity is no condition on a reader and stays outside this order: every atom of a policy has the policy's
+  integrity, trusted when one disjoined derivation is, untrusted when one conjoined part is not.
+
+An element whose policy has one atom is written as before. One with several keeps the first atom (lowest level, then
+location, projects and audience) in its single label, which every reader that passes it may read, and its props are
+those of the first derivation that atom admits, so the ontology's checks see the props of a real derivation. Its
+`guards` list each atom with the props of the first derivation it admits, and a read projects the element to the first
+guard its reader passes (`graph_model.read_as`): the reader sees that branch's label and props, and an element no guard
+admits is hidden. The guards are kept in `label_guards` (JSON, migration 0267 on the hub); a reader that knows only the
+single label columns reads the first atom, which is sound and misses only the readers of the other atoms. The
+full-text row of such a node keeps its audiences as a list of lists, `[["chat:5"],["chat:6"]]`, that a reader within
+one of them matches and an older reader cannot parse, so it fails closed.
+
+Facts that state the same element merge their strength as one pair: the fact whose `(STATUS_RANK[status], conf)` is the
+greater, compared in that order, gives both its status and its conf (`assembly.strength`). A proposed fact at 0.9 never
+lifts a resolved fact at 0.3 over the confidence floor (`locate.CONF_FLOOR`), as an independent maximum of each did.
 
 The rows of a build keep the audience of each unit, node and edge (`label_aud`), and a snapshot is read as the
 session's audience (`SnapshotView.reader`, none unless set), so a hidden element fills no limit, page or count, and
