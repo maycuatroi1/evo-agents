@@ -31,16 +31,26 @@ async def enabled(conn: AsyncConnection, project_id: int, *, lock: bool = False)
     return bool(await conn.scalar(query.with_for_update() if lock else query))
 
 
-async def cancel_open(conn: AsyncConnection, project_id: int, reason: str, **detail) -> int:
-    """Cancel every work item of the project not finished, with ``reason``; how many."""
+async def cancel(
+    conn: AsyncConnection, project_id: int, reason: str, item_ids: list[int] | None = None, **detail
+) -> list[int]:
+    """Cancel the work items ``item_ids`` of the project not finished (every one with None), with ``reason`` and
+    ``detail`` in their ledger; the ids of those it cancelled."""
     i, e = tables.loop_items, tables.loop_item_events
     values = {"state": CANCELLED, "reason": reason, "updated_at": func.now(), "finished_at": func.now()}
     query = update(i).where(i.c.project_id == project_id, i.c.state.not_in(FINISHED)).values(values)
+    if item_ids is not None:
+        query = query.where(i.c.id.in_(item_ids))
     ids = list(await conn.scalars(query.returning(i.c.id)))
     if ids:
         rows = [{"item_id": item_id, "kind": CANCELLED_EVENT, "state": CANCELLED, "reason": reason} for item_id in ids]
         await conn.execute(insert(e).values([{**row, "detail": dict(detail)} for row in rows]))
-    return len(ids)
+    return ids
+
+
+async def cancel_open(conn: AsyncConnection, project_id: int, reason: str, **detail) -> int:
+    """Cancel every work item of the project not finished, with ``reason``; how many."""
+    return len(await cancel(conn, project_id, reason, **detail))
 
 
 async def policy_written(conn: AsyncConnection, project_id: int, on: bool) -> None:
@@ -62,4 +72,4 @@ async def policy_written(conn: AsyncConnection, project_id: int, on: bool) -> No
     log.info("loop off", extra={"project_id": project_id, "cancelled": cancelled})
 
 
-__all__ = ["cancel_open", "enabled", "policy_written"]
+__all__ = ["cancel", "cancel_open", "enabled", "policy_written"]

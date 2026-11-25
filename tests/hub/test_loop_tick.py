@@ -656,6 +656,68 @@ def test_loop_tick_turning_the_loop_off_settles_the_use_cases_its_cancelled_buil
     assert {state for state, _ in ledger_of(hub_db).values()} == {"undelivered"}, "nothing is stuck as delivering"
 
 
+def author_run(hub_db, worker: int, state: str) -> int:
+    """An author run of the project with no plan, in ``state``, on ``worker``."""
+    now = datetime.now(UTC)
+    owner = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == credentials_api.OWNER))[0][0]
+    run = {"project_id": project_id(hub_db), "kind": "author", "title": "Plan the group", "request": "Plan the group"}
+    run |= {"dispatched_by": owner, "requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless"}
+    run |= {"approval": "auto", "timeout_s": 3600, "state": state, "queued_at": now - timedelta(minutes=5)}
+    run |= {"repos": [{"repo": HARNESS, "branch": "main"}]}
+    run |= {"worker_id": worker, "leased_at": now}
+    run |= {"finished_at": now} if state == "done" else {"lease_expires_at": now + timedelta(minutes=5)}
+    r = tables.runs
+    return sql(hub_db, insert(r).values(run).returning(r.c.id))[0][0]
+
+
+def test_loop_tick_a_use_case_an_admin_sets_as_built_elsewhere_leaves_its_build_and_is_not_queued_again(
+    client, hub, hub_db
+):
+    document, goal = srs_goal(client, hub, hub_db)
+    policy(client, hub, {"enabled": True})
+    confirm(hub_db, document, goal)
+    ticked(client, hub_db)
+    keys = [key for key, *_ in items(hub_db)]
+    build = next(item(hub_db, key) for key in keys if len(item(hub_db, key)["detail"]["backlog"]["use_cases"]) > 1)
+    elsewhere, *rest = [case["code"] for case in build["detail"]["backlog"]["use_cases"]]
+    i, r = tables.loop_items, tables.runs
+    worker = credentials_api.worker_of(client, hub["owner"], "studio")["id"]
+
+    # an author run that ends with no plan is a failure, and the build is queued again for another run
+    first = author_run(hub_db, worker, "done")
+    sql(hub_db, update(i).where(i.c.id == build["id"]).values(state="running", run_id=first))
+    ticked(client, hub_db)
+    again = item(hub_db, build["key"])
+    assert (again["state"], again["failures"]) == ("queued", 1)
+
+    # the next run waits for its owner, who says the use case is built in another repository
+    second = author_run(hub_db, worker, "running")
+    sql(hub_db, update(i).where(i.c.id == build["id"]).values(state="running", run_id=second))
+    fix = f"{GOALS}/G-1/baseline/fix"
+    left = client.post(fix, json={"codes": {elsewhere: "unknown"}}, headers=hub["owner"])
+    assert left.status_code == 200 and left.json()["cancelled"] == []
+    assert ledger_of(hub_db)[elsewhere] == ("delivering", "deliver"), "without cancel_builds a live build keeps it"
+    asked = {"codes": {elsewhere: "unknown"}, "cancel_builds": True, "reason": "built in another repository"}
+    assert client.post(fix, json=asked, headers=hub["chi"]).status_code == 403, "an admin only"
+    fixed = client.post(fix, json=asked, headers=hub["owner"])
+    assert fixed.status_code == 200, fixed.text
+    assert fixed.json()["cancelled"] == [build["id"]]
+    (shown,) = [entry for entry in fixed.json()["items"] if entry["code"] == elsewhere]
+    assert (shown["state"], shown["source"]) == ("unknown", "admin") and "another repository" in shown["reason"]
+    assert {ledger_of(hub_db)[code] for code in rest} == {("undelivered", "deliver")}, "its other use cases go back"
+
+    # the run ends with no plan: the build stays cancelled and no build takes the use case again
+    sql(hub_db, update(r).where(r.c.id == second).values(state="done", finished_at=func.now()))
+    ticked(client, hub_db)
+    ticked(client, hub_db)
+    cancelled = item(hub_db, build["key"])
+    assert (cancelled["state"], cancelled["reason"], cancelled["failures"]) == ("cancelled", "baseline", 1)
+    made = [item(hub_db, key) for key, *_ in items(hub_db) if key not in keys]
+    assert [row["key"] for row in made] == [build["key"][:-1] + "2"], "the next round of the group, once"
+    assert [case["code"] for case in made[0]["detail"]["backlog"]["use_cases"]] == rest
+    assert ledger_of(hub_db)[elsewhere] == ("unknown", "admin")
+
+
 def test_loop_tick_srs_goal_gives_the_author_run_every_use_case_of_its_group(client, hub, hub_db):
     document, goal = srs_goal(client, hub, hub_db)
     policy(client, hub, {"enabled": True})

@@ -56,6 +56,7 @@ BASELINE_KEYS = (
     "why",
     "counts",
     "items",
+    "cancelled",
 )
 ADOPT_KEYS = ("project", "goal", "plan", "item", "state", "reason", "use_cases", "delivered")
 SHOWN_EVIDENCE = 3  # lines of evidence printed under a use case
@@ -131,6 +132,11 @@ def _baseline_lines(found: dict) -> list[str]:
             lines.append(f"  {item['code']}  {item['title']}  [{item['source']}] {item['reason']}".rstrip())
             for line in item["evidence"][:SHOWN_EVIDENCE]:
                 lines.append(f"      {line['kind']}: {line['title'] or line['ref']}")
+    if found.get("cancelled"):
+        builds = ", ".join(f"#{item}" for item in found["cancelled"])
+        lines.append(
+            f"Cancelled builds of the Loop {builds}: the use cases set leave them, the others go back to the backlog."
+        )
     if found["confirmed"]:
         lines.append(f"Confirmed by {found['confirmed_by']} at {when(found['confirmed_at'])} UTC.")
     else:
@@ -152,8 +158,11 @@ def cmd_baseline(args) -> int:
         "headings": _fixes(args.heading, "--heading"),
         "unknown": args.unknown,
     }
-    if body["codes"] or body["headings"] or body["unknown"]:
-        found = hub.call("POST", path + "/fix", body)
+    fixing = body["codes"] or body["headings"] or body["unknown"]
+    if (args.cancel_builds or args.reason) and not fixing:
+        raise HubError("--cancel-builds and --reason go with --set, --heading or --unknown")
+    if fixing:
+        found = hub.call("POST", path + "/fix", body | {"cancel_builds": args.cancel_builds, "reason": args.reason})
     else:
         found = hub.call("GET", path)
     if args.confirm:
@@ -210,6 +219,13 @@ def register_loop(hsub) -> None:
     )
     base.add_argument("--heading", action="append", metavar="HEADING=STATE", help="set every use case under a heading")
     base.add_argument("--unknown", choices=FIX_STATES, help="set every use case still unknown to this")
+    base.add_argument(
+        "--cancel-builds",
+        action="store_true",
+        help="also set a use case a build of the Loop holds and cancel that build, so no author run of it is handed "
+        "out again (e.g. a use case built outside the project: --set CODE=unknown --cancel-builds)",
+    )
+    base.add_argument("--reason", help="why, kept with each use case set (e.g. 'built in another repository')")
     base.add_argument("--project", help=PROJECT_HELP)
     json_option(base, returns_object(*BASELINE_KEYS, schema="SrsBaseline"))
     base.set_defaults(func=cmd_baseline)

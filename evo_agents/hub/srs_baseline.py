@@ -16,7 +16,7 @@ Evidence is what the graph says (``Evidence``): a kind of ``EVIDENCE_KINDS``, th
 The admin confirms the baseline once; before that the Loop makes no build for the goal (``confirmed`` of
 ``evo_agents.hub.server.loop.baseline``). Fixes are by code, by heading (every use case under it) and for the whole of
 the unknown ones, to ``delivered`` or ``undelivered`` (``FIX_STATES``); a code or a heading may also be set to
-``unknown`` (``SET_STATES``).
+``unknown`` (``SET_STATES``), which a use case built outside the project is set to when the hub cannot see it.
 """
 
 from __future__ import annotations

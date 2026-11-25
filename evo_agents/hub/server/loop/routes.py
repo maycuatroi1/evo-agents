@@ -219,14 +219,16 @@ async def fix_baseline(
     body: baseline.BaselineFix,
     user: CurrentUser,
 ) -> baseline.SrsBaseline:
-    """Set use cases of the baseline to delivered or undelivered by code, by heading, or the unknown ones as a whole (an
-    admin of the project); answers the baseline as it stands."""
+    """Set use cases of the baseline to delivered, undelivered or unknown by code, by heading, or the unknown ones as a
+    whole (an admin of the project); with ``cancel_builds``, also a use case a build of the Loop holds, cancelling that
+    build so no author run of it is handed out again. Answers the baseline as it stands, with the builds cancelled."""
     async with request.app.state.engine.begin() as conn:
         access, goal_id, code, codes = await _baseline(conn, user, project, ref, writing=True)
     found, why = await delivery_evidence(request.app.state, user, project, codes)
     async with request.app.state.engine.begin() as conn:
-        await baseline.fix(conn, user, access, goal_id, code, body, found)
-        return await baseline.view(conn, access.name, goal_id, code, found, why)
+        done = await baseline.fix(conn, user, access, goal_id, code, body, found)
+        shown = await baseline.view(conn, access.name, goal_id, code, found, why)
+        return shown.model_copy(update={"cancelled": done.cancelled})
 
 
 @router.post(

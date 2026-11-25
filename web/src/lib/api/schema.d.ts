@@ -480,6 +480,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users/{login}/channels/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Link Channel
+         * @description Link the channel of ``kind`` of member ``login`` with ``config``, as a hub admin, bound to no session of theirs,
+         *     in place of the one they had.
+         */
+        put: operations["link_channel_v1_admin_users__login__channels__kind__put"];
+        post?: never;
+        /**
+         * Unlink Channel
+         * @description Unlink the channel of ``kind`` of member ``login``, whoever linked it and whatever its session.
+         */
+        delete: operations["unlink_channel_v1_admin_users__login__channels__kind__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/invites": {
         parameters: {
             query?: never;
@@ -14618,8 +14643,9 @@ export interface paths {
         put?: never;
         /**
          * Fix Baseline
-         * @description Set use cases of the baseline to delivered or undelivered by code, by heading, or the unknown ones as a whole (an
-         *     admin of the project); answers the baseline as it stands.
+         * @description Set use cases of the baseline to delivered, undelivered or unknown by code, by heading, or the unknown ones as a
+         *     whole (an admin of the project); with ``cancel_builds``, also a use case a build of the Loop holds, cancelling that
+         *     build so no author run of it is handed out again. Answers the baseline as it stands, with the builds cancelled.
          */
         post: operations["fix_baseline_v1_projects__project__goals__ref__baseline_fix_post"];
         delete?: never;
@@ -17157,6 +17183,17 @@ export interface components {
              * @description every use case still unknown becomes this
              */
             unknown?: ("delivered" | "undelivered") | null;
+            /**
+             * Cancel Builds
+             * @description also set a use case a build of the Loop holds, and cancel that build: its author runs stop, and its other use cases go back to the backlog; a deliver is never cancelled
+             * @default false
+             */
+            cancel_builds: boolean;
+            /**
+             * Reason
+             * @description why, kept with each use case set, e.g. built outside the project
+             */
+            reason?: string | null;
         };
         /**
          * BaselineItem
@@ -19969,6 +20006,49 @@ export interface components {
             error?: string | null;
             /** Sent At */
             sent_at?: string | null;
+        };
+        /** ChannelLink */
+        ChannelLink: {
+            /**
+             * Config
+             * @description the channel's config as its plugin keeps it (the ids of the member's chat), at most 16 KiB of JSON
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Unique On
+             * @description keys of config that name one chat: another member's channel of the kind with the same values there goes, so a chat speaks for one member
+             */
+            unique_on?: string[];
+        };
+        /** ChannelLinked */
+        ChannelLinked: {
+            /** Login */
+            login: string;
+            /** Kind */
+            kind: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Linked By
+             * @description the hub admin who linked it
+             */
+            linked_by: string;
+        };
+        /** ChannelUnlinked */
+        ChannelUnlinked: {
+            /** Login */
+            login: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Unlinked
+             * @description whether the member had a channel of the kind
+             */
+            unlinked: boolean;
         };
         /** Charter */
         Charter: {
@@ -29678,7 +29758,7 @@ export interface components {
              * Reason
              * @description why it stands where it does; done has none
              */
-            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual") | null;
+            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual" | "baseline") | null;
             /**
              * Waiting
              * @description the figures of its reason: the cap and the count for concurrency or rate, the worker and why...
@@ -29795,7 +29875,7 @@ export interface components {
              */
             state: "queued" | "running" | "watching" | "waiting_human" | "done" | "cancelled";
             /** Reason */
-            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual") | null;
+            reason: ("breaker" | "concurrency" | "rate" | "worker" | "type_refused" | "stable" | "auto_tasks" | "split" | "merge_queue" | "triage" | "srs_review" | "srs_finding" | "srs_changes" | "author_question" | "run_decision" | "loop_decision" | "merge_blocked" | "merge_manual" | "claim_invalidated" | "claim_retired" | "goal_paused" | "goal_closed" | "loop_off" | "task_closed" | "no_frame_task" | "person" | "dropped" | "manual" | "baseline") | null;
             /** Run */
             run: number | null;
             /** Figures */
@@ -45991,6 +46071,11 @@ export interface components {
             };
             /** Items */
             items: components["schemas"]["BaselineItem"][];
+            /**
+             * Cancelled
+             * @description the builds of the Loop the fix cancelled because it took their use cases
+             */
+            cancelled?: number[];
         };
         /**
          * SrsChange
@@ -53614,6 +53699,128 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    link_channel_v1_admin_users__login__channels__kind__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                login: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelLink"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelLinked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_channel_v1_admin_users__login__channels__kind__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                login: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelUnlinked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
