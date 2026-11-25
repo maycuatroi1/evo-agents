@@ -11828,7 +11828,8 @@
       "no_frame_task": "Lần duyệt không tạo task khung cho nó",
       "person": "Có người đã huỷ run của nó",
       "dropped": "Có người đã bỏ nó",
-      "manual": "Có người đã nhận làm tay"
+      "manual": "Có người đã nhận làm tay",
+      "baseline": "Admin sửa baseline đã lấy use case của nó"
     },
     "event": {
       "created": "Tạo",

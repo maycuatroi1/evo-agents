@@ -11828,7 +11828,8 @@
       "no_frame_task": "The approval made no frame task for it",
       "person": "A person cancelled its run",
       "dropped": "A person dropped it",
-      "manual": "A person took it over"
+      "manual": "A person took it over",
+      "baseline": "An admin's baseline fix took its use cases"
     },
     "event": {
       "created": "Made",
