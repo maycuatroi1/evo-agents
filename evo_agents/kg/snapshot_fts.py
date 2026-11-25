@@ -780,13 +780,11 @@ def _merge_records(out: Table, table: Table, remap, new: tuple, vocabulary: tupl
     np.cumsum(held, dtype=np.int64, out=before[1:])
     placed = before[at] + np.arange(len(at), dtype=np.int64)
     size = int(before[-1]) + len(at)
-    free = np.ones(size, dtype=bool)
-    free[placed] = False
     out.docs = np.empty(size, dtype=np.int32)
-    out.docs[free] = docs[held]
+    _copy_kept(out.docs, docs, held, placed)
     out.docs[placed] = records[:, 0]
     out.counts = np.empty((size, table.columns), dtype=np.uint32)
-    out.counts[free] = table.counts[held]
+    _copy_kept(out.counts, table.counts, held, placed)
     out.counts[placed] = records[:, 1:]
     per = np.zeros(len(merged), dtype=np.int64)
     per[shift] = before[offsets[1:]] - before[offsets[:-1]]
@@ -799,6 +797,28 @@ def _merge_records(out: Table, table: Table, remap, new: tuple, vocabulary: tupl
     np.cumsum(per[used], out=ends[1:])
     out.offsets = array("q")
     out.offsets.frombytes(ends.tobytes())
+
+
+RUNS = 4096  # new records up to which ``_copy_kept`` copies the old ones run by run, past it through a mask
+
+
+def _copy_kept(out, counts, held, placed) -> None:
+    """``out[free] = counts[held]``, ``free`` the rows of ``out`` not in ``placed`` (ascending): for a delta's few new
+    records, as slices of the runs between them, a fraction of the time of a boolean mask over a million rows."""
+    np = _np
+    assert np is not None
+    kept = counts if bool(held.all()) else np.compress(held, counts, axis=0)
+    if len(placed) > RUNS:
+        free = np.ones(len(out), dtype=bool)
+        free[placed] = False
+        out[free] = kept
+        return
+    taken = last = 0
+    for at in placed.tolist():
+        out[last:at] = kept[taken : taken + at - last]
+        taken += at - last
+        last = at + 1
+    out[last:] = kept[taken:]
 
 
 def _joined_updated(out: Table, table: Table, before, fresh) -> list[tuple]:
