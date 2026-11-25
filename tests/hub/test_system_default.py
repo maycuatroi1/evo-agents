@@ -47,6 +47,21 @@ def test_ops_and_ops_daily_usd_are_checked_in_their_bounds():
     assert paths == ["limits.ops_daily_usd", "ops.disk", "ops.enabled", "ops.max_items"]
 
 
+def test_quiet_workers_is_a_list_of_worker_ids_a_check_does_not_fill_in():
+    found, problems = system_spec.check({**OLD, "ops": {"enabled": True}})
+    assert not system_spec.errors(problems) and "quiet_workers" not in found["ops"]
+    assert system_spec.ops_of(found)["quiet_workers"] == []
+    given = {**OLD, "ops": {"enabled": True, "quiet_workers": [42, 7, 42]}}
+    found, problems = system_spec.check(given)
+    assert not system_spec.errors(problems)
+    assert found["ops"]["quiet_workers"] == [42, 7]
+    assert system_spec.ops_of(found)["quiet_workers"] == [42, 7]
+    for bad in ("42", [0], [-1], [True], ["42"], [1.5], list(range(1, 102)), {"id": 42}):
+        paths = [p.path for p in system_spec.errors(system_spec.check({**OLD, "ops": {"quiet_workers": bad}})[1])]
+        assert paths == ["ops.quiet_workers"], bad
+        assert system_spec.ops_of({**OLD, "ops": {"quiet_workers": bad}})["quiet_workers"] == []
+
+
 # The CLI
 
 

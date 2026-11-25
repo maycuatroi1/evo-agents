@@ -3,7 +3,7 @@ the project by cause, so that one short run of the Orchestrator of the project's
 instead of a person reading each in the Inbox.
 
 Config. The queue reads its config from the key ``ops`` of the spec of the project's default system (``ops_config``:
-enabled, debounce_minutes, max_items, plan_stall_minutes; ``system_spec.ops_of``); a project without one, or whose spec has no ``ops``,
+enabled, debounce_minutes, max_items, plan_stall_minutes, quiet_workers; ``system_spec.ops_of``); a project without one, or whose spec has no ``ops``,
 has its queue off. The first pass after the queue is turned on puts its cursor (ops_cursors) at the newest event of the
 project, so the queue never reads what happened before; a pass while it is off drops the cursor.
 
@@ -351,12 +351,19 @@ class OpsConfig:
     debounce_minutes: int = system_spec.OPS["debounce_minutes"][0]
     max_items: int = system_spec.OPS["max_items"][0]
     plan_stall_minutes: int = system_spec.OPS["plan_stall_minutes"][0]
+    quiet_workers: tuple[int, ...] = ()  # workers whose queued runs write no run.queued_long
 
 
 def read_ops(spec: dict | None) -> OpsConfig:
     """The ops config a system spec holds: ops off for a spec with no ``ops``, a value out of bounds defaulted."""
     found = system_spec.ops_of(spec)
-    return OpsConfig(found["enabled"], found["debounce_minutes"], found["max_items"], found["plan_stall_minutes"])
+    return OpsConfig(
+        found["enabled"],
+        found["debounce_minutes"],
+        found["max_items"],
+        found["plan_stall_minutes"],
+        tuple(found["quiet_workers"]),
+    )
 
 
 def default_system():

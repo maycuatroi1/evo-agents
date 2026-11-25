@@ -9,7 +9,7 @@ in ``ops.plan_stall_minutes`` of the default system. A plan the Curator made (it
 here. Each stall writes once: the event names the plan's revision and its newest run (of its own or of its traces),
 and a plan with the same two already written is that stall again; a new revision or a new run makes the next one.
 
-``run.queued_long``: a chat run still queued ``ops.plan_stall_minutes`` after it was queued, once a run.
+``run.queued_long``: a chat run still queued ``ops.plan_stall_minutes`` after it was queued, once a run, unless it is pinned to a worker of ``ops.quiet_workers`` (a run with no pin is not skipped).
 
 The pass of a project takes a lock of its own (``LOCK``, tried, not waited on), so two hubs never write one stall
 twice. SQLAlchemy Core on ``evo_agents.hub.tables``; nothing here imports ``evo_agents.hub.server``.
@@ -41,7 +41,7 @@ async def check(conn: AsyncConnection, project_id: int) -> dict[str, int]:
         return found
     cutoff = func.now() - timedelta(minutes=int(config.plan_stall_minutes))
     found["stalled"] = await _stalled(conn, project_id, cutoff)
-    found["queued_long"] = await _queued_long(conn, project_id, cutoff)
+    found["queued_long"] = await _queued_long(conn, project_id, cutoff, config.quiet_workers)
     return found
 
 
@@ -108,19 +108,19 @@ async def _stalled(conn: AsyncConnection, project_id: int, cutoff) -> int:
     return written
 
 
-async def _queued_long(conn: AsyncConnection, project_id: int, cutoff) -> int:
+async def _queued_long(conn: AsyncConnection, project_id: int, cutoff, quiet_workers: tuple[int, ...] = ()) -> int:
     r, e = tables.runs, tables.hub_events
     told = exists().where(
         e.c.project_id == project_id,
         e.c.kind == hub_events.RUN_QUEUED_LONG,
         e.c.payload["run_id"].as_integer() == r.c.id,
     )
-    query = (
-        select(r.c.id, r.c.pinned_worker_id, r.c.priority)
-        .where(r.c.project_id == project_id, r.c.kind == "chat", r.c.state == "queued", r.c.queued_at < cutoff, ~told)
-        .order_by(r.c.id)
-        .limit(MAX_QUEUED)
+    query = select(r.c.id, r.c.pinned_worker_id, r.c.priority).where(
+        r.c.project_id == project_id, r.c.kind == "chat", r.c.state == "queued", r.c.queued_at < cutoff, ~told
     )
+    if quiet_workers:  # a run pinned to a quiet worker waits on purpose; one with no pin is judged as any other
+        query = query.where(or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id.not_in(quiet_workers)))
+    query = query.order_by(r.c.id).limit(MAX_QUEUED)
     rows = (await conn.execute(query)).all()
     for row in rows:
         await ops_events.run_queued_long(

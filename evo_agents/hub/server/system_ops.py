@@ -52,6 +52,10 @@ class OpsSettings(BaseModel):
         description="a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes",
     )
 
+    quiet_workers: list[int] = Field(
+        default_factory=list, description="ids of workers whose queued runs write no run.queued_long"
+    )
+
 
 class DefaultSystem(BaseModel):
     project: str

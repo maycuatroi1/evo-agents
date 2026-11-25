@@ -158780,6 +158780,14 @@
               "title": "Plan Stall Minutes",
               "description": "a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes",
               "default": 30
+            },
+            "quiet_workers": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Quiet Workers",
+              "description": "ids of workers whose queued runs write no run.queued_long"
             }
           },
           "type": "object",

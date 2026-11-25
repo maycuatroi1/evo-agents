@@ -347,7 +347,9 @@ def _ops_settings(ops: dict | None) -> str:
     if not ops:
         return "-"
     state = "on" if ops.get("enabled") else "off"
-    return f"{state}, a batch closes after {ops.get('debounce_minutes')} min or at {ops.get('max_items')} items"
+    quiet = ops.get("quiet_workers")
+    muted = f", run.queued_long muted for workers {', '.join(map(str, quiet))}" if quiet else ""
+    return f"{state}, a batch closes after {ops.get('debounce_minutes')} min or at {ops.get('max_items')} items{muted}"
 
 
 @client_command
