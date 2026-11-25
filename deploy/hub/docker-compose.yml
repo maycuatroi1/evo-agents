@@ -182,8 +182,10 @@ services:
         condition: service_healthy
 
   # Knowledge graph builds, the queue kg alone (evo_agents.hub.jobs.KG_QUEUE): a long build never holds back the merge
-  # queue, notifications or schedules of the worker above, and the two replicas build two projects at once, each one
-  # build at a time (a project's builds wait for each other under its lock). The same image, cache, CPUs and
+  # queue, notifications or schedules of the worker above, and the replicas (EVO_HUB_WORKER_KG_REPLICAS, default two)
+  # build that many projects at once, each one build at a time (a project's builds wait for each other under its
+  # lock). A replica keeps much of its last build's memory while it waits, so a host where one project does nearly
+  # all the building runs one replica and saves the other's memory. The same image, cache, CPUs and
   # environment as the worker, the gateway's left out, since a build reads and writes the cache the worker's other jobs
   # read and calls no model. Its memory limit is its own, EVO_HUB_WORKER_KG_MEMORY: a large project's build peaked at
   # about 4.7 GB, so the default 6g leaves it a quarter more, and the kernel kills a build over it.
@@ -201,7 +203,7 @@ services:
       default: {}
       platform: {}
     deploy:
-      replicas: 2
+      replicas: ${EVO_HUB_WORKER_KG_REPLICAS:-2}
     cpus: ${EVO_HUB_WORKER_CPUS:-2}
     mem_limit: ${EVO_HUB_WORKER_KG_MEMORY:-6g}
     healthcheck:
