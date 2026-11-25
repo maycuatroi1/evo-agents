@@ -265,6 +265,58 @@ def test_a_member_links_with_a_one_time_code_and_a_hub_admin_unlinks_any_members
     assert audit_rows(hub_db, KIND)[-1] == (f"{KIND}.unlink", f"{KIND} user:{OWNER} by=admin", live.ADMIN, None)
 
 
+def test_a_hub_admin_links_a_members_chat_with_no_session_of_theirs_until_they_link_it_themselves(night, hub_db, fake):
+    client, headers = night.client, night.headers
+    set_up(client, headers, hub_db)
+    path = f"/v1/admin/users/{OWNER}/channels/{KIND}"
+    config = {"group_id": GROUP, "user_id": USER}
+    body = {"config": config, "unique_on": ["group_id", "user_id"]}
+    # A member may not; a kind no core plugin serves, a key the hub writes, a unique key the config lacks, an empty
+    # config or a login the hub does not know links nothing.
+    assert client.put(path, json=body, headers=headers["owner"]).status_code == 403
+    hub_kind = client.put(f"/v1/admin/users/{OWNER}/channels/webpush", json=body, headers=headers["admin"])
+    assert hub_kind.status_code == 404, hub_kind.text
+    for wrong in ({"config": {"state": {}}}, {**body, "unique_on": ["chat"]}, {"config": {}}):
+        assert client.put(path, json=wrong, headers=headers["admin"]).status_code == 422, wrong
+    nobody = client.put(f"/v1/admin/users/nobody-here/channels/{KIND}", json=body, headers=headers["admin"])
+    assert nobody.status_code == 404
+    assert channel_rows(hub_db) == []
+    made = client.put(path, json=body, headers=headers["admin"])
+    assert made.status_code == 200, made.text
+    assert made.json() == {"login": OWNER, "kind": KIND, "config": config, "linked_by": live.ADMIN}
+    assert channel_rows(hub_db) == [(KIND, config, None)]
+    assert audit_rows(hub_db, KIND) == [(f"{KIND}.link", f"{KIND} user:{OWNER} by=admin", live.ADMIN, None)]
+    # It speaks for the member with no web session of theirs, and the hub sends to it.
+    assert said(client, text("/agents")) == "agents"
+    u = tables.users
+    ((user_id,),) = sql(hub_db, select(u.c.id).where(u.c.login == OWNER))
+
+    async def notify(conn):
+        return await notifications.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="X")
+
+    on_hub(client, notify)
+    assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 0}
+    # The member's own link from the web takes its place, and lives no longer than their session.
+    session = web(client, hub_db, OWNER)
+    linked(client, fake, session)
+    assert channel_rows(hub_db) == [(KIND, config, session.id)]
+    c = tables.notification_channels
+    assert sql(hub_db, select(c.c.linked_by)) == [(None,)]
+    assert client.post("/v1/auth/logout", headers=session.write).status_code == 204
+    assert said(client, text("/agents")) == "not_linked"
+    # Another member linked by an admin to the same chat takes it: a chat speaks for one member.
+    theirs = client.put(f"/v1/admin/users/{OTHER}/channels/{KIND}", json=body, headers=headers["admin"])
+    assert theirs.status_code == 200, theirs.text
+    assert sql(hub_db, select(u.c.login).join_from(c, u, u.c.id == c.c.user_id)) == [(OTHER,)]
+    # A hub admin unlinks it, whoever linked it.
+    unlink = f"/v1/admin/users/{OTHER}/channels/{KIND}"
+    assert client.delete(unlink, headers=headers["owner"]).status_code == 403
+    gone = client.delete(unlink, headers=headers["admin"])
+    assert gone.status_code == 200 and gone.json() == {"login": OTHER, "kind": KIND, "unlinked": True}
+    assert client.delete(unlink, headers=headers["admin"]).json()["unlinked"] is False
+    assert channel_rows(hub_db) == []
+
+
 def test_the_webhook_is_public_under_its_plugins_prefix_and_a_wrong_secret_is_404(northwind):
     client = northwind.client
     assert hook(client, text("/agents"), secret="not-the-secret").status_code == 404

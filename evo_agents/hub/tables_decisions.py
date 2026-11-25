@@ -14,6 +14,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -26,7 +27,9 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    column,
     func,
+    or_,
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -199,8 +202,16 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("enabled", Boolean, nullable=False, server_default=true()),
         _stamp("created_at"),
         Column("token_id", BigInteger),  # the web session that linked the channel, which it lives no longer than (0016)
+        Column("linked_by", BigInteger),  # the hub admin who linked it, with no session of the member's (0268)
         ForeignKeyConstraint(
             ["token_id"], ["tokens.id"], ondelete="CASCADE", name="notification_channels_token_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["linked_by"], ["users.id"], ondelete="SET NULL", name="notification_channels_linked_by_fkey"
+        ),
+        CheckConstraint(
+            or_(column("linked_by").is_(None), column("token_id").is_(None)),
+            name="notification_channels_linked_by_check",
         ),
         ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="notification_channels_user_id_fkey"),
         PrimaryKeyConstraint("id", name="notification_channels_pkey"),
