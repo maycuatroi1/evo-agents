@@ -14002,6 +14002,22 @@
         },
         {
           "flags": [
+            "--cancel-builds"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--project"
           ],
           "value": "string",
@@ -14030,7 +14046,8 @@
           "graph",
           "why",
           "counts",
-          "items"
+          "items",
+          "cancelled"
         ],
         "schema": "SrsBaseline"
       }
@@ -30661,7 +30678,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.73.1"
+      "version": "0.73.6"
     },
     "paths": {
       "/v1/health": {
@@ -114546,7 +114563,7 @@
             "loop"
           ],
           "summary": "Fix Baseline",
-          "description": "Set use cases of the baseline to delivered or undelivered by code, by heading, or the unknown ones as a whole (an\nadmin of the project); answers the baseline as it stands.",
+          "description": "Set use cases of the baseline to delivered, undelivered or unknown by code, by heading, or the unknown ones as a\nwhole (an admin of the project); with ``cancel_builds``, also a use case a build of the Loop holds, cancelling that\nbuild so no author run of it is handed out again. Answers the baseline as it stands, with the builds cancelled.",
           "operationId": "fix_baseline_v1_projects__project__goals__ref__baseline_fix_post",
           "parameters": [
             {
@@ -121240,6 +121257,25 @@
               ],
               "title": "Unknown",
               "description": "every use case still unknown becomes this"
+            },
+            "cancel_builds": {
+              "type": "boolean",
+              "title": "Cancel Builds",
+              "description": "also set a use case a build of the Loop holds, and cancel that build: its author runs stop, and its other use cases go back to the backlog; a deliver is never cancelled",
+              "default": false
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why, kept with each use case set, e.g. built outside the project"
             }
           },
           "type": "object",
@@ -150204,7 +150240,8 @@
                     "no_frame_task",
                     "person",
                     "dropped",
-                    "manual"
+                    "manual",
+                    "baseline"
                   ]
                 },
                 {
@@ -150548,7 +150585,8 @@
                     "no_frame_task",
                     "person",
                     "dropped",
-                    "manual"
+                    "manual",
+                    "baseline"
                   ]
                 },
                 {
@@ -187346,6 +187384,14 @@
               },
               "type": "array",
               "title": "Items"
+            },
+            "cancelled": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Cancelled",
+              "description": "the builds of the Loop the fix cancelled because it took their use cases"
             }
           },
           "type": "object",

@@ -340,6 +340,24 @@ def test_a_table_updated_holds_what_a_table_of_its_rows_holds():
     assert_same_table(table.updated(after, old), Table(after, words))
 
 
+@pytest.mark.parametrize("runs", [snapshot_fts.RUNS, 0])  # run by run, and through a mask
+@pytest.mark.parametrize("columns", [(), (3,)])
+def test_the_kept_records_land_where_a_mask_puts_them(monkeypatch, runs, columns):
+    monkeypatch.setattr(snapshot_fts, "RUNS", runs)
+    rnd = np.random.default_rng(5)
+    counts = rnd.integers(0, 9, (500, *columns)).astype(np.uint32)
+    for held in (np.ones(500, dtype=bool), rnd.random(500) > 0.1):
+        size = int(held.sum()) + 40
+        placed = np.sort(rnd.choice(size, 40, replace=False))
+        free = np.ones(size, dtype=bool)
+        free[placed] = False
+        want = np.zeros((size, *columns), dtype=np.uint32)
+        want[free] = counts[held]
+        got = np.zeros((size, *columns), dtype=np.uint32)
+        snapshot_fts._copy_kept(got, counts, held, placed)
+        assert np.array_equal(got, want)
+
+
 def test_without_numpy_a_delta_and_a_snapshot_answer_the_same(monkeypatch, small):
     rows, snap = small
     after, delta = changed(rows)
@@ -377,6 +395,12 @@ QUERIES = (
 )
 
 
+# Runs of each timing, the least of which counts: the other xdist workers of a CI runner share its CPUs, and a burst of
+# theirs could slow each of 5 runs of a query or 3 of a delta (both timings failed the CI of v0.73.5)
+QUERY_RUNS = 9
+DELTA_RUNS = 7
+
+
 def test_kg_search_answers_in_under_25_ms_at_the_95th_percentile_on_a_graph_the_size_of_evo_agents(large):
     _, snap = large
     assert len(snap.nodes) > 50_000 and len(snap.edges) > 200_000
@@ -385,7 +409,7 @@ def test_kg_search_answers_in_under_25_ms_at_the_95th_percentile_on_a_graph_the_
         for query in QUERIES:
             reader.search(query)  # the first read of a query compiles its reader's masks
             each = []
-            for _ in range(5):
+            for _ in range(QUERY_RUNS):
                 start = time.perf_counter()
                 reader.search(query)
                 each.append(time.perf_counter() - start)
@@ -401,7 +425,7 @@ def test_a_delta_applies_to_a_snapshot_the_size_of_evo_agents_in_under_500_ms(la
     took = []
     gc.disable()  # as the hub applies one (``kg_snapshots.uncollected``): no full collection walks the snapshot held
     try:
-        for _ in range(3):
+        for _ in range(DELTA_RUNS):
             start = time.perf_counter()
             got = snap.apply_changes(delta)
             took.append(time.perf_counter() - start)
