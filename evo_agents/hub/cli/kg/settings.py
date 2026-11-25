@@ -22,7 +22,17 @@ from evo_agents.hub.cli.kg import MEASURE_TIMEOUT
 from evo_agents.hub.cli.kg.resources import KG_PROJECT, KgResource
 from evo_agents.kg import settings as kg_settings
 
-MEASURE_KEYS = ("build_id", "split", "questions", "current", "candidate", "candidate_settings", "needs_rebuild", "why")
+MEASURE_KEYS = (
+    "build_id",
+    "split",
+    "questions",
+    "current",
+    "candidate",
+    "by_type",
+    "candidate_settings",
+    "needs_rebuild",
+    "why",
+)
 CHANGES_SHOWN = 5  # the newest changes the text lists
 
 
@@ -173,8 +183,20 @@ def measure_lines(out: dict) -> list[str]:
             f"current:   {out['current']}",
             f"candidate: {out['candidate']}",
         ]
+        lines.extend(type_lines(out["by_type"]))
     if out["needs_rebuild"]:
         lines.append(f"not measured, they need a build: {', '.join(out['needs_rebuild'])}")
+    return lines
+
+
+def type_lines(by_type: dict | None) -> list[str]:
+    """One line per question type with its hit@5 under both settings, ``LOWER`` when the candidate's falls."""
+    lines = []
+    for kind, sides in sorted((by_type or {}).items()):
+        cur, cand = (sides.get("current") or {}), (sides.get("candidate") or {})
+        cur_hit, cand_hit = cur.get("hit@5"), cand.get("hit@5")
+        lower = cur_hit is not None and cand_hit is not None and cand_hit < cur_hit
+        lines.append(f"  {kind}: hit@5 current {cur_hit}, candidate {cand_hit}" + ("  LOWER" if lower else ""))
     return lines
 
 

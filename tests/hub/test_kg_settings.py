@@ -288,6 +288,37 @@ def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, ca
     assert json.loads(capsys.readouterr().out)["build_id"] == 3
 
 
+def _measure_cli(monkeypatch, capsys, by_type, as_json):
+    from evo_agents.hub.cli import base
+    from evo_agents.hub.cli.kg import settings as kg_settings_cli
+
+    figures = lambda hit: {"n": 3, "hit@5": hit}  # noqa: E731
+    found = {
+        "build_id": 3, "split": "tune", "questions": 6, "current": {}, "candidate": {},
+        "by_type": {t: {"current": figures(c), "candidate": figures(d)} for t, (c, d) in by_type.items()},
+    }  # fmt: skip
+
+    class FakeHub:
+        def call(self, *a, **k):
+            return found
+
+    monkeypatch.setattr(base, "signed_in", lambda: (FakeHub(), None))
+    args = SimpleNamespace(project="p", settings=None, split="tune", max_questions=5, json=as_json)
+    assert kg_settings_cli.MEASURE(args) == 0
+    return capsys.readouterr().out
+
+
+def test_a_measure_json_holds_by_type(monkeypatch, capsys):
+    out = _measure_cli(monkeypatch, capsys, {"lookup": (90.0, 40.0)}, True)
+    assert json.loads(out)["by_type"]["lookup"]["candidate"]["hit@5"] == 40.0
+
+
+def test_a_measure_text_names_each_type_whose_hit_falls_and_not_one_that_holds(monkeypatch, capsys):
+    out = _measure_cli(monkeypatch, capsys, {"lookup": (90.0, 40.0), "trace": (50.0, 60.0)}, False)
+    lines = {line.split(":")[0].strip(): line for line in out.splitlines() if line.startswith("  ")}
+    assert "LOWER" in lines["lookup"] and "LOWER" not in lines["trace"]
+
+
 def test_a_hub_build_reads_the_ontology_of_the_strategy_its_settings_name():
     """A strategy set on the hub changes no file of the harness: the build adds the strategy's node kinds and relations
     to the project's ontology itself, else the entities step of entity-graph-api would drop every relation."""
