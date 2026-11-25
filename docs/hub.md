@@ -782,7 +782,9 @@ on a profile the hub creates for it, `@<project>-orchestrator`, with its ops off
 
 `ops` of the spec says how the Orchestrator of the default system handles the project's operations events (plan
 hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440), `max_items` (20, from 1 to 1000) and
-`plan_stall_minutes` (30, from 1 to 1440; a spec without it reads 30). A spec with no `ops` reads as ops off and is
+`plan_stall_minutes` (30, from 1 to 1440; a spec without it reads 30) and `quiet_workers` (a list of worker ids, at
+most 100, each a whole number from 1; empty when a spec lacks it, and a check does not fill it in, so a spec from before
+it reads back unchanged). A spec with no `ops` reads as ops off and is
 stored as it is. With ops on, the hub reads the project's operations events (`run.ended`, `decision.opened`,
 `curator.paused`, `worker.health`, `plan.stalled`, `run.queued_long`, `mention.refused`) after a cursor of its own,
 and puts each that no
@@ -798,7 +800,10 @@ The same pass every minute writes two of those events, with no model (plan orche
 in_progress, every depends_on done), no plan run or step run active, no trace of it with a run queued, held, in
 review or parked, and neither a new revision nor a move of one of its traces for `plan_stall_minutes`; once a stall,
 again after a new revision or a new run. A plan of the Curator never stalls here. `run.queued_long` says a chat run
-still waits for a slot `plan_stall_minutes` after it was queued, once a run. `mention.refused` says a mention or an
+still waits for a slot `plan_stall_minutes` after it was queued, once a run; none for a run pinned to a worker of
+`ops.quiet_workers` (a node kept at one slot on purpose; a run with no pin is told as any other, and
+`plan_stall_minutes` still sets `plan.stalled`). Set it with `evo-agents hub system export SLUG --project P`, an
+`ops.quiet_workers: [42]` line, and `hub system put`. `mention.refused` says a mention or an
 ask found no node that can take its run; one an ops thread's run made writes none, or its refusal would wake it
 again. Each payload holds ids and states only, and tier 0 handles none of them. A trace with no plan takes the plan
 a brief of an ask in it refs (`plan:<id>`), or the plan of a step a run of it marks with plan_step, at the plan's

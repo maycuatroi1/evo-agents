@@ -80,7 +80,15 @@ OPS = {  # name: (default, lowest, highest); how its Orchestrator handles the op
     # a slot this long run.queued_long (``ops_stalls``)
     "plan_stall_minutes": (30, 1, 1440),
 }
-OPS_KEYS = ("enabled", *OPS)  # enabled: the project's operations events go to its queue (its default system only)
+QUIET_WORKERS = (
+    "quiet_workers"  # ops key: ids of workers whose queued runs write no run.queued_long; a list, default []
+)
+MAX_QUIET_WORKERS = 100
+OPS_KEYS = (
+    "enabled",
+    *OPS,
+    QUIET_WORKERS,
+)  # enabled: the project's operations events go to its queue (its default system only)
 OPS_FILLED = ("debounce_minutes", "max_items")  # what a check fills in; a later key a spec lacks stays out of it
 TOP_KEYS = ("schema", "slug", "name", "purpose", "limits", "ops", "nodes", "edges")
 NODE_KEYS = ("id", "kind", "label", "position", "profile", "version", "graph")
@@ -203,14 +211,30 @@ def _ops(c: _Checker, given) -> dict:
         value = _bounded(c, f"ops.{name}", given.get(name, default), low, high)
         if value is not None:
             found[name] = value
+    if QUIET_WORKERS in given:
+        quiet = _worker_ids(c, f"ops.{QUIET_WORKERS}", given[QUIET_WORKERS])
+        if quiet is not None:
+            found[QUIET_WORKERS] = quiet
     return found
+
+
+def _worker_ids(c: _Checker, path: str, value) -> list[int] | None:
+    """A list of worker ids (whole numbers from 1), each once, at most MAX_QUIET_WORKERS; None, with a problem, else."""
+    if (
+        not isinstance(value, list)
+        or len(value) > MAX_QUIET_WORKERS
+        or any(isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in value)
+    ):
+        c.add(path, f"is a list of at most {MAX_QUIET_WORKERS} worker ids, each a whole number from 1")
+        return None
+    return list(dict.fromkeys(value))
 
 
 def ops_of(spec) -> dict:
     """The ``ops`` of a spec with its defaults filled in: ``enabled`` false for a spec that has none, as one written
     before the key, and the defaults in place of a value out of bounds or a key the spec lacks."""
     given = spec.get("ops") if isinstance(spec, dict) else None
-    defaults = {name: default for name, (default, _, _) in OPS.items()}
+    defaults = {name: default for name, (default, _, _) in OPS.items()} | {QUIET_WORKERS: []}
     return {**defaults, **_ops(_Checker(), given if isinstance(given, dict) else {})}
 
 

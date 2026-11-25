@@ -388,3 +388,39 @@ def test_a_local_run_does_not_ask_for_a_node_of_a_pool(client, hub, hub_db):
     assert (selector, tolerations, pinned, state) == ([], [], None, "running")
     mine = worker(client, hub["owner"], "mine")
     assert claim(client, mine) is None, "a local run is never claimed"
+
+
+# run.queued_long and ops.quiet_workers
+
+
+def test_a_chat_run_pinned_to_a_quiet_worker_writes_no_run_queued_long(chat_client, chat_hub, hub_db):
+    from datetime import timedelta
+
+    from evo_agents.hub import hub_events
+    from tests.hub.test_ops_batches import run_pass, system
+
+    client, hub = chat_client, chat_hub
+    quiet = chat_worker(client, hub["owner"], "qa-01", pool=None)["id"]
+    other = chat_worker(client, hub["owner"], "dev-01", pool=None)["id"]
+    system(hub_db, {"enabled": True, "plan_stall_minutes": 30, "quiet_workers": [quiet]})
+    run_pass(client)
+    r = tables.runs
+    for index in range(4):
+        sent(client, hub["owner"], created(client, hub["owner"], f"Talk {index}")["id"], "@reviewer please look")
+    ids = [row[0] for row in chat_runs_of(hub_db)]
+    assert len(ids) == 4
+    for run_id, pinned, minutes in zip(ids, (quiet, other, None, other), (60, 60, 60, 5), strict=True):
+        queued_at = func.now() - timedelta(minutes=minutes)
+        sql(hub_db, update(r).values(pinned_worker_id=pinned, queued_at=queued_at).where(r.c.id == run_id))
+
+    def told() -> list[int]:
+        e = tables.hub_events
+        return sorted(
+            p["run_id"] for (p,) in sql(hub_db, select(e.c.payload).where(e.c.kind == hub_events.RUN_QUEUED_LONG))
+        )
+
+    assert run_pass(client)["queued_long"] == 2
+    assert told() == [ids[1], ids[2]], "not the run pinned to the quiet worker, nor the one queued 5 minutes"
+    system(hub_db, {"enabled": True, "plan_stall_minutes": 30})  # no longer quiet: that run is told once
+    assert run_pass(client)["queued_long"] == 1
+    assert told() == [ids[0], ids[1], ids[2]]
