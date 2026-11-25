@@ -4,8 +4,14 @@
 - ``view`` gives each approved use case of the goal's scope with the state the hub proposes (``srs_baseline.propose``)
   and its evidence, or, once the ledger holds a row for it (an admin's fix, a confirmation, the Loop), that row's state.
   Nothing is written.
-- ``fix`` sets use cases to delivered or undelivered by code, by heading and for the whole of the unknown ones: ledger
-  rows of source ``admin``, which a confirmation keeps. A use case a live work item of the Loop holds (``delivering``) or a finished deliver delivered is left.
+- ``fix`` sets use cases to delivered, undelivered or unknown by code, by heading and for the whole of the unknown ones:
+  ledger rows of source ``admin``, which a confirmation keeps, with the admin's reason when one is given. A use case a
+  live work item of the Loop holds (``delivering``) or a finished deliver delivered is left, unless the fix asks to
+  cancel builds (``cancel_builds``): then a use case a build holds that is not finished is set too, and that build is
+  cancelled with reason ``baseline`` in the same transaction, so no author run of it goes on being handed out and its
+  other use cases go back to the backlog for the next round. A use case built outside the project is set this way, to
+  unknown or delivered, and stays out of every backlog: the Loop queues no build for it again. A deliver (a plan is
+  written already) is never cancelled here.
 - ``confirm`` writes a ledger row of source ``kg`` for each use case of the scope that has none, in its proposed state,
   and marks the goal confirmed for the document (``srs_baselines``), once: 409 the second time. An admin of the project
   only, never the agent of a run.
@@ -24,7 +30,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
@@ -33,12 +39,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals as goal_rules
-from evo_agents.hub import tables
+from evo_agents.hub import loop_jobs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.hub_events import SRS_USE_CASE_APPROVED
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.loop import backlog, delivery
-from evo_agents.hub.server.loop.model import FINISHED
+from evo_agents.hub.server.loop import backlog, delivery, srs_ledger
+from evo_agents.hub.server.loop import state as loop_state
+from evo_agents.hub.server.loop.model import BUILD, FINISHED
 from evo_agents.hub.srs_backlog import ADMIN, DELIVERED, DELIVERING, KG, STATES, UNKNOWN, UseCase, ref_key, under
 from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES, Evidence, Proposal, counts, fixes, propose
 
@@ -47,6 +54,8 @@ log = logging.getLogger(__name__)
 CONFIRM = "srs.baseline.confirm"  # an admin confirmed the baseline of a goal: "<project>/goal G-<n>"
 FIX = "srs.baseline.fix"  # an admin set use cases of a baseline: "<project>/goal G-<n> use_cases=<count>"
 MAX_FIXES = 500  # codes and headings one fix names
+MAX_REASON = 500  # characters of the reason an admin gives for a fix
+CANCELLED_BY_FIX = "baseline"  # the reason of a build a fix cancelled (model.REASONS)
 
 
 class BaselineEvidence(BaseModel):
@@ -83,6 +92,9 @@ class SrsBaseline(BaseModel):
     why: str | None = Field(description="why the graph could not be read")
     counts: dict[Literal[STATES], int]
     items: list[BaselineItem]
+    cancelled: list[int] = Field(
+        default_factory=list, description="the builds of the Loop the fix cancelled because it took their use cases"
+    )
 
 
 class BaselineFix(BaseModel):
@@ -91,6 +103,21 @@ class BaselineFix(BaseModel):
     codes: dict[str, Literal[SET_STATES]] = Field(default_factory=dict, max_length=MAX_FIXES)
     headings: dict[str, Literal[SET_STATES]] = Field(default_factory=dict, max_length=MAX_FIXES)
     unknown: Literal[FIX_STATES] | None = Field(None, description="every use case still unknown becomes this")
+    cancel_builds: bool = Field(
+        False,
+        description="also set a use case a build of the Loop holds, and cancel that build: its author runs stop, and "
+        "its other use cases go back to the backlog; a deliver is never cancelled",
+    )
+    reason: str | None = Field(
+        None, max_length=MAX_REASON, description="why, kept with each use case set, e.g. built outside the project"
+    )
+
+
+class Fixed(NamedTuple):
+    """What a fix wrote: the ledger rows, and the builds it cancelled."""
+
+    written: int
+    cancelled: list[int]
 
 
 def _named(ref: str):
@@ -218,7 +245,8 @@ async def view(
         key = ref_key(case.ref)
         row = ledger.get(key)
         if row is not None:
-            reason = row.evidence.get("reason") or (f"set by {row.evidence['by']}" if row.evidence.get("by") else "")
+            said, by = row.evidence.get("reason"), row.evidence.get("by")
+            reason = f"set by {by}: {said}" if said and by else said or (f"set by {by}" if by else "")
             items.append(_item(case, row.state, row.source, str(reason), row.evidence.get("evidence") or []))
         else:
             found = proposals[key]
@@ -252,13 +280,13 @@ def _admin(user, access) -> None:
         raise HTTPException(403, f"setting the baseline of a goal needs the admin role on project {access.name}")
 
 
-async def _live(conn: AsyncConnection, item_ids: list[int]) -> set[int]:
-    """Of work items ``item_ids``, the ids of those not finished (not done, not cancelled)."""
+async def _live(conn: AsyncConnection, item_ids: list[int]) -> dict[int, str]:
+    """Of work items ``item_ids``, the kind of each one not finished (not done, not cancelled), by id."""
     if not item_ids:
-        return set()
+        return {}
     i = tables.loop_items
-    query = select(i.c.id).where(i.c.id.in_(item_ids), i.c.state.not_in(FINISHED))
-    return set(await conn.scalars(query))
+    query = select(i.c.id, i.c.kind).where(i.c.id.in_(item_ids), i.c.state.not_in(FINISHED))
+    return {row.id: row.kind for row in await conn.execute(query)}
 
 
 async def fix(
@@ -269,10 +297,14 @@ async def fix(
     code: str,
     body: BaselineFix,
     evidence: Mapping[str, list[Evidence]] | None,
-) -> int:
-    """An admin sets use cases of the baseline (see the module); how many ledger rows it wrote. 422 for a code that is
-    no use case of the goal's scope, 403 for anyone but an admin."""
+) -> Fixed:
+    """An admin sets use cases of the baseline (see the module); the ledger rows it wrote and the builds it cancelled.
+    422 for a code that is no use case of the goal's scope, 403 for anyone but an admin."""
     _admin(user, access)
+    if (
+        body.cancel_builds
+    ):  # the project's row of loop_states first, as a tick takes it: no tick moves a build meanwhile
+        await loop_state.enabled(conn, access.project_id, lock=True)
     cases, proposals, ledger, (project_id, document_id, _) = await _states(conn, goal_id, evidence)
     now = {key: (ledger[key].state if key in ledger else proposals[key].state) for key in proposals}
     try:
@@ -281,26 +313,38 @@ async def fix(
         raise HTTPException(422, f"goal {code} has no use case {exc.args[0]} in its scope") from None
     by_key = {ref_key(case.ref): case for case in cases}
     live = await _live(conn, [row.item_id for row in ledger.values() if row.state == DELIVERING and row.item_id])
-    written = 0
+    written, taken = 0, {}
     for key, state in setting.items():
         row = ledger.get(key)
+        proof = {"by": user.login, "was": now[key]} | ({"reason": body.reason} if body.reason else {})
         if row is not None and row.state == DELIVERING and (row.item_id is None or row.item_id in live):
-            continue  # a use case a live work item of the Loop has under way is not the admin's to move here
+            if not (body.cancel_builds and live.get(row.item_id) == BUILD):
+                continue  # a use case a live work item of the Loop has under way is not the admin's to move here
+            taken.setdefault(row.item_id, []).append(by_key[key].ref)
+            proof["build"] = row.item_id
         if row is not None and row.source == "deliver" and row.state == DELIVERED:
             continue  # nor is one a finished deliver delivered
-        proof = {"by": user.login, "was": now[key]}
         written += await delivery.record(
             conn, project_id, document_id, by_key[key].ref, state, ADMIN, proof, goal_id=goal_id, user_id=user.user_id
         )
+    cancelled = []
+    for build, refs_taken in taken.items():
+        cancelled += await loop_state.cancel(
+            conn, project_id, CANCELLED_BY_FIX, [build], by=user.login, use_cases=refs_taken
+        )
+    if cancelled:
+        await srs_ledger.sync(conn, project_id)  # the other use cases of the builds go back to the backlog
+        await loop_jobs.defer_tick(conn, project_id)
+    target = f"{access.name}/goal {code} use_cases={written}"
     await audit.record(
         conn,
         actor_id=user.user_id,
         token_id=user.token_id,
         action=FIX,
-        target=f"{access.name}/goal {code} use_cases={written}",
+        target=target + (f" cancelled={','.join(map(str, cancelled))}" if cancelled else ""),
         project_id=access.project_id,
     )
-    return written
+    return Fixed(written, cancelled)
 
 
 async def confirm(
@@ -351,6 +395,7 @@ async def confirm(
 __all__ = [
     "BaselineFix",
     "BaselineItem",
+    "Fixed",
     "SrsBaseline",
     "confirm",
     "confirmed",

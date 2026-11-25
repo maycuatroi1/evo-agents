@@ -85,6 +85,7 @@ REASONS = {
         "person",
         "dropped",
         "manual",
+        "baseline",  # an admin's fix of a goal's baseline took the use cases of the build (baseline.fix)
     ),
 }
 ALL_REASONS = tuple(reason for reasons in REASONS.values() for reason in reasons)

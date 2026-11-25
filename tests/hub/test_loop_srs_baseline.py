@@ -81,7 +81,16 @@ def test_baseline_options_are_name_state_pairs_and_the_command_is_in_the_contrac
             cli_loop._fixes([bad], "--set")
     printed = commands()["hub loop baseline"]["options"]
     flags = {flag for option in printed for flag in option["flags"]}
-    assert {"--goal", "--confirm", "--set", "--heading", "--unknown", "--project"} <= flags
+    assert {
+        "--goal",
+        "--confirm",
+        "--set",
+        "--heading",
+        "--unknown",
+        "--cancel-builds",
+        "--reason",
+        "--project",
+    } <= flags
 
 
 def test_the_preview_prints_each_state_with_its_evidence_and_says_what_confirming_needs():

@@ -186,6 +186,17 @@ names the document; the Loop reads what is approved and not yet delivered and ha
   `--unknown undelivered` fix, `--confirm` confirms. Until then the Loop makes no build for the goal, a use case left
   `unknown` never enters the backlog, and the decision board lists the goal at gate 3 (`srs_baseline`); the web shows
   it on the Decisions page with a preview and the confirmation, and the Goals page and the Loop page show the backlog.
+- **A use case built elsewhere.** A use case of a confirmed baseline can be built outside the project (another team,
+  another repository), while a build of the Loop holds it: each author run of that build ends with no plan, each such
+  end is a failure that queues the build again, and a build a person drops or cancels puts its use cases back in the
+  backlog for the next round. A fix leaves a use case a live work item holds as it is, unless it asks to cancel builds:
+  `evo-agents hub loop baseline --goal G-1 --set UC-7=unknown --cancel-builds --reason "built in another repository"`
+  (`POST .../baseline/fix` with `cancel_builds` and `reason`, an admin only). The use case is then `unknown` (or
+  `delivered`, as set) from source `admin` with the reason, the build that held it is cancelled with reason
+  `baseline` in the same transaction, its other use cases go back to the backlog for the next round of their group,
+  and the answer lists the builds cancelled (`cancelled`). The run in flight finishes on its own and makes nothing more,
+  as when the Loop is turned off. A use case a deliver holds (its plan is written) is left; `--set UC-7=undelivered`
+  later lets the Loop take it again.
 - **Adopt.** A plan written by hand joins the Loop with
   `evo-agents hub loop adopt PLAN --goal G-1 --use-cases UC-1 UC-2` (`POST /v1/projects/{p}/loop/adopt`; an admin, or
   the writer who owns the goal): a `deliver` with key `deliver:<plan>`, no build above it, whose use cases are
