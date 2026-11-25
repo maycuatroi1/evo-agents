@@ -141,3 +141,19 @@ def test_the_settings_command_shows_sets_with_a_reason_and_undoes_on_the_hub(tmp
     assert main([*argv, "--undo"]) == 0
     assert json.loads(capsys.readouterr().out)["settings"]["semantic_weight"] == semantic.SEMANTIC_WEIGHT
     assert {path for _, path in hub.asked} == {"/v1/kg/demo/settings", "/v1/kg/demo/settings/undo"}
+
+
+def test_entity_words_is_a_query_flag_off_by_default(tmp_path):
+    import json
+
+    import pytest
+
+    from evo_agents.kg import cli_bench
+
+    assert kg_settings.DEFAULT.entity_words is False
+    assert kg_settings.parse_value("entity_words", "on") is True
+    with pytest.raises(kg_settings.SettingsError, match="entity_words"):
+        kg_settings.of({"entity_words": 3})
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"settings": {"entity_words": True}}))
+    assert cli_bench._tuning_file(str(path)) == {"entity_words": True}

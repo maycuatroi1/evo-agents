@@ -500,7 +500,13 @@ ENTITY_RANKED_ONLY = ("Commit", "PullRequest")  # kinds an entity brings as a so
 
 
 def through_entities(
-    store, b: int, hits: list[dict], visible: Callable[[dict], bool], code: bool = False
+    store,
+    b: int,
+    hits: list[dict],
+    visible: Callable[[dict], bool],
+    code: bool = False,
+    query: str | None = None,
+    words: bool = False,
 ) -> tuple[list[dict], dict[str, list[str]]]:
     """``hits`` (visible nodes, best first) with each entity node (one the entities step stated) giving its place to
     up to ENTITY_DOCS visible nodes that mention it (its source documents), the entities themselves after every other
@@ -508,7 +514,8 @@ def through_entities(
     slot of a document: it is the reason its documents rank where it did. Hits without an entity come back as they are
     (a graph built without the entities step ranks as before). With ``code`` (the project's ``entity_code`` setting)
     each entity also brings, after its documents, up to ENTITY_CODE visible nodes it points to through ENTITY_CODE_RELS
-    (the code that implements it), which count among its sources."""
+    (the code that implements it), which count among its sources. With ``words`` (the ``entity_words`` setting) and the
+    ``query``, an unranked non-entity source stays only when ``store.matched`` reports a query word in it."""
     from evo_agents.kg.ppr import is_entity
 
     if not any(is_entity(h["id"]) for h in hits):
@@ -525,7 +532,7 @@ def through_entities(
                 listed.add(hit["id"])
             continue
         entities.append(hit)
-        reached = _sources(store, b, hit, rank, visible)
+        reached = _sources(store, b, hit, rank, visible, query if words else None)
         if code:
             reached += _code_of(store, b, hit, rank, visible)
         for source in reached:
@@ -537,7 +544,7 @@ def through_entities(
     return out, why
 
 
-def _sources(store, b: int, entity: dict, rank: dict[str, int], visible) -> list[dict]:
+def _sources(store, b: int, entity: dict, rank: dict[str, int], visible, query: str | None = None) -> list[dict]:
     """Up to ENTITY_DOCS visible non-entity nodes that mention ``entity`` through visible edges: those the search ranked,
     best first, then, unless more than ENTITY_SPREAD mention it, the others by the edge's confidence. An unranked node of
     a kind in ENTITY_RANKED_ONLY never comes: a commit naming the entity would take the slot of a file the query hit."""
@@ -552,10 +559,16 @@ def _sources(store, b: int, entity: dict, rank: dict[str, int], visible) -> list
     if len(conf) <= ENTITY_SPREAD:
         ranked += sorted((i for i in conf if i not in rank), key=lambda i: (-conf[i], i))
     nodes = store.nodes(ranked, b)
+    held = None
+    if query is not None:  # entity_words: an unranked node is a source only when it holds a word of the query
+        held = store.matched([i for i in ranked if i not in rank], query)
     return [
         nodes[i]
         for i in ranked
-        if i in nodes and visible(nodes[i]) and (i in rank or nodes[i].get("kind") not in ENTITY_RANKED_ONLY)
+        if i in nodes
+        and visible(nodes[i])
+        and (i in rank or nodes[i].get("kind") not in ENTITY_RANKED_ONLY)
+        and (held is None or i in rank or (held.get(i) or {}).get("words"))
     ][:ENTITY_DOCS]
 
 
