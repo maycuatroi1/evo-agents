@@ -10,6 +10,10 @@ member's web session, neither revoked nor expired (``live_session``). Linking ta
 member's channel of that kind; ``unique_on`` names the config keys that identify a chat, so a chat speaks for one
 member and another member's link to it goes. Unlinking deletes the channel, whose deliveries go with it.
 
+A hub admin may link a member's channel instead (``admin_link``), for a member who does not reach the hub's web: the
+row keeps no session and names the admin (``linked_by``, schema 0268), and it speaks for its member until it is
+unlinked or linked again (``channel_live``). The member's own link from the web takes its place.
+
 These rules came from the Telegram channel (the core plugin telegram, ``evo_core_plugins.telegram`` of
 evo-agents-core-plugins), which reaches them through the API like any other core plugin.
 """
@@ -24,7 +28,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, bindparam, delete, exists, func, insert, select, update
+from sqlalchemy import and_, bindparam, delete, exists, func, insert, or_, select, update
 from sqlalchemy import null as sqlalchemy_null
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -77,6 +81,18 @@ def live_session(row_of):
     )
 
 
+def admin_linked(c):
+    """The channel of notification_channels ``c`` was linked by a hub admin who is still a user: no session, an
+    admin named (``admin_link``)."""
+    return and_(c.c.token_id.is_(None), c.c.linked_by.is_not(None))
+
+
+def channel_live(c):
+    """The channel of notification_channels ``c`` speaks for its member: the web session that linked it lives, or a
+    hub admin linked it."""
+    return or_(live_session(c), admin_linked(c))
+
+
 async def session_live(conn: AsyncConnection, user_id: int, token_id: int | None) -> bool:
     """Whether ``token_id`` is a live web session of member ``user_id`` now."""
     if token_id is None:
@@ -118,20 +134,21 @@ async def member_by_config(
     conn: AsyncConnection, kind: str, match: Mapping[str, Any], *, live: bool = True
 ) -> Found | None:
     """The channel of ``kind`` whose config holds every key and value of ``match``; with ``live``, only while the web
-    session that linked it lives, without it whatever became of that session (to unlink it)."""
+    session that linked it lives or a hub admin linked it (``channel_live``), without it whatever became of that
+    session (to unlink it)."""
     c = tables.notification_channels
     query = _channels().where(c.c.kind == kind, c.c.config.contains(dict(match)))
     if live:
-        query = query.where(live_session(c))
+        query = query.where(channel_live(c))
     row = (await conn.execute(query.order_by(c.c.id).limit(1))).one_or_none()
     return None if row is None else _found(row)
 
 
 async def linked(conn: AsyncConnection, user_id: int, kind: str):
     """Member ``user_id``'s channel of ``kind`` as it stands (config, enabled, created_at, and session_live: the web
-    session that linked it lives), or None."""
+    session that linked it lives, or a hub admin linked it), or None."""
     c = tables.notification_channels
-    live = live_session(c).label("session_live")
+    live = channel_live(c).label("session_live")
     query = select(c.c.config, c.c.enabled, c.c.created_at, live).where(c.c.user_id == user_id, c.c.kind == kind)
     return (await conn.execute(query)).one_or_none()
 
@@ -147,11 +164,12 @@ async def user_named(conn: AsyncConnection, login: str):
 
 
 async def member_channel(conn: AsyncConnection, kind: str, user_id: int, *, live: bool = True) -> Found | None:
-    """Member ``user_id``'s channel of ``kind``, while the web session that linked it lives with ``live``."""
+    """Member ``user_id``'s channel of ``kind``, with ``live`` while the web session that linked it lives or a hub
+    admin linked it."""
     c = tables.notification_channels
     query = _channels().where(c.c.kind == kind, c.c.user_id == user_id)
     if live:
-        query = query.where(live_session(c))
+        query = query.where(channel_live(c))
     row = (await conn.execute(query)).one_or_none()
     return None if row is None else _found(row)
 
@@ -171,18 +189,52 @@ async def link(
     403 SESSION_ENDED when the session does not live now. Audited as ``<kind>.link``."""
     if not await session_live(conn, user_id, token_id):
         raise HTTPException(403, SESSION_ENDED)
+    bound = {"config": config, "enabled": True, "token_id": token_id, "linked_by": None}
+    channel_id = await _bind(conn, user_id, kind, bound, unique_on)
+    await audit.record(conn, actor_id=user_id, token_id=token_id, action=f"{kind}.link", target=f"{kind} user:{login}")
+    return Found(user_id, login, channel_id, dict(config))
+
+
+async def admin_link(
+    conn: AsyncConnection,
+    *,
+    login: str,
+    kind: str,
+    config: dict,
+    unique_on: tuple[str, ...] = (),
+    actor_id: int,
+    actor_token_id: int | None,
+) -> Found:
+    """A hub admin, ``actor_id``, links the channel of ``kind`` of the member named ``login`` (in any case) with
+    ``config``, bound to no session: it speaks for the member until it is unlinked or linked again, the member's own
+    link from the web among them. In place of the member's channel of the kind; another member's channel of the kind
+    with the same values at ``unique_on`` goes. 404 when the hub has no such user. Audited as ``<kind>.link`` by the
+    admin, ``by=admin``."""
+    found = await user_named(conn, login)
+    bound = {"config": config, "enabled": True, "token_id": None, "linked_by": actor_id}
+    channel_id = await _bind(conn, found.id, kind, bound, unique_on)
+    await audit.record(
+        conn,
+        actor_id=actor_id,
+        token_id=actor_token_id,
+        action=f"{kind}.link",
+        target=f"{kind} user:{found.login} by=admin",
+    )
+    return Found(found.id, found.login, channel_id, dict(config))
+
+
+async def _bind(conn: AsyncConnection, user_id: int, kind: str, bound: dict, unique_on: tuple[str, ...]) -> int:
+    """Member ``user_id``'s channel of ``kind`` made, or replaced, with the columns ``bound``; another member's channel
+    of the kind whose config has the same values at ``unique_on`` goes. The channel's id."""
     c = tables.notification_channels
     if unique_on:
-        same = {key: config[key] for key in unique_on}
+        same = {key: bound["config"][key] for key in unique_on}
         await conn.execute(delete(c).where(c.c.kind == kind, c.c.user_id != user_id, c.c.config.contains(same)))
-    bound = {"config": config, "enabled": True, "token_id": token_id}
     linked = pg_insert(c).values(user_id=user_id, kind=kind, **bound)
     linked = linked.on_conflict_do_update(
         constraint="notification_channels_user_id_kind_key", set_={**bound, "created_at": func.now()}
     ).returning(c.c.id)
-    channel_id = (await conn.execute(linked)).scalar_one()
-    await audit.record(conn, actor_id=user_id, token_id=token_id, action=f"{kind}.link", target=f"{kind} user:{login}")
-    return Found(user_id, login, channel_id, dict(config))
+    return (await conn.execute(linked)).scalar_one()
 
 
 async def unlink(
@@ -540,7 +592,10 @@ __all__ = [
     "RESERVED_KEYS",
     "RESTRICTED_ANSWER",
     "Found",
+    "admin_link",
+    "admin_linked",
     "answerable_project",
+    "channel_live",
     "delivered",
     "json_object",
     "kept_from",

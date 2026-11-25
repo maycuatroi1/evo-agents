@@ -64,6 +64,8 @@ TELEGRAM_KEYS = (
     "last_error_message",
 )
 TELEGRAM_UNLINK_KEYS = ("login", "unlinked")
+CHANNEL_LINK_KEYS = ("login", "kind", "config", "linked_by")
+CHANNEL_UNLINK_KEYS = ("login", "kind", "unlinked")
 PROJECT_KEYS = (
     "name",
     "harness",
@@ -319,6 +321,61 @@ def cmd_admin_telegram_unlink(args) -> int:
     return 0
 
 
+def channel_config(pairs: list[str]) -> dict:
+    """The config of ``KEY=VALUE`` (a string) and ``KEY:=JSON`` (a number, say) pairs; ValueError naming a bad one."""
+    config: dict = {}
+    for pair in pairs:
+        key, equals, value = pair.partition("=")
+        if not equals:
+            raise ValueError(f"{pair}: write KEY=VALUE, or KEY:=JSON for a number")
+        if key.endswith(":"):
+            key = key[:-1]
+            try:
+                config[key] = json.loads(value)
+            except ValueError:
+                raise ValueError(f"{pair}: the value after := is not JSON") from None
+        else:
+            config[key] = value
+        if not key:
+            raise ValueError(f"{pair}: the key is empty")
+    return config
+
+
+@client_command
+def cmd_admin_channel_link(args) -> int:
+    try:
+        config = channel_config(args.config)
+    except ValueError as exc:
+        print(f"evo-agents hub admin channel-link: {exc}", file=sys.stderr)
+        return 2
+    hub, _ = signed_in()
+    path = f"/v1/admin/users/{quote(args.login, safe='')}/channels/{quote(args.kind, safe='')}"
+    found = call_object(hub, "PUT", path, {"config": config, "unique_on": args.unique_on})
+    if args.json:
+        print_json(found)
+        return 0
+    print(
+        f"Linked the {found['kind']} channel of {found['login']} as {found['linked_by']}: it speaks for them, with no "
+        "web session of theirs, until it is unlinked or they link it again."
+    )
+    return 0
+
+
+@client_command
+def cmd_admin_channel_unlink(args) -> int:
+    hub, _ = signed_in()
+    path = f"/v1/admin/users/{quote(args.login, safe='')}/channels/{quote(args.kind, safe='')}"
+    found = call_object(hub, "DELETE", path)
+    if args.json:
+        print_json(found)
+        return 0
+    if found["unlinked"]:
+        print(f"Unlinked the {found['kind']} channel of {found['login']}.")
+    else:
+        print(f"{found['login']} has no {found['kind']} channel linked.")
+    return 0
+
+
 @client_command
 def cmd_admin_stats(args) -> int:
     hub, _ = signed_in()
@@ -516,6 +573,34 @@ def _register_admin(hsub) -> None:
     telegram_unlink.add_argument("login", metavar="LOGIN", help="the member's GitHub login")
     json_option(telegram_unlink, returns_object(*TELEGRAM_UNLINK_KEYS, schema="TelegramUnlinked"))
     telegram_unlink.set_defaults(func=cmd_admin_telegram_unlink)
+    channel_link = asub.add_parser(
+        "channel-link",
+        help="link a member's chat of a core plugin's channel kind, with no web session of theirs",
+    )
+    channel_link.add_argument("login", metavar="LOGIN", help="the member's GitHub login")
+    channel_link.add_argument("kind", metavar="KIND", help="the channel's kind, as its core plugin names it")
+    channel_link.add_argument(
+        "config",
+        metavar="KEY=VALUE",
+        nargs="+",
+        help="the channel's config as its plugin keeps it: KEY=VALUE for a string, KEY:=JSON for a number",
+    )
+    channel_link.add_argument(
+        "--unique-on",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="a key that names one chat: another member's channel with the same value there goes (repeat it)",
+    )
+    json_option(channel_link, returns_object(*CHANNEL_LINK_KEYS, schema="ChannelLinked"))
+    channel_link.set_defaults(func=cmd_admin_channel_link)
+    channel_unlink = asub.add_parser(
+        "channel-unlink", help="unlink a member's channel of a core plugin's kind, whoever linked it"
+    )
+    channel_unlink.add_argument("login", metavar="LOGIN", help="the member's GitHub login")
+    channel_unlink.add_argument("kind", metavar="KIND", help="the channel's kind")
+    json_option(channel_unlink, returns_object(*CHANNEL_UNLINK_KEYS, schema="ChannelUnlinked"))
+    channel_unlink.set_defaults(func=cmd_admin_channel_unlink)
 
 
 def _register_project(hsub) -> None:

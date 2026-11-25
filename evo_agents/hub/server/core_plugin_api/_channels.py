@@ -60,7 +60,8 @@ async def find_member(
     conn: AsyncConnection, plugin: Plugin, kind: str, match: Mapping[str, str | int], *, live: bool = True
 ) -> Member | None:
     """The member whose channel of ``kind`` has every key and value of ``match`` in its config; with ``live`` (the
-    default), only while the web session that linked the channel lives. ``live=False`` is for unlinking alone."""
+    default), only while the web session that linked the channel lives, or when a hub admin linked it with no session
+    (``PUT /v1/admin/users/{login}/channels/{kind}``). ``live=False`` is for unlinking alone."""
     own_kind(own_plugin(plugin), kind)
     found = await member_channels.member_by_config(conn, kind, _match(match), live=live)
     return None if found is None else _member(plugin, kind, found)
@@ -150,7 +151,7 @@ async def unlink_by_login(conn: AsyncConnection, plugin: Plugin, kind: str, logi
 async def linked_channel(conn: AsyncConnection, plugin: Plugin, session: Session, kind: str) -> LinkedChannel | None:
     """Where the session's member's channel of ``kind`` stands, for any credential of theirs: its config, when it was
     linked, whether the hub sends to it and why not (what turned it off, or SESSION_ENDED once the web session that
-    linked it ended); None when there is none."""
+    linked it ended; a channel a hub admin linked has no session to end); None when there is none."""
     own_kind(own_plugin(plugin), kind)
     own_session(session)
     row = await member_channels.linked(conn, session.user_id, kind)
@@ -176,8 +177,8 @@ async def set_channel_state(conn: AsyncConnection, member: Member, state: Mappin
 
 
 async def direct_chat_member(conn: AsyncConnection, plugin: Plugin, kind: str, chat_id: int) -> Member | None:
-    """The member of direct chat ``chat_id`` when their channel of ``kind`` is linked and its web session lives; None
-    for a group chat, or a member without one."""
+    """The member of direct chat ``chat_id`` when their channel of ``kind`` is linked and live (its web session lives,
+    or a hub admin linked it); None for a group chat, or a member without one."""
     own_kind(own_plugin(plugin), kind)
     c = tables.chats
     query = select(c.c.direct_user_id).where(c.c.id == chat_id, c.c.kind == chats.DIRECT)

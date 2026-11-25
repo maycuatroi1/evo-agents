@@ -1154,6 +1154,96 @@
         "schema": "AccountPool"
       }
     },
+    "hub admin channel-link": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "kind",
+          "metavar": "KIND",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "config",
+          "metavar": "KEY=VALUE",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--unique-on"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "kind",
+          "config",
+          "linked_by"
+        ],
+        "schema": "ChannelLinked"
+      }
+    },
+    "hub admin channel-unlink": {
+      "positionals": [
+        {
+          "name": "login",
+          "metavar": "LOGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "kind",
+          "metavar": "KIND",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "login",
+          "kind",
+          "unlinked"
+        ],
+        "schema": "ChannelUnlinked"
+      }
+    },
     "hub admin grant": {
       "positionals": [
         {
@@ -32243,6 +32333,182 @@
                   }
                 }
               }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/users/{login}/channels/{kind}": {
+        "put": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Link Channel",
+          "description": "Link the channel of ``kind`` of member ``login`` with ``config``, as a hub admin, bound to no session of theirs,\nin place of the one they had.",
+          "operationId": "link_channel_v1_admin_users__login__channels__kind__put",
+          "parameters": [
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "title": "Login"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                "title": "Kind"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelLink"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChannelLinked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Unlink Channel",
+          "description": "Unlink the channel of ``kind`` of member ``login``, whoever linked it and whatever its session.",
+          "operationId": "unlink_channel_v1_admin_users__login__channels__kind__delete",
+          "parameters": [
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "title": "Login"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                "title": "Kind"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChannelUnlinked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
             },
             "422": {
               "description": "Validation Error",
@@ -127726,6 +127992,84 @@
             "state"
           ],
           "title": "ChannelEdit"
+        },
+        "ChannelLink": {
+          "properties": {
+            "config": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Config",
+              "description": "the channel's config as its plugin keeps it (the ids of the member's chat), at most 16 KiB of JSON"
+            },
+            "unique_on": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 8,
+              "title": "Unique On",
+              "description": "keys of config that name one chat: another member's channel of the kind with the same values there goes, so a chat speaks for one member"
+            }
+          },
+          "type": "object",
+          "required": [
+            "config"
+          ],
+          "title": "ChannelLink"
+        },
+        "ChannelLinked": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "config": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Config"
+            },
+            "linked_by": {
+              "type": "string",
+              "title": "Linked By",
+              "description": "the hub admin who linked it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "kind",
+            "config",
+            "linked_by"
+          ],
+          "title": "ChannelLinked"
+        },
+        "ChannelUnlinked": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "unlinked": {
+              "type": "boolean",
+              "title": "Unlinked",
+              "description": "whether the member had a channel of the kind"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "kind",
+            "unlinked"
+          ],
+          "title": "ChannelUnlinked"
         },
         "Charter": {
           "properties": {

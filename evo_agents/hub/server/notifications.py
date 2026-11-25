@@ -50,7 +50,9 @@ Before a channel of a row gets a notification, the job checks two things as they
 stood when it was stored. The member must still hold a grant on the notification's project (NO_GRANT fails the
 delivery at once; the channel stays). And a channel bound to the web session that linked it (``token_id``), or of a
 class that needs one (``Channel.needs_session``, as Telegram's does), lives no longer than that session: once it is
-revoked, signed out or expired, the delivery fails and the channel is turned off with SESSION_ENDED as its reason.
+revoked, signed out or expired, the delivery fails and the channel is turned off with SESSION_ENDED as its reason. A
+channel a hub admin linked (``member_channels.admin_link``) is bound to no session and counts as one whose session
+lives.
 
 A delivery to a push device goes to the class CHANNELS names for the device's kind, with the device's address and
 params as the channel's config, after the same check of the grant. A device lives no longer than the token that added
@@ -406,12 +408,15 @@ def _lock_due(delivery_id: int):
         stored.c.project_id.is_(None),
         exists().where(grants.c.user_id == stored.c.user_id, grants.c.project_id == stored.c.project_id),
     )
-    session_live = exists().where(
-        tokens.c.id == channels.c.token_id,
-        tokens.c.user_id == stored.c.user_id,
-        tokens.c.kind == WEB_SESSION,
-        tokens.c.revoked_at.is_(None),
-        tokens.c.expires_at > func.now(),
+    session_live = or_(
+        exists().where(
+            tokens.c.id == channels.c.token_id,
+            tokens.c.user_id == stored.c.user_id,
+            tokens.c.kind == WEB_SESSION,
+            tokens.c.revoked_at.is_(None),
+            tokens.c.expires_at > func.now(),
+        ),
+        and_(channels.c.token_id.is_(None), channels.c.linked_by.is_not(None)),  # a hub admin linked it (0268)
     )
     return (
         select(

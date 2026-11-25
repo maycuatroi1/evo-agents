@@ -327,6 +327,8 @@ evo-agents hub admin revoke alice demo
 evo-agents hub admin users
 evo-agents hub admin stats      # rows in every table
 evo-agents hub admin telegram-unlink alice   # unlink a member's Telegram chat
+evo-agents hub admin channel-link alice telegram chat_id:=4242 user_id:=4242 --unique-on chat_id   # link a chat for them
+evo-agents hub admin channel-unlink alice telegram
 ```
 
 The audit trail and every user's tokens are on the web's admin pages (`/v1/admin/audit`, `/v1/admin/tokens`). The

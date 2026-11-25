@@ -474,7 +474,9 @@ Before a channel of a row gets a notification, the job checks what stands at tha
 was stored. A member who no longer holds a grant on the notification's project gets nothing of it there: the delivery
 fails with that reason and the channel stays. A channel bound to the web session that linked it (`token_id`, schema
 0016), as every Telegram chat is, lives no longer than that session: once the session is signed out, revoked or
-expired, the delivery fails and the channel is turned off with that reason, until the member links it again. A push
+expired, the delivery fails and the channel is turned off with that reason, until the member links it again. A
+channel a hub admin linked for the member (`linked_by`, schema 0268; `docs/plugins.md`, A channel a hub admin links)
+is bound to no session and gets its deliveries until it is unlinked or linked again. A push
 device gets the same checks: no grant fails the delivery and keeps the device, and a device whose sign-in ended is
 removed. Its quiet hours come after them (Push to devices, below).
 
