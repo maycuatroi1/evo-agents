@@ -346,14 +346,16 @@ def test_compose_passes_the_library_variables_to_api_and_worker_and_semantic_sti
     assert semantic.BACKEND_ENV == "EVO_KG_EMBEDDINGS" and '"OPENROUTER_API_KEY"' in source
 
 
-def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_the_worker():
+def test_compose_runs_the_kg_builds_on_workers_of_their_own_and_the_rest_on_the_worker():
     data = compose()
     services = data["services"]
     worker, kg = services["worker"], services["worker-kg"]
     assert worker["command"][-2:] == ["--queue", "default"] and kg["command"][-2:] == ["--queue", "kg"]
     assert kg["command"][:-2] == worker["command"][:-2], "the same worker, another queue"
     assert kg["environment"] == data[BLOCK] and kg["volumes"] == worker["volumes"], "the same environment and cache"
-    assert kg["deploy"]["replicas"] == 2
+    # two by default, so two projects build at once; one where a waiting replica's memory matters more
+    assert kg["deploy"]["replicas"] == "${EVO_HUB_WORKER_KG_REPLICAS:-2}"
+    assert "EVO_HUB_WORKER_KG_REPLICAS" in listed_in_env_example()
     for key in ("image", "build", "cpus", "healthcheck", "depends_on"):
         assert kg[key] == worker[key], key
     # worker-kg stops as fast as the worker, since a deploy starts the recreated api only once every old container

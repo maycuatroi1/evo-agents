@@ -5023,9 +5023,11 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 
 `evo-agents hub worker --data-dir /cache --concurrency 2` runs two jobs at a time (default 1). `--queue default` or
 `--queue kg` (again for both) takes the jobs of that queue alone; without it the worker takes every queue. Graph builds
-go to the queue `kg` (`jobs.KG_QUEUE`), so the compose file runs them on `worker-kg`, two replicas, each one build at a
-time, and `worker` takes `default`: a long build never holds back the merge queue, notifications or schedules, and
-two projects build at once (one build of a project at a time, under its lock). A worker that takes `default` keeps,
+go to the queue `kg` (`jobs.KG_QUEUE`), so the compose file runs them on `worker-kg`, `EVO_HUB_WORKER_KG_REPLICAS`
+replicas (default two), each one build at a time, and `worker` takes `default`: a long build never holds back the merge
+queue, notifications or schedules, and two projects build at once (one build of a project at a time, under its lock).
+A replica keeps much of its last build's memory while it waits for the next, so where one project does nearly all the
+building, one replica does the same work in less memory. A worker that takes `default` keeps,
 beside its slots, one for `hub.recover_runs` and `hub.deliver_notifications` alone (queue `lease`), so they run every
 minute while a long plugin job holds the others, and two for `hub.deliver_plugin_events` alone (queue `deliveries`),
 so what a commit stores for a plugin goes out within seconds. On SIGTERM a worker takes no
@@ -5277,7 +5279,8 @@ environment, never in a committed file.
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
 | `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `7g`: it holds the graph of each project read and makes a new one beside it at each build, and past 75% of it drops the graphs read least recently; over it the kernel kills the api and it restarts |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | limits of `worker`, default `2` and `4g`; the CPUs are also each `worker-kg`'s |
-| `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each of the two `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
+| `EVO_HUB_WORKER_KG_REPLICAS` | compose | how many `worker-kg` run, each one graph build at a time, default `2`; `1` saves the memory a waiting replica keeps from its last build |
+| `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
 | `EVO_HUB_GATEWAY_SUBNET` | compose | the subnet of the `gateway` network, default `10.231.128.0/28`, outside Docker's default address pools so the network is created on a host whose pools are all taken; change it when it overlaps a network of the host |
