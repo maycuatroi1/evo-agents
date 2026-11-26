@@ -124,7 +124,7 @@ def test_serve_hands_uvicorn_the_proxies_it_may_believe(monkeypatch, tmp_path):
 
     import uvicorn
 
-    from evo_agents.hub import cli as hub_cli
+    from evo_agents.hub.cli.server import SERVE
 
     calls = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))
@@ -133,9 +133,9 @@ def test_serve_hands_uvicorn_the_proxies_it_may_believe(monkeypatch, tmp_path):
     monkeypatch.setenv("EVO_HUB_DSN", "postgresql://hub@db/hub")
     monkeypatch.setenv("EVO_HUB_DATA_DIR", str(tmp_path))
     args = argparse.Namespace(dsn=None, data_dir=None, host=None, port=None, hub_command="serve")
-    assert hub_cli.cmd_serve.__wrapped__(args) == 0
+    assert SERVE.run(SERVE.context(args)).status == 0
     monkeypatch.setenv("EVO_HUB_FORWARDED_ALLOW_IPS", "10.0.0.0/8")
-    assert hub_cli.cmd_serve.__wrapped__(args) == 0
+    assert SERVE.run(SERVE.context(args)).status == 0
     assert [call["forwarded_allow_ips"] for call in calls] == [None, "10.0.0.0/8"]
 
 
