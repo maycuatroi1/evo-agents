@@ -154,12 +154,12 @@ def test_kg_settings_sets_the_walk_and_undoes_it(tmp_path, kg_env, capsys, monke
 
 
 def test_bench_settings_take_the_walk_and_two_walks_never_share_a_shard(tmp_path, monkeypatch):
-    from evo_agents.kg import cli_bench
+    from evo_agents.kg.bench import selection
 
     one, two = tmp_path / "one.json", tmp_path / "two.json"
     one.write_text(json.dumps({"settings": {"walk": {"damping": 0.5}}}))
     two.write_text(json.dumps({"walk": {"damping": 0.6}}))
-    first, second = cli_bench._tuning_file(str(one)), cli_bench._tuning_file(str(two))
+    first, second = selection.tuning_file(str(one)), selection.tuning_file(str(two))
     assert first["walk"]["damping"] == 0.5 and second["walk"]["damping"] == 0.6
     asked = []
 

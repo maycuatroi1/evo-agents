@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import stat
+import sys
 import types
 
 import pytest
@@ -15,7 +16,8 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.hub import browser_login
-from evo_agents.worker.browser import cli, logins, state
+from evo_agents.worker.browser import logins, state
+from evo_agents.worker.cli.browser import BROWSER_KINDS, LOGIN, STATE
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 from evo_agents.worker.runner.agent import Agent
 
@@ -31,6 +33,28 @@ COOKIE = {
     "secure": True,
     "sameSite": "Strict",
 }
+
+
+class Run:
+    """The context of a browser command inside run RUN of ``home``: its hub is ``hub``, when given."""
+
+    def __init__(self, home, args, hub=None):
+        self.home, self.args, self.hub, self.run_id = home, args, hub, RUN
+        self.config = self.token = None
+        self.out = sys.stdout
+
+    def check(self):
+        pass
+
+    def with_hub(self, work):
+        return asyncio.run(work(self.hub))
+
+
+def ran(command, context) -> int:
+    """Run ``command`` in ``context`` and print its result, as the command line does."""
+    result = command.run(context)
+    result.show(sys.stdout, False)
+    return result.status
 
 
 def answer(decision_id: int, key: str | None) -> dict:
@@ -88,7 +112,6 @@ def test_browser_state_is_a_playwright_storage_state_readable_by_its_owner_only(
 
 
 def test_browser_state_command_writes_the_cookies_of_the_run_browser(home, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_browser_run", lambda command: types.SimpleNamespace(home=home, run_id=RUN))
     seen = []
 
     async def read_cookies(cdp):
@@ -98,48 +121,46 @@ def test_browser_state_command_writes_the_cookies_of_the_run_browser(home, monke
     monkeypatch.setattr(state, "read_cookies", read_cookies)
     monkeypatch.delenv("EVO_BROWSER_CDP", raising=False)
     with pytest.raises(WorkerStateError, match="EVO_BROWSER_CDP"):
-        cli.cmd_state(types.SimpleNamespace(out="state.json"))
+        ran(STATE, Run(home, types.SimpleNamespace(out="state.json")))
     monkeypatch.setenv("EVO_BROWSER_CDP", "http://127.0.0.1:9333")
-    assert cli.cmd_state(types.SimpleNamespace(out="state.json")) == 0
+    assert ran(STATE, Run(home, types.SimpleNamespace(out="state.json"))) == 0
     assert seen == ["http://127.0.0.1:9333"]
     written = json.loads((home.run_dir(RUN) / "state.json").read_text(encoding="utf-8"))
     assert written["cookies"][0]["name"] == "sid"
     assert "1 cookies" in capsys.readouterr().out
     with pytest.raises(WorkerStateError, match="worktree"):
-        cli.cmd_state(types.SimpleNamespace(out=str(home.worktrees_dir / "demo-7" / "state.json")))
+        ran(STATE, Run(home, types.SimpleNamespace(out=str(home.worktrees_dir / "demo-7" / "state.json"))))
 
 
 def test_browser_login_command_notes_the_decision_for_the_daemon_and_a_step_run_just_ends(home, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_browser_run", lambda command: types.SimpleNamespace(home=home, run_id=RUN))
     replies = [
         {"outcome": "asked", "decision_id": 41, "identity_id": 3, "message": "open"},
         {"outcome": "failed", "decision_id": None, "identity_id": 3, "message": "the run fails: log the identity in"},
     ]
     sent = []
 
-    def with_hub(agent, work):
-        class Hub:
-            async def browser_login(self, run_id, body):
-                sent.append((run_id, body))
-                return replies.pop(0)
+    class Hub:
+        async def browser_login(self, run_id, body):
+            sent.append((run_id, body))
+            return replies.pop(0)
 
-        return asyncio.run(work(Hub()))
-
-    import evo_agents.worker.agent_cli as worker_cli
-
-    monkeypatch.setattr(worker_cli, "with_hub", with_hub)
     args = types.SimpleNamespace(
         identity="northwind-admin", url="https://northwind.example/login", reason="  it  expired "
     )
-    assert cli.cmd_login(args) == 0
+    assert ran(LOGIN, Run(home, args, Hub())) == 0
     assert sent[0] == (RUN, {"identity": "northwind-admin", "url": args.url, "reason": "it expired"})
     assert logins.read(home, RUN) == {41: 3}
     assert json.loads(home.decisions_path(RUN).read_text(encoding="utf-8").splitlines()[-1]) == {"id": 41}
     assert "End your turn" in capsys.readouterr().out
-    assert cli.cmd_login(args) == 0
+    assert ran(LOGIN, Run(home, args, Hub())) == 0
     assert "ends" in capsys.readouterr().out and logins.read(home, RUN) == {41: 3}  # nothing noted for the failure
     with pytest.raises(WorkerStateError, match="http or https"):
-        cli.cmd_login(types.SimpleNamespace(identity="x", url="ftp://x", reason="r"))
+        ran(LOGIN, Run(home, types.SimpleNamespace(identity="x", url="ftp://x", reason="r"), Hub()))
+
+
+def test_browser_run_commands_serve_every_kind_of_run_but_a_browser_login():
+    assert browser_login.KIND not in BROWSER_KINDS
+    assert LOGIN.kinds == STATE.kinds == BROWSER_KINDS
 
 
 def test_login_decision_answer_is_read_from_the_message_that_hands_it_to_the_agent(home):

@@ -11,7 +11,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.worker import daemon_heartbeat, health, list_cli  # noqa: E402
+from evo_agents.worker import daemon_heartbeat, health, worker_lines  # noqa: E402
 from evo_agents.worker.daemon_heartbeat import Heartbeat  # noqa: E402
 
 
@@ -125,9 +125,9 @@ def test_the_heartbeat_carries_the_health_and_worker_list_shows_it(tmp_path):
     assert "health" not in Heartbeat(SimpleNamespace(**{**vars(daemon), "health": None})).body([])
     worker = {"id": 7, "owner": "someone", "name": "mac-mini", "status": "online", "health": found}
     worker["health"]["disk"] = {"free_gb": 12.5, "free_pct": 4.0}
-    line = list_cli.describe(worker, datetime.now(UTC))
+    line = worker_lines.describe(worker, datetime.now(UTC))
     assert "disk 12.5 GB free (4%), login claude-code=ok codex=unauthorized" in line
-    assert "disk" not in list_cli.describe({**worker, "health": None}, datetime.now(UTC))
+    assert "disk" not in worker_lines.describe({**worker, "health": None}, datetime.now(UTC))
 
 
 def test_a_login_the_machine_lacks_reads_leased_while_the_runtimes_agents_authenticate_with_a_lease(tmp_path):

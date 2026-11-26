@@ -1,12 +1,14 @@
 """``evo-agents worker browser login NAME`` (plan agent-browser, step 9): a window on this screen, no run."""
 
 import argparse
+import types
 
 import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.worker.browser import chromium, cli, local_login
+from evo_agents.worker.browser import chromium, local_login
+from evo_agents.worker.cli.browser import LOGIN, login_here
 from evo_agents.worker.home import WorkerStateError
 
 
@@ -24,6 +26,11 @@ def args(**changes) -> argparse.Namespace:
     return argparse.Namespace(**{**base, **changes})
 
 
+def here(**changes) -> types.SimpleNamespace:
+    """The context of a login on this machine; it refuses before it reads the worker's home."""
+    return types.SimpleNamespace(args=args(**changes), home=None)
+
+
 @pytest.mark.parametrize(
     ("changes", "said"),
     [
@@ -36,12 +43,12 @@ def args(**changes) -> argparse.Namespace:
 )
 def test_browser_cli_local_login_refuses_a_bad_combination(changes, said):
     with pytest.raises(WorkerStateError, match=said):
-        cli.cmd_local_login(args(**changes))
+        login_here(here(**changes))
 
 
 def test_browser_cli_login_with_nothing_names_no_form():
     with pytest.raises(WorkerStateError, match="NAME"):
-        cli.cmd_login(args(name=None))
+        LOGIN.run(here(name=None))
 
 
 def test_browser_cli_local_login_needs_a_display_on_linux(monkeypatch):

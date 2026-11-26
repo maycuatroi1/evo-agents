@@ -7,8 +7,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-import evo_agents.worker.agent_cli as worker_cli
+from evo_agents.worker import output_files
 from evo_agents.worker.agent_input import payload_contains, wait_until
+from evo_agents.worker.cli.ask import ASK
+from evo_agents.worker.cli.base import AgentRunContext
+from evo_agents.worker.cli.wait import WAIT
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 
 NOW = datetime(2026, 10, 24, 15, 54, tzinfo=UTC)
@@ -45,7 +48,8 @@ def agent(tmp_path, monkeypatch):
     home = WorkerHome(tmp_path / "worker")
     home.run_dir(RUN).mkdir(parents=True)
     found = types.SimpleNamespace(home=home, run_id=RUN, record={"kind": "plan"})
-    monkeypatch.setattr(worker_cli, "agent_run", lambda command, kinds=("plan",): found)
+    for name in ("home", "run_id", "record"):  # the run the commands act for, as the context reads it
+        monkeypatch.setattr(AgentRunContext, name, getattr(found, name))
     return found
 
 
@@ -61,7 +65,7 @@ def hub_answering(monkeypatch, reply: dict) -> list:
             sent.append(("decision", run_id, body))
             return reply
 
-    monkeypatch.setattr(worker_cli, "with_hub", lambda agent, work: asyncio.run(work(Hub())))
+    monkeypatch.setattr(AgentRunContext, "with_hub", lambda agent, work: asyncio.run(work(Hub())))
     return sent
 
 
@@ -74,7 +78,7 @@ def wait_args(**given):
 def test_wait_sends_the_wait_and_notes_it_for_the_daemon(agent, monkeypatch, capsys):
     sent = hub_answering(monkeypatch, {"id": 41, "wake_at": "2026-10-30T09:00:00+00:00"})
     args = wait_args(until="2026-10-30T09:00Z", on="canvas.baseline", contains=["canvas=evo-agents"], step="23")
-    assert worker_cli.cmd_wait(args) == 0
+    assert WAIT(args) == 0
     assert sent == [
         (
             "wait",
@@ -91,9 +95,9 @@ def test_wait_sends_the_wait_and_notes_it_for_the_daemon(agent, monkeypatch, cap
     assert json.loads(agent.home.decisions_path(RUN).read_text(encoding="utf-8"))["id"] == 41
     out = capsys.readouterr().out
     assert "Wait #41 is open: the run wakes at 2026-10-30 09:00 UTC at the latest, or sooner on an event" in out
-    assert worker_cli.cmd_wait(wait_args()) == 1
+    assert WAIT(wait_args()) == 1
     assert "(--until)" in capsys.readouterr().err
-    assert worker_cli.cmd_wait(wait_args(until="+1h", contains=["a=1"])) == 1
+    assert WAIT(wait_args(until="+1h", contains=["a=1"])) == 1
     assert "--contains filters" in capsys.readouterr().err
     assert len(sent) == 1
 
@@ -118,27 +122,27 @@ def ask_args(**given):
 
 def test_ask_marks_the_options_that_wait(agent, monkeypatch, capsys):
     sent = hub_answering(monkeypatch, {"id": 42})
-    monkeypatch.setattr(worker_cli.output_cli, "attached", lambda home, run_id, files: {})
-    assert worker_cli.cmd_ask(ask_args(wait_option=["later"])) == 0
+    monkeypatch.setattr(output_files, "attached", lambda home, run_id, files: {})
+    assert ASK(ask_args(wait_option=["later"])) == 0
     ((_, _, body),) = sent
     assert body["options"] == [{"key": "yes", "label": "Approved"}, {"key": "later", "label": "Not yet", "waits": True}]
-    assert worker_cli.cmd_ask(ask_args(wait_option=["maybe"])) == 1
+    assert ASK(ask_args(wait_option=["maybe"])) == 1
     assert "names one of the options" in capsys.readouterr().err
-    assert worker_cli.cmd_ask(ask_args(wait_option=["yes", "later"])) == 1
+    assert ASK(ask_args(wait_option=["yes", "later"])) == 1
     assert "names every one" in capsys.readouterr().err
     assert len(sent) == 1
 
 
 def test_ask_sends_the_recommended_reason_reversible_undo_and_evidence(agent, monkeypatch, capsys):
     sent = hub_answering(monkeypatch, {"id": 43})
-    monkeypatch.setattr(worker_cli.output_cli, "attached", lambda home, run_id, files: {})
+    monkeypatch.setattr(output_files, "attached", lambda home, run_id, files: {})
     given = ask_args(
         recommended="yes",
         recommended_reason="The baseline W44 was approved on the canvas.",
         undo="Reopen the baseline.",
         evidence=["run:12", " P-3/E-2 ", "code:fleet:./api/db.py:9"],
     )
-    assert worker_cli.cmd_ask(given) == 0
+    assert ASK(given) == 0
     ((_, _, body),) = sent
     assert {key: body[key] for key in ("recommended", "recommended_reason", "reversible", "undo", "evidence")} == {
         "recommended": "yes",
@@ -148,7 +152,7 @@ def test_ask_sends_the_recommended_reason_reversible_undo_and_evidence(agent, mo
         "evidence": ["run:12", "P-3/E-2", "code:fleet:api/db.py:9"],
     }
     assert "warning" not in capsys.readouterr().err
-    assert worker_cli.cmd_ask(ask_args(recommended="later", reversible="no")) == 0
+    assert ASK(ask_args(recommended="later", reversible="no")) == 0
     assert sent[-1][2]["reversible"] is False and "undo" not in sent[-1][2] and "evidence" not in sent[-1][2]
     for refused, why in (
         (ask_args(recommended_reason="Because."), "name it with --recommended"),
@@ -157,15 +161,15 @@ def test_ask_sends_the_recommended_reason_reversible_undo_and_evidence(agent, mo
         (ask_args(evidence=["somewhere"]), "--evidence: evidence is run:ID"),
         (ask_args(evidence=[f"run:{n}" for n in range(1, 22)]), "at most 20 refs"),
     ):
-        assert worker_cli.cmd_ask(refused) == 1
+        assert ASK(refused) == 1
         assert why in capsys.readouterr().err
     assert len(sent) == 2
 
 
 def test_ask_without_recommended_warns_on_stderr_and_still_asks(agent, monkeypatch, capsys):
     sent = hub_answering(monkeypatch, {"id": 44})
-    monkeypatch.setattr(worker_cli.output_cli, "attached", lambda home, run_id, files: {})
-    assert worker_cli.cmd_ask(ask_args()) == 0
+    monkeypatch.setattr(output_files, "attached", lambda home, run_id, files: {})
+    assert ASK(ask_args()) == 0
     printed = capsys.readouterr()
     assert printed.err.startswith("warning: no --recommended") and "--recommended-reason TEXT" in printed.err
     assert "Decision #44 is open" in printed.out

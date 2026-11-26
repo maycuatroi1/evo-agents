@@ -1,6 +1,6 @@
-"""The verify, commit and push stages of ``evo-agents worker step`` (``cli.cmd_step``).
+"""The verify, commit and push stages of ``evo-agents worker step`` (``evo_agents.worker.cli.step``).
 
-``agent`` is the command's ``cli._AgentRun``: the worker's home, its config and the run's record. A step's verify runs
+``agent`` is the command's ``AgentRunContext``: the worker's home, its config and the run's record. A step's verify runs
 as a job of the worker (``verify_jobs``): ``verify`` starts it and waits a while, ``done`` reuses the job that passed
 with the same commands on the tree the worktree holds now, and otherwise starts it or waits on the one running. Once it
 passed, ``done`` commits what is left and pushes the run's branch; a default branch the remote moved on gets the run's

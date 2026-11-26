@@ -214,13 +214,13 @@ def test_attachment_block_names_the_senders_name_only_when_the_path_does_not_car
 def test_attachment_edited_in_place_goes_back_as_an_output_of_the_same_name(tmp_path):
     """``evo-agents worker output`` names an output by its path's last part, so the edited file of an attachment, sent
     from its inbox path, is an output of the sender's name: the web groups the two as versions of one document."""
-    from evo_agents.worker import output_cli
+    from evo_agents.worker import output_files
 
     fetcher = Fetcher({301: NOTES})
     (file,) = save(tmp_path, fetcher, [entry(301, "Yêu cầu hệ thống.md", NOTES, "text/markdown")])
     edited = tmp_path / file.path
     edited.write_bytes(NOTES + b"and log each retry\n")
-    (sent,) = output_cli.checked_files([str(edited)], 20)
+    (sent,) = output_files.checked_files([str(edited)], 20)
     assert sent.name == file.name == "Yêu cầu hệ thống.md"
     assert sent.media_type == "text/markdown"
 

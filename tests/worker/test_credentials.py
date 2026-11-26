@@ -1150,7 +1150,8 @@ def ask_args(**given) -> argparse.Namespace:
 
 
 def test_credential_request_of_worker_ask_is_the_hubs_body_and_refused_as_the_hub_refuses_it():
-    from evo_agents.worker.agent_cli import WorkerStateError, credential_request
+    from evo_agents.worker.home import WorkerStateError
+    from evo_agents.worker.run_decisions import credential_request
 
     assert credential_request(ask_args()) is None, "a decision of category credential without a request, as before"
     assert credential_request(ask_args(env_var="NORTHWIND_DEPLOY_KEY", hub_account=True)) == {

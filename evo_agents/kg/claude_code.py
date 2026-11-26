@@ -262,17 +262,5 @@ def main(argv_: Sequence[str] | None = None, *, stdin=None, stdout=None) -> int:
     return 0
 
 
-def cmd_claude_entities(args) -> int:
-    return main()
-
-
-def register(ksub) -> None:
-    p = ksub.add_parser(
-        COMMAND[2],
-        help="the entities step's model command: one request on stdin, Claude Code headless, one answer on stdout",
-    )
-    p.set_defaults(func=cmd_claude_entities)
-
-
 if __name__ == "__main__":
     raise SystemExit(main())

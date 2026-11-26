@@ -22,7 +22,7 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/post_merge.py` |
 | the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
 | an admin's pass of a hold for a person | `evo_agents/hub/server/merge_pass.py` |
-| the merge check of a pull request on GitHub | `evo_agents/hub/server/merge_check.py`, `evo_agents/worker/merge_check_cli.py` |
+| the merge check of a pull request on GitHub | `evo_agents/hub/server/merge_check.py`, `evo_agents/worker/cli/merge_check.py` |
 | the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli/merge.py` |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
 | the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`); `merge_checks` (schema 0187, `tables_merge.py`) |

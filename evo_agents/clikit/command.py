@@ -4,8 +4,6 @@
   :class:`Context`, runs the command, maps a known failure to its exit status and shows the :class:`Result`. A command
   writes ``run`` alone, plus the hooks it needs (``check``, ``failed``, ``add_arguments``).
 - :class:`Group` is a Composite: a command word holding commands and groups, which builds its own argparse subtree.
-  :class:`Legacy` adapts a ``register_*(subparsers)`` function, so old and new commands share one tree while a package
-  moves over.
 - :class:`Arg` is an argument as a value. Options many commands share are constants (``PROJECT``), never mixins.
 
 The parser stays argparse, and ``configure`` sets the same defaults ``json_option`` sets, so ``evo-agents hub contract``
@@ -18,7 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, Generic, Protocol, TextIO, TypeVar
 
@@ -144,25 +142,36 @@ class ListCommand(Command[C]):
 
 
 class Group:
-    """A command word holding commands and groups (Composite); ``dest`` names the word chosen under it."""
+    """A command word holding commands and groups (Composite); ``dest`` names the word chosen under it, ``arguments``
+    are options of the word itself (``evo-agents --version``). :meth:`parser` makes it the program's own parser."""
 
-    def __init__(self, name: str, help: str, children: Iterable[Node], *, dest: str | None = None, **options: Any):
+    def __init__(
+        self,
+        name: str,
+        help: str,
+        children: Iterable[Node],
+        *,
+        dest: str | None = None,
+        arguments: Iterable[Arg] = (),
+        **options: Any,
+    ):
         self.name, self.help, self.children = name, help, tuple(children)
         self.dest = dest or f"{name.replace('-', '_')}_command"
+        self.arguments = tuple(arguments)
         self.options = options
 
     def attach(self, subparsers: argparse._SubParsersAction) -> None:
-        parser = subparsers.add_parser(self.name, help=self.help, **self.options)
+        self.fill(subparsers.add_parser(self.name, help=self.help, **self.options))
+
+    def parser(self) -> argparse.ArgumentParser:
+        """The parser of a program whose name is ``name`` and whose description is ``help``."""
+        parser = argparse.ArgumentParser(prog=self.name, description=self.help, **self.options)
+        self.fill(parser)
+        return parser
+
+    def fill(self, parser: argparse.ArgumentParser) -> None:
+        for arg in self.arguments:
+            arg.add_to(parser)
         below = parser.add_subparsers(dest=self.dest, required=True)
         for child in self.children:
             child.attach(below)
-
-
-class Legacy:
-    """Adapter: a ``register_*(subparsers)`` function of a package not moved yet, as a node of a :class:`Group`."""
-
-    def __init__(self, register: Callable[[argparse._SubParsersAction], Any]):
-        self.register = register
-
-    def attach(self, subparsers: argparse._SubParsersAction) -> None:
-        self.register(subparsers)

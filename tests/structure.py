@@ -535,16 +535,26 @@ def _renamed_import(entry: str, modules: dict[str, str]) -> str:
     return " -> ".join(sides)
 
 
+def _package_import(entry: str) -> str | None:
+    """The import ``P -> X`` of an entry ``P.** -> X`` (every module of package P), else None."""
+    importer, _, imported = entry.partition(" -> ")
+    return f"{importer[: -len('.**')]} -> {imported}" if importer.endswith(".**") else None
+
+
 def compare_contracts(
     branch: dict[str, set[str]], main: dict[str, set[str]], renamed: dict[str, str] | None = None
 ) -> list[str]:
     """The ignored imports ``branch`` adds to a contract beyond ``main``'s. An entry of main's naming a module
-    ``renamed`` maps (by path, ``renamed_files``) counts under the module's new name: renaming it adds nothing."""
+    ``renamed`` maps (by path, ``renamed_files``) counts under the module's new name: renaming it adds nothing. An
+    entry ``P.** -> X`` counts as held when main holds ``P -> X``: it gathers the imports of the modules package P
+    was split into."""
     modules = renamed_modules(renamed or {})
     problems = []
     for contract, entries in sorted(branch.items()):
         held = {_renamed_import(entry, modules) for entry in main.get(contract, set())}
         for entry in sorted(entries - held):
+            if _package_import(entry) in held:
+                continue
             problems.append(
                 f"{PYPROJECT} adds the ignored import `{entry}` to the import-linter contract {contract}, which main "
                 f"does not list.\n  The exceptions only shrink: change the import as the contract's guidance says "
