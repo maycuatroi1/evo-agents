@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Circle, CircleAlert, CircleCheck, CircleDot, CircleHelp, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 
 import { stepHref } from "@/components/plans/links";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +14,7 @@ import { countSteps, parsePlan, percent, type PlanStep, stepLabel } from "@/lib/
 import { cn } from "@/lib/utils";
 
 import { isActiveState, LIVE_REFRESH_MS, type Run } from "./queries";
+import { StepFocus } from "./step-focus";
 
 const STEP_ICON: Record<PlanStep["group"], { icon: LucideIcon; tone: string }> = {
   done: { icon: CircleCheck, tone: "text-success" },
@@ -116,7 +117,10 @@ export function RunPlanSteps({ run }: { run: Run }) {
         ) : (
           <ol className="flex flex-col" data-steps>
             {now.map((step) => (
-              <StepRow key={step.key} run={run} step={step} />
+              <Fragment key={step.key}>
+                <StepRow run={run} step={step} />
+                {step.group === "in_progress" && view ? <StepFocus view={view} step={step} /> : null}
+              </Fragment>
             ))}
             <StepFold run={run} steps={done} label={t("doneFold", { count: done.length })} testId="run-plan-steps-done-toggle" />
             <StepFold run={run} steps={todo} label={t("todoFold", { count: todo.length })} testId="run-plan-steps-todo-toggle" />

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RunEvent } from "./queries";
-import { callFailed, groupByIntent, groupObjects, intentOf, programOf } from "./trace-groups";
+import { callFailed, groupByIntent, groupObjects, hubAccess, intentOf, programOf } from "./trace-groups";
 import { buildTrace, type ToolCall, type TraceEvent } from "./trace-model";
 
 let seq = 0;
@@ -54,5 +54,24 @@ describe("trace groups", () => {
     expect(explore.type === "group" && groupObjects(explore)).toEqual(["plugins.py", "server", "plugins.md"]);
     // A group keeps its first call's key as calls join it.
     expect(explore.key).toBe(`g${items[0].key}`);
+  });
+
+  it("names a hub command by what it does: a read from the hub, or a report to it", () => {
+    for (const command of ["evo-agents hub plan handoff my-plan --step 5", "evo-agents hub plan show my-plan --project p", `${WT} && evo-agents hub run show 12`, "evo-agents worker plan --json", "evo harness show my-plan --section steps"]) {
+      expect(intentOf(call(command)), command).toBe("hub-read");
+      expect(hubAccess(command)).toBe("read");
+    }
+    for (const command of ["evo-agents worker step 5 done --evidence x", "evo-agents worker output put out.md", "evo-agents worker chat post hi", "evo-agents hub decision ask --question q", "evo-agents hub plan patch my-plan"]) {
+      expect(intentOf(call(command)), command).toBe("hub");
+      expect(hubAccess(command)).toBe("write");
+    }
+  });
+
+  it("keeps a read from the hub and a report to it in groups of their own", () => {
+    seq = 0;
+    const shown = groupByIntent(
+      buildTrace([...bash("a", "evo-agents hub plan handoff p --step 1"), ...bash("b", "evo-agents hub plan show p"), ...bash("c", "evo-agents worker step 1 done")]),
+    );
+    expect(shown.map((item) => (item.type === "group" ? `${item.intent}:${item.calls.length}` : item.type))).toEqual(["hub-read:2", "hub:1"]);
   });
 });

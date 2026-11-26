@@ -1325,7 +1325,7 @@ Shared pieces built on them:
   by default whose line says what the agent gets (the owner's access on every project, hub admin when they have it)
   and never gets (their secrets, tokens and workers), and that it ends with the run; checked, a warning on
   `attention-soft` says the risk (what the agent reads may steer it with that access) and where to revoke it. The body
-  sends `as_me` either way. A run that runs as its owner shows, first in the side column, a Hub access card
+  sends `as_me` either way. A run that runs as its owner shows, in the side column after Usage, a Hub access card
   (`runs/run-access.tsx`) to everyone who reads the run: "Runs as octo" as an `info` pill ("Ran as octo", neutral,
   once it ended), what the agent may do, who let it (the owner, the one member who may), since when
   (`as_owner_since`) and when it ends; the owner alone gets Revoke (`quiet-danger`, `ShieldOff`) while the run is
@@ -1683,7 +1683,10 @@ Shared pieces built on them:
   what they did rather than by tool: Explored (reads, searches, `cat`, `sed -n`, `grep`, `ls`, `git status` and
   `diff`; "Explored 7 files" when the calls name their files), Edited ("Edited 2 files" with the lines added and
   removed), Ran tests (`pytest`, `vitest`, `playwright`, `pnpm test`), Ran checks (`ruff`, `mypy`, `eslint`, `tsc`,
-  `lint-imports`, `pnpm typecheck`), git, gh, the hub's CLI, other commands, other tools. A row (`GroupRow`,
+  `lint-imports`, `pnpm typecheck`), git, gh, the hub's CLI named by what it does (Read from the hub for `hub plan
+  handoff`, `hub plan show`, `hub run show`, `worker plan` and the other reads; Reported to the hub for `worker step`,
+  `worker output`, `worker chat post`, a decision and the other writes; `hubAccess`, `trace-groups.ts`), other commands,
+  other tools. A row (`GroupRow`,
   `trace-tools.tsx`) is the work's 16 px Lucide icon, its words in 14 px (15 px under 768 px), how many failed in
   `danger`, its files, programs or last command in mono 12 px `fg-subtle` under them, and its time from the first
   call's start to the last call's end on the right (a clock in `running` while its last call runs, the trace's one
@@ -1694,6 +1697,20 @@ Shared pieces built on them:
   are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
   group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
   caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
+- Step N so far (`step-so-far-card.tsx`, `step-so-far.ts`): a card under the head of a plan run, over the session and
+  under the decision, for the step the run works on ("Step 2 so far"). Three columns, Done, Now and Next (stacked on a
+  phone, hairlines between), built with no model call from three sources in order of preference: the main
+  agent's latest checklist (its `plan` event, TodoWrite; a subagent's own list is left out), the subagents' state and
+  reports (running ones in Now, ended ones in Done with their report, a failed one marked), and the step's `done_when`
+  from the plan (in Next when the checklist has nothing left to do). Each item is 15/24 px prose with a 12 px source
+  label under it (Checklist, Sub-agent, Done when); an item of Now wears the face of whoever does it (the run's agent
+  for the main agent, a letter on slate for a subagent, which opens that subagent's profile). The line at the head's
+  end names the sources and the time they last changed ("From the agent's checklist, updated 10:42"). With no source
+  the card says so in one sentence instead of making something up.
+- The Plan card of the side column (`run-plan-steps.tsx`, `step-focus.tsx`): after the decision a run waits on, before
+  Details, Usage and Hub access. The step in progress is open under its row on its `done_when` and the criteria its
+  `acceptance` names (looked up in the plan's `acceptance`), "1 of 3 criteria met", each with a check or an empty circle
+  and an sr-only "Met" or "Not yet".
 - Running now (`run-tasks-panel.tsx`, `run-tasks.ts`, `run-task-board.ts`): over the Trace, and on a phone between
   the decision and the trace's preview, a box on `card` lists what the run has going besides its main thread, read
   from the task events Claude Code sends and the worker logs as `output` events (`task_started`, `task_progress`,

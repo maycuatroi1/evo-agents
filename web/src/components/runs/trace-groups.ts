@@ -11,7 +11,7 @@ import type { ToolCall, ToolItem, TraceItem } from "./trace-model";
  * one after the other, the subagents it hands work to at once, are one delegation instead (agent-delegation.tsx).
  */
 
-export const INTENTS = ["explore", "edit", "test", "check", "git", "github", "hub", "run", "tool"] as const;
+export const INTENTS = ["explore", "edit", "test", "check", "git", "github", "hub-read", "hub", "run", "tool"] as const;
 export type Intent = (typeof INTENTS)[number];
 
 export type ToolGroup = {
@@ -53,6 +53,22 @@ export function programOf(command: string): string {
   return commandGist(command).replace(PREFIX, "").trim();
 }
 
+const HUB_PROGRAM = /^(?:evo-agents|evo-ak|evo)\b/;
+/** A word of a hub command that only reads: `hub plan handoff`, `hub run show`, `hub decision list`. */
+const HUB_READ_WORDS = new Set(["show", "list", "get", "handoff", "read", "search", "status", "events", "inbox", "tail", "logs", "info", "whoami"]);
+
+/**
+ * Whether a hub command reads or reports. `evo-agents hub plan handoff`, `hub plan show`, `hub run show`, `worker plan`
+ * and `harness show` read from the hub; `worker step`, `worker output`, `worker chat post`, a decision asked or answered,
+ * `plan patch` and every command that is not known to read report to it.
+ */
+export function hubAccess(command: string): "read" | "write" {
+  const words = programOf(command).split(/\s+/).slice(1);
+  if (words[0] === "worker" && words[1] === "plan") return "read";
+  const head = words.filter((word) => !word.startsWith("-")).slice(0, 4);
+  return head.some((word) => HUB_READ_WORDS.has(word)) ? "read" : "write";
+}
+
 /** What kind of work a call does. */
 export function intentOf(tool: Pick<ToolCall, "kind" | "arg" | "title">): Intent {
   switch (tool.kind) {
@@ -71,7 +87,7 @@ export function intentOf(tool: Pick<ToolCall, "kind" | "arg" | "title">): Intent
       if (CHECK.test(program)) return "check";
       if (/^git\b/.test(program)) return "git";
       if (/^gh\b/.test(program)) return "github";
-      if (/^(?:evo-agents|evo-ak|evo)\b/.test(program)) return "hub";
+      if (HUB_PROGRAM.test(program)) return hubAccess(program) === "read" ? "hub-read" : "hub";
       return "run";
     }
     default:

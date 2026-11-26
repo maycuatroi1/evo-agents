@@ -6013,6 +6013,7 @@
           "checks": "{count, plural, one {Đã chạy một lần kiểm tra} other {Đã chạy kiểm tra # lần}}",
           "git": "{count, plural, one {Đã chạy git} other {Đã chạy git # lần}}",
           "github": "{count, plural, one {Đã chạy gh} other {Đã chạy gh # lần}}",
+          "hubRead": "{count, plural, one {Đã đọc từ hub} other {Đã đọc từ hub # lần}}",
           "hub": "{count, plural, one {Đã báo lên hub} other {Đã báo lên hub # lần}}",
           "commands": "{count, plural, one {Đã chạy một lệnh} other {Đã chạy # lệnh}}",
           "tools": "Đã dùng {names}",
@@ -6116,7 +6117,34 @@
         "leftOut": "{count, plural, other {# phiên trước đó}} không có trong danh sách này.",
         "note": "Log ghi phiên của mỗi bước khi phiên bắt đầu."
       },
+      "soFar": {
+        "title": "Bước {step} đến giờ",
+        "line": "Từ {sources}, cập nhật lúc {time}",
+        "from": {
+          "checklist": "checklist của agent",
+          "subagent": "kết quả của các sub-agent",
+          "done_when": "điều kiện xong của bước"
+        },
+        "source": {
+          "checklist": "Checklist",
+          "subagent": "Sub-agent",
+          "done_when": "Xong khi"
+        },
+        "column": {
+          "done": "Đã xong",
+          "now": "Đang làm",
+          "next": "Tiếp theo"
+        },
+        "none": "Chưa có gì.",
+        "failed": "Thất bại",
+        "empty": "Agent chưa viết checklist, chưa sub-agent nào báo cáo và bước không có điều kiện xong, nên chưa có gì để dựng phần này.",
+        "openAgent": "Mở hồ sơ của {name}"
+      },
       "planSteps": {
+        "doneWhen": "Xong khi",
+        "criteria": "Đạt {met} trên {total} tiêu chí",
+        "criterionMet": "Đạt",
+        "criterionOpen": "Chưa",
         "title": "Các bước của plan",
         "count": "Xong {done}/{total} ({percent}%)",
         "failed": "Không tải được plan.",

@@ -49,6 +49,7 @@ import { RunBrowserPanel } from "./run-browser-lazy";
 import { browserAccess, useLiveTab } from "./run-live-tabs";
 import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
+import { StepSoFar } from "./step-so-far-card";
 import { useRunAgents } from "./use-run-agents";
 import { logSignal, useRunLog } from "./use-run-log";
 import { OutputsPreview } from "./run-outputs-preview";
@@ -330,6 +331,7 @@ function RunPage({ run }: { run: Run }) {
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
       {/* Above the session while Details is closed, as it needs the owner; open, it heads the side column. */}
       {overview || (!screen && !details) ? decisionCard : null}
+      {!screen && !local && (plan || run.step_key) ? <StepSoFar run={run} events={log.events} tasks={runTaskList} onOpenAgent={openAgent} /> : null}
       {/* Under 768 px: then the subagents and background commands running, the trace's latest rows, then the details. */}
       {overview ? tasks : null}
       {overview ? <TracePreview events={log.events} active={active} loading={log.status === "connecting"} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
