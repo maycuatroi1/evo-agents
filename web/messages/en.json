@@ -694,6 +694,28 @@
       "title": "Chats are off on this hub",
       "body": "A hub admin has turned chats off, so there is no agent to chat with here. Today shows what needs you across your projects.",
       "today": "Go to Today"
+    },
+    "rail": {
+      "label": "Tasks of {name}",
+      "menu": "Open the hub menu",
+      "newTask": "New task",
+      "search": "Search tasks",
+      "direct": "Direct chat",
+      "directLine": "Your chat with {name}",
+      "sections": {
+        "needsYou": "Needs you",
+        "running": "Running",
+        "thisWeek": "This week",
+        "earlier": "Earlier"
+      },
+      "older": "Show older tasks",
+      "groups": "Group chats",
+      "empty": "No task with {name} yet. Ask in the direct chat and the work shows here.",
+      "noMatch": "No task matches “{query}”",
+      "rowUnread": "{title}, {count, plural, one {# unread message} other {# unread messages}}",
+      "back": "Back to tasks",
+      "main": "Open task",
+      "palette": "Search"
     }
   },
   "project": {

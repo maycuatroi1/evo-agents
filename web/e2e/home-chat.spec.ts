@@ -7,6 +7,7 @@ import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { sendOutputs } from "./support/outputs";
 import { open } from "./support/plans";
+import { finishWork, listedWork, seedWork, workSystem } from "./support/work";
 
 /**
  * The chat home (plan chat-first-home, criterion b3; docs/hub.md, Chat home): Home `/` is a chat with one of the agents
@@ -14,7 +15,9 @@ import { open } from "./support/plans";
  * the agent's composer sits in the middle of the frame with its starters; the first message opens the member's direct
  * chat with the agent, and the chat's own components show it, interactive answers included. With no agent the page
  * says why and leads to the projects, on Today. In light and dark, at 1440 and 375 px, axe finds nothing serious and
- * the page never scrolls sideways. The specs play the agent's worker; no model is asked anything.
+ * the page never scrolls sideways. Home has no top bar and no sidebar (plan agent-workspace-home, a5 to a7): a rail
+ * lists the agent's tasks in Needs you, Running, This week and Earlier, and a task opens in the main pane, named by
+ * `?task=`. The specs play the agent's worker; no model is asked anything.
  */
 test.skip(isDeployed, "runs a fake worker against the local stack");
 
@@ -31,7 +34,9 @@ async function agentOf(me: Member, project: string, name: string, starters: stri
   return { handle, live };
 }
 
-const home = (page: Page) => page.getByTestId("chat-home");
+const pane = (page: Page) => page.getByTestId("home-main");
+const rail = (page: Page) => page.getByTestId("home-rail");
+const taskRow = (page: Page, chatId: number) => rail(page).locator(`[data-testid="home-task"][data-chat-id="${chatId}"]`);
 const picker = (page: Page) => page.getByTestId("chat-home-picker");
 
 async function noSidewaysScroll(page: Page) {
@@ -68,8 +73,8 @@ test("Home chooses the agent written to last, and starts a chat with another fro
   await expect(page.getByTestId("chat-home-start-title")).toHaveText("Chat with Analyst");
   await expect(start.getByTestId("chat-home-starter")).toHaveText(STARTERS);
 
-  // The composer sits in the middle of the frame.
-  const frame = (await home(page).boundingBox())!;
+  // The composer sits in the middle of the main pane.
+  const frame = (await pane(page).boundingBox())!;
   const composer = (await page.getByTestId("chat-home-composer").boundingBox())!;
   expect(Math.abs(composer.x + composer.width / 2 - (frame.x + frame.width / 2))).toBeLessThan(24);
   const middle = composer.y + composer.height / 2;
@@ -89,12 +94,14 @@ test("Home chooses the agent written to last, and starts a chat with another fro
   const sent = (await chatPageOf(me, opened.id)).messages;
   expect(sent.map((message) => message.body)).toEqual([STARTERS[0]]);
 
-  // Analyst is now the agent written to last: Home opens on it. The chat's head names it once, and the name opens the picker.
+  // Analyst is now the agent written to last: Home opens on it. The rail holds the one picker and the way to Today; the
+  // chat's head names the agent without a picker of its own.
   await open(page, "/");
   await expect(picker(page)).toHaveAttribute("data-agent", analyst.handle);
   await expect(page.getByTestId("chat-view")).toHaveAttribute("data-chat-id", String(opened.id));
-  await expect(page.getByTestId("chat-header").getByTestId("chat-home-picker")).toHaveAttribute("data-agent", analyst.handle);
-  await expect(page.getByTestId("chat-header").getByTestId("chat-home-today")).toBeVisible();
+  await expect(rail(page).getByTestId("chat-home-picker")).toHaveAttribute("data-agent", analyst.handle);
+  await expect(page.getByTestId("chat-header").getByTestId("chat-home-picker")).toHaveCount(0);
+  await expect(rail(page).getByTestId("chat-home-today")).toBeVisible();
   await expect(picker(page)).toHaveCount(1);
 });
 
@@ -141,9 +148,104 @@ test("with no agent to chat with, Home says why and leads to the projects", asyn
   await expect(page.locator("#main").getByTestId("home-projects")).toBeVisible();
 });
 
+test("home rail lists the agent's tasks", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const system = await workSystem(me, project);
+  const asks = await seedWork(me, system, "Refund backlog");
+  const running = await seedWork(me, system, "Invoice cleanup", { decide: false });
+  const done = await seedWork(me, system, "Release notes", { decide: false });
+  await finishWork(system, done);
+  await expect.poll(async () => (await listedWork(me, done.workChat))?.status).toBe("done");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, `/?agent=${system.lead}`);
+  // No top bar and no sidebar: the rail is Home's.
+  await expect(rail(page)).toHaveAttribute("data-agent", system.lead);
+  await expect(page.getByTestId("top-bar")).toHaveCount(0);
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCount(0);
+  for (const testId of ["home-menu", "home-new-task", "home-rail-search", "home-rail-direct", "palette-trigger", "inbox-bell", "chat-home-today", "user-menu"]) {
+    await expect(rail(page).getByTestId(testId), testId).toBeVisible();
+  }
+
+  // A decision for the member puts its task in Needs you; the work under way is Running; the done one, this week.
+  await expect(rail(page).getByTestId("home-task")).toHaveCount(3);
+  const needs = rail(page).getByTestId("home-rail-needsYou");
+  await expect(needs.getByRole("heading", { level: 2 })).toHaveText("Needs you");
+  await expect(needs.getByTestId("home-task")).toHaveCount(1);
+  await expect(taskRow(page, asks.workChat)).toHaveAttribute("data-status", "needs_person");
+  await expect(taskRow(page, asks.workChat).getByTestId("home-task-title")).toHaveText("Refund backlog");
+  await expect(taskRow(page, asks.workChat).getByTestId("home-task-line")).toHaveText(`Needs a person: Waiting for ${me.login} to decide`);
+  await expect(taskRow(page, running.workChat)).toHaveAttribute("data-section", "running");
+  await expect(taskRow(page, done.workChat)).toHaveAttribute("data-section", "thisWeek");
+  await expect(taskRow(page, done.workChat).getByTestId("home-row-unread")).toHaveCount(0);
+  // The chats the member asked in have the agent too: the rail lists them under the tasks.
+  const groups = rail(page).getByTestId("home-group");
+  await expect(groups).toHaveCount(3);
+  await expect(rail(page).locator(`[data-testid="home-group"][data-chat-id="${asks.rootChat}"]`)).toContainText("Ask Refund backlog");
+
+  // The search finds tasks by their title.
+  const search = rail(page).getByTestId("home-rail-search");
+  await search.fill("invoice");
+  await expect(rail(page).getByTestId("home-task")).toHaveCount(1);
+  await expect(taskRow(page, running.workChat)).toBeVisible();
+  await search.fill("nothing like it");
+  await expect(rail(page).getByTestId("home-rail-empty")).toHaveText("No task matches “nothing like it”");
+  await search.fill("");
+
+  // Another agent has other tasks: the project's default agent has none.
+  await picker(page).click();
+  await page.getByTestId("chat-home-picker-menu").locator(`[data-testid="chat-home-agent"][data-agent="${project}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/\\?agent=${project}$`));
+  await expect(rail(page).getByTestId("home-task")).toHaveCount(0);
+  await expect(rail(page).getByTestId("home-rail-empty")).toBeVisible();
+
+  // The hub's menu is the sidebar as a sheet, from its button or Ctrl or Cmd + B.
+  await page.keyboard.press("ControlOrMeta+b");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByTestId("nav-today")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await rail(page).getByTestId("home-menu").click();
+  await sheet.getByTestId("nav-today").click();
+  await expect(page).toHaveURL(/\/today$/);
+  await expect(page.getByTestId("top-bar")).toBeVisible();
+});
+
+test("a task opens on home and survives a reload", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const system = await workSystem(me, me.projects[0]);
+  const work = await seedWork(me, system, "Refund backlog");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, `/?agent=${system.lead}`);
+  await taskRow(page, work.workChat).click();
+  await expect(page).toHaveURL(new RegExp(`/\\?agent=${system.lead}&task=${work.workChat}$`));
+  await expect(pane(page)).toHaveAttribute("data-task", String(work.workChat));
+  await expect(pane(page).getByTestId("chat-header")).toContainText("Refund backlog");
+  await expect(taskRow(page, work.workChat)).toHaveAttribute("aria-current", "page");
+  // Both panes show on a wide screen: the rail stays beside the task.
+  await expect(rail(page)).toBeVisible();
+
+  await page.reload();
+  await expect(pane(page)).toHaveAttribute("data-task", String(work.workChat));
+  await expect(pane(page).getByTestId("chat-header")).toContainText("Refund backlog");
+  await expect(taskRow(page, work.workChat)).toHaveAttribute("aria-current", "page");
+
+  // The direct chat leaves the task; New task opens it with its box focused.
+  await rail(page).getByTestId("home-rail-direct").click();
+  await expect(page).toHaveURL(new RegExp(`/\\?agent=${system.lead}$`));
+  await expect(page.getByTestId("agent-chat")).toHaveAttribute("data-agent", system.lead);
+  await expect(rail(page).getByTestId("home-rail-direct")).toHaveAttribute("aria-current", "page");
+  await taskRow(page, work.workChat).click();
+  await rail(page).getByTestId("home-new-task").click();
+  await expect(page).toHaveURL(new RegExp(`/\\?agent=${system.lead}$`));
+  await expect(page.getByTestId("chat-home-composer-text")).toBeFocused();
+});
+
 for (const scheme of ["light", "dark"] as const) {
-  test(`Home passes axe at 1440 and 375 px in ${scheme}, on the start and in the chat, and never scrolls sideways`, async ({ page, member }) => {
-    test.slow(); // two widths, three views each, axe on every one
+  test(`Home passes axe at 1440 and 375 px in ${scheme}, on its rail, a task, the start and the chat, and never scrolls sideways`, async ({ page, member }) => {
+    test.slow(); // two widths, five views each, axe on every one
     await page.emulateMedia({ colorScheme: scheme });
     const me = await member([{ role: "admin", maxLevel: "internal" }]);
     const project = me.projects[0];
@@ -151,17 +253,32 @@ for (const scheme of ["light", "dark"] as const) {
     const scribe = await agentOf(me, project, "Scribe");
     const direct = await openDirectByApi(me, scribe.handle);
     await sendByApi(me, direct.id, "Draft the release notes");
+    const system = await workSystem(me, project);
+    const work = await seedWork(me, system, "Refund backlog");
     for (const [width, height] of [
       [1440, 900],
       [375, 812],
     ] as const) {
+      const phone = width < 768;
       await page.setViewportSize({ width, height });
-      await open(page, "/");
+      await open(page, `/?agent=${system.lead}`);
+      await expect(taskRow(page, work.workChat)).toBeVisible();
+      await noSidewaysScroll(page);
+      await expectNoSeriousViolations(page, `Home's rail with a task at ${width} px in ${scheme}`);
+
+      await open(page, `/?agent=${system.lead}&task=${work.workChat}`);
+      await expect(pane(page).getByTestId("chat-header")).toContainText("Refund backlog");
+      await noSidewaysScroll(page);
+      await expectNoSeriousViolations(page, `a task open on Home at ${width} px in ${scheme}`);
+
+      await open(page, `/?agent=${scribe.handle}`);
+      if (phone) await rail(page).getByTestId("home-rail-direct").click();
       await expect(page.getByTestId("chat-message").filter({ hasText: "Draft the release notes" })).toBeVisible();
       await noSidewaysScroll(page);
       await expectNoSeriousViolations(page, `Home in a chat at ${width} px in ${scheme}`);
 
       await open(page, `/?agent=${analyst.handle}`);
+      if (phone) await rail(page).getByTestId("home-rail-direct").click();
       const start = page.getByTestId("chat-home-start");
       await expect(start.getByTestId("chat-home-starter")).toHaveCount(STARTERS.length);
       for (const starter of await start.getByTestId("chat-home-starter").all()) {
@@ -169,6 +286,7 @@ for (const scheme of ["light", "dark"] as const) {
       }
       await noSidewaysScroll(page);
       await expectNoSeriousViolations(page, `Home on an agent's start at ${width} px in ${scheme}`);
+      if (phone) await pane(page).getByTestId("home-back").click();
       await picker(page).click();
       await expect(page.getByTestId("chat-home-picker-menu")).toBeVisible();
       await expectNoSeriousViolations(page, `Home with the agent picker open at ${width} px in ${scheme}`);

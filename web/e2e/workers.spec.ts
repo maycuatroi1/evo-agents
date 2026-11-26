@@ -4,6 +4,7 @@ import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { claimRun, dispatch, liveWorker, READY_STEPS, seedRunPlan } from "./support/runs";
+import { revealNavItem } from "./support/nav";
 import { toast } from "./support/toast";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, joinWithCode, NIGHTLY_COMMIT, registerWorker, RUNTIMES, workersOf } from "./support/workers";
 
@@ -23,6 +24,7 @@ function row(page: Page, name: string) {
 
 test("the sidebar leads to Workers, which offers to register the first one", async ({ page, member }) => {
   await member([{ role: "writer", maxLevel: "internal" }]);
+  await revealNavItem(page, "nav-workers");
   await page.getByTestId("nav-workers").click();
   await page.waitForURL("**/workers");
   await expect(page.getByRole("heading", { level: 1, name: "Workers" })).toBeVisible();

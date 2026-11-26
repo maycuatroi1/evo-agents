@@ -23,6 +23,7 @@ import {
 } from "./support/chats";
 import { expect, GITHUB_AVATARS, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
+import { revealNavItem } from "./support/nav";
 import { open } from "./support/plans";
 import { runsOf } from "./support/runs";
 import { toast } from "./support/toast";
@@ -147,6 +148,7 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
 
   // The sidebar leads to Chats, which says what a chat is for while there is none.
   await open(page, "/");
+  await revealNavItem(page, "nav-chats"); // on Home, behind its rail's menu
   await page.getByTestId("nav-chats").click();
   await page.waitForURL("**/chats");
   await expect(main(page).getByRole("heading", { level: 1, name: "Chats" })).toBeVisible();

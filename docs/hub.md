@@ -1974,19 +1974,32 @@ guesses at them (`chat_runs.reading_rule`). No schema change.
 
 ## Chat home
 
-Home (`/`) is a chat with an agent, for every member. The agent picker at the top lists the agents the visitor may give
-work to across the projects of their grants, from `GET /v1/me/chat-agents`: an agent of a project where they are a
-writer (an admin, for an agent type that takes work from the admins alone), that has a worker pool of its own. The
-list puts the agent they wrote to last first, and Home opens on it; `?agent=HANDLE` names another, and a pick writes it
-there, so a reload keeps it.
+Home (`/`) is the workspace of an agent, for every member: no top bar and no hub sidebar, but a rail of the agent's
+tasks beside a main pane. The agent picker at the top of the rail lists the agents the visitor may give work to across
+the projects of their grants, from `GET /v1/me/chat-agents`: an agent of a project where they are a writer (an admin,
+for an agent type that takes work from the admins alone), that has a worker pool of its own. The list puts the agent
+they wrote to last first, and Home opens on it; `?agent=HANDLE` names another, and a pick writes it there, so a reload
+keeps it. The button beside the picker opens the hub's menu (the sidebar of every other page) as a sheet, as Ctrl or
+Cmd + B does; the rail's foot has the command palette (Cmd K), the account, the Inbox with its count and Today.
 
-Until the visitor's direct chat with the agent has a message, the frame shows the agent's start: its face, name,
-project and what it does, the composer in the middle, and the agent's starters under it. A starter puts its words in
-the box and the focus there; nothing is sent until the visitor sends. Looking at an agent opens nothing: the first
-message opens the direct chat (`PUT /v1/chats/direct/{handle}`, as on Chats) and sends. From then on Home shows that
-chat with the components of a chat's own page: messages, live, their threads, their outputs and interactive answers,
-and the composer. A question one agent asks another with `worker agent ask` shows in the asking run's thread as "@a
-asked @b ..." and then "@b answered ..." ("Agents across projects", above).
+Under New task, the task search and Direct chat, the rail lists the agent's tasks: the work chats (Work chats, above)
+of the visitor's chat list (`GET /v1/chats`) that the agent is in, in four groups by the viewer's calendar and time
+zone. Needs you holds a task whose work needs a person, failed in the last 7 days, or is done with an outcome of not
+met that no member marked handled; Running the others under way; This week the others last active since Monday;
+Earlier the rest, the oldest behind "Show older tasks". A row shows the work's state, its title without the @mentions
+it starts with or the link it ends with, when it was last active, and what is left or what it waits for; a done task
+shows no unread count. The group and settle chats the agent is in follow the tasks. A task opens in the main pane as
+its chat's own page shows it (its work card, its decisions), and `?task=ID` keeps it over a reload. On a phone the
+rail is the first screen, and a task opens on a screen of its own with a back control.
+
+Until the visitor's direct chat with the agent has a message, Direct chat shows the agent's start: its face, name,
+project and what it does, the composer in the middle, and the agent's starters under it. New task opens it with the
+focus in the box. A starter puts its words in the box and the focus there; nothing is sent until the visitor sends.
+Looking at an agent opens nothing: the first message opens the direct chat (`PUT /v1/chats/direct/{handle}`, as on
+Chats) and sends. From then on Home shows that chat with the components of a chat's own page: messages, live, their
+threads, their outputs and interactive answers, and the composer. A question one agent asks another with `worker agent
+ask` shows in the asking run's thread as "@a asked @b ..." and then "@b answered ..." ("Agents across projects",
+above).
 
 With no agent to chat with, Home says why (no agent on a project they may give work to, or none with a worker pool) and
 leads to the Projects card of Today (`/today#projects`). With chats off for the hub it says so and leads to Today.

@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import { createAgentByApi } from "./support/agents";
+import { chatWorker } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, uniqueName } from "./support/hub";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
@@ -10,7 +12,8 @@ import { planRunUnderway, runPath, say, seedPlanRunPlan, sendEvents } from "./su
  * 24 px gutter on each side (web/DESIGN.md, Spacing and layout): no cap of the shell's, so a 1920 px window is not
  * left with two empty margins. Measured at 1920 by 1080 on Home, the Inbox, a project's Runs, a run, a
  * plan, My memories, Workers and the administration, with the sidebar open and folded, within 1 px; the page's own
- * content reaches across the frame too, so no page caps itself either.
+ * content reaches across the frame too, so no page caps itself either. Home (`/`) is the exception: no top bar and no
+ * sidebar, its rail (288 px) and its main pane take the window between them (web/DESIGN.md, Chat home).
  */
 test.skip(isDeployed, "seeds projects, plans and runs through the local stack");
 
@@ -94,4 +97,37 @@ test("the administration takes the full width beside the sidebar at 1920 px", as
   await visit(page, "/admin", async (p) => expect(p.locator("#main").getByTestId("admin-summary")).toBeVisible());
   expect((await measure(page)).sidebarRight).toBe(240);
   await expectFullWidth(page, "/admin");
+});
+
+test("Home has no top bar and no sidebar: its rail and its main pane take the window, and the next page keeps the shell", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("analyst");
+  await createAgentByApi(me, project, { handle, name: "Analyst" });
+  await chatWorker(me, project, uniqueName("chat-box"), 1, handle);
+  for (const width of [WINDOW.width, 1440, 1024]) {
+    await page.setViewportSize({ width, height: WINDOW.height });
+    await open(page, `/?agent=${handle}`);
+    await expect(page.getByTestId("home-rail")).toHaveAttribute("data-agent", handle);
+    await expect(page.getByTestId("top-bar")).toHaveCount(0);
+    await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCount(0);
+    await expect(page.getByTestId("content-frame")).toHaveCount(0);
+    const m = await page.evaluate(() => {
+      const rail = document.querySelector<HTMLElement>('[data-testid="home-rail"]')!.getBoundingClientRect();
+      const main = document.querySelector<HTMLElement>('[data-testid="home-main"]')!.getBoundingClientRect();
+      const root = document.documentElement;
+      return { railLeft: rail.left, mainLeft: main.left, mainRight: main.right, clientWidth: root.clientWidth, overflow: root.scrollWidth - root.clientWidth };
+    });
+    expect.soft(m.railLeft, `Home at ${width} px: the rail starts at the window's edge`).toBe(0);
+    expect.soft(m.mainLeft, `Home at ${width} px: the main pane starts after the 288 px rail`).toBe(288);
+    expect.soft(Math.abs(m.mainRight - m.clientWidth), `Home at ${width} px: the main pane reaches the window's edge`).toBeLessThanOrEqual(1);
+    expect.soft(m.overflow, `Home at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
+  }
+
+  // The page after Home has its sidebar open, its top bar and its frame, as before.
+  await page.setViewportSize(WINDOW);
+  await visit(page, "/today");
+  await expect(page.getByTestId("top-bar")).toBeVisible();
+  expect((await measure(page)).sidebarRight, "the sidebar is open, 240 px").toBe(240);
+  await expectFullWidth(page, "/today after Home");
 });

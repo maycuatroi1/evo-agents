@@ -381,9 +381,9 @@ product name beside them; without one the shell shows the mark, the favicon and 
 
 - A 4 px grid (Tailwind spacing). Page padding 16 px on phones and 24 px from 768 px, 24 px between sections, 16 px
   inside cards, 12 by 10 px in table cells.
-- Full width. On every page the content takes the whole width between the sidebar and the window's right edge, less
-  the 24 px gutter (16 px on phones); the shell (`components/shell/app-shell.tsx`) sets no cap, and
-  `e2e/layout-width.spec.ts` measures the content frame at 1920 by 1080, open and folded sidebar, on Home, the Inbox,
+- Full width. On every page but Home the content takes the whole width between the sidebar and the window's right
+  edge, less the 24 px gutter (16 px on phones); the shell (`components/shell/app-shell.tsx`) sets no cap, and
+  `e2e/layout-width.spec.ts` measures the content frame at 1920 by 1080, open and folded sidebar, on Today, the Inbox,
   a project's Runs, a run, a plan, My memories, Workers and the administration, within 1 px. A page that would stretch
   thin on a wide window lays itself out for the width instead of narrowing the shell: a side column of fixed width
   beside a fluid one (a run, Home, a memory), more fields to a row from 2xl in a form (four in the Curator's charter),
@@ -396,6 +396,11 @@ product name beside them; without one the shell shows the mark, the favicon and 
 - The shell is the kit's AppShell: the sidebar is 240 px wide (`15rem`), folds to 56 px of icons on desktop (Ctrl or
   Cmd + B, or the top bar's toggle) and becomes a sheet below 768 px; the top bar is 52 px on `surface` and sticks to
   the top.
+- Home (`/`) is the one page without the shell's frame (Chat home): no top bar, no sidebar beside it (the sidebar is a
+  sheet behind the rail's menu at every width) and no gutter. Its rail is 288 px from the window's left edge and its
+  main pane takes the rest, 16 px of padding inside it (12 px on phones); the page is as tall as the window, so the
+  composer stays in sight. Under 768 px the rail is a screen of its own and a task opens on the whole screen.
+  `e2e/layout-width.spec.ts` measures it at 1920, 1440 and 1024 px, and the next page's frame after it.
 - z-index: header 10, sidebar rail 20, menus, sheets and tooltips 50, toasts 60 (above an open dialog).
 - The kit's sizes: controls 32 px (28 in dense toolbars, 40 in dialog footers), every control at least 44 px under
   768 px, table rows 44 px (36 compact), a 52 px top bar, a 240 px sidebar folding to 56 px, content the full width
@@ -683,22 +688,48 @@ Shared pieces built on them:
   label is the link, described by the figure and its line, with a cover over the cell, a chevron after the label and
   the cell on `accent` under the pointer; `display` sets the figure as it reads ("1.2 GB", "1,234") where the bare value
   would not.
-- Chat home (`/`, `components/chats/chat-home.tsx`; docs/hub.md, Chat home): Home for every member is a chat with an
-  agent. It reads `GET /v1/me/chat-agents` (prefetched on the server when chats are on) and opens on the agent the
-  visitor wrote to last, or the one `?agent=HANDLE` names; a pick rewrites `?agent=` without a history entry. The page
-  is as tall as a chat's own page, so the composer stays in sight. With no agent, an EmptyState (`Bot`) says an agent
-  shows once it is on a project the visitor may give work to and has a worker pool, with Open your projects (to the
-  Projects card, `/today#projects`) and Go to Today; with chats off for the hub, another (`MessageSquareOff`) leads to
-  Today. Each state carries the page's h1 "Home" for screen readers. Its parts, reusable by any page that puts a chat
-  with an agent in a frame of its own:
-  - `chats/agent-chat.tsx`, `AgentChat`: the frame. The picker bar over the agent's start until the direct chat has a
-    message, then `ChatView` itself, with its threads, outputs and interactive answers, and `useUnder` and
-    `agentPanels` as on a chat's page. The chat's own head names the agent, so the bar goes once the chat shows: the
-    name in the head is the picker (the name and `ChevronsUpDown`; the face still opens the agent's menu), and the
-    page's actions (Today) stand before Details from 768 px (`ChatView`'s `headSlots`). The bar stays while the chat
-    cannot be read. `ChatView` loads on demand (`next/dynamic`), so a page on the start screen does
-    not carry it. Looking at an agent opens no chat: the first message opens the direct chat
+- Chat home (`/`, `components/chats/chat-home.tsx`; docs/hub.md, Chat home): Home for every member is the workspace
+  of an agent, with no top bar and no hub sidebar: a rail of the agent's tasks beside a main pane. It reads
+  `GET /v1/me/chat-agents` (prefetched on the server when chats are on) and opens on the agent the visitor wrote to
+  last, or the one `?agent=HANDLE` names; `?task=ID` names the chat open in the main pane, and a pick or a task opened
+  rewrites both without a history entry (a pick clears the task), so a reload or a shared link keeps them. The shell's
+  providers stay (the palette, the shortcuts, the sidebar's state): `AppShell` draws no `SiteHeader` on `/`, and the
+  sidebar is the sheet it is on a phone at every width (`SidebarProvider`'s `sheet`), opened by the rail's menu button
+  or Ctrl or Cmd + B, so the folded or open sidebar of the other pages is left as it was. With no agent, an EmptyState
+  (`Bot`) says an agent shows once it is on a project the visitor may give work to and has a worker pool, with Open
+  your projects (to the Projects card, `/today#projects`) and Go to Today; with chats off for the hub, another
+  (`MessageSquareOff`) leads to Today. Each such state has the hub menu's button over it and the rail's foot under it,
+  and carries the page's h1 "Home" for screen readers. Its parts:
+  - `chats/home-rail.tsx`, `HomeRail`: the rail, 288 px on `sidebar` with a right border from 768 px. In order: the
+    agent picker and the hub menu's button (`Menu`, "Open the hub menu", `aria-keyshortcuts` Control+B Meta+B); New
+    task (outline, `Plus`), which opens the direct chat and puts the focus in its box; "Search tasks", which filters
+    the rows by their title as typed; Direct chat (the agent's face, "Your chat with NAME"); then the agent's tasks in
+    four groups under 11 px uppercase h2s: Needs you, Running, This week and Earlier; "Show older tasks" when Earlier
+    has more than 8; then Group chats, the group and settle chats the agent is in (6 at most); and the foot. The tasks
+    are the work chats of `GET /v1/chats` whose `agents` include the agent's handle, read every 10 s
+    (`lib/home-rail.ts`, `homeRail`), each in the list's order, the latest active first. Needs you holds a task whose
+    work is `needs_person`, failed in the last 7 days, or done with an outcome of `not_met` no member marked handled;
+    Running the rest that run; This week the others last active since Monday by the viewer's calendar and time zone;
+    Earlier the older ones. A task's row (`home-task`, at least 44 px): its state's dot, its title as the rail shows it
+    (`railTitle`: without the @mentions it starts with, the link it ends with, or the "X + @y:" of a chat named after
+    its first message), when it was last active, and a line with its state and what is left (Needs you) or what it
+    waits for. A done task shows no unread count; another shows it in an `attention` pill, said in the row's name.
+    The row is a link to `/?agent=HANDLE&task=ID`, which opens the task in the main pane and marks the row
+    `aria-current`.
+  - `app/(app)/home-rail-foot.tsx`, `HomeRailFoot`: the rail's foot, what the top bar holds elsewhere, composed in
+    the app since the chat feature may not reach into the palette's or the inbox's: Search with the palette's key
+    (⌘K or Ctrl K), LiveIndicator (shown only when the page is not current), the Inbox bell with its count, Today
+    (`CalendarCheck`) and the account menu.
+  - The main pane (`home-main`): the task's chat as its own page draws it (`ChatWithDecisions`: the work card pinned,
+    its decisions), or, with no task, the direct chat in `chats/agent-chat.tsx`, `AgentChat`, without a picker of its
+    own (the rail has it): the agent's start until the chat has a message, then `ChatView` itself, with its threads,
+    outputs and interactive answers. Looking at an agent opens no chat: the first message opens the direct chat
     (`PUT /v1/chats/direct/{handle}`), sends, reads the chat's page again and shows the chat.
+  - Under 768 px the rail and the main pane take turns: the rail is the first screen, with the page's h1 for screen
+    readers; a task (or Direct chat, or New task) opens on the whole screen, and the chat's head, or the bar over the
+    agent's start, has a back control ("Back to tasks", `ArrowLeft`, 44 px) in place of the link to Chats
+    (`ChatBackContext` in `chats/chat-header.tsx`). `?task=` in the address opens the task's screen directly. Every
+    control of the rail is at least 44 px there and the search field's text 16 px.
   - `chats/agent-picker.tsx`, `AgentPicker`: a ghost button, 44 px tall, with the agent's face, name and "@handle,
     project" in mono and `ChevronsUpDown` (with `title`, that title and the icon, drawn as the text it stands in), opening a DropdownMenu of radio items (face, name, handle and project), in
     the hub's order; its label names the agent and its project.
@@ -707,8 +738,9 @@ Shared pieces built on them:
     and Send with `ArrowUp`; Enter sends as in a chat, blank and over-long messages refused under the box), then the
     starters under a "Try asking" h2 (`Sparkles`): 44 px chips on `card`, two columns from 640 px. A starter fills the
     box and moves the focus there; it sends nothing.
-  `e2e/home-chat.spec.ts` checks the pick, the start, the first send, an interactive answer on Home, the state with no
-  agent, and axe at 1440 and 375 px in light and dark.
+  `e2e/home-chat.spec.ts` checks the pick, the start, the first send, an interactive answer on Home, the rail's groups
+  and search, a task opened and kept over a reload, the state with no agent, and axe at 1440 and 375 px in light and
+  dark on the rail, a task, the start and the chat; `e2e/mobile.spec.ts` the phone's turns between the rail and a task.
 - `components/home/today-card.tsx`, Today, the first card of the Today page (docs/notifications.md, Today): one read of
   `GET /v1/me/today` a visit, prefetched on the server with the overview and kept while the page is open (no polling,
   no refetch on focus), so what it lists stays under the visitor's eyes. A 48 px head (the h2, the window in
