@@ -599,7 +599,9 @@ async def record_move(
         await replays.replay_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "probe":  # it writes no step: its sessions reach the hub through its own route
-        from evo_agents.hub.server import probe_runs  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.probes.service import (
+            runs as probe_runs,
+        )  # it reads runs through the routes that import this module
 
         await probe_runs.probe_ended(conn, found, old, new, reason=reason)
         return None

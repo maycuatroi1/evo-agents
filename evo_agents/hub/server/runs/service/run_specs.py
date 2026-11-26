@@ -244,7 +244,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 
         return RUN_PROMPT
     if view.kind == "probe":
-        from evo_agents.hub.server.probe_runs import run_prompt as probe_prompt
+        from evo_agents.hub.server.probes.service.runs import run_prompt as probe_prompt
 
         return await probe_prompt(conn, view)
     if view.kind == "evolve":

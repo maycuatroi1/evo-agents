@@ -31,7 +31,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.cli.curator.probe import PROBE_KEYS, REQUEUE
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.curator_models import CharterBody
-from evo_agents.hub.server.probes import PROBE as ACTION
+from evo_agents.hub.server.probes.models.probe import PROBE as ACTION
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import app_key  # noqa: F401 (a fixture)

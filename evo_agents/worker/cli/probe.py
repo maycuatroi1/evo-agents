@@ -9,7 +9,7 @@ a digest is (``evo_agents.hub.redact``) before they leave this machine.
 
 It reads the run from EVO_RUN_ID and EVO_WORKER_HOME, as ``worker playbook`` does, refuses outside a review run of
 this worker, calls the hub with the worker's token (POST /v1/worker/runs/{id}/probes,
-``evo_agents.hub.server.probe_routes``) and prints one line with the probe. A failure is one ``error:`` line on stderr
+``evo_agents.hub.server.probes.routes.probes``) and prints one line with the probe. A failure is one ``error:`` line on stderr
 and exit status 1; without the worker extra, status 2. TEXT ``-`` reads stdin.
 """
 

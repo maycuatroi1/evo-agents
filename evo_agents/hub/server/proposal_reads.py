@@ -19,7 +19,6 @@ from evo_agents.hub import review, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, system_curation
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_views import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
@@ -27,6 +26,7 @@ from evo_agents.hub.server.memories.service import promotion as memory_promotion
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
+from evo_agents.hub.server.probes.service import probes as stored_probes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import (
     Finding,

@@ -1,5 +1,5 @@
 """The weekly report of the Curator's probes (plan correction-recurrence, criterion a4): what each probe run of the ISO
-weeks found (``evo_agents.hub.server.probe_runs`` queues them, ``evo_agents.hub.probes`` holds their shape).
+weeks found (``service.runs`` queues them, ``evo_agents.hub.probes`` holds their shape, ``models.report`` the report's).
 
 For each week (its Monday, in the charter's time zone), each probe and each runtime and model: the sessions and the
 failed sessions of arm on and of arm off, their 1 - pass^k (``probes.recurrence``), the status (``probes.status_of``:
@@ -14,13 +14,13 @@ whatever its evidence, its reason saying whether it was born of a correction (it
 ``corrections`` of the night's figures, ``ledger.cites_corrections``), and each born of a correction that places no
 such file, as a probe cannot measure it; each with why, the fix proposals of recurring probes with their state (``fixes``) and the probes written in
 place of probes not reproduced or stale (``replacements``), those still open or made since the oldest week shown
-(``evo_agents.hub.server.probe_fixes`` says when a review run is asked for them).
+(``service.fixes`` says when a review run is asked for them).
 
-GET /v1/projects/{p}/curator/probe-report (reader) answers it for ``weeks`` weeks, the newest first: the week of
+GET /v1/projects/{p}/curator/probe-report (reader, ``routes.report``) answers it for ``weeks`` weeks, the newest first: the week of
 ``week`` (a day; default today in the charter's time zone, the week in progress, whose ``complete`` is false) and those
 before it; the probes and changes whose label the caller's grant reaches through the sink X-Evo-Sink
 names (else the project's hub sink). `evo-agents hub curator probe report` prints it, and the MCP tool
-curator_probe_report gives it to a review run (``mcp_answer``). No part of it holds a probe's verify.
+curator_probe_report gives it to a review run (``evo_agents.hub.server.probes.mcp``). No part of it holds a probe's verify.
 
 ``send`` is the weekly notice: on Monday, at the charter's brief_at in its time zone (``curator.brief_due``), the morning
 brief's job (``brief.send_briefs``) tells the owner of the night shift's schedule of a project whose charter runs
@@ -32,153 +32,44 @@ told again.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
-from typing import Annotated, Literal
+from datetime import date
 
-from fastapi import APIRouter, Header, Query, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, probes, runs, tables
+from evo_agents.hub import curator, probes, runs
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import probe_fixes
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator import charter_row
 from evo_agents.hub.server.curator_shift import owner_access
-from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
-from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
-from evo_agents.hub.server.probe_runs import probe_models
-from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.protection import need_reader
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.probes.models.report import (
+    ARMS_AT_WORDS,
+    BORN,
+    DEFAULT_WEEKS,
+    MAX_NOTICE_LISTED,
+    MAX_UNPROBED,
+    NO_RUN,
+    NOT_BORN,
+    NOT_PLACED,
+    NOT_WRITTEN,
+    NOT_YET,
+    WEEK,
+    ProbeArmCount,
+    ProbeFix,
+    ProbeReplacement,
+    ProbeUnprobed,
+    ProbeWeek,
+    ProbeWeekly,
+    ProbeWeekResult,
+    ProbeWeekTotals,
+)
+from evo_agents.hub.server.probes.repository import report as repository
+from evo_agents.hub.server.probes.service.runs import probe_models
+from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import MACHINE, Principal
 
 log = logging.getLogger(__name__)
-
-WEEK = timedelta(days=7)
-DEFAULT_WEEKS = 2
-MAX_UNPROBED = 50  # the changes without a probe a report names, the newest first
-MAX_NOTICE_LISTED = 10  # the flagged probes and the changes without a probe the notice's body names
-NOT_YET = "not measured yet this week"
-NO_RUN = "no probe run measured it this week"
-NOT_PLACED = (
-    "it changes no file a probe arm can place (AGENTS.md, CLAUDE.md, a skill, the repo's .claude/settings.json or "
-    ".claude/hooks/): a probe cannot measure it"
-)
-NOT_WRITTEN = "no probe was written for it: a review run or an admin adds one (evo-agents hub curator probe add)"
-BORN = "it was born of a correction"
-NOT_BORN = "it changes a file a probe arm places, though its evidence cites no correction"
-
-router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
-READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
-
-Status = Literal[probes.STATUSES]
-
-
-# Models
-
-
-class ProbeArmCount(BaseModel):
-    runs: int = Field(description="the arm's sessions")
-    failed: int = Field(description="those whose verify did not pass")
-    recurrence: float | None = Field(description="1 - pass^k of the arm; null without a session")
-
-
-class ProbeWeekResult(BaseModel):
-    """One probe on one runtime and model in a week."""
-
-    change_id: int | None = Field(description="the change it probes; null: the probe of a plugin's rule")
-    probe_id: int
-    runtime: str
-    model: str | None = Field(description="null: the runtime's own choice")
-    k: int | None = Field(description="the sessions of each arm; null when the week queued none")
-    on: ProbeArmCount = Field(description="the change's rule in place")
-    off: ProbeArmCount = Field(description="the change's diff taken off")
-    status: Status
-    previous: Status | None = Field(description="the status of the week before; null when it had none")
-    reason: str | None = Field(description="why it is stale or unmeasured")
-    run_id: int | None = Field(description="the probe run that measured it last")
-    arms_at: Literal[probes.ARMS_AT] | None = Field(
-        None,
-        description="where its arms ran: tip (arm on at the tip of the default branch, arm off that tip less the "
-        "change's diff) or change (the diff no longer came off the tip: arm on at the change's commit, arm off at the "
-        "one before it); null when the week has no session of it, and for a plugin's rule",
-    )
-    plugin: str | None = Field(None, description="the core plugin whose rule it probes, when it has no change")
-    ref: str | None = Field(None, description="the key of that plugin's rule")
-
-
-class ProbeWeekTotals(BaseModel):
-    probes: int = Field(description="the results of the week")
-    holds: int
-    recurring: int
-    not_reproduced: int
-    stale: int
-    unmeasured: int
-    on: ProbeArmCount
-    off: ProbeArmCount
-
-
-class ProbeWeek(BaseModel):
-    week: date = Field(description="the Monday of the ISO week, in the charter's time zone")
-    complete: bool = Field(description="false for the week in progress")
-    cost_usd: float = Field(description="what the week's probe runs cost")
-    budget_usd: float | None = Field(description="the charter's probes.budget_usd; null: the project runs no probe")
-    probes: list[ProbeWeekResult]
-    totals: ProbeWeekTotals
-
-
-class ProbeUnprobed(BaseModel):
-    """A merged change with no active probe that changes a file a probe arm places (``probes.probe_paths``), or that was
-    born of a correction (its evidence cites ``corrections`` of the night's figures); the reason says which."""
-
-    change_id: int
-    proposal_id: int
-    title: str
-    merged_at: datetime | None
-    reason: str = Field(
-        description="why it has no probe; for a change that places a file a probe arm places, whether it was born "
-        "of a correction"
-    )
-
-
-class ProbeFix(BaseModel):
-    """A proposal that fixes the rule of a change whose probe recurs (criterion a5)."""
-
-    proposal_id: int
-    change_id: int
-    title: str
-    state: str
-
-
-class ProbeReplacement(BaseModel):
-    """A probe a review run wrote in place of one not reproduced, or stale, two weeks in a row (criterion a5)."""
-
-    probe_id: int
-    replaces: int = Field(description="the probe it replaced, now retired")
-    change_id: int | None
-    state: str
-    created_at: datetime
-
-
-class ProbeWeekly(BaseModel):
-    project: str
-    k: int = Field(description="the charter's probes.k")
-    budget_usd: float | None = Field(description="the charter's probes.budget_usd per ISO week; null: no probes")
-    weeks: list[ProbeWeek] = Field(description="the newest first")
-    unprobed: list[ProbeUnprobed] = Field(
-        description="merged changes without an active probe that change a file a probe arm places, or that were born "
-        "of a correction, the newest first"
-    )
-    fixes: list[ProbeFix] = Field(description="the fix proposals of recurring probes, with their state")
-    replacements: list[ProbeReplacement] = Field(
-        default_factory=list,
-        description="the probes written in place of probes not reproduced, or stale, two weeks in a row",
-    )
 
 
 # Reading
@@ -226,23 +117,9 @@ def _totals(results: list[ProbeWeekResult]) -> ProbeWeekTotals:
     return ProbeWeekTotals(probes=len(results), **counts, on=arm("on"), off=arm("off"))
 
 
-async def week_cost(conn: AsyncConnection, project_id: int, week: date) -> float:
-    """What the project's probe runs of the nights of the ISO week of Monday ``week`` cost."""
-    r = tables.runs
-    found = await conn.execute(
-        select(func.coalesce(func.sum(usage_cost(r.c.usage)), 0)).where(
-            r.c.project_id == project_id,
-            r.c.kind == "probe",
-            r.c.schedule_night.between(week, week + WEEK - timedelta(1)),
-        )
-    )
-    return round(float(found.scalar_one() or 0), 6)
-
-
 async def local_today(conn: AsyncConnection, body: dict) -> date:
     """Today in the charter's time zone (UTC without a charter)."""
-    zone = curator.zone_of(body)
-    return (await conn.scalar(select(func.timezone(zone, func.now())))).date()
+    return (await repository.local_now(conn, curator.zone_of(body))).date()
 
 
 class _Reach:
@@ -255,7 +132,7 @@ class _Reach:
     async def __call__(self, label) -> bool:
         key = repr(label)
         if key not in self.seen:
-            self.seen[key] = await label_reaches(self.reader, self.access, label, self.through)
+            self.seen[key] = await label_reaches(self.reader, self.access, label, self.through)  # pyright: ignore[reportArgumentType]
         return self.seen[key]
 
 
@@ -263,29 +140,8 @@ async def _week_results(
     conn: AsyncConnection, access: ProjectAccess, reach: _Reach, weeks: list[date], body: dict, current: date
 ):
     """{week: {(probe, runtime, model): (change, result)}} of ``weeks`` (any order), the probes the caller reads."""
-    pw, pr, c, pl = tables.curator_probe_runs, tables.curator_probes, tables.curator_changes, tables.plugins
-    rows = (
-        await conn.execute(
-            select(pw, pr.c.label.label("probe_label"), pl.c.name.label("plugin"), pr.c.ref)
-            .join(pr, pr.c.id == pw.c.probe_id)
-            .outerjoin(pl, pl.c.id == pr.c.plugin_id)
-            .where(pw.c.project_id == access.project_id, pw.c.week.in_(weeks))
-            .order_by(pw.c.id)
-        )
-    ).all()
-    active = (
-        await conn.execute(
-            select(pr.c.id, pr.c.change_id, pr.c.label, pr.c.created_at, pl.c.name.label("plugin"), pr.c.ref)
-            .outerjoin(c, c.c.id == pr.c.change_id)
-            .outerjoin(pl, pl.c.id == pr.c.plugin_id)
-            .where(
-                pr.c.project_id == access.project_id,
-                pr.c.state == "active",
-                or_(c.c.state == "merged", pr.c.plugin_id.is_not(None)),
-            )
-            .order_by(pr.c.id)
-        )
-    ).all()
+    rows = await repository.week_rows(conn, access.project_id, weeks)
+    active = await repository.active_probes(conn, access.project_id)
     models = probe_models(body) if (body.get("probes") or {}).get("budget_usd") is not None else []
     k = int((body.get("probes") or {}).get("k") or probes.DEFAULT_K)
     found: dict[date, dict] = {week: {} for week in weeks}
@@ -306,52 +162,32 @@ async def _week_results(
     return found
 
 
+async def _unprobed_reason(conn: AsyncConnection, row) -> str | None:
+    """Why merged change ``row`` has no probe, or None when it is not one the report names."""
+    placed = probes.probe_paths(item.get("path") for item in row.paths or [] if isinstance(item, dict))  # pyright: ignore[reportArgumentType]
+    born = await ledger_lines.cites_corrections(conn, row)
+    if not placed and not born:
+        return None
+    retired = await repository.last_retired(conn, row.id)
+    if not placed:
+        why = NOT_PLACED
+    elif retired is not None:
+        why = f"its probe #{retired.id} was retired" + (f": {retired.retired_note}" if retired.retired_note else "")
+    else:
+        why = NOT_WRITTEN
+    return why + f"; {BORN if born else NOT_BORN}"
+
+
 async def _unprobed(conn: AsyncConnection, access: ProjectAccess, reach: _Reach) -> list[ProbeUnprobed]:
-    c, p, pr = tables.curator_changes, tables.proposals, tables.curator_probes
-    has_active = exists().where(pr.c.change_id == c.c.id, pr.c.state == "active")
-    rows = (
-        await conn.execute(
-            select(
-                c.c.id,
-                c.c.proposal_id,
-                c.c.merged_at,
-                p.c.title,
-                p.c.run_id,
-                p.c.evidence,
-                p.c.finding_ids,
-                p.c.paths,
-                p.c.label,
-            )
-            .join_from(c, p, p.c.id == c.c.proposal_id)
-            .where(c.c.project_id == access.project_id, c.c.state == "merged", ~has_active)
-            .order_by(c.c.id.desc())
-        )
-    ).all()
     found = []
-    for row in rows:
+    for row in await repository.unprobed(conn, access.project_id):
         if len(found) >= MAX_UNPROBED:
             break
         if not await reach(row.label):
             continue
-        placed = probes.probe_paths(item.get("path") for item in row.paths or [] if isinstance(item, dict))
-        born = await ledger_lines.cites_corrections(conn, row)
-        if not placed and not born:
+        why = await _unprobed_reason(conn, row)
+        if why is None:
             continue
-        retired = (
-            await conn.execute(
-                select(pr.c.id, pr.c.retired_note)
-                .where(pr.c.change_id == row.id, pr.c.state == "retired")
-                .order_by(pr.c.id.desc())
-                .limit(1)
-            )
-        ).one_or_none()
-        if not placed:
-            why = NOT_PLACED
-        elif retired is not None:
-            why = f"its probe #{retired.id} was retired" + (f": {retired.retired_note}" if retired.retired_note else "")
-        else:
-            why = NOT_WRITTEN
-        why += f"; {BORN if born else NOT_BORN}"
         found.append(
             ProbeUnprobed(
                 change_id=row.id, proposal_id=row.proposal_id, title=row.title, merged_at=row.merged_at, reason=why
@@ -362,22 +198,9 @@ async def _unprobed(conn: AsyncConnection, access: ProjectAccess, reach: _Reach)
 
 async def _fixes(conn: AsyncConnection, access: ProjectAccess, reach: _Reach, since: date) -> list[ProbeFix]:
     """The fix proposals of the project still open, or made since ``since``, the newest first."""
-    p = tables.proposals
-    rows = (
-        await conn.execute(
-            select(p.c.id, p.c.fix_of, p.c.title, p.c.state, p.c.label)
-            .where(
-                p.c.project_id == access.project_id,
-                p.c.fix_of.is_not(None),
-                p.c.state.in_(probe_fixes.OPEN) | (func.date(p.c.created_at) >= since),
-            )
-            .order_by(p.c.id.desc())
-            .limit(MAX_UNPROBED)
-        )
-    ).all()
     return [
         ProbeFix(proposal_id=row.id, change_id=row.fix_of, title=row.title, state=row.state)
-        for row in rows
+        for row in await repository.fixes(conn, access.project_id, since)
         if await reach(row.label)
     ]
 
@@ -386,24 +209,11 @@ async def _replacements(
     conn: AsyncConnection, access: ProjectAccess, reach: _Reach, since: date
 ) -> list[ProbeReplacement]:
     """The probes of the project made since ``since`` in place of others, the newest first."""
-    pr = tables.curator_probes
-    rows = (
-        await conn.execute(
-            select(pr.c.id, pr.c.replaces, pr.c.change_id, pr.c.state, pr.c.created_at, pr.c.label)
-            .where(
-                pr.c.project_id == access.project_id,
-                pr.c.replaces.is_not(None),
-                func.date(pr.c.created_at) >= since,
-            )
-            .order_by(pr.c.id.desc())
-            .limit(MAX_UNPROBED)
-        )
-    ).all()
     return [
         ProbeReplacement(
             probe_id=row.id, replaces=row.replaces, change_id=row.change_id, state=row.state, created_at=row.created_at
         )
-        for row in rows
+        for row in await repository.replacements(conn, access.project_id, since)
         if await reach(row.label)
     ]
 
@@ -456,7 +266,7 @@ async def build(
             ProbeWeek(
                 week=week,
                 complete=week < current,
-                cost_usd=await week_cost(conn, access.project_id, week),
+                cost_usd=await repository.week_cost(conn, access.project_id, week),
                 budget_usd=settings.get("budget_usd"),
                 probes=results,
                 totals=_totals(results),
@@ -473,29 +283,6 @@ async def build(
     )
 
 
-Weeks = Annotated[
-    int, Query(ge=1, le=probes.MAX_REPORT_WEEKS, description="the newest weeks, the one in progress first")
-]
-
-
-@router.get("/{project}/curator/probe-report", response_model=ProbeWeekly, responses=READ_REFUSALS)
-async def probe_report(
-    request: Request,
-    project: ProjectName,
-    user: CurrentUser,
-    weeks: Weeks = DEFAULT_WEEKS,
-    week: Annotated[
-        date | None, Query(description="a day of the newest week to show; default today, in the charter's time zone")
-    ] = None,
-    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
-) -> ProbeWeekly:
-    """The weekly report of the project's probes."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        need_reader(access)
-        return await build(conn, access, user, weeks=weeks, newest=week, sink=sink)
-
-
 # Words
 
 
@@ -504,12 +291,6 @@ def _who(item: ProbeWeekResult) -> str:
     if item.change_id is None and item.ref is not None:
         what = f"plugin {item.plugin or 'removed'} rule {item.ref}"
     return f"probe #{item.probe_id} of {what} on {item.runtime}{f' {item.model}' if item.model else ''}"
-
-
-ARMS_AT_WORDS = {
-    probes.ARMS_AT_TIP: "arms at the tip of the default branch",
-    probes.ARMS_AT_CHANGE: "arms at the change's commits, its diff no longer comes off the tip",
-}
 
 
 def _rate(arm: ProbeArmCount) -> str:
@@ -594,23 +375,6 @@ def unprobed_lines(found: ProbeWeekly, *, listed: int | None = None) -> list[str
     return lines
 
 
-async def mcp_answer(request: Request, project: str, user: Principal, arguments: dict, *, sink: str | None):
-    """(text, data) of the MCP tool curator_probe_report."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        need_reader(access)
-        newest = date.fromisoformat(arguments["week"]) if arguments.get("week") else None
-        found = await build(conn, access, user, weeks=arguments.get("weeks", DEFAULT_WEEKS), newest=newest, sink=sink)
-    cap = "no probes (probes.budget_usd is null)" if found.budget_usd is None else f"{curator.money(found.budget_usd)}"
-    lines = [f"The probe report of project {project}: k {found.k}, a week's budget {cap}."]
-    for week in found.weeks:
-        lines += week_lines(week)
-    lines += unprobed_lines(found)
-    lines += answer_lines(found)
-    data = {**found.model_dump(mode="json"), "summary": f"{len(found.weeks)} weeks"}
-    return "\n".join(lines), data
-
-
 # The weekly notice
 
 
@@ -623,19 +387,9 @@ async def send(conn: AsyncConnection, due) -> str | None:
     local = due.local_now
     if local.weekday() != 0 or not curator.brief_due(local, body["brief_at"]):
         return None
-    s, n = tables.schedules, tables.notifications
-    await conn.execute(select(s.c.id).where(s.c.id == due.id).with_for_update())
+    await repository.lock_schedule(conn, due.id)
     week = probes.week_of(local.date()) - WEEK
-    told = await conn.scalar(
-        select(n.c.id)
-        .where(
-            n.c.project_id == due.project_id,
-            n.c.notice_kind == runs.PROBE_REPORT_NOTICE,
-            n.c.details["week"].astext == week.isoformat(),
-        )
-        .limit(1)
-    )
-    if told is not None:
+    if await repository.told(conn, due.project_id, week):
         return "probe_report_sent"
     access = await owner_access(conn, due.owner_id, due.owner, due.project)
     if access is None or access.role is None:

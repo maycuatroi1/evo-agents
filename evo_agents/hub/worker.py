@@ -124,7 +124,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
   that ended, for search, once (``evo_agents.hub.history_index``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``); on Monday, for a charter that runs
-  probes, the weekly report of their ISO week just ended too, once a week (``evo_agents.hub.server.probe_report``).
+  probes, the weekly report of their ISO week just ended too, once a week (``evo_agents.hub.server.probes.service.report``).
 - ``curator.changes``, every minute, one pass at a time: the Curator's changes move on: their pull requests opened,
   the Judge's check runs written, the tier 0 ones merged when everything allows it, the others left open for their
   owner and read again hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits

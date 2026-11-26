@@ -196,7 +196,8 @@ def test_probe_report_arms_at_says_where_each_results_arms_ran(world):
         item for item in asked(world, weeks=2, week=WEEK.isoformat())["weeks"][1]["probes"] if item["model"] == "opus"
     ]
     assert (last["probe_id"], last["arms_at"]) == (probe["id"], "change")
-    from evo_agents.hub.server.probe_report import ProbeWeek, week_lines
+    from evo_agents.hub.server.probes.models.report import ProbeWeek
+    from evo_agents.hub.server.probes.service.report import week_lines
 
     lines = week_lines(ProbeWeek.model_validate(asked(world, weeks=1, week=LAST_WEEK.isoformat())["weeks"][0]))
     assert "Arms at the tip of the default branch: 0; at the change's commits" in lines[0]
@@ -281,7 +282,7 @@ def test_curator_probe_report_on_the_command_line_and_the_mcp_tool(world, tmp_pa
 async def _mcp(world, arguments: dict):
     from starlette.requests import Request
 
-    from evo_agents.hub.server import probe_report
+    from evo_agents.hub.server.probes import mcp as probe_report
     from evo_agents.hub.server.security import MACHINE, Principal
 
     ((owner_id,),) = sql(world.db, select(tables.users.c.id).where(tables.users.c.login == "owner"))

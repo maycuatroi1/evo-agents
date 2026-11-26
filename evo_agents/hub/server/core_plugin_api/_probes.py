@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import probes as shape
 from evo_agents.hub import tables
-from evo_agents.hub.server import probes
 from evo_agents.hub.server.core_plugin_api._reads import enabled_project
 from evo_agents.hub.server.core_plugin_api._types import Plugin
+from evo_agents.hub.server.probes.service import probes
 
 MAX_PROBE_REF_CHARS = shape.MAX_REF_CHARS  # (1.4) the key of the plugin's rule a probe names
 REPLACED = "replaced by a new probe of the plugin's rule"

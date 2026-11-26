@@ -433,7 +433,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
 # sends to the run's owner (``server.outputs.service.notices``)
 # curator_probe_report: the weekly report of a project's probes, on Monday at the charter's brief_at, to the owner of its
-# night shift's schedule (``server.probe_report``)
+# night shift's schedule (``server.probes.service.report``)
 OUTPUT_NOTICE = "run_outputs"
 PROBE_REPORT_NOTICE = "curator_probe_report"
 NOTICE_KINDS = (

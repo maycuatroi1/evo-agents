@@ -267,7 +267,7 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
     from evo_agents.hub.server.evolve.service.runs import queue_evolve  # it queues runs through this module
     from evo_agents.hub.server.history.service.runs import queue_history  # it queues runs through this module
-    from evo_agents.hub.server.probe_runs import queue_probe  # it queues runs through this module
+    from evo_agents.hub.server.probes.service.runs import queue_probe  # it queues runs through this module
     from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
 
     word, gate = await gate_of(conn, due, any_hour=True)

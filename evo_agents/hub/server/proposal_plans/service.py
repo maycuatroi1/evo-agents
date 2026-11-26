@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import judge
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import change_repos, probes
+from evo_agents.hub.server import change_repos
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict
@@ -20,6 +20,7 @@ from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.change_views import Change, change_view
 from evo_agents.hub.server.plans.models import PLAN_CREATE, PlanError
 from evo_agents.hub.server.plans.service import schema_checked, store
+from evo_agents.hub.server.probes.service import probes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.proposal_plans.repository import STORE
 from evo_agents.hub.server.proposal_reads import readable_proposal
