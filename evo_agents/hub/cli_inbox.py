@@ -27,7 +27,7 @@ from evo_agents.hub.cli_client import client_command, print_json
 from evo_agents.hub.client import EXIT_FAILED, HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.plan_cli import project_of_args
-from evo_agents.hub.run_cli import format_event
+from evo_agents.hub.run_cli_events import format_event
 
 TITLE_CHARS = 110  # of an item's title in the list
 LABELS = {

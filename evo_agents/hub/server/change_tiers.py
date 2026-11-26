@@ -165,7 +165,7 @@ async def impact_as_owner(
         return None
     from evo_agents.hub import kg_snapshots
     from evo_agents.hub.server import kg
-    from evo_agents.hub.server.kg_health import _snapshotted, owner_access
+    from evo_agents.hub.server.kg_health import owner_access, snapshot_of
 
     query = _night_owner(project_id) if owner_id is None else _member(project_id, owner_id)
     async with engine.begin() as conn:
@@ -182,7 +182,7 @@ async def impact_as_owner(
         loading = kg_snapshots.shared(engine, project_id, graphs[0].build_id)
         if wait is not None:
             loading = asyncio.wait_for(asyncio.shield(asyncio.ensure_future(loading)), wait)
-        snapshot = _snapshotted(await loading, graphs, ceiling)
+        snapshot = snapshot_of(await loading, graphs, ceiling)
         result = await asyncio.to_thread(
             answer, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
             graphs, "kg_impact", arguments, snapshot=snapshot,

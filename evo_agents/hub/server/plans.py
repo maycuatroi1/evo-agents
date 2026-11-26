@@ -38,7 +38,6 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
@@ -49,7 +48,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
+from evo_agents.harness import load_schema, plan_body, plan_digest
 from evo_agents.hub import plan_step_status, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, build_handoff
@@ -72,7 +71,7 @@ from evo_agents.hub.plans import (
     update_summary,
     verify_refusal,
 )
-from evo_agents.hub.server import audit, plan_problems, system_traces
+from evo_agents.hub.server import audit, plan_problems, plan_warnings, system_traces
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -462,26 +461,6 @@ async def handoff(
 # Writing
 
 
-class _Registered:
-    """What ``plan_semantics`` asks of a harness, from what the project registered."""
-
-    def __init__(self, names: set[str]):
-        self.names = names
-
-    def known_repos(self) -> set[str]:
-        return self.names
-
-
-async def _known_repos(conn: AsyncConnection, access: ProjectAccess) -> _Registered:
-    repos, projects = tables.project_repos, tables.projects
-    names = set((await conn.execute(select(repos.c.name).where(repos.c.project_id == access.project_id))).scalars())
-    harness = select(projects.c.harness_path).where(projects.c.id == access.project_id)
-    harness_path = (await conn.execute(harness)).scalar()
-    if harness_path:
-        names.add(PurePosixPath(harness_path).name)  # the harness repo goes by its directory name, as in the loader
-    return _Registered(names)
-
-
 def _schema_checked(body: dict, plan_id: str) -> None:
     """422 (413 for size) when the body is not a plan the hub can keep; before anything is read or written."""
     try:
@@ -499,12 +478,6 @@ def _schema_checked(body: dict, plan_id: str) -> None:
             f"plan {plan_id} does not match plan.schema.json: {shown}{more}; nothing was written",
             detail=[{"path": i.path, "message": i.message} for i in found],
         )
-
-
-async def _warnings(conn: AsyncConnection, access: ProjectAccess, body: dict, area: str) -> list[Problem]:
-    path = PurePosixPath("plans", area, f"{body['id']}.yaml")
-    issues = validate(body, load_schema("plan")) + plan_semantics(body, path, await _known_repos(conn, access))
-    return [Problem(path=i.path, message=i.message) for i in issues if i.severity == "warning"]
 
 
 def _writer(access: ProjectAccess) -> None:
@@ -709,7 +682,7 @@ async def write_plan(
             if guard is not None:
                 guard(None)
             new_area = area or "active"
-            warnings = await _warnings(conn, access, body, new_area)
+            warnings = await plan_warnings.warnings(conn, access, body, new_area)
             stored = await _store(
                 conn,
                 access,
@@ -736,7 +709,7 @@ async def write_plan(
                 f"`evo-agents hub plan complete` does, and its copy belongs in plans/{held.area}/",
             )
         new_label = given_label if label is not None else access.push_label(held.label)
-        warnings = await _warnings(conn, access, body, held.area)
+        warnings = await plan_warnings.warnings(conn, access, body, held.area)
         if plan_digest(body) == held.digest and new_label == held.label:
             _logged(project, held, "unchanged", user)
             return _written(access, held, created=False, changed=False, warnings=warnings)
@@ -850,7 +823,7 @@ async def apply_patch(
     except PlanProblem as exc:
         raise PlanError(422, f"plan {plan_id}: {exc}; nothing was written") from None
     _schema_checked(body, plan_id)
-    warnings = await _warnings(conn, access, body, held.area)
+    warnings = await plan_warnings.warnings(conn, access, body, held.area)
     if plan_digest(body) == held.digest:
         _logged(access.name, held, "unchanged", user)
         return held, False, warnings
@@ -947,7 +920,7 @@ async def abandon(request: Request, project: ProjectName, plan_id: PlanId, user:
                 check_body(body, plan_id)
             except PlanProblem as exc:
                 raise PlanError(422, str(exc)) from exc
-            warnings = await _warnings(conn, access, body, "completed")
+            warnings = await plan_warnings.warnings(conn, access, body, "completed")
             stored = await _store(
                 conn,
                 access,
@@ -985,7 +958,7 @@ async def reopen(
                 check_body(body, plan_id)
             except PlanProblem as exc:
                 raise PlanError(409, str(exc)) from exc
-            warnings = await _warnings(conn, access, body, "active")
+            warnings = await plan_warnings.warnings(conn, access, body, "active")
             stored = await _store(
                 conn,
                 access,

@@ -18778,22 +18778,6 @@
                     "endColumn": 77,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 51,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 51,
-                    "lineCount": 1
-                }
             }
         ],
         "./evo_agents/hub/server/opportunities.py": [
@@ -23672,14 +23656,6 @@
                 "range": {
                     "startColumn": 29,
                     "endColumn": 33,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 51,
-                    "endColumn": 57,
                     "lineCount": 1
                 }
             },

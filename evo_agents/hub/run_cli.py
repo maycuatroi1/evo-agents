@@ -36,27 +36,30 @@ current directory, as ``hub plan`` does. Standard library only, like the rest of
 
 from __future__ import annotations
 
-import http.client
 import json
 import sys
-import time
-import urllib.error
-import urllib.request
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
-from evo_agents import __version__
 from evo_agents.hub.attach_cli import describe
 from evo_agents.hub.author import MAX_REQUEST_BYTES
 from evo_agents.hub.chats import chat_link
 from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
-from evo_agents.hub.client import OPENER, HubError, Unreachable, json_body, origin
+from evo_agents.hub.client import origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import checked_plan_id, project_of_args
 from evo_agents.hub.run_cli_access import register_access
 from evo_agents.hub.run_cli_candidates import register_candidates
+from evo_agents.hub.run_cli_events import (
+    RAW_CHARS,
+    clip,
+    clock,
+    follow,
+    print_event,
+    read_events,
+    runs_path,
+)
 from evo_agents.hub.run_cli_keys import RUN_KEYS
 from evo_agents.hub.run_cli_options import (
     account_option,
@@ -86,16 +89,9 @@ from evo_agents.hub.runs import (
     STEADY_SECONDS,
     TERMINAL_STATES,
 )
-from evo_agents.hub.sse import sse_messages
 
 EXIT_USAGE = 2
-EVENTS_PAGE = 1000  # the most events GET .../events answers at once
-STREAM_TIMEOUT = 60.0  # seconds without a byte, pings included, before a followed stream counts as dropped
-RECONNECTS = 5  # tries in a row to open a followed stream again that bring no event before giving up
-BACKOFF = (1, 2, 4, 8, 15)  # seconds before each of those tries
-RETRIED_STATUSES = frozenset({502, 503, 504})  # a proxy in front of a hub that restarts: worth another try
 TITLE_CHARS = 40  # of a step's title in the run table
-RAW_CHARS = 300  # of an event body shown as JSON
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -112,31 +108,6 @@ PLAN_RUN = returns_object(
     schema="Run",
     variants=(("--system", returns_object(*DISPATCHED_KEYS, schema="SystemDispatched")),),
 )
-
-KIND_LABELS = {
-    "agent_message_chunk": "agent",
-    "agent_thought_chunk": "thought",
-    "tool_call": "tool",
-    "tool_call_update": "tool",
-    "plan": "plan",
-    "usage_update": "usage",
-    "system": "system",
-    "output": "output",
-    "user_message": "message",
-    "state": "state",
-}
-LABEL_WIDTH = max(len(label) for label in KIND_LABELS.values())
-
-
-def _runs_path(project: str, run_id: int | None = None, action: str | None = None) -> str:
-    path = f"{project_path(project)}/runs"
-    if run_id is not None:
-        path += f"/{run_id}"
-    return path + (f"/{action}" if action else "")
-
-
-def _clip(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
 def _step(run: dict) -> str:
@@ -199,171 +170,6 @@ def _with_project(args, project: str) -> str:
     return f" --project {project}" if args.project else ""
 
 
-# Events
-
-
-def _clock(value) -> str:
-    """An event's time as HH:MM:SS UTC."""
-    try:
-        moment = datetime.fromisoformat(value)
-    except (TypeError, ValueError):
-        return "--:--:--"
-    if moment.tzinfo is not None:
-        moment = moment.astimezone(UTC)
-    return moment.strftime("%H:%M:%S")
-
-
-def event_text(event: dict) -> str:
-    """What an event says, in words: the agent's text, a move between states, a tool's name, else its body as JSON."""
-    body = event.get("body") if isinstance(event.get("body"), dict) else {}
-    kind = event.get("kind")
-    if kind == "state":
-        text = f"{body.get('from')} -> {body.get('to')} by {body.get('actor')}"
-        return text + (f": {body['reason']}" if body.get("reason") else "")
-    if isinstance(body.get("text"), str):
-        return f"{body.get('from', '?')}: {body['text']}" if kind == "user_message" else body["text"]
-    content = body.get("content")
-    if isinstance(content, dict) and isinstance(content.get("text"), str):  # the adapters' ACP-shaped chunks
-        return content["text"]
-    if kind in ("tool_call", "tool_call_update"):
-        name = next((body[key] for key in ("title", "name", "kind") if isinstance(body.get(key), str)), None)
-        if name:
-            status = body.get("status")
-            return name + (f" ({status})" if isinstance(status, str) else "")
-    return _clip(json.dumps(body, ensure_ascii=False, separators=(",", ":")), RAW_CHARS)
-
-
-def format_event(event: dict) -> str:
-    """One event as ``SEQ HH:MM:SS KIND text``; the text's further lines are indented under its first."""
-    kind = str(event.get("kind"))
-    prefix = f"{event.get('seq', '?'):>5} {_clock(event.get('at'))} {KIND_LABELS.get(kind, kind):<{LABEL_WIDTH}} "
-    lines = event_text(event).splitlines() or [""]
-    indent = " " * len(prefix)
-    return (prefix + lines[0]).rstrip() + "".join(f"\n{indent}{line}".rstrip() for line in lines[1:])
-
-
-def print_event(event: dict) -> None:
-    print(format_event(event), flush=True)
-
-
-def read_events(hub, project: str, run_id: int, after: int = 0, kinds: Iterable[str] = ()) -> dict:
-    """Every event of the run after ``after`` (of ``kinds`` only, when given), read a page at a time: the hub's
-    answer to a page, holding them all."""
-    path = _runs_path(project, run_id, "events")
-    events: list[dict] = []
-    while True:
-        query = [("after", after), ("limit", EVENTS_PAGE), *(("kind", kind) for kind in kinds)]
-        page = hub.call("GET", f"{path}?{urlencode(query)}")
-        events.extend(page["events"])
-        if not page["more"] or not page["events"]:
-            return {**page, "events": events, "more": False}
-        after = page["events"][-1]["seq"]
-
-
-def _refusal(hub, status: int, payload) -> HubError:
-    """The HubError ``Hub.call`` raises for the same answer."""
-    if 300 <= status < 400:
-        return HubError(f"the hub at {hub.url} answered {status} with a redirect, which is not followed", status)
-    message = payload.get("message") if isinstance(payload, dict) else None
-    code = payload.get("error") if isinstance(payload, dict) else None
-    return HubError(str(message or f"the hub at {hub.url} answered HTTP {status}"), status, code, payload)
-
-
-@contextmanager
-def open_stream(hub, path: str, last_event_id: int | None = None) -> Iterator[Iterable[bytes]]:
-    """The lines of the server-sent events at ``path``; ``last_event_id`` resumes after that event. HubError for a
-    refusal, Unreachable for a hub that does not answer."""
-    headers = {"Accept": "text/event-stream", "Cache-Control": "no-cache", "User-Agent": f"evo-agents/{__version__}"}
-    if hub.token:
-        headers["Authorization"] = f"Bearer {hub.token}"
-    if last_event_id is not None:
-        headers["Last-Event-ID"] = str(last_event_id)
-    request = urllib.request.Request(hub.url + path, headers=headers)
-    try:
-        response = OPENER.open(request, timeout=STREAM_TIMEOUT)
-    except urllib.error.HTTPError as exc:
-        with exc:
-            payload = json_body(exc.read())
-        raise _refusal(hub, exc.code, payload) from None
-    except urllib.error.URLError as exc:
-        refused = isinstance(exc.reason, ConnectionRefusedError)
-        raise Unreachable(f"cannot reach {origin(hub.url)}: {exc.reason}", refused) from None
-    except (TimeoutError, OSError, http.client.HTTPException) as exc:
-        reason = (
-            f"no answer within {STREAM_TIMEOUT:g}s" if isinstance(exc, TimeoutError) else str(exc) or type(exc).__name__
-        )
-        raise Unreachable(f"cannot reach {origin(hub.url)}: {reason}") from None
-    with response:
-        kind = response.headers.get("Content-Type", "")
-        if not kind.startswith("text/event-stream"):
-            raise HubError(f"the hub at {hub.url} answered {kind or 'no content type'}, not an event stream")
-        yield response
-
-
-def follow(
-    hub,
-    project: str,
-    run_id: int,
-    after: int = 0,
-    *,
-    on_event: Callable[[dict], None] = print_event,
-    kinds: frozenset[str] = frozenset(),
-    opener=open_stream,
-    sleep: Callable[[float], None] = time.sleep,
-    warn: Callable[[str], None] | None = None,
-) -> dict:
-    """Hand each event of the run after ``after`` to ``on_event`` (those of ``kinds``, when given) as the hub streams
-    them, until the stream's ``end``; what ``end`` says, ``{state, last_seq}``. A stream that stops before ``end`` is
-    opened again after the last event read."""
-    warn = warn or (lambda line: print(line, file=sys.stderr, flush=True))
-    path = _runs_path(project, run_id, "stream")
-    first_path = f"{path}?{urlencode({'after': after})}"
-    last, opened, tries = after, False, 0
-    while True:
-        received = False
-
-        def counted(lines: Iterable[bytes]) -> Iterator[bytes]:
-            nonlocal received
-            for line in lines:
-                received = True
-                yield line
-
-        try:
-            with opener(hub, path if opened else first_path, last if opened else None) as lines:
-                opened = True
-                for name, data, _ in sse_messages(counted(lines)):
-                    try:
-                        message = json.loads(data)
-                    except ValueError:
-                        raise HubError(f"the hub sent a {name} event of run {run_id} that is not JSON") from None
-                    if name == "end":
-                        return message
-                    if name != "message" or not isinstance(message, dict):
-                        continue
-                    if isinstance(message.get("seq"), int):
-                        last = message["seq"]
-                    if not kinds or message.get("kind") in kinds:
-                        on_event(message)
-            reason = "the hub closed the stream before the run ended"
-        except HubError as exc:
-            if not isinstance(exc, Unreachable) and exc.status not in RETRIED_STATUSES:
-                raise
-            reason = str(exc)
-        except (OSError, http.client.HTTPException) as exc:  # a read that timed out, or a connection cut mid-stream
-            reason = f"the stream from {origin(hub.url)} broke off ({exc or type(exc).__name__})"
-        if received:  # a stream that brought something, a ping at least, starts the count again
-            tries = 0
-        if tries >= RECONNECTS:
-            raise HubError(
-                f"the stream of run {run_id} stopped {tries + 1} times in a row without bringing anything ({reason}); "
-                f"`evo-agents hub run logs {run_id} --after {last}` reads what came since"
-            )
-        delay = BACKOFF[min(tries, len(BACKOFF) - 1)]
-        tries += 1
-        warn(f"note: {reason}; reading on after event {last} in {delay}s")
-        sleep(delay)
-
-
 # Commands
 
 
@@ -395,7 +201,7 @@ def cmd_dispatch(args) -> int:
         "account": args.account,
     }
     body.update({key: value for key, value in {**chosen, "profile": args.agent}.items() if value is not None})
-    queued = hub.call("POST", _runs_path(project), body)
+    queued = hub.call("POST", runs_path(project), body)
     if args.json:
         print_json(queued)
         return 0
@@ -514,7 +320,7 @@ def cmd_list(args) -> int:
         "offset": args.offset,
     }
     query += [(key, value) for key, value in given.items() if value is not None]
-    listed = hub.call("GET", _runs_path(project) + (f"?{urlencode(query)}" if query else ""))
+    listed = hub.call("GET", runs_path(project) + (f"?{urlencode(query)}" if query else ""))
     if args.json:
         print_json(listed)
         return 0
@@ -525,7 +331,7 @@ def cmd_list(args) -> int:
             run["state"],
             run["plan_id"],
             run["step_key"] or "-",
-            _clip(run["title"] or "-", TITLE_CHARS),
+            clip(run["title"] or "-", TITLE_CHARS),
             run["runtime"],
             run["worker"] or "-",
             run["dispatched_by"],
@@ -672,7 +478,7 @@ def _results(run: dict) -> list[tuple[str, str]]:
         lines.append(("verify" if index == 0 else "", _verify_text(result)))
     lines += spend_lines(run.get("spend"))
     if run["usage"]:
-        lines.append(("usage", _clip(json.dumps(run["usage"], ensure_ascii=False, separators=(",", ":")), RAW_CHARS)))
+        lines.append(("usage", clip(json.dumps(run["usage"], ensure_ascii=False, separators=(",", ":")), RAW_CHARS)))
     texts = [("error", run["error"]), ("cause", run.get("failure_cause")), ("evidence", run["evidence"])]
     texts.append(("request", run.get("request")))
     lines += [(label, text) for label, text in texts if text]
@@ -692,7 +498,7 @@ def _steady_wait(run: dict) -> str:
     wait = run["steady_wait"]
     worker = f"worker {wait['worker']} (#{wait['worker_id']}), which lost run #{run['parent_run_id']}, to be steady"
     rule = f"once its heartbeats have come for {STEADY_SECONDS} s, none more than {STEADY_GAP_SECONDS} s late"
-    steady = f"from {_clock(wait['steady_at'])} UTC if they go on" if wait.get("steady_at") else "it sends none now"
+    steady = f"from {clock(wait['steady_at'])} UTC if they go on" if wait.get("steady_at") else "it sends none now"
     if run["pinned_worker_id"] == wait["worker_id"]:
         others = "the run is pinned to that worker, so no other takes it"
     else:
@@ -704,7 +510,7 @@ def _steady_wait(run: dict) -> str:
 def cmd_show(args) -> int:
     hub, _ = signed_in()
     project = project_of_args(args)
-    run = hub.call("GET", _runs_path(project, args.run))
+    run = hub.call("GET", runs_path(project, args.run))
     if args.json:
         print_json(run)
         return 0
@@ -758,7 +564,7 @@ CHAT_STATUS_WORDS = {
 @client_command
 def cmd_chat(args) -> int:
     hub, _ = signed_in()
-    chat = hub.call("GET", _runs_path(project_of_args(args), args.run, "chat"))
+    chat = hub.call("GET", runs_path(project_of_args(args), args.run, "chat"))
     if args.json:
         print_json(chat)
         return 0
@@ -793,7 +599,7 @@ def _lease_state(lease: dict, now: datetime) -> str:
 @client_command
 def cmd_credentials(args) -> int:
     hub, _ = signed_in()
-    leases = hub.call("GET", _runs_path(project_of_args(args), args.run, "credentials"))
+    leases = hub.call("GET", runs_path(project_of_args(args), args.run, "credentials"))
     if args.json:
         print_json(leases)
         return 0
@@ -878,7 +684,7 @@ def _control(action: str, said: Callable[[dict], str]):
     @client_command
     def command(args) -> int:
         hub, _ = signed_in()
-        run = hub.call("POST", _runs_path(project_of_args(args), args.run, action), rerun_body(args))
+        run = hub.call("POST", runs_path(project_of_args(args), args.run, action), rerun_body(args))
         if args.json:
             print_json(run)
             return 0

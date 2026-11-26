@@ -43,7 +43,7 @@ from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server.core_plugin_api._reads import enabled_project
 from evo_agents.hub.server.core_plugin_api._types import EgressSink, Plugin, Refused, own_plugin
 from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs
-from evo_agents.hub.server.kg_health import _snapshotted
+from evo_agents.hub.server.kg_health import snapshot_of
 from evo_agents.hub.server.run_cause import CAUSE_KEY, CLASSIFIED, classified
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.signals import project_rules
@@ -490,7 +490,7 @@ async def _graph(
     if not graphs:
         return None, None
     ceiling = rules.ceiling(rules.levels[-1], sink)
-    snapshot = _snapshotted(await kg_snapshots.held_for(conn, project_id, graphs[0].build_id), graphs, ceiling)
+    snapshot = snapshot_of(await kg_snapshots.held_for(conn, project_id, graphs[0].build_id), graphs, ceiling)
     try:
         data, graph = await asyncio.to_thread(read, project, rules.policy, ceiling, graphs, reader, snapshot)
     except GraphUnavailable as exc:

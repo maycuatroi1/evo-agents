@@ -374,6 +374,21 @@ def _merge_blocks(merges: dict | None) -> list[str]:
     return [f"Pull requests the project's agent merged for you: {merges['total']}.", "\n".join(listed)]
 
 
+def _awaiting_blocks(awaiting: dict) -> list[str]:
+    """The paragraphs of the runs in review and of the Curator's pull requests waiting for a merge."""
+    in_review = [item for item in awaiting["listed"] if "pull_request" not in item]
+    pulls = [item for item in awaiting["listed"] if "pull_request" in item]
+    blocks = []
+    if in_review:
+        shown = ", ".join(f"#{item['run_id']}" for item in in_review)
+        count = awaiting["total"] - len(pulls)
+        blocks.append(f"Waiting for your approval: {_count(count, 'run')} in review ({shown}).")
+    if pulls:
+        shown = "; ".join(f"{item['title']}: {item['pull_request'] or 'on GitLab'}" for item in pulls)
+        blocks.append(f"The Curator's changes waiting for you to merge them: {shown}.")
+    return blocks
+
+
 def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     """(title, body in markdown) of a brief with ``facts``, its times in the charter's time zone ``zone``: a paragraph a
     subject, each with its list."""
@@ -423,16 +438,7 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
         for item in facts["merged"]
     )
     blocks.append(f"Merged into a default branch: {merged or 'nothing'}.")
-    awaiting = facts["awaiting_merge"]
-    in_review = [item for item in awaiting["listed"] if "pull_request" not in item]
-    pulls = [item for item in awaiting["listed"] if "pull_request" in item]
-    if in_review:
-        shown = ", ".join(f"#{item['run_id']}" for item in in_review)
-        count = awaiting["total"] - len(pulls)
-        blocks.append(f"Waiting for your approval: {_count(count, 'run')} in review ({shown}).")
-    if pulls:
-        shown = "; ".join(f"{item['title']}: {item['pull_request'] or 'on GitLab'}" for item in pulls)
-        blocks.append(f"The Curator's changes waiting for you to merge them: {shown}.")
+    blocks.extend(_awaiting_blocks(facts["awaiting_merge"]))
     blocks.extend(_planned_blocks(facts["planned_changes"]))
     blocks.append(f"Decisions waiting for your answer: {decisions['open']}.")
     if decisions["listed"]:

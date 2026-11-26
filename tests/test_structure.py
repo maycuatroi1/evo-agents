@@ -104,7 +104,7 @@ def test_the_baseline_adds_or_raises_nothing_against_main(baseline):
 def test_the_type_baseline_holds_nothing_beyond_main():
     main = structure.load_type_baseline(on_main(TYPE_BASELINE))
     branch = structure.load_type_baseline((ROOT / TYPE_BASELINE).read_text(encoding="utf-8"))
-    problems = structure.compare_type_baselines(branch, main)
+    problems = structure.compare_type_baselines(branch, main, structure.renamed_files(structure.base_ref()[0]))
     assert not problems, structure.problems_text(f"{TYPE_BASELINE} against main", problems)
 
 
@@ -114,7 +114,7 @@ def test_the_import_exceptions_add_nothing_against_main():
     if main is None:
         pytest.skip("main declares no import-linter contracts yet")
     branch = structure.contract_exceptions((ROOT / PYPROJECT).read_text(encoding="utf-8"))
-    problems = structure.compare_contracts(branch or {}, main)
+    problems = structure.compare_contracts(branch or {}, main, structure.renamed_files(structure.base_ref()[0]))
     assert not problems, structure.problems_text(f"{PYPROJECT} against main", problems)
 
 
@@ -264,6 +264,42 @@ def test_import_exceptions_may_shrink_but_not_grow_against_main():
     assert "lint-imports" in problem and GUIDE in problem
     [new_contract] = structure.compare_contracts({"e": {"a.q -> b.q"}}, main)
     assert "contract e" in new_contract
+
+
+def test_a_renamed_module_keeps_the_type_errors_of_its_old_name():
+    main = type_baseline(old=["reportArgumentType", "reportArgumentType"], kept=["reportCallIssue"])
+    moved = type_baseline(new=["reportArgumentType", "reportArgumentType"], kept=["reportCallIssue"])
+    renamed = {"evo_agents/old.py": "evo_agents/new.py"}
+    assert structure.compare_type_baselines(moved, main, renamed) == []
+    [problem] = structure.compare_type_baselines(moved, main)
+    assert "in evo_agents/new.py, which main's does not name" in problem
+    [problem] = structure.compare_type_baselines(type_baseline(new=["reportArgumentType"] * 3), main, renamed)
+    assert "holds 3 reportArgumentType in evo_agents/new.py, 1 more than main's 2" in problem
+
+
+def test_an_import_exception_renamed_with_its_module_adds_nothing():
+    main = {"c": {"evo_agents.old -> evo_agents.hub.server", "evo_agents.cli -> evo_agents.pkg.mod.**"}}
+    renamed = {"evo_agents/old.py": "evo_agents/new.py", "evo_agents/pkg/__init__.py": "evo_agents/pack/__init__.py"}
+    branch = {"c": {"evo_agents.new -> evo_agents.hub.server", "evo_agents.cli -> evo_agents.pack.mod.**"}}
+    assert structure.compare_contracts(branch, main, renamed) == []
+    assert len(structure.compare_contracts(branch, main)) == 2
+    [problem] = structure.compare_contracts({"c": {"evo_agents.older -> evo_agents.hub.server"}}, main, renamed)
+    assert "`evo_agents.older -> evo_agents.hub.server`" in problem
+
+
+def test_renamed_files_follow_a_module_git_moved(tmp_path):
+    def run(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    (tmp_path / "evo_agents").mkdir()
+    (tmp_path / "evo_agents" / "old.py").write_text("".join(f"def f{n}():\n    return {n}\n" for n in range(40)))
+    (tmp_path / "evo_agents" / "kept.py").write_text("X = 1\n")
+    run("init", "-q", "-b", "main")
+    run("add", ".")
+    run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start")
+    run("mv", "evo_agents/old.py", "evo_agents/new.py")
+    assert structure.renamed_files("main", tmp_path) == {"evo_agents/old.py": "evo_agents/new.py"}
+    assert structure.renamed_files("no-such-ref", tmp_path) == {}
 
 
 def test_contract_exceptions_read_pyproject_by_contract_id():

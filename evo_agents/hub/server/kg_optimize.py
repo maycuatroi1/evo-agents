@@ -103,7 +103,7 @@ def _measure_graph(
     if not holdout:
         return {"why": "the project's eval set has no holdout question"}
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    with reading(project, kg_health._snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, kg_health.snapshot_of(loaded, graphs, ceiling)) as (store, graph):
         if store.latest_ready() is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])

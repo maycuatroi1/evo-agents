@@ -1407,7 +1407,7 @@ def recover(hub, data_dir: Path) -> dict:
 
 def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
     from evo_agents.hub import jobs as hub_jobs
-    from evo_agents.hub.kg_build import STALLED
+    from evo_agents.hub.kg_build_queue import STALLED
 
     periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
     assert periodic[hub_jobs.RECOVER_KG_BUILDS].cron == "*/5 * * * *"
@@ -1456,7 +1456,7 @@ def test_a_project_whose_builds_keep_killing_their_worker_is_not_queued_again_an
     died the same way, a hundred times in a row. After DIED_IN_A_ROW builds in a row ended so the pass queues none, says
     why on the build and tells the project's admins once; a build queued by hand, or one that succeeds, starts a new
     row."""
-    from evo_agents.hub.kg_build import DIED_IN_A_ROW, HALTED, ORPHANED, STALLED
+    from evo_agents.hub.kg_build_queue import DIED_IN_A_ROW, HALTED, ORPHANED, STALLED
 
     assert DIED_IN_A_ROW == 3
     builds, users = tables.kg_builds, tables.users
@@ -1572,7 +1572,7 @@ def test_builds_that_fail_alike_are_not_queued_again_on_a_plugin_change_and_the_
     """A source file holding a NUL failed every build of its project the same way, and each change of a chat or a task
     queued another: a hundred in half a day. After FAILED_IN_A_ROW builds failed alike a plugin's change queues none and
     the admins are told once; a build that fails otherwise, or one a member queues by hand, starts a new row."""
-    from evo_agents.hub.kg_build import FAILED_IN_A_ROW
+    from evo_agents.hub.kg_build_queue import FAILED_IN_A_ROW
 
     assert FAILED_IN_A_ROW == 3
     laptop = Machine(tmp_path, "laptop")
@@ -1642,7 +1642,7 @@ def test_tools_of_a_project_whose_builds_fail_name_the_failed_build_not_a_push(h
 
 
 def test_three_builds_whose_jobs_ended_unrecorded_stop_the_orphaned_pass_too(hub, tmp_path):
-    from evo_agents.hub.kg_build import DIED_IN_A_ROW, HALTED, ORPHANED
+    from evo_agents.hub.kg_build_queue import DIED_IN_A_ROW, HALTED, ORPHANED
 
     builds = tables.kg_builds
     laptop = Machine(tmp_path, "laptop")
@@ -1662,7 +1662,7 @@ def test_a_build_whose_job_ended_without_recording_it_is_failed(hub, tmp_path):
     """A build left running after its job ended failed (or was cancelled, aborted, or pruned) holds no lock, so the
     stalled-job pass never sees it and it said running for days. The pass fails it, and queues a build only when no
     later build of the project took its place."""
-    from evo_agents.hub.kg_build import ORPHANED
+    from evo_agents.hub.kg_build_queue import ORPHANED
 
     builds = tables.kg_builds
     laptop = Machine(tmp_path, "laptop")

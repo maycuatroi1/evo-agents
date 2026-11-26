@@ -30,7 +30,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from evo_agents.worker.environments import _engine, find_engine, is_podman
+from evo_agents.worker.environments import find_engine, is_podman, run_engine
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -161,7 +161,7 @@ class Engine:
         return cls(path, env) if path else None
 
     def _run(self, args: list[str], timeout: float = LIST_TIMEOUT):
-        done = _engine(self.path, args, self.env, timeout)
+        done = run_engine(self.path, args, self.env, timeout)
         if done is not None and done.returncode != 0:
             log.info(
                 "the container engine refused a cleanup command",

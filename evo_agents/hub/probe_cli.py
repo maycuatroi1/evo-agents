@@ -289,35 +289,8 @@ def register_probe(csub, with_project) -> None:
     json_option(shown, PROBE)
     shown.set_defaults(func=cmd_probe_show)
 
-    added = psub.add_parser("add", help="add a probe to a change or a proposal (the project's admins)")
-    with_project(added)
-    target = added.add_mutually_exclusive_group(required=True)
-    target.add_argument("--change", type=int, metavar="N", help="the change it probes")
-    target.add_argument("--proposal", type=int, metavar="N", help="the proposal whose change it probes")
-    added.add_argument("--repo", required=True, help="the repo of the project the task runs in")
-    added.add_argument("--commit", help="the base commit; none: the tip of the default branch")
-    task = added.add_mutually_exclusive_group(required=True)
-    task.add_argument("--task", help="the task text the agent is given")
-    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
-    added.add_argument(
-        "--verify", required=True, help="one shell line that exits 0 when the agent does not repeat the mistake"
-    )
-    json_option(added, PROBE)
-    added.set_defaults(func=cmd_probe_add)
-
-    edited = psub.add_parser(
-        "edit", help="change an active probe's repo, commit, task or verify (the project's admins)"
-    )
-    with_project(edited)
-    edited.add_argument("id", type=int)
-    edited.add_argument("--repo", help="the repo of the project the task runs in")
-    edited.add_argument("--commit", help="the base commit")
-    task = edited.add_mutually_exclusive_group()
-    task.add_argument("--task", help="the task text the agent is given")
-    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
-    edited.add_argument("--verify", help="one shell line that exits 0 when the agent does not repeat the mistake")
-    json_option(edited, PROBE)
-    edited.set_defaults(func=cmd_probe_edit)
+    _register_add(psub, with_project)
+    _register_edit(psub, with_project)
 
     retired = psub.add_parser("retire", help="retire a probe (the project's admins)")
     with_project(retired)
@@ -334,6 +307,44 @@ def register_probe(csub, with_project) -> None:
     json_option(requeued, REQUEUE)
     requeued.set_defaults(func=cmd_probe_requeue)
 
+    _register_report(psub, with_project)
+
+
+def _register_add(psub, with_project) -> None:
+    added = psub.add_parser("add", help="add a probe to a change or a proposal (the project's admins)")
+    with_project(added)
+    target = added.add_mutually_exclusive_group(required=True)
+    target.add_argument("--change", type=int, metavar="N", help="the change it probes")
+    target.add_argument("--proposal", type=int, metavar="N", help="the proposal whose change it probes")
+    added.add_argument("--repo", required=True, help="the repo of the project the task runs in")
+    added.add_argument("--commit", help="the base commit; none: the tip of the default branch")
+    task = added.add_mutually_exclusive_group(required=True)
+    task.add_argument("--task", help="the task text the agent is given")
+    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
+    added.add_argument(
+        "--verify", required=True, help="one shell line that exits 0 when the agent does not repeat the mistake"
+    )
+    json_option(added, PROBE)
+    added.set_defaults(func=cmd_probe_add)
+
+
+def _register_edit(psub, with_project) -> None:
+    edited = psub.add_parser(
+        "edit", help="change an active probe's repo, commit, task or verify (the project's admins)"
+    )
+    with_project(edited)
+    edited.add_argument("id", type=int)
+    edited.add_argument("--repo", help="the repo of the project the task runs in")
+    edited.add_argument("--commit", help="the base commit")
+    task = edited.add_mutually_exclusive_group()
+    task.add_argument("--task", help="the task text the agent is given")
+    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
+    edited.add_argument("--verify", help="one shell line that exits 0 when the agent does not repeat the mistake")
+    json_option(edited, PROBE)
+    edited.set_defaults(func=cmd_probe_edit)
+
+
+def _register_report(psub, with_project) -> None:
     report = psub.add_parser("report", help="the weekly report of the probes: arm on and off, status, cost")
     with_project(report)
     report.add_argument(

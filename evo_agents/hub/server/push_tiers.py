@@ -10,7 +10,7 @@ notice the member turned off (``output_notices.muted``) still is not sent at all
 
 A tier the member chose for a kind (``tiers``) holds for every notification of that kind. Without one, the hub's
 default (``default_tier``) holds: interrupt for a decision asked of the member (the person who answers it,
-``decisions.asked_person``), for a run_failed of a run they dispatched (not one of CURATOR_KINDS, which the night shift
+``decision_reads.asked_person``), for a run_failed of a run they dispatched (not one of CURATOR_KINDS, which the night shift
 queues on its own), for a release notice of a release that went wrong (any event but ``published``) and for
 merge_paused, the breaker of a merge queue that stopped a deploy; brief for every other notification, those of a kind
 added later included. DEFAULT_INTERRUPTS are the kinds whose default is interrupt for some of their notifications.
@@ -103,7 +103,7 @@ def chosen_tiers(row) -> dict[str, str]:
 
 async def _facts(conn: AsyncConnection, kind: str, user_id: int, run_id, decision_id, details) -> Facts:
     if kind == "decision" and decision_id is not None:
-        from evo_agents.hub.server.decisions import asked_person  # decisions imports notifications, which imports this
+        from evo_agents.hub.server.decision_reads import asked_person  # it imports notifications, which imports this
 
         d, r = tables.decisions, tables.runs
         asked = select(asked_person()).select_from(d.join(r, r.c.id == d.c.run_id)).where(d.c.id == decision_id)

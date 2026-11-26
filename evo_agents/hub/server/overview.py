@@ -9,7 +9,7 @@ run's plan, and for an author run that has put no plan yet, through the project'
 (``views.sees_unplanned``). The queries then take the visible (project, plan) pairs at once, and
 use the indexes the runs, decisions and plans already have.
 
-- counts: waiting_on_you, the open decisions asked of the caller (``decisions.asked_person``: the person a decision
+- counts: waiting_on_you, the open decisions asked of the caller (``decision_reads.asked_person``: the person a decision
   was asked of, else the principal of an autonomy gate's run, else the run's owner), the ones the caller answers;
   running, the runs in RUNNING_STATES; queued; and the runs that ended done, failed or lost on the last DAYS days in
   UTC, today included;
@@ -63,7 +63,7 @@ from evo_agents.hub import author, runs, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.curator import curator_overview
 from evo_agents.hub.server.curator_models import CuratorOverview
-from evo_agents.hub.server.decisions import asked_person
+from evo_agents.hub.server.decision_reads import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access

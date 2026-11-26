@@ -90,7 +90,7 @@ def _refuse(profile: Profile, why: str) -> HTTPException:
     return HTTPException(422, f"agent @{profile.handle} {why}; {NOTHING}")
 
 
-async def _named(conn: AsyncConnection, user: Principal, access: ProjectAccess, handle: str) -> Profile:
+async def profile_named(conn: AsyncConnection, user: Principal, access: ProjectAccess, handle: str) -> Profile:
     """The profile ``handle`` for a run of ``access``'s project: 404 when the caller sees none of that handle, 403
     when it belongs to another project the caller does not write to, 422 when it was deleted or its project axis
     leaves this project out."""
@@ -248,7 +248,7 @@ async def choose(
     await plugin_runtimes.check(conn, access.project_id, access.name, asked.runtime)
     profile = await ensure_default(conn, access.project_id) if handle is None else None
     if profile is None:
-        profile = await _named(conn, user, access, handle)
+        profile = await profile_named(conn, user, access, handle)  # pyright: ignore[reportArgumentType]  # no default: 404
     if (why := pool_accounts.needs_pool(profile, access.name)) is not None:
         raise HTTPException(422, why)  # a run of it would wait for an account no one can give it
     _runtime(profile, asked)

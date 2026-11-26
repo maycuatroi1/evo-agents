@@ -1,6 +1,6 @@
 """Server-sent events as the hub streams them (text/event-stream): the messages in the lines of a stream, read as the
 SSE standard says. Standard library only, like the rest of the client; ``evo-agents hub run logs --follow`` reads a
-run's stream with it (``run_cli.follow``)."""
+run's stream with it (``run_cli_events.follow``)."""
 
 from __future__ import annotations
 

@@ -428,6 +428,38 @@ def _current_text(found: PlanFile | None, summary: dict, project: str) -> str | 
     return render(found.body, project, summary["revision"], summary["digest"])
 
 
+def _drop_other_copy(result: ExportResult, plan_id, area, *, keep_edited: bool) -> None:
+    """Remove the copy of plan ``plan_id`` in the other area than ``area``, once the hub wrote it, else note it."""
+    root, project = result.root, result.project
+    other = mirror_path(root, "completed" if area == "active" else "active", plan_id)
+    if not other.exists():
+        return
+    if _intact_copy(other, project) if keep_edited else _is_copy(other, project):
+        try:
+            other.unlink()
+        except OSError as exc:
+            raise HubError(f"cannot remove {other}, the old copy of plan {plan_id}: {exc}") from None
+        result.removed.append(other.relative_to(root).as_posix())
+    else:
+        result.notes.append(
+            f"{other.relative_to(root).as_posix()}: plan {plan_id} is {area} on the hub, and this file is "
+            "not a copy the hub wrote; left as it is, delete it once nothing in it is needed"
+        )
+
+
+def _note_strays(result: ExportResult, on_hub: set) -> None:
+    """A note for each plan file under plans/ that the hub does not list for the caller."""
+    root, project = result.root, result.project
+    for path in sorted((root / "plans").glob("*/*.yaml")):
+        if path.stem in on_hub or path.parent.name not in AREAS:
+            continue
+        relative = path.relative_to(root).as_posix()
+        if _is_copy(path, project):
+            result.notes.append(f"{relative}: a copy of a plan the hub no longer shows you; left as it is")
+        else:
+            result.notes.append(f"{relative}: not on the hub; push it with `evo-agents hub plan put {relative}`")
+
+
 def export(
     hub, root: Path, project: str | None = None, *, commit: bool = False, keep_edited: bool = False
 ) -> ExportResult:
@@ -469,30 +501,11 @@ def export(
         status = "unchanged" if text is None or old == text.encode("utf-8") else "written"
         if status == "written":
             write_copy(path, text)
-        other = mirror_path(root, "completed" if area == "active" else "active", plan_id)
-        if other.exists():
-            if _intact_copy(other, project) if keep_edited else _is_copy(other, project):
-                try:
-                    other.unlink()
-                except OSError as exc:
-                    raise HubError(f"cannot remove {other}, the old copy of plan {plan_id}: {exc}") from None
-                result.removed.append(other.relative_to(root).as_posix())
-            else:
-                result.notes.append(
-                    f"{other.relative_to(root).as_posix()}: plan {plan_id} is {area} on the hub, and this file is "
-                    "not a copy the hub wrote; left as it is, delete it once nothing in it is needed"
-                )
+        _drop_other_copy(result, plan_id, area, keep_edited=keep_edited)
         result.plans.append(
             {"plan_id": plan_id, "area": area, "revision": summary["revision"], "path": relative, "status": status}
         )
-    for path in sorted((root / "plans").glob("*/*.yaml")):
-        if path.stem in on_hub or path.parent.name not in AREAS:
-            continue
-        relative = path.relative_to(root).as_posix()
-        if _is_copy(path, project):
-            result.notes.append(f"{relative}: a copy of a plan the hub no longer shows you; left as it is")
-        else:
-            result.notes.append(f"{relative}: not on the hub; push it with `evo-agents hub plan put {relative}`")
+    _note_strays(result, on_hub)
     if commit:
         result.commit = commit_copies(root, result)
     return result

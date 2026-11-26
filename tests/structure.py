@@ -454,9 +454,23 @@ def _errors(count: int) -> str:
     return f"{count} error" if count == 1 else f"{count} errors"
 
 
-def compare_type_baselines(branch: dict[str, Counter], main: dict[str, Counter]) -> list[str]:
+def renamed_counts(main: dict[str, Counter], renamed: dict[str, str]) -> dict[str, Counter]:
+    """``main``, a type baseline, with the errors of each module ``renamed`` maps (old path to new) under its new
+    path: a module moved by `git mv` keeps the errors main's baseline holds for it."""
+    moved = dict(main)
+    for old, new in renamed.items():
+        if old in moved:
+            moved[new] = moved.get(new, Counter()) + moved.pop(old)
+    return moved
+
+
+def compare_type_baselines(
+    branch: dict[str, Counter], main: dict[str, Counter], renamed: dict[str, str] | None = None
+) -> list[str]:
     """What ``branch``, a type baseline, holds beyond ``main``'s: more errors of a rule in a module, or any error in a
-    module main's does not name (a module split off another starts clean)."""
+    module main's does not name (a module split off another starts clean). A module ``renamed`` maps from a path of
+    main's (``renamed_files``) is held to the errors main's baseline holds for its old path."""
+    main = renamed_counts(main, renamed or {})
     problems = []
     for path, codes in sorted(branch.items()):
         before = main.get(path)
@@ -480,7 +494,8 @@ def tighten_types(root: Path = ROOT) -> int:
     old = path.read_text(encoding="utf-8")
     subprocess.run([sys.executable, "-m", "basedpyright", "--writebaseline"], cwd=root, capture_output=True)
     before, after = load_type_baseline(old), load_type_baseline(path.read_text(encoding="utf-8"))
-    added = compare_type_baselines(after, before)
+    ref = base_ref()[0]
+    added = compare_type_baselines(after, before, renamed_files(ref, root) if ref_exists(ref, root) else {})
     if added:
         path.write_text(old, encoding="utf-8")
         print(problems_text(f"{TYPE_BASELINE} kept: the code has errors its baseline does not hold", added))
@@ -505,10 +520,31 @@ def contract_exceptions(pyproject: str) -> dict[str, set[str]] | None:
     }
 
 
-def compare_contracts(branch: dict[str, set[str]], main: dict[str, set[str]]) -> list[str]:
+def renamed_modules(renamed: dict[str, str]) -> dict[str, str]:
+    """The dotted names of the modules ``renamed`` maps by path (old to new)."""
+    return {module_name(old): module_name(new) for old, new in renamed.items()}
+
+
+def _renamed_import(entry: str, modules: dict[str, str]) -> str:
+    """An ignored import (``a.b -> c.d``) with each side that names a module of ``modules``, or a module or wildcard
+    under it, under its new name; the longest old name wins."""
+    sides = []
+    for side in entry.split(" -> "):
+        old = next((o for o in sorted(modules, key=len, reverse=True) if side == o or side.startswith(o + ".")), None)
+        sides.append(side if old is None else modules[old] + side[len(old) :])
+    return " -> ".join(sides)
+
+
+def compare_contracts(
+    branch: dict[str, set[str]], main: dict[str, set[str]], renamed: dict[str, str] | None = None
+) -> list[str]:
+    """The ignored imports ``branch`` adds to a contract beyond ``main``'s. An entry of main's naming a module
+    ``renamed`` maps (by path, ``renamed_files``) counts under the module's new name: renaming it adds nothing."""
+    modules = renamed_modules(renamed or {})
     problems = []
     for contract, entries in sorted(branch.items()):
-        for entry in sorted(entries - main.get(contract, set())):
+        held = {_renamed_import(entry, modules) for entry in main.get(contract, set())}
+        for entry in sorted(entries - held):
             problems.append(
                 f"{PYPROJECT} adds the ignored import `{entry}` to the import-linter contract {contract}, which main "
                 f"does not list.\n  The exceptions only shrink: change the import as the contract's guidance says "
@@ -545,6 +581,28 @@ def ref_exists(ref: str, root: Path = ROOT) -> bool:
 def file_at(ref: str, path: str, root: Path = ROOT) -> str | None:
     done = git("show", f"{ref}:{path}", root=root)
     return done.stdout if done is not None and done.returncode == 0 else None
+
+
+def renamed_files(ref: str, root: Path = ROOT) -> dict[str, str]:
+    """The modules of the package that git finds renamed from ``ref`` to the working tree, old path to new: a module
+    of ``ref`` gone and one of the same or nearly the same content in its place (``git diff --find-renames``, its
+    default similarity of 50%), as `git mv` leaves it. A new file git does not track yet is not seen; `git mv` and
+    `git add` make it tracked."""
+    done = git("diff", "--name-status", "--find-renames", "-z", ref, "--", PACKAGE, root=root)
+    if done is None or done.returncode != 0:
+        return {}
+    fields, renamed = done.stdout.split("\0"), {}
+    at = 0
+    while at < len(fields) and fields[at]:
+        status = fields[at]
+        if status.startswith(("R", "C")):
+            old, new = fields[at + 1], fields[at + 2]
+            if status.startswith("R") and old.endswith(".py") and new.endswith(".py"):
+                renamed[old] = new
+            at += 3
+        else:
+            at += 2
+    return renamed
 
 
 def recent_commits(since: str = RECENT, root: Path = ROOT) -> Counter:

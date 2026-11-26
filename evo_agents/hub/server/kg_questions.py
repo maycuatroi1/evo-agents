@@ -70,7 +70,7 @@ async def _read_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, re
     ceiling = (label.level, label.location) if label else None
 
     def blocking(loaded) -> dict:
-        snapshot = kg_health._snapshotted(loaded, graphs, None)
+        snapshot = kg_health.snapshot_of(loaded, graphs, None)
         with reading(row.project, snapshot) as (store, _):
             store.reader = audience
             return {"sink": sink, **read(store, ceiling)}

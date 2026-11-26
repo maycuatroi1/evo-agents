@@ -88,7 +88,7 @@ def _starter(project: str, access, sink: str, graphs, found_set, audience, loade
         return {"why": "the project's eval set has no tune question"}
     questions = questions[:MAX_TUNE]
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    with reading(project, kg_health._snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, kg_health.snapshot_of(loaded, graphs, ceiling)) as (store, graph):
         if store.latest_ready() is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
