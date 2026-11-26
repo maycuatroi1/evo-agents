@@ -37,6 +37,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents.infra.retry import Steps
 from evo_agents.plugins.environment import (
     MAX_PLUGIN_ID,
     Identity,
@@ -141,7 +142,7 @@ class BackendStatus:
 
 
 def _backoff(restarts: int) -> float:
-    return BACKOFF[restarts] if restarts < len(BACKOFF) else MAX_BACKOFF
+    return Steps(BACKOFF, MAX_BACKOFF)(restarts)
 
 
 async def _clean(name: str, stopping: Awaitable[bool]) -> bool:

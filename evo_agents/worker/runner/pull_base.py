@@ -36,7 +36,7 @@ async def counts(worktree: Path, own: str) -> dict[str, tuple[int, int]]:
     """{branch of origin: (the commits of HEAD it lacks, the commits it has that HEAD lacks)}, the run's branch
     ``own`` and the hub's branches left out; empty when git cannot say."""
     form = "--format=%(refname:lstrip=3)%00%(ahead-behind:HEAD)"
-    code, out, _ = await gitops.git(worktree, "for-each-ref", form, "refs/remotes/origin/", check=False)
+    code, out, _ = await gitops.RunGit(worktree).arun("for-each-ref", form, "refs/remotes/origin/", check=False)
     found: dict[str, tuple[int, int]] = {}
     if code == 0:
         for line in out.splitlines():
@@ -45,11 +45,13 @@ async def counts(worktree: Path, own: str) -> dict[str, tuple[int, int]]:
             if _candidate(name, own) and len(parts) == 2 and all(part.isdigit() for part in parts):
                 found[name] = (int(parts[1]), int(parts[0]))  # ahead-behind of the ref: (it has, HEAD has)
         return found
-    code, out, _ = await gitops.git(worktree, "for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes/origin/")
+    code, out, _ = await gitops.RunGit(worktree).arun(
+        "for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes/origin/"
+    )
     names = [name for name in out.splitlines() if _candidate(name, own)][:FALLBACK_BRANCHES]
     for name in names:
-        code, out, _ = await gitops.git(
-            worktree, "rev-list", "--left-right", "--count", f"refs/remotes/origin/{name}...HEAD", check=False
+        code, out, _ = await gitops.RunGit(worktree).arun(
+            "rev-list", "--left-right", "--count", f"refs/remotes/origin/{name}...HEAD", check=False
         )
         parts = out.split()
         if code == 0 and len(parts) == 2 and all(part.isdigit() for part in parts):
@@ -62,8 +64,8 @@ async def reflog_names(worktree: Path, local_branch: str) -> list[str]:
     once."""
     names: list[str] = []
     for ref in ("HEAD", f"refs/heads/{local_branch}"):
-        code, out, _ = await gitops.git(
-            worktree, "reflog", "show", "--format=%gs", f"-n{REFLOG_ENTRIES}", ref, "--", check=False
+        code, out, _ = await gitops.RunGit(worktree).arun(
+            "reflog", "show", "--format=%gs", f"-n{REFLOG_ENTRIES}", ref, "--", check=False
         )
         if code != 0:
             continue

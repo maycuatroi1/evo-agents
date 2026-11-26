@@ -19,13 +19,13 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents.harness import find_manifest, load_manifest, load_yaml, validate_harness
 from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.client import HubError
+from evo_agents.infra.git import Git
 from evo_agents.kg.policy import Policy
 from evo_agents.schema import errors
 
@@ -86,17 +86,6 @@ def _text(value) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _git(root: Path, *args: str) -> str | None:
-    """What ``git -C root <args>`` prints, stripped; None when git fails or prints nothing."""
-    try:
-        done = subprocess.run(
-            ["git", "-C", str(root), *args], capture_output=True, text=True, timeout=GIT_TIMEOUT, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return _text(done.stdout.strip()) if done.returncode == 0 else None
-
-
 def _harness_repo(root: Path, workspace: Path, repos: list[dict]) -> dict | None:
     """The harness as a repo of the project (see the module's docstring); None when a repo of ``repos`` is it already,
     by its name or its path, or its git remote names no origin."""
@@ -106,10 +95,11 @@ def _harness_repo(root: Path, workspace: Path, repos: list[dict]) -> dict | None
         path = repo.get("path")
         if repo.get("name") == name or (path and _real(place(path, workspace)) == here):
             return None
-    origin = _git(root, "config", "--get", "remote.origin.url")
+    git = Git(root, timeout=GIT_TIMEOUT, encoding=None)
+    origin = git.value("config", "--get", "remote.origin.url")
     if origin is None:
         return None
-    head = _git(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    head = git.value("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     branch = head.removeprefix("origin/") if head and head.startswith("origin/") else None
     return {"name": name, "origin": origin, "default_branch": branch, "path": relative(root, workspace)}
 

@@ -31,6 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from evo_agents.infra.git import Git, GitError, GitFailed, GitTimeout
 from evo_agents.private_names import Hit, Policy, refusal
 
 ENV = "EVO_GUARD_POLICY"
@@ -64,37 +65,31 @@ def load(path: str | os.PathLike | None = None) -> Policy | None:
     return found if found.terms and found.targets else None
 
 
-def _git(cwd: str | os.PathLike, *args: str) -> tuple[int, str]:
-    try:
-        done = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace", timeout=GIT_TIMEOUT, check=False
-        )
-    except subprocess.TimeoutExpired:
-        return 124, ""
-    except OSError:
-        return 1, ""
-    return done.returncode, done.stdout
+def _repo(cwd: str | os.PathLike) -> Git:
+    return Git(cwd, timeout=GIT_TIMEOUT, encoding=None, chdir=True)
+
+
+def _exit(exc: GitError) -> int:
+    return exc.returncode if isinstance(exc, GitFailed) else 1
 
 
 def push_remote(cwd: str | os.PathLike) -> str:
     """The remote a bare ``git push`` of the current branch goes to: its pushRemote, remote.pushDefault, its remote,
     else origin."""
-    code, branch = _git(cwd, "symbolic-ref", "--quiet", "--short", "HEAD")
-    keys = [f"branch.{branch.strip()}.pushRemote"] if code == 0 and branch.strip() else []
+    branch = _repo(cwd).read("symbolic-ref", "--quiet", "--short", "HEAD") or ""
+    keys = [f"branch.{branch.strip()}.pushRemote"] if branch.strip() else []
     keys += ["remote.pushDefault", *([f"branch.{branch.strip()}.remote"] if keys else [])]
     for key in keys:
-        code, value = _git(cwd, "config", "--get", key)
-        if code == 0 and value.strip() and value.strip() != ".":
+        value = _repo(cwd).read("config", "--get", key) or ""
+        if value.strip() and value.strip() != ".":
             return value.strip()
     return "origin"
 
 
 def remote_urls(cwd: str | os.PathLike) -> list[str]:
     """The fetch and push URLs of every remote of the checkout at ``cwd``."""
-    code, out = _git(cwd, "remote", "-v")
-    return (
-        list(dict.fromkeys(line.split()[1] for line in out.splitlines() if len(line.split()) >= 2)) if code == 0 else []
-    )
+    out = _repo(cwd).read("remote", "-v") or ""
+    return list(dict.fromkeys(line.split()[1] for line in out.splitlines() if len(line.split()) >= 2))
 
 
 def guarded_remote(policy: Policy, cwd: str | os.PathLike) -> str | None:
@@ -111,15 +106,18 @@ def outgoing(cwd: str | os.PathLike, source: str, *, remote: str | None = None, 
     """The messages, paths and added lines of the commits ``source`` would send: those after ``base`` when it is a
     commit of this checkout, else those no ref of ``remote`` (the push remote of the current branch when None) has,
     a commit only another remote has still read. Raises Unread when git fails or runs out of time."""
-    if base and base != ZERO and _git(cwd, "cat-file", "-e", f"{base}^{{commit}}")[0] == 0:
+    if base and base != ZERO and _repo(cwd).ok("cat-file", "-e", f"{base}^{{commit}}"):
         since = [f"{base}..{source}"]
     else:  # a remote URL as ``remote`` matches no ref: every commit of source, up to MAX_COMMITS, is read
         since = [source, "--not", f"--remotes={remote or push_remote(cwd)}"]
     args = ["log", "-p", "--no-color", "--no-ext-diff", f"--max-count={MAX_COMMITS}", f"--format={MARK_FORMAT}%H%n%B"]
-    code, out = _git(cwd, *args, *since)
-    if code != 0:
-        reason = "ran out of time" if code == 124 else f"failed (exit {code})"
-        raise Unread(f"the guard could not read what the push of {source} sends: git log {reason}; push refused")
+    try:
+        out = _repo(cwd).out(*args, *since)
+    except GitError as exc:
+        reason = "ran out of time" if isinstance(exc, GitTimeout) else f"failed (exit {_exit(exc)})"
+        raise Unread(
+            f"the guard could not read what the push of {source} sends: git log {reason}; push refused"
+        ) from None
     kept = []
     for chunk in out.split(MARK)[1:]:
         message, diff_start, diff = chunk.partition("\ndiff --git ")

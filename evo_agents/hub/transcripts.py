@@ -56,6 +56,7 @@ from evo_agents.hub.client import FILE_MODE, HubError, hub_dir, load_credentials
 from evo_agents.hub.digest import SESSION_ID, is_codex
 from evo_agents.hub.memory_places import SLUG, claude_projects, slug
 from evo_agents.hub.redact import redact, redact_data
+from evo_agents.infra.files import JsonFile
 
 MiB = 1024 * 1024
 KIND = "transcript"  # the blob kind of a part (evo_agents.hub.blobs.KIND_LIMITS)
@@ -537,18 +538,17 @@ def read_part(
 # What this machine keeps
 
 
+def _file(path: Path) -> JsonFile:
+    return JsonFile(path, mode=FILE_MODE, dir_mode=0o700, newline=True, indent=1, sort_keys=True)
+
+
 def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) and data.get("version") == STATE_VERSION else {}
+    return _file(path).read({}, accept=lambda data: isinstance(data, dict) and data.get("version") == STATE_VERSION)
 
 
 def _write_json(path: Path, data: dict) -> None:
     with contextlib.suppress(OSError):  # an optimization: the hub says again what it holds
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        write_atomic(path, (json.dumps(data, indent=1, sort_keys=True) + "\n").encode(), FILE_MODE)
+        _file(path).write(data)
 
 
 class State:

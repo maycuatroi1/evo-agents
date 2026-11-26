@@ -35,7 +35,6 @@ import json
 import os
 import re
 import shlex
-import subprocess
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
@@ -43,6 +42,7 @@ from datetime import datetime
 from pathlib import Path
 
 from evo_agents.hub.memory_places import slug
+from evo_agents.infra.git import Git, GitError
 from evo_agents.kg.evaluate import SESSION_TYPE
 from evo_agents.kg.redact import redact_file
 
@@ -241,7 +241,7 @@ def parse_options(args: Iterable[str], options: Options) -> Parsed:
     return parsed
 
 
-def _git(args: tuple[str, ...], cwd: str | None) -> tuple[str | None, list[str], str | None]:
+def _git_words(args: tuple[str, ...], cwd: str | None) -> tuple[str | None, list[str], str | None]:
     """(the subcommand, its words, the directory it runs in) of a ``git`` command's words, through ``-C``."""
     words = list(args)
     while words and words[0].startswith("-"):
@@ -259,12 +259,8 @@ def _git(args: tuple[str, ...], cwd: str | None) -> tuple[str | None, list[str],
 def _git_lines(checkout: Path | str, *args: str) -> list[str] | None:
     """The NUL- or line-separated output of a read-only git command, or None when it fails."""
     try:
-        result = subprocess.run(
-            ["git", "-C", str(checkout), *args], capture_output=True, timeout=GIT_TIMEOUT, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if result.returncode != 0:
+        result = Git(checkout, timeout=GIT_TIMEOUT).run(*args, binary=True)
+    except GitError:
         return None
     text = result.stdout.decode("utf-8", "replace")
     return [part for part in text.split("\0" if "-z" in args else "\n") if part]
@@ -368,7 +364,7 @@ def search_of(step: Step, repos: RepoMap) -> tuple[str, list[str]] | None:
     """(repo, patterns) when a simple command searches the code of one repo, else None."""
     name, cwd = os.path.basename(step.argv[0]), step.cwd
     if name == "git":
-        sub, args, cwd = _git(step.argv[1:], cwd)
+        sub, args, cwd = _git_words(step.argv[1:], cwd)
         if sub != "grep":
             return None
         parsed = parse_options(args, GIT_GREP)
@@ -433,7 +429,7 @@ def opened(call: Call, repos: RepoMap) -> list[tuple[str, str]]:
     for step in steps(command, call.cwd):
         name = os.path.basename(step.argv[0])
         if name == "git":
-            sub, args, cwd = _git(step.argv[1:], step.cwd)
+            sub, args, cwd = _git_words(step.argv[1:], step.cwd)
             found += _shown(args, cwd, repos) if sub == "show" else []
         elif name in READERS:
             hits = [repos.locate(resolve(path, step.cwd)) for path in _read(name, step.argv[1:])]

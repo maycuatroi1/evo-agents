@@ -48,6 +48,7 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: the modules of `kg.cli` (`kg.cli.**`) |
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
+| `infra-standalone` | `evo_agents.infra`, the git, files and retry code every package shares, imports no other module of evo_agents (standard library only) | none |
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
 | `hub-server-not-cli` | `evo_agents.hub.server` does not import `evo_agents.hub.cli`, directly or through another module: a command imports what it shares with the server from a module outside the CLI | none |
 | `hub-runs-layers` | in `evo_agents.hub.server.runs`, `routes` imports `service` and `models`, `service` imports `models`, never the reverse; every module of the package is in one of the three | none |
@@ -187,3 +188,19 @@ logic of the domain out of the command (in the resource, a value object such as 
 and list the children of a `Group` by hand rather than registering classes by import. `configure` sets the defaults
 `json_option` sets, so `evo-agents hub contract` reads a class command as it reads a function: a command moved
 unchanged leaves `tests/hub/golden/cli-contract.json` as it was, options in the same order.
+
+## Shared infrastructure
+
+`evo_agents.infra` holds the plumbing every package uses alike, on the standard library alone: it imports no other
+module of evo_agents (the contract `infra-standalone`), so any package may import it.
+
+| Class | Pattern | What it does |
+| --- | --- | --- |
+| `Git` (`infra/git.py`) | Template Method | git in one directory (`-C`, or its `cwd` with `chdir=True`), with a timeout and an environment of its own: `run` and `arun` (asyncio) give a `GitResult` (`returncode, stdout, stderr`, unpacked as a tuple); `out`, `read`, `value` and `ok` read one answer. A failure is a typed `GitError`: `GitFailed`, `GitTimeout`, `GitUnavailable`. |
+| `Git.fail` | Template Method hook | Turns a `GitError` into the exception the caller raises. A package that had its own git error keeps it and its messages with a subclass (`gitops.RunGit`, `kg_sync.Checkout`, `gitcli.Clone`, `mirror._Checkout`). |
+| `write_atomic`, `write_private`, `JsonFile` (`infra/files.py`) | Value Object | A file replaced whole: a temporary file beside it, flushed and renamed over it with `os.replace` (tried again while Windows refuses it), in the mode given (`PRIVATE`, 0600, by default). `JsonFile` reads a document as a value, the default for a file missing, broken or of another shape, and writes it in the format its owner chose. |
+| `RetryPolicy`, `Backoff` (`infra/retry.py`) | Strategy | How many tries, which errors try again and the delay before each (`Exponential` with jitter, `Steps`, `Fixed`); `call` and `acall` run a function under it, `Backoff` counts the failures of a loop that retries on its own (`hubapi.Backoff`, the plugin host's restarts). |
+
+Write no git helper of your own (`def _git(...)` outside `evo_agents/infra` fails the step's check), no
+`_read_json`/`_write_json` pair and no hand-written retry loop: use these, with a subclass or a policy when a module
+needs its own messages or delays.

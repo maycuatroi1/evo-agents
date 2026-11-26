@@ -34,12 +34,12 @@ import os
 import re
 import shutil
 import stat
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents.infra.git import NO_PROMPT, Git, GitError, GitTimeout, GitUnavailable
 from evo_agents.kg.bench.datasets import BenchError
 from evo_agents.kg.bench.rows_file import ROWS, forget
 from evo_agents.kg.bench.tasks import SOURCE_ID, Task
@@ -336,13 +336,16 @@ def bench_home(home: Path):
             os.environ["EVO_KG_HOME"] = before
 
 
-def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    command = ["git", *(["-C", str(cwd)] if cwd else []), *args]
-    try:
-        return subprocess.run(command, capture_output=True, text=True, timeout=GIT_TIMEOUT, env=env)
-    except subprocess.TimeoutExpired:
-        raise BenchError(f"git {' '.join(args[:2])} took over {GIT_TIMEOUT:.0f}s") from None
+class _BenchGit(Git):
+    """Git of the bench's clones: never prompting, BenchError when it runs over GIT_TIMEOUT."""
+
+    def __init__(self, directory: Path | None = None):
+        super().__init__(directory, timeout=GIT_TIMEOUT, env=NO_PROMPT, encoding=None, errors="strict")
+
+    def fail(self, error: GitError) -> BaseException:
+        if isinstance(error, GitTimeout):
+            return BenchError(f"git {' '.join(error.words[:2])} took over {GIT_TIMEOUT:.0f}s")
+        return error.cause if isinstance(error, GitUnavailable) else error
 
 
 def ensure_commit(lay: Layout, task: Task, git_url: str = GITHUB_URL) -> Path:
@@ -351,12 +354,13 @@ def ensure_commit(lay: Layout, task: Task, git_url: str = GITHUB_URL) -> Path:
     if not clone.is_dir():
         clone.parent.mkdir(parents=True, exist_ok=True)
         url = git_url.format(repo=RENAMED.get(task.repo.lower(), task.repo))
-        out = _git("clone", "--bare", "--quiet", url, str(clone))
-        if out.returncode != 0:
+        out = _BenchGit().run("clone", "--bare", "--quiet", url, str(clone), check=False)
+        if not out.ok:
             raise BenchError(f"cannot clone {url}: {out.stderr.strip()[:300]}")
-    if _git("cat-file", "-e", f"{task.commit}^{{commit}}", cwd=clone).returncode != 0:
-        out = _git("fetch", "--quiet", "origin", task.commit, cwd=clone)
-        if out.returncode != 0 or _git("cat-file", "-e", f"{task.commit}^{{commit}}", cwd=clone).returncode != 0:
+    git = _BenchGit(clone)
+    if not git.run("cat-file", "-e", f"{task.commit}^{{commit}}", check=False).ok:
+        out = git.run("fetch", "--quiet", "origin", task.commit, check=False)
+        if not out.ok or not git.run("cat-file", "-e", f"{task.commit}^{{commit}}", check=False).ok:
             raise BenchError(f"{task.repo} has no commit {task.commit[:12]}: {out.stderr.strip()[:200]}")
     return clone
 

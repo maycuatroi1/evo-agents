@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote
@@ -42,6 +41,7 @@ from evo_agents.harness import (
 )
 from evo_agents.hub.client import HubError, write_atomic
 from evo_agents.hub.plans import AREAS
+from evo_agents.infra.git import Git, GitError, GitFailed
 from evo_agents.kg.protocol import canonical_json
 
 MIRROR_HEADER = (
@@ -514,23 +514,21 @@ def export(
 # Committing the copies
 
 
-def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    command = ["git", "-C", str(root), *args]
-    try:
-        done = subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise HubError(f"git {args[0]} failed in {root}: {exc}") from None
-    if check and done.returncode != 0:
-        raise HubError(f"git {args[0]} failed in {root}: {(done.stderr or done.stdout).strip()}")
-    return done
+class _Checkout(Git):
+    """Git in the checkout the copies are committed in: HubError, naming the checkout, when it fails."""
+
+    def __init__(self, root: Path):
+        super().__init__(root, timeout=GIT_TIMEOUT)
+
+    def fail(self, error: GitError) -> BaseException:
+        said = (error.stderr or error.stdout).strip() if isinstance(error, GitFailed) else str(error)
+        return HubError(f"git {error.command} failed in {self.directory}: {said}")
 
 
 def _differs_from_head(root: Path, paths: list[str]) -> list[str]:
     if not paths:
         return []
-    status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *paths).stdout
+    status = _Checkout(root).out("status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *paths)
     found = []
     entries = status.split("\0")
     index = 0
@@ -549,10 +547,11 @@ def _differs_from_head(root: Path, paths: list[str]) -> list[str]:
 def commit_copies(root: Path, result: ExportResult) -> str | None:
     """Commit the copies of the project that differ from HEAD, and nothing else; the new commit, or None when
     every copy already matches HEAD."""
-    inside = _git(root, "rev-parse", "--is-inside-work-tree", check=False)
-    if inside.returncode != 0 or inside.stdout.strip() != "true":
+    git = _Checkout(root)
+    inside = git.run("rev-parse", "--is-inside-work-tree", check=False)
+    if not inside.ok or inside.stdout.strip() != "true":
         raise HubError(f"--commit needs a git checkout, and {root} is not one; the copies are written")
-    prefix = _git(root, "rev-parse", "--show-prefix").stdout.strip()
+    prefix = git.out("rev-parse", "--show-prefix").strip()
     copies = [p for p in result.plans if p["status"] != "kept"]  # a file someone edited is theirs to commit
     candidates = {p["path"] for p in copies} | set(result.removed)
     for entry in copies:  # a copy removed by an earlier export without --commit is still a change
@@ -568,6 +567,6 @@ def commit_copies(root: Path, result: ExportResult) -> str | None:
     lines = [f"Hub plans of {result.project}: copies of {', '.join(named) or 'no plan'}"]
     if removed:
         lines += ["", "Removed copies of plans that moved: " + ", ".join(removed)]
-    _git(root, "add", "-A", "--", *changed)
-    _git(root, "commit", "--quiet", "--only", "-m", "\n".join(lines), "--", *changed)
-    return _git(root, "rev-parse", "HEAD").stdout.strip()
+    git.run("add", "-A", "--", *changed)
+    git.run("commit", "--quiet", "--only", "-m", "\n".join(lines), "--", *changed)
+    return git.out("rev-parse", "HEAD").strip()

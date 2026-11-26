@@ -31,12 +31,12 @@ import json
 import math
 import random
 import re
-import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents.infra.git import Git
 from evo_agents.kg import asked, locate, rank
 from evo_agents.kg.bench import graphs
 from evo_agents.kg.bench.tasks import TUNE, Task, load_tasks, repo_split
@@ -140,22 +140,19 @@ def bench_labels(cache: Path, sets: Iterable[str] = TUNED_SETS) -> list[Label]:
     return out
 
 
-def _git(clone: Path, *args: str) -> str:
-    done = subprocess.run(["git", "-C", str(clone), *args], capture_output=True, text=True, errors="replace")
-    return done.stdout if done.returncode == 0 else ""
-
-
 def commits_after(clone: Path, commit: str) -> list[dict]:
     """The commits of the clone's default branch that descend from ``commit``, oldest first: sha, author, message
     and the files each changed."""
-    out = _git(
-        clone,
-        "log",
-        "--no-merges",
-        "--ancestry-path",
-        "--format=%x1e%H%x1f%an%x1f%ae%x1f%B%x1f",
-        "--name-only",
-        f"{commit}..HEAD",
+    out = (
+        Git(clone, encoding=None).read(
+            "log",
+            "--no-merges",
+            "--ancestry-path",
+            "--format=%x1e%H%x1f%an%x1f%ae%x1f%B%x1f",
+            "--name-only",
+            f"{commit}..HEAD",
+        )
+        or ""
     )
     found = []
     for chunk in out.split("\x1e")[1:]:
@@ -180,14 +177,12 @@ def hunks(clone: Path, commit: str, base: str, files: Iterable[str]) -> tuple[tu
     marks the two lines around it); None when one of the files changed between ``base`` and the commit's parent."""
     files = sorted(files)
     parent = f"{commit}^"
-    same = subprocess.run(
-        ["git", "-C", str(clone), "diff", "--quiet", base, parent, "--", *files], capture_output=True
-    ).returncode
+    same = Git(clone).run("diff", "--quiet", base, parent, "--", *files, check=False, binary=True).returncode
     if same != 0:
         return None
     out = []
     path = None
-    for line in _git(clone, "diff", "-U0", parent, commit, "--", *files).splitlines():
+    for line in (Git(clone, encoding=None).read("diff", "-U0", parent, commit, "--", *files) or "").splitlines():
         if line.startswith("--- "):
             path = line[6:] if line.startswith("--- a/") else None
         m = HUNK.match(line)

@@ -22,7 +22,7 @@ from evo_agents.worker.gitops import (
     PushConflict,
     Pushed,
     Replay,
-    git,
+    RunGit,
     has_commit,
     is_ancestor,
     new_commits,
@@ -106,14 +106,14 @@ async def _replay(
                 f"include {sha[:12]}, which the run pushed to {branch} before and the remote no longer has: the worker "
                 "does not put back a commit the remote dropped"
             )
-    _, merges, _ = await git(cwd, "rev-list", "--merges", f"{onto}..{head}", check=False)
+    _, merges, _ = await RunGit(cwd).arun("rev-list", "--merges", f"{onto}..{head}", check=False)
     if merges.split():
         raise await conflict(f"hold a merge commit ({merges.split()[0][:12]}), which the worker does not replay")
     try:
         new = await replay_commits(cwd, onto, head, replay.scratch)
     except Unreplayable as exc:
         raise await conflict(f"did not go on top of it ({exc})") from None
-    code, out, err = await git(cwd, "reset", "--quiet", "--keep", new, check=False)
+    code, out, err = await RunGit(cwd).arun("reset", "--quiet", "--keep", new, check=False)
     if code != 0:
         why = f"went on top of it, but the worktree has changes the remote's commits touch ({tail(err or out, 300)})"
         raise await conflict(why)
@@ -133,9 +133,8 @@ async def replay_commits(cwd: Path, onto: str, head: str, scratch: Path) -> str:
     await _drop_scratch(cwd, scratch)
     scratch.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     try:
-        await git(cwd, "worktree", "add", "--quiet", "--detach", str(scratch), head, env=local)
-        code, out, err = await git(
-            scratch,
+        await RunGit(cwd).arun("worktree", "add", "--quiet", "--detach", str(scratch), head, env=local)
+        code, out, err = await RunGit(scratch).arun(
             "-c",
             "rebase.updateRefs=false",
             "-c",
@@ -148,8 +147,10 @@ async def replay_commits(cwd: Path, onto: str, head: str, scratch: Path) -> str:
             env=local,
         )
         if code != 0:
-            _, unmerged, _ = await git(scratch, "diff", "--name-only", "--diff-filter=U", check=False, env=local)
-            await git(scratch, "rebase", "--abort", check=False, env=local)
+            _, unmerged, _ = await RunGit(scratch).arun(
+                "diff", "--name-only", "--diff-filter=U", check=False, env=local
+            )
+            await RunGit(scratch).arun("rebase", "--abort", check=False, env=local)
             paths = unmerged.split()
             if paths:
                 more = f" and {len(paths) - MAX_CONFLICT_PATHS} more" if len(paths) > MAX_CONFLICT_PATHS else ""
@@ -164,7 +165,7 @@ async def replay_commits(cwd: Path, onto: str, head: str, scratch: Path) -> str:
 
 
 async def _drop_scratch(cwd: Path, scratch: Path) -> None:
-    await git(cwd, "worktree", "remove", "--force", str(scratch), check=False)
+    await RunGit(cwd).arun("worktree", "remove", "--force", str(scratch), check=False)
     if scratch.exists():
         await asyncio.to_thread(shutil.rmtree, scratch, True)
     await prune_worktrees(cwd)
@@ -187,7 +188,7 @@ async def _conflict(
     commits brought, the worktree stays at the replayed commit with that change, and the message says so."""
     stays = ""
     if await rev(cwd, "HEAD") != original:
-        code, out, err = await git(cwd, "reset", "--quiet", "--keep", original, check=False)
+        code, out, err = await RunGit(cwd).arun("reset", "--quiet", "--keep", original, check=False)
         head = await rev(cwd, "HEAD")
         if code != 0 and head is not None and head != original:
             stays = (
@@ -198,7 +199,9 @@ async def _conflict(
     tip = await remote_tip(cwd, side, remote, env=env)
     if tip != original and not (tip is not None and await has_commit(cwd, tip, original, side, remote, env=env)):
         await send(cwd, original, side, remote, env=env)
-    _, out, _ = await git(cwd, "rev-list", f"--max-count={MAX_NOTICE_COMMITS}", original, f"^{onto}", check=False)
+    _, out, _ = await RunGit(cwd).arun(
+        "rev-list", f"--max-count={MAX_NOTICE_COMMITS}", original, f"^{onto}", check=False
+    )
     commits = tuple(out.split())
     message = (
         f"{branch} of {remote} moved on to {onto[:12]}, and the run's commits {why}. They are on {side} of {remote} "

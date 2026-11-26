@@ -364,8 +364,8 @@ def test_a_push_of_an_http_origin_goes_over_https_with_the_lease_and_fails_once_
             first = await gitops.push(checkout, "feat/leased", env=env)
             await leases.release()
             (checkout / "more.txt").write_text("more\n", encoding="utf-8")
-            await gitops.git(checkout, "add", "more.txt", env=machine.env)
-            await gitops.git(checkout, "commit", "--quiet", "-m", "more", env=machine.env)
+            await gitops.RunGit(checkout).arun("add", "more.txt", env=machine.env)
+            await gitops.RunGit(checkout).arun("commit", "--quiet", "-m", "more", env=machine.env)
             try:
                 await gitops.push(checkout, "feat/leased", env=env)
             except gitops.GitError as exc:

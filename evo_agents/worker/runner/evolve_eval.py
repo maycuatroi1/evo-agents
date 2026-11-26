@@ -169,7 +169,7 @@ def short_trace(trace: Mapping) -> dict:
 
 async def read_at(checkout: Path, ref: str, path: str, env: Mapping[str, str] | None = None) -> str | None:
     """The text of ``path`` at commit ``ref`` of ``checkout``, None when that commit has no such file."""
-    code, out, _ = await gitops.git(checkout, "show", f"{ref}:{path}", check=False, env=env)
+    code, out, _ = await gitops.RunGit(checkout).arun("show", f"{ref}:{path}", check=False, env=env)
     return out if code == 0 else None
 
 
@@ -178,7 +178,7 @@ async def baseline_at(checkout: Path, ref: str, paths: list[str], env: Mapping[s
     is a file of; a path ``ref`` lacks is left out."""
     wanted = list(dict.fromkeys(paths))
     for skill in sorted({found for found in map(replay.skill_dir, paths) if found}):
-        _, out, _ = await gitops.git(checkout, "ls-tree", "-r", "-z", "--name-only", ref, "--", skill, env=env)
+        _, out, _ = await gitops.RunGit(checkout).arun("ls-tree", "-r", "-z", "--name-only", ref, "--", skill, env=env)
         wanted += [path for path in out.split("\0") if path and path not in wanted]
     found = {}
     for path in wanted:
@@ -200,9 +200,9 @@ async def commit_candidate(
     """Write ``texts`` (path -> whole text, None to remove it) in ``worktree`` and commit them; the new commit, None
     when they change nothing."""
     replay_files.write_texts(texts, worktree)
-    await gitops.git(worktree, "add", "--all", env=env)
-    code, _, _ = await gitops.git(worktree, "diff", "--cached", "--quiet", check=False, env=env)
+    await gitops.RunGit(worktree).arun("add", "--all", env=env)
+    code, _, _ = await gitops.RunGit(worktree).arun("diff", "--cached", "--quiet", check=False, env=env)
     if code == 0:
         return None
-    await gitops.git(worktree, *COMMIT_AUTHOR, "commit", "--quiet", "--no-verify", "-m", message, env=env)
+    await gitops.RunGit(worktree).arun(*COMMIT_AUTHOR, "commit", "--quiet", "--no-verify", "-m", message, env=env)
     return await gitops.rev(worktree, "HEAD")

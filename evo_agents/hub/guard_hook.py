@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import shlex
@@ -19,6 +18,7 @@ from pathlib import Path
 
 from evo_agents import guard_check
 from evo_agents.hub.client import Hub, HubError, hub_dir
+from evo_agents.infra.files import JsonFile
 from evo_agents.private_names import Policy
 
 POLICY_FILE = "guard-policy.json"
@@ -47,10 +47,7 @@ def take(hub: Hub) -> str | None:
         return None
     try:
         Policy.from_json(data)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
-        os.replace(temp, path)
+        JsonFile(path, mode=0o644, durable=False, separators=(",", ":")).write(data)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return f"guard policy not kept: {exc}"
     return None

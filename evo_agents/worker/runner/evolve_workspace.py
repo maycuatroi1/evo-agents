@@ -24,6 +24,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path, PurePosixPath
 
 from evo_agents.hub import evolve, replay
+from evo_agents.infra.files import JsonFile
 
 ITERATIONS = "iterations"
 FRONTIER = "frontier.json"
@@ -152,7 +153,7 @@ class Tree:
 
 
 def _write_json(path: Path, body) -> None:
-    path.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
+    JsonFile(path, mode=0o644, durable=False, ensure_ascii=False, indent=1, sort_keys=True).write(body)
 
 
 def proposer_prompt(

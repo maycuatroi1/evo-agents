@@ -40,6 +40,7 @@ from evo_agents.hub.client import Hub, HubError, Unreachable, put_presigned
 from evo_agents.hub.memory_files import host_tag
 from evo_agents.hub.memory_places import Places
 from evo_agents.hub.registry import default_registry, read_registry
+from evo_agents.infra.retry import Exponential, RetryPolicy
 from evo_agents.kg.project import read_bindings
 
 MiB = 1024 * 1024
@@ -51,6 +52,13 @@ LOOK_BACK = 3600.0  # seconds before the last sync the next one looks for change
 FIRST_LOOK = 86400.0  # how far back the first sync of a machine looks; backfill takes the rest
 MAX_CONFLICTS = 3  # restarts of one file in one run
 PUT_ATTEMPTS = 3
+
+
+def _put_again(exc: BaseException) -> bool:
+    return isinstance(exc, HubError) and (isinstance(exc, Unreachable) or (exc.status or 0) >= 500)
+
+
+PUT_DELAYS = Exponential(1.0, float("inf"))  # a PUT the store refused for a moment, again after 1 s, then 2 s
 REFUSAL_COOLDOWN = 86400.0  # seconds a transcript another member holds is left alone
 COMMIT_SECONDS = 20.0  # what the parts request may take, plus a second for each part
 BACKFILL_LOCK_WAIT = 60.0  # seconds a backfill waits for a sync of the hooks
@@ -247,15 +255,7 @@ class Sync:
     # Sending
 
     def _put(self, url: str, path: Path) -> None:
-        for attempt in range(PUT_ATTEMPTS):
-            try:
-                put_presigned(url, path)
-                return
-            except HubError as exc:
-                last = attempt == PUT_ATTEMPTS - 1
-                if last or not (isinstance(exc, Unreachable) or (exc.status or 0) >= 500):
-                    raise
-                time.sleep(1.0 * 2**attempt)
+        RetryPolicy(PUT_DELAYS, PUT_ATTEMPTS, _put_again).call(lambda: put_presigned(url, path))
 
     def _flush(self, project: str, batch: list[local.Part]) -> list[dict]:
         """Upload the blobs of ``batch`` the project lacks and record its parts; the hub's outcome of each part."""

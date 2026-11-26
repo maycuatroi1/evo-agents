@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents import guard_check, private_names
+from evo_agents.infra.git import Git, GitTimeout
 from evo_agents.private_names import Policy, entries, repo_key
 
 TARGET = "github.com/acme/public"
@@ -216,7 +217,11 @@ def test_the_guard_refuses_a_push_when_git_fails_or_runs_out_of_time_git_fails(r
 
     with pytest.raises(guard_check.Unread, match="failed"):
         guard_check.outgoing(repo, "no-such-ref", remote="origin")
-    monkeypatch.setattr(guard_check, "_git", lambda cwd, *args: (124, ""))
+
+    def timed_out(self, *args, **options):
+        raise GitTimeout(args, self.directory, guard_check.GIT_TIMEOUT)
+
+    monkeypatch.setattr(Git, "run", timed_out)
     with pytest.raises(guard_check.Unread, match="ran out of time"):
         guard_check.outgoing(repo, "HEAD", remote="origin")
     monkeypatch.chdir(repo)
