@@ -188,14 +188,14 @@ def test_the_cross_project_read_passes_graph_on_to_the_kg_tool():
 
 
 def test_agent_read_graph_goes_in_the_body_of_a_kg_read_only():
-    from evo_agents.worker import agent_read_cli
+    from evo_agents.worker.cli.agent import read_body
     from evo_agents.worker.home import WorkerStateError
 
     args = SimpleNamespace(project="lumen-ops", tool="kg-search", limit=5, text="KB-01", ids=None, graph="deals-only")
-    assert agent_read_cli._body(args)["graph"] == "deals-only"
+    assert read_body(args)["graph"] == "deals-only"
     memory = SimpleNamespace(project="lumen-ops", tool="memory-search", limit=5, text="x", ids=None, graph="deals")
     with pytest.raises(WorkerStateError):
-        agent_read_cli._body(memory)
+        read_body(memory)
 
 
 # The CLI

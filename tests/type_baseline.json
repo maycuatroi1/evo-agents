@@ -24042,24 +24042,6 @@
                 }
             }
         ],
-        "./evo_agents/worker/cli.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 40,
-                    "endColumn": 46,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 94,
-                    "endColumn": 97,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/worker/doctor.py": [
             {
                 "code": "reportOptionalSubscript",

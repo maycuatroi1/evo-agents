@@ -67,7 +67,6 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
 from evo_agents.worker import (
-    agent_cli,
     cli_support,
     list_cli,
     pool_cli,
@@ -543,13 +542,36 @@ def register(sub) -> None:
     env.add_argument("--run", type=int, required=True, help="the run's id")
     env.set_defaults(func=cmd_env)
 
-    agent_cli.register_agent(wsub)
-
-    for extra in (
-        *agent_cli.AGENT_PARSERS,
-        projects_cli.register_projects,
-        list_cli.register_list,
-        register_browser,
-        pool_cli.register_pool,
-    ):
+    for node in _agent_nodes():
+        node.attach(wsub)
+    for extra in (projects_cli.register_projects, list_cli.register_list, register_browser, pool_cli.register_pool):
         extra(wsub)
+
+
+def _agent_nodes() -> tuple:
+    """The commands of a run's agent under ``evo-agents worker``, in the order of its help."""
+    from evo_agents.worker.cli.agent import AGENT
+    from evo_agents.worker.cli.ask import ASK
+    from evo_agents.worker.cli.backup import BACKUP
+    from evo_agents.worker.cli.chat import CHAT
+    from evo_agents.worker.cli.curator import CURATOR
+    from evo_agents.worker.cli.escalate import ESCALATE
+    from evo_agents.worker.cli.finding import FINDING
+    from evo_agents.worker.cli.merge_check import MERGE_CHECK
+    from evo_agents.worker.cli.notify import NOTIFY
+    from evo_agents.worker.cli.ops import OPS
+    from evo_agents.worker.cli.output import OUTPUT
+    from evo_agents.worker.cli.plan import PLAN
+    from evo_agents.worker.cli.playbook import PLAYBOOK
+    from evo_agents.worker.cli.probe import PROBE
+    from evo_agents.worker.cli.propose import PROPOSE
+    from evo_agents.worker.cli.put import PUT
+    from evo_agents.worker.cli.repo import REPO
+    from evo_agents.worker.cli.step import STEP
+    from evo_agents.worker.cli.triage import TRIAGE
+    from evo_agents.worker.cli.wait import WAIT
+    from evo_agents.worker.cli.work import WORK
+
+    own = (STEP, ASK, WAIT, NOTIFY, FINDING, PROPOSE, PLAN, PUT)
+    runs_of = (CHAT, REPO, TRIAGE, PLAYBOOK, OUTPUT, BACKUP, PROBE, MERGE_CHECK)
+    return own + runs_of + (CURATOR, AGENT, ESCALATE, WORK, OPS)

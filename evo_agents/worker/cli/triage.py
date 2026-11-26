@@ -265,7 +265,7 @@ class TriageAskOwner(ChatCommand):
     )
 
     def run(self, ctx: AgentRunContext) -> Result:
-        from evo_agents.worker import agent_cli
+        from evo_agents.worker import run_decisions
         from evo_agents.worker.agent_input import decision_option
 
         args = ctx.args
@@ -277,7 +277,7 @@ class TriageAskOwner(ChatCommand):
             **({"context": _text(args.context)} if args.context else {}),
         }
         answer = ctx.in_chats("triage/ask-owner", body)
-        decision_id = agent_cli.note_decision(ctx.home, ctx.run_id, answer.get("decision_id"))
+        decision_id = run_decisions.note_decision(ctx.home, ctx.run_id, answer.get("decision_id"))
         said = (
             f"Asked the owner decision #{decision_id}; the Decision line is message #{answer['message_id']}. End your "
             "turn: the answer comes back in this session."

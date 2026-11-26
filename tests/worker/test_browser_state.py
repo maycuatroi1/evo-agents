@@ -110,14 +110,13 @@ def test_browser_state_command_writes_the_cookies_of_the_run_browser(home, monke
 
 
 def test_browser_login_command_notes_the_decision_for_the_daemon_and_a_step_run_just_ends(home, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_browser_run", lambda command: types.SimpleNamespace(home=home, run_id=RUN))
     replies = [
         {"outcome": "asked", "decision_id": 41, "identity_id": 3, "message": "open"},
         {"outcome": "failed", "decision_id": None, "identity_id": 3, "message": "the run fails: log the identity in"},
     ]
     sent = []
 
-    def with_hub(agent, work):
+    def with_hub(work):
         class Hub:
             async def browser_login(self, run_id, body):
                 sent.append((run_id, body))
@@ -125,9 +124,8 @@ def test_browser_login_command_notes_the_decision_for_the_daemon_and_a_step_run_
 
         return asyncio.run(work(Hub()))
 
-    import evo_agents.worker.agent_cli as worker_cli
-
-    monkeypatch.setattr(worker_cli, "with_hub", with_hub)
+    run = types.SimpleNamespace(home=home, run_id=RUN, with_hub=with_hub)
+    monkeypatch.setattr(cli, "_browser_run", lambda command: run)
     args = types.SimpleNamespace(
         identity="northwind-admin", url="https://northwind.example/login", reason="  it  expired "
     )

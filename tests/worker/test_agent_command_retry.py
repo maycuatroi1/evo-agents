@@ -15,9 +15,8 @@ pytest.importorskip("aiohttp")
 
 from evo_agents.hub.client import HubError  # noqa: E402
 from evo_agents.worker.cli import base  # noqa: E402
+from evo_agents.worker.cli.agent import FORWARD_ROUTE  # noqa: E402
 from evo_agents.worker.home import WorkerConfig  # noqa: E402
-
-FORWARD_ROUTE = "agent/forwards"  # what `worker agent forward` posts to
 
 
 class Deploying:
