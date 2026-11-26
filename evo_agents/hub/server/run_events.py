@@ -62,13 +62,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.blobs import GET_TTL
 from evo_agents.hub.server import attachment_store, audit, tool_stats
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_account_mask import masked, run_values
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
 from evo_agents.hub.server.chat_store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.listen import Listener
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.run_state import EVENTS_CHANNEL, next_seq, notify_events
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, REFUSALS, RunId
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment, AttachmentIds, as_event
@@ -546,7 +546,7 @@ async def list_events(
     after: Annotated[int, Query(ge=0, le=MAX_SEQ, description="the seq of the last event the caller has")] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_EVENTS_PAGE)] = 500,
     kind: Annotated[list[Literal[runs.EVENT_KINDS]], Query(description="only these kinds; repeat it")] = [],  # noqa: B006
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> RunEvents:
     """The run's events after ``after``, in seq order."""
     query = _events_after(run_id, after, list(dict.fromkeys(kind)), limit + 1)
@@ -563,7 +563,7 @@ async def _streamed_run(
     project: ProjectName,
     run_id: RunId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> int:
     """The run a stream follows, checked before the stream starts so a refusal is an ordinary error answer."""
     async with request.app.state.engine.begin() as conn:
@@ -713,7 +713,7 @@ async def diff(
     run_id: RunId,
     user: CurrentUser,
     download: Annotated[bool, Query(description="ask the store to answer as an attachment, run-<id>.diff")] = False,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> DiffLink:
     """A presigned GET of the diff the run's worker uploaded when the run ended."""
     store = blob_store(request)

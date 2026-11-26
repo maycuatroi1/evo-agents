@@ -1,18 +1,45 @@
-"""The request and answer bodies of the plan routes (``evo_agents.hub.server.plans``), which imports them back.
+"""The request and answer bodies of the plans of a project, a plan as the hub holds it (``Held``), the refusal of a
+write that says more than a message (``PlanError``), and the names and limits the routes share.
 
-Conflict and Written stay in ``plans``: the OpenAPI document names them by module there, so moving them would rename
-their schemas.
+``Conflict`` and ``Written`` are in the package itself (``evo_agents.hub.server.plans``): the OpenAPI document names
+them by their module, so they keep the name they have always had.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
+from fastapi import Path
 from pydantic import BaseModel, Field, field_validator
 
 from evo_agents.hub import runs
 from evo_agents.hub.plans import AREAS, PLAN_ID, SECTIONS, UPDATABLE
+
+PlanId = Annotated[str, Path(pattern=PLAN_ID)]
+SINK_HEADER = "X-Evo-Sink"
+REVISION_CONFLICT = "revision_conflict"
+PLAN_CREATE = "plan.create"
+PLAN_PUT = "plan.put"
+PLAN_PATCH = "plan.patch"
+PLAN_COMPLETE = "plan.complete"
+PLAN_ABANDON = "plan.abandon"
+PLAN_REOPEN = "plan.reopen"
+SHOWN_PROBLEMS = 5
+PROBLEMS_PATH = "problems"  # where in a plan its problems are, as a warning or a refusal names it
+NO_PROBLEMS = (
+    "the plan names no problem of the project it solves: add problems: [P-<number>], as `evo-agents hub problem list` "
+    "lists them"
+)
+
+
+class PlanError(Exception):
+    """A refusal with more than a message: problems as ``detail``, or the held plan with a revision conflict."""
+
+    def __init__(self, status: int, message: str, *, code=None, detail=None, current=None):
+        super().__init__(message)
+        self.status, self.message, self.code, self.detail, self.current = status, message, code, detail, current
 
 
 class Problem(BaseModel):
@@ -43,7 +70,7 @@ class PlanCurrentStep(PlanStepState):
 
 class PlanSummary(BaseModel):
     plan_id: str
-    area: Literal[AREAS]
+    area: Literal[AREAS]  # pyright: ignore[reportInvalidTypeForm]
     revision: int
     digest: str
     title: str | None
@@ -76,7 +103,7 @@ class PlanSummary(BaseModel):
 class Plan(BaseModel):
     project: str
     plan_id: str
-    area: Literal[AREAS]
+    area: Literal[AREAS]  # pyright: ignore[reportInvalidTypeForm]
     revision: int
     digest: str = Field(description="sha256 of the canonical JSON of the body, as evo_agents.harness.plan_digest")
     label: dict
@@ -86,9 +113,27 @@ class Plan(BaseModel):
     updated_by: str
 
 
+@dataclass(frozen=True)
+class Held:
+    """A plan as the hub holds it: its row of ``plans`` with the login of its last writer."""
+
+    plan_id: str
+    area: str
+    label: dict
+    body: dict
+    revision: int
+    digest: str
+    created_at: datetime
+    updated_at: datetime
+    updated_by: str
+
+    def view(self, project: str) -> dict:
+        return Plan(project=project, **vars(self)).model_dump(mode="json")
+
+
 class RevisionFields(BaseModel):
     revision: int
-    area: Literal[AREAS]
+    area: Literal[AREAS]  # pyright: ignore[reportInvalidTypeForm]
     digest: str
     summary: str
     actor: str
@@ -155,7 +200,7 @@ class PlanHandoff(BaseModel):
 
 class PlanPut(BaseModel):
     body: dict[str, Any] = Field(description="the plan as its YAML file reads; a hub key in it is ignored")
-    area: Literal[AREAS] | None = Field(None, description="where a new plan goes (default active); else its area")
+    area: Literal[AREAS] | None = Field(None, description="where a new plan goes (default active); else its area")  # pyright: ignore[reportInvalidTypeForm]
     if_revision: int | None = Field(
         None, ge=0, description="the revision being replaced; leave it out, or 0, to create the plan"
     )
@@ -170,7 +215,7 @@ class PlanPut(BaseModel):
 
 
 class PlanPatch(BaseModel):
-    section: Literal[SECTIONS]
+    section: Literal[SECTIONS]  # pyright: ignore[reportInvalidTypeForm]
     index: int | None = Field(None, ge=0, description="the item's position in the section")
     step: int | str | None = Field(None, description="for steps, the step's id (or order) instead of an index")
     updates: dict[str, str] = Field(min_length=1, max_length=len(UPDATABLE), description=", ".join(UPDATABLE))

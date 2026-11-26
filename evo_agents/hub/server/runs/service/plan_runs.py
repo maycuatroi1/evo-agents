@@ -15,9 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.harness import plan_body
 from evo_agents.hub import author, proofs, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.plans import PLAN_ID, PlanProblem, step_index
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.plans import Written
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import StepNotWritten, report_updates, run_step, write_event, write_step
 from evo_agents.hub.server.runs.models import NOT_HELD, AuthoredPlan, StepReport, StepWritten
@@ -81,11 +83,11 @@ async def _dispatcher_access(conn: AsyncConnection, row, user: Principal) -> Pro
     """The access to the run's project of the member who dispatched it, as whom the worker reads and writes the plan."""
     actor = Principal(row[6], row[7], False, user.token_id, MACHINE, "")
     access = await project_access(conn, actor, row[4])
-    plan_routes._reader(access)
+    plan_service.reader(access)
     return access
 
 
-async def run_plan(engine, user: Principal, run_id: int) -> plan_routes.Plan:
+async def run_plan(engine, user: Principal, run_id: int) -> plan_models.Plan:
     """The plan of a plan run or an author run the worker of ``user`` holds, as the hub holds it now, read as the
     member who dispatched the run; 404 for an author run that has written no plan yet and was dispatched on none."""
     async with engine.begin() as conn:
@@ -97,34 +99,34 @@ async def run_plan(engine, user: Principal, run_id: int) -> plan_routes.Plan:
                 f"`{author.PUT_COMMAND} FILE`",
             )
         access = await _dispatcher_access(conn, row, user)
-        held = await plan_routes._visible(conn, access, row[5], None)
+        held = await plan_service.visible(conn, access, row[5], None)
     return held.view(row[4])
 
 
-async def put_authored_plan(engine, user: Principal, run_id: int, payload: AuthoredPlan) -> plan_routes.Written:
+async def put_authored_plan(engine, user: Principal, run_id: int, payload: AuthoredPlan) -> Written:
     """Put the plan the author run ``run_id``, which the worker of ``user`` holds, wrote on the hub, as PUT
-    /v1/worker/runs/{id}/plan says; ``plan_routes.PlanError`` for a plan refused, which the route answers as PUT
+    /v1/worker/runs/{id}/plan says; ``plan_models.PlanError`` for a plan refused, which the route answers as PUT
     /v1/projects/{p}/plans/{id} answers it."""
     body = plan_body(payload.body)
     plan_id = body.get("id")
-    if not isinstance(plan_id, str) or not re.fullmatch(plan_routes.PLAN_ID, plan_id):
-        raise plan_routes.PlanError(
+    if not isinstance(plan_id, str) or not re.fullmatch(PLAN_ID, plan_id):
+        raise plan_models.PlanError(
             422,
             f"the plan's id is {plan_id!r}: a plan has an id of lowercase letters, digits and -, at most 100 "
             "characters, and is stored under it; nothing was written",
         )
-    plan_routes._schema_checked(body, plan_id)
+    plan_service.schema_checked(body, plan_id)
     async with engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("author",))
         project = row.name
         if row.plan_id is not None and row.plan_id != plan_id:
-            raise plan_routes.PlanError(
+            raise plan_models.PlanError(
                 422,
                 f"author run {run_id} writes plan {row.plan_id}, not {plan_id}: a plan keeps its id, and an author "
                 "run writes one plan; nothing was written",
             )
         if row.plan_id is None and payload.if_revision:
-            raise plan_routes.PlanError(
+            raise plan_models.PlanError(
                 422,
                 f"author run {run_id} writes a new plan, so it replaces none: leave out --if-revision and give "
                 f"the plan an id no plan of project {project} has; nothing was written",
@@ -147,10 +149,10 @@ async def put_authored_plan(engine, user: Principal, run_id: int, payload: Autho
         def unchanged_progress(held) -> None:
             problem = author.progress_problem(None if held is None else held.body, body)
             if problem:
-                raise plan_routes.PlanError(422, f"plan {plan_id}: {problem}; nothing was written")
+                raise plan_models.PlanError(422, f"plan {plan_id}: {problem}; nothing was written")
 
         actor = Principal(row.dispatched_by, row.login, False, user.token_id, MACHINE, "")
-        written = await plan_routes.write_plan(
+        written = await plan_service.write_plan(
             conn,
             access,
             actor,

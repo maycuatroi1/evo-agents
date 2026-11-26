@@ -39,9 +39,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, probes, runs, tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import usage_cost
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
@@ -325,7 +325,7 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
             continue
         held = None
         if probe.plan_id is not None:  # a plugin's probe has no plan
-            held = await plan_routes._held(conn, gate.access, probe.plan_id)
+            held = await plan_service.held(conn, gate.access, probe.plan_id)
             if held is None:
                 continue
         budget = {**gate.budget, "max_usd": round(left, 4)}

@@ -8,9 +8,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, Request
 
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.runs.models import REFUSALS, ReadySteps, RunId
 from evo_agents.hub.server.runs.service.candidates import RerunCandidates, rerun_candidates
 from evo_agents.hub.server.runs.service.views import step_readiness
@@ -27,9 +27,9 @@ router = APIRouter()
 async def ready_steps(
     request: Request,
     project: ProjectName,
-    plan_id: plan_routes.PlanId,
+    plan_id: plan_models.PlanId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ReadySteps:
     """Every step of the plan with whether it may be dispatched now, and why not."""
     return await step_readiness(request.app.state.engine, user, project, plan_id, sink)

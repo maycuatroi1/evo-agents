@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from evo_agents.hub import author, runs, system_spec
 from evo_agents.hub.credentials import DispatchedVia
 from evo_agents.hub.plans import PLAN_ID
-from evo_agents.hub.server.plan_models import PlanTrace
+from evo_agents.hub.server.plans.models import PlanTrace
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.limits import (
     ACCOUNT_HELP,

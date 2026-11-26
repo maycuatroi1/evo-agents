@@ -16,13 +16,15 @@ from sqlalchemy import and_, case, false, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
+from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.server import decision_channels, waiting_on
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.decision_models import Decision, DecisionList, DecisionOption, WakeOn
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.member_channels import effective_label
 from evo_agents.hub.server.output_views import by_decision as outputs_by_decision
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
@@ -196,7 +198,7 @@ async def readable_decision(
     without, 403 for a hub admin without one) and the decision's run readable to it (404 otherwise, as for none): its
     plan visible, or for an author run that has put no plan, the project's runs on no plan (``views.readable_run``)."""
     access = await project_access(conn, user, project)
-    plan_routes._reader(access)
+    plan_service.reader(access)
     d, r = tables.decisions, tables.runs
     query = (
         select(func.coalesce(d.c.plan_id, r.c.plan_id), r.c.kind, r.c.dispatched_by)
@@ -229,10 +231,10 @@ async def list_decisions(
         Query(description="any of these states; repeat it"),
     ] = [],  # noqa: B006
     run_id: Annotated[int | None, Query(ge=1, le=MAX_ID)] = None,
-    plan_id: Annotated[str | None, Query(pattern=plan_routes.PLAN_ID)] = None,
+    plan_id: Annotated[str | None, Query(pattern=PLAN_ID)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> DecisionList:
     """The project's decisions, newest first, of the runs the caller may read."""
     d, r = tables.decisions, tables.runs
@@ -258,7 +260,7 @@ async def show_decision(
     project: ProjectName,
     decision_id: DecisionId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> Decision:
     async with request.app.state.engine.begin() as conn:
         access = await readable_decision(conn, user, project, decision_id, sink)

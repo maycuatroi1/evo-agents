@@ -76,7 +76,8 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server import browser_holds, reaped_usage
-from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import MACHINE, Principal
 
@@ -469,7 +470,7 @@ def report_updates(found: RunStep, status: str, summary: str | None) -> dict:
 
 async def read_plan(conn, access, plan_id: str):
     """The plan as held, without a lock: the revision the write is made against."""
-    return await plan_routes._held(conn, access, plan_id)
+    return await plan_service.held(conn, access, plan_id)
 
 
 class _Skipped(Exception):
@@ -508,7 +509,7 @@ async def _patched_step(conn: AsyncConnection, access, actor: Principal, found: 
             # A savepoint per try: a conflict rolls it back, which frees the plan's row for the other
             # writer until the next try reads the plan again.
             async with conn.begin_nested():
-                stored, changed, _ = await plan_routes.apply_patch(
+                stored, changed, _ = await plan_service.apply_patch(
                     conn,
                     access,
                     actor,
@@ -519,8 +520,8 @@ async def _patched_step(conn: AsyncConnection, access, actor: Principal, found: 
                     step=found.step_key,
                     hub=True,
                 )
-        except plan_routes.PlanError as exc:
-            if exc.code != plan_routes.REVISION_CONFLICT or attempt == PLAN_TRIES:
+        except plan_models.PlanError as exc:
+            if exc.code != plan_models.REVISION_CONFLICT or attempt == PLAN_TRIES:
                 raise
             log.info("plan revision conflict on a run's step; trying again", extra={**where, "try": attempt})
             continue
@@ -550,7 +551,7 @@ async def write_step(
             raise
         log.warning("run step not written to the plan", extra={**where, "status": exc.status_code, "why": exc.detail})
         return None
-    except plan_routes.PlanError as exc:
+    except plan_models.PlanError as exc:
         log.warning("run step not written to the plan", extra={**where, "status": exc.status, "why": exc.message})
         refused = StepNotWritten(exc.status, exc.message)
     except PlanProblem as exc:

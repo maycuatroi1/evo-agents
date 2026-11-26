@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import system_traces
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import ActiveRun, PlanTrace, ReadySteps, Run, SteadyWait, StepReadiness
 from evo_agents.hub.server.runs.models.spend import run_spend_view
@@ -299,8 +299,8 @@ async def step_readiness(engine, user: Principal, project: str, plan_id: str, si
     """Every step of the plan with whether it may be dispatched now, and why not."""
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
-        plan_routes._reader(access)
-        held = await plan_routes._visible(conn, access, plan_id, sink)
+        plan_service.reader(access)
+        held = await plan_service.visible(conn, access, plan_id, sink)
         activity = await plan_activity(conn, access.project_id, plan_id)
     body = held.body
     steps = body.get("steps") if isinstance(body.get("steps"), list) else []
@@ -346,8 +346,8 @@ _PLANS_OF = select(tables.plans.c.plan_id, tables.plans.c.label).where(
 async def visible_plans(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> list[str]:
     """The plans of the project whose runs the caller may read: those it may read through ``sink`` (the project's
     hub sink when None), by the plan's label. A run of a plan no longer on the hub is shown to nobody."""
-    plan_routes._reader(access)
-    through = plan_routes._sink(access, sink)
+    plan_service.reader(access)
+    through = plan_service.read_sink(access, sink)
     rows = await conn.execute(_PLANS_OF, {"project_id": access.project_id})
     return [row.plan_id for row in rows if access.visible(row.label, through)]
 
@@ -382,7 +382,7 @@ async def readable_run(
     of a new plan. A local run is private to the member whose session it is: for anyone else it reads as no run. The
     agent of a run reads none of what ``agent_reads`` keeps from it."""
     access = await project_access(conn, user, project)
-    plan_routes._reader(access)
+    plan_service.reader(access)
     r = tables.runs
     found = select(r.c.plan_id, r.c.kind, r.c.dispatched_by).where(
         r.c.id == run_id, r.c.project_id == access.project_id
@@ -403,7 +403,7 @@ async def readable_run(
 
 def sees_unplanned(access: ProjectAccess, sink: str | None) -> bool:
     """Whether the caller reads the runs of the project on no plan: through ``sink``, the project's default label."""
-    return access.visible(access.rules.default_label, plan_routes._sink(access, sink))
+    return plan_service.sees(access, access.rules.default_label, sink)
 
 
 async def current_plan(conn: AsyncConnection, project_id: int, plan_id: str):

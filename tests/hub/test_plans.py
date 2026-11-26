@@ -1145,7 +1145,7 @@ def test_a_copy_writes_the_problems_of_a_plan_after_its_goal_and_validate_takes_
 
 @needs_pg
 def test_a_plan_names_problems_of_its_project_and_a_write_naming_none_warns(client, github, hub_db, tmp_path):
-    from evo_agents.hub.server.plan_problems import NO_PROBLEMS
+    from evo_agents.hub.server.plans.models import NO_PROBLEMS
 
     hubs = setup_project(client, github)
     alice = hubs["alice"]

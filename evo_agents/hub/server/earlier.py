@@ -33,9 +33,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import review, tables, tiers
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -311,7 +312,7 @@ async def earlier_view(
     """The findings ``user`` may read through ``sink``, with their status, and the proposals rejected lately."""
     access = await project_access(conn, user, project)
     need_reader(access)
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     lenses = [lens] if lens is not None else None
     found = await findings_of(conn, access, through, lenses=lenses, status=status, limit=limit)
     rejected = [item for item in await rejected_lately(conn, access, through, limit) if lens in (None, item.lens)]
@@ -326,7 +327,7 @@ async def show_earlier(
     lens: Annotated[Literal[tuple(review.LENSES)] | None, Query()] = None,
     status: Annotated[Literal[STATUSES] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 20,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> EarlierView:
     """What earlier review nights found, newest first, with what became of it, and the proposals rejected lately."""
     async with request.app.state.engine.begin() as conn:

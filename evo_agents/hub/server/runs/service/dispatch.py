@@ -31,8 +31,8 @@ from evo_agents.hub.server import (
     run_autonomy,
     worker_placement,
 )
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.org_store import ended_refusal
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.plugin_configs import check_run_layer
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -474,7 +474,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         access = await project_access(conn, user, project)
         check_dispatcher(access)
         await check_seat(conn, user)
-        held = await plan_routes._visible(conn, access, body.plan_id, None)
+        held = await plan_service.visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         picked = await _picked(conn, user, access, body)
         asked = Asked("step", body.runtime, body.model, None, _picks(picked))
@@ -591,7 +591,7 @@ async def queue_plan_run(conn: AsyncConnection, user: Principal, project: str, b
     access = await project_access(conn, user, project)
     check_dispatcher(access)
     await check_seat(conn, user)
-    held = await plan_routes._visible(conn, access, body.plan_id, None)
+    held = await plan_service.visible(conn, access, body.plan_id, None)
     await refuse_curator_plan(conn, access, body.plan_id)
     picked = await _picked(conn, user, access, body)
     await lock_plan(conn, access.project_id, body.plan_id)
@@ -711,7 +711,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         chosen = await choose(conn, user, access, body.profile, asked)
         revision = None
         if body.plan_id is not None:
-            held = await plan_routes._visible(conn, access, body.plan_id, None)
+            held = await plan_service.visible(conn, access, body.plan_id, None)
             from evo_agents.hub.server.change_views import refuse_manual_dispatch  # it queues runs through this package
 
             await refuse_manual_dispatch(conn, access.project_id, body.plan_id)

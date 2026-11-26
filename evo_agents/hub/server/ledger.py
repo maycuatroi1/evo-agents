@@ -33,9 +33,9 @@ from sqlalchemy import exists, insert, null, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ledger, review, tables
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser
@@ -556,7 +556,7 @@ async def show_ledger(
     project: ProjectName,
     proposal_id: ItemId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> Ledger:
     """The ledger of a proposal: what happened to it, line by line, oldest first."""
     from evo_agents.hub.server.proposal_reads import readable_proposal  # it writes lines through this module

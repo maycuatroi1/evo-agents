@@ -5,8 +5,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import REFUSALS as PLAN_REFUSALS
+from evo_agents.hub.server.plans import Written
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.runs.models import REFUSALS, AuthoredPlan, RunId, StepKey, StepReport, StepWritten
 from evo_agents.hub.server.runs.service.plan_runs import put_authored_plan, run_plan, write_step_report
 from evo_agents.hub.server.security import CurrentUser
@@ -14,14 +17,14 @@ from evo_agents.hub.server.security import CurrentUser
 router = APIRouter()
 
 
-@router.get("/runs/{run_id}/plan", response_model=plan_routes.Plan, responses=REFUSALS)
+@router.get("/runs/{run_id}/plan", response_model=plan_models.Plan, responses=REFUSALS)
 async def read_run_plan(request: Request, run_id: RunId, user: CurrentUser):
     """The plan of a plan run or an author run this worker holds, as the hub holds it now, read as the member who
     dispatched the run; 404 for an author run that has written no plan yet and was dispatched on none."""
     return await run_plan(request.app.state.engine, user, run_id)
 
 
-@router.put("/runs/{run_id}/plan", response_model=plan_routes.Written, responses=plan_routes.REFUSALS)
+@router.put("/runs/{run_id}/plan", response_model=Written, responses=PLAN_REFUSALS)
 async def put_run_plan(request: Request, run_id: RunId, payload: AuthoredPlan, user: CurrentUser):
     """Put the plan an author run this worker holds wrote on the hub: in the run's project, as the member who
     dispatched the run, whose writer role is checked again now, with the checks of PUT /v1/projects/{p}/plans/{id}
@@ -30,8 +33,8 @@ async def put_run_plan(request: Request, run_id: RunId, payload: AuthoredPlan, u
     changes its progress (422, ``author.progress_problem``)."""
     try:
         return await put_authored_plan(request.app.state.engine, user, run_id, payload)
-    except plan_routes.PlanError as exc:
-        return plan_routes._refusal(request, exc)
+    except plan_models.PlanError as exc:
+        return plan_service.refusal(request, exc)
 
 
 @router.post(

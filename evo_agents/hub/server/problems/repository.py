@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import problems, tables
 from evo_agents.hub.server.base.revisions import RevisionedStore
-from evo_agents.hub.server.plan_listing import step_counts
+from evo_agents.hub.server.plans.repository import step_counts
 
 
 def _select():

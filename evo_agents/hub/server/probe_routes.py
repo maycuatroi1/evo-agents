@@ -33,11 +33,12 @@ from evo_agents.hub import probes as probe_shape
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, probe_fixes, probe_runs, probes
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator import charter_row
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memory_audience import Reader, label_reaches
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probe_report import local_today
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import ItemId
@@ -65,7 +66,8 @@ def _admin(access: ProjectAccess, what: str) -> None:
 
 
 async def _readable(conn: AsyncConnection, access: ProjectAccess, user: Principal, row, sink: str | None) -> bool:
-    return await label_reaches(Reader(conn, user), access, row.label, plan_routes._sink(access, sink))
+    through = plan_service.read_sink(access, sink)
+    return await label_reaches(Reader(conn, user), access, row.label, through)  # pyright: ignore[reportArgumentType]
 
 
 async def _probe_row(
@@ -135,7 +137,7 @@ async def list_probes(
         Literal[probe_shape.STATES] | None, Query(description="active or retired; both by default")
     ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> probes.ProbeList:
     """The project's probes the caller may read, newest first."""
     pr = tables.curator_probes
@@ -162,7 +164,7 @@ async def show_probe(
     project: ProjectName,
     probe_id: ItemId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> probes.Probe:
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)

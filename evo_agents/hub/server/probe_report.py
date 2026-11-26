@@ -42,7 +42,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, probes, runs, tables
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probe_fixes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator import charter_row
@@ -51,6 +50,8 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memory_audience import Reader, label_reaches
 from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probe_runs import probe_models
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
@@ -248,7 +249,7 @@ class _Reach:
     """Whether a label reaches the caller through the sink of the read, each label read once."""
 
     def __init__(self, conn: AsyncConnection, access: ProjectAccess, user: Principal, sink: str | None):
-        self.reader, self.access, self.through = Reader(conn, user), access, plan_routes._sink(access, sink)
+        self.reader, self.access, self.through = Reader(conn, user), access, plan_service.read_sink(access, sink)
         self.seen: dict[str, bool] = {}
 
     async def __call__(self, label) -> bool:
@@ -486,7 +487,7 @@ async def probe_report(
     week: Annotated[
         date | None, Query(description="a day of the newest week to show; default today, in the charter's time zone")
     ] = None,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ProbeWeekly:
     """The weekly report of the project's probes."""
     async with request.app.state.engine.begin() as conn:

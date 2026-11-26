@@ -55,6 +55,10 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `hub-goals-layers` | in `evo_agents.hub.server.goals`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
 | `hub-problems-layers` | in `evo_agents.hub.server.problems`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
 | `hub-opportunities-layers` | in `evo_agents.hub.server.opportunities`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-plans-layers` | in `evo_agents.hub.server.plans`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-plan-run-choice-layers` | in `evo_agents.hub.server.plan_run_choice`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-plan-systems-layers` | in `evo_agents.hub.server.plan_systems`, `routes` imports `service`, `service` imports `repository`, never the reverse; every module of the package is in one of the three | none |
+| `hub-proposal-plans-layers` | in `evo_agents.hub.server.proposal_plans`, `routes` imports `service`, `service` imports `repository`, never the reverse; every module of the package is in one of the three | none |
 
 Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `plugins`, `schema`. import-linter reads imports inside
 functions too, so a lazy import does not get around a contract. To fix a broken one, move the shared code down into

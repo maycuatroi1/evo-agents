@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, system_context, system_spec, tables, wake
 from evo_agents.hub.server import system_store
-from evo_agents.hub.server.plan_models import PlanTrace
+from evo_agents.hub.server.plans.models import PlanTrace
 from evo_agents.kg.sessions import READ_META
 
 log = logging.getLogger(__name__)

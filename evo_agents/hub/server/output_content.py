@@ -37,7 +37,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import outputs, tables
 from evo_agents.hub.blobs import GET_TTL, BlobStoreUnavailable
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.chat_access import chat_access, label_reader
@@ -45,13 +44,14 @@ from evo_agents.hub.server.chat_members import ChatId
 from evo_agents.hub.server.decision_reads import readable_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.output_views import columns
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.runs.models import MAX_ID, RunId
 from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser
 
 OutputId = Annotated[int, Path(ge=1, le=MAX_ID)]
 DecisionId = Annotated[int, Path(ge=1, le=MAX_ID)]
-Sink = Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)]
+Sink = Annotated[str | None, Header(alias=plan_models.SINK_HEADER)]
 Download = Annotated[bool, Query(description="answer it as an attachment, which a browser saves")]
 RangeHeader = Annotated[str | None, Header(alias="Range", description="one byte range, bytes=first-last")]
 IfNoneMatch = Annotated[str | None, Header(description="the ETag of the bytes the browser holds")]

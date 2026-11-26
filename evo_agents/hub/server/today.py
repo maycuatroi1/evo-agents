@@ -56,7 +56,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, problems, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.decision_reads import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.loop.view import measure
@@ -72,6 +71,7 @@ from evo_agents.hub.server.overview import (
     scope,
     shown_run,
 )
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.release_cycles import releases_link
 from evo_agents.hub.server.review_inbox import proposal_link
@@ -588,7 +588,7 @@ async def _proposals(conn: AsyncConnection, accesses: list[ProjectAccess], bound
     found = []
     for row in (await conn.execute(query, {"since": bound["since"], "now": bound["now"]})).all():
         access = admins[row.project_id]
-        if not access.visible(row.label, plan_routes._sink(access, None)):
+        if not plan_service.sees(access, row.label, None):
             continue
         evidence = _count(row.evidence_count, "piece") + " of evidence"
         item = TodayItem(

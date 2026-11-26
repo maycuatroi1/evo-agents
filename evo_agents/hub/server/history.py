@@ -59,9 +59,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, excerpts, facet_job, history, runs, tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
@@ -810,7 +811,7 @@ async def reader_access(conn: AsyncConnection, user: Principal, project: str, si
     history_clusters read the clusters through it."""
     access = await project_access(conn, user, project)
     need_reader(access)
-    if not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
+    if not plan_service.sees(access, access.rules.default_label, sink):
         raise HTTPException(404, f"project {project} has no history of the Curator you may read through this sink")
     return access
 
@@ -838,7 +839,7 @@ async def history_status(
     request: Request,
     project: ProjectName,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> HistoryStatus:
     """Where the project's history run stands: its cap and model, the facets of the model, its latest runs."""
     async with request.app.state.engine.begin() as conn:
@@ -870,7 +871,7 @@ async def list_clusters(
     request: Request,
     project: ProjectName,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> FacetClusterList:
     """The clusters of the project's facets of MIN_CLUSTER_SESSIONS sessions or more, as the hub last counted them."""

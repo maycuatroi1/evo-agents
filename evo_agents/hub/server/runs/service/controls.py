@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import audit, run_access
-from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_retry import next_attempt
@@ -68,7 +68,7 @@ async def controlled_run(conn: AsyncConnection, user: Principal, project: str, r
 async def _locked_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, action: str):
     """(access, row) of ``owned_run`` for any run of ``project`` ``user`` can see; 409 for a local run."""
     access = await project_access(conn, user, project)
-    plan_routes._reader(access)
+    plan_service.reader(access)
     r, u = tables.runs, tables.users
     query = (
         select(
@@ -281,7 +281,7 @@ async def rerun_in(
         raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
     runtime_now = runtime or asked_runtime
     model = None if runtime else model
-    held = await plan_routes._visible(conn, access, plan_id, None)
+    held = await plan_service.visible(conn, access, plan_id, None)
     await refuse_curator_plan(conn, access, plan_id)
     placed = await _rerun_placement(conn, run_id)
     picked = await rerun_picks(conn, user, access, run_id, body, None, placed["selector"])
@@ -342,7 +342,7 @@ async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, ru
     access, row = await owned_run(conn, user, project, run_id, "rerun")
     check_dispatcher(access)
     await check_seat(conn, user, "running a run again")
-    held = await plan_routes._visible(conn, access, row.plan_id, None)
+    held = await plan_service.visible(conn, access, row.plan_id, None)
     await refuse_curator_plan(conn, access, row.plan_id)
     await lock_plan(conn, access.project_id, row.plan_id)
     activity = await plan_activity(conn, access.project_id, row.plan_id)

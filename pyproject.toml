@@ -333,6 +333,64 @@ the models. Other modules import the service and the models, never the routes. A
 one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-plans-layers"
+name = "The plans of a project go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.plans"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.plans a route handler only passes the request's parts and the app's engine to a public \
+function of the service, which opens the transaction, checks the caller (PlanScope) and decides; the repository \
+(PlanStore) reads and writes the tables; the models import none of them. Move the code that reaches up into the \
+layer that needs it: a check or a message into the service, a query into the repository, a shape or a limit into \
+the models. Other modules import the service and the models; the app, the MCP tools and the plugin bridge alone \
+import the routes, whose handlers they call. A new module of the package goes into one of the four layers. See \
+docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-plan-run-choice-layers"
+name = "A member's choice in the Run plan dialog goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.plan_run_choice"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.plan_run_choice a route handler only passes the request's parts and the app's engine to a \
+public function of the service, which checks the caller and the choice; the repository (ChoiceStore) reads and \
+writes plan_run_choices; the models import none of them. Move the code that reaches up into the layer that needs it. \
+Other modules import the service and the models, never the routes. A new module of the package goes into one of the \
+four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-plan-systems-layers"
+name = "A plan handed to a system goes from its routes to its service to its repository, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.plan_systems"]
+layers = ["routes", "service", "repository"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.plan_systems a route handler only passes the request's parts and the app's engine to a \
+public function of the service, which checks the caller and the plan and hands it over; the repository \
+(DispatchStore) reads and writes the tables. Its shapes are the run API's (evo_agents.hub.server.runs.models). Move \
+the code that reaches up into the layer that needs it. Other modules import the service, never the routes. A new \
+module of the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-proposal-plans-layers"
+name = "An accepted proposal as the Curator's plan goes from its routes to its service to its repository, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.proposal_plans"]
+layers = ["routes", "service", "repository"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.proposal_plans a route handler only passes the request's parts and the app's engine to a \
+public function of the service, which checks the caller (CuratorAdmins) and decides; the repository (ChangeStore) \
+reads and writes curator_changes. Its shapes are the changes' (evo_agents.hub.server.change_views). Move the code \
+that reaches up into the layer that needs it. Other modules import the service, never the routes. A new module of \
+the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

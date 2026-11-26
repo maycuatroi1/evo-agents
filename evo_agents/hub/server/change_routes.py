@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import findings, judge, runs, security_pass, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, change_repos, change_tiers
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.change_views import (
@@ -38,6 +37,7 @@ from evo_agents.hub.server.change_views import (
     with_repos,
 )
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.protection import (
     need_reader,
@@ -309,7 +309,7 @@ async def list_changes(request: Request, project: ProjectName, user: CurrentUser
         from evo_agents.hub.server.runs.service.views import visible_plans
 
         readable = set(await visible_plans(conn, access, None))
-        through = plan_routes._sink(access, None) or ""  # no hub sink: no sink lets it through
+        through = plan_service.read_sink(access, None) or ""  # no hub sink: no sink lets it through
         shown = [
             Change(**{key: value for key, value in row._mapping.items() if key != "proposal_label"})
             for row in rows
@@ -349,7 +349,7 @@ async def close_change(
 
         if (
             row is None
-            or not access.visible(row.proposal_label, plan_routes._sink(access, None) or "")
+            or not access.visible(row.proposal_label, plan_service.read_sink(access, None) or "")
             or (row.plan_id is not None and row.plan_id not in set(await visible_plans(conn, access, None)))
         ):
             raise HTTPException(404, f"no change #{change_id} of the Curator in project {access.name} you may read")

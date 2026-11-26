@@ -334,7 +334,8 @@ def note(want: Wanted, pull: Merged) -> str:
 async def mark(conn: AsyncConnection, want: Wanted, pull: Merged) -> bool:
     """Mark ``want``'s repo merged in its plan as the run's dispatcher, in a savepoint of the caller's transaction;
     whether the plan changed. A write the plan refuses is logged and skipped."""
-    from evo_agents.hub.server import plans as plan_routes
+    from evo_agents.hub.server.plans import service as plan_service
+    from evo_agents.hub.server.plans.models import PlanError
     from evo_agents.hub.server.projects import project_access
     from evo_agents.hub.server.security import MACHINE, Principal
 
@@ -346,7 +347,7 @@ async def mark(conn: AsyncConnection, want: Wanted, pull: Merged) -> bool:
             if not has_role(access.role, "writer"):
                 log.warning("a merged repo not marked in its plan: the dispatcher is no writer", extra=where)
                 return False
-            held = await plan_routes._held(conn, access, want.plan_id)
+            held = await plan_service.held(conn, access, want.plan_id)
             if held is None:
                 return False
             entries = held.body.get("repos") if isinstance(held.body.get("repos"), list) else []
@@ -358,13 +359,13 @@ async def mark(conn: AsyncConnection, want: Wanted, pull: Merged) -> bool:
                 return False
             updates = {"status": MERGED, "merged_at": pull.merged_at.astimezone(UTC).date().isoformat()}
             updates["note"] = note(want, pull)
-            _, changed, _ = await plan_routes.apply_patch(
+            _, changed, _ = await plan_service.apply_patch(
                 conn, access, actor, want.plan_id, "repos", updates, if_revision=held.revision, index=index
             )
     except HTTPException as exc:
         log.warning("a merged repo not marked in its plan", extra={**where, "status": exc.status_code})
         return False
-    except plan_routes.PlanError as exc:
+    except PlanError as exc:
         log.warning("a merged repo not marked in its plan", extra={**where, "status": exc.status, "why": exc.message})
         return False
     except PlanProblem as exc:

@@ -80,7 +80,6 @@ from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import agent_placement, audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator_models import (
     BriefSummary,
@@ -98,6 +97,7 @@ from evo_agents.hub.server.curator_models import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, night_figures, usage_cost
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.shift_hours import cancel_queued
@@ -394,7 +394,7 @@ async def open_proposals(conn: AsyncConnection, accesses: list[ProjectAccess]) -
     counted: Counter[int] = Counter()
     for project_id, label in (await conn.execute(_OPEN_PROPOSAL_LABELS, {"projects": list(by_id)})).all():
         access = by_id[project_id]
-        if access.visible(label, plan_routes._sink(access, None)):
+        if plan_service.sees(access, label, None):
             counted[project_id] += 1
     return dict(counted)
 

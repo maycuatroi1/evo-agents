@@ -30,9 +30,10 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_eval_starter import ANSWER_KEYS, QUESTION_KEYS, set_digest
 from evo_agents.hub.kg_eval_starter import clean as _clean
 from evo_agents.hub.server import audit, kg_run_access
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg.evaluate import ALL_TYPES, HOLDOUT, QuestionError, QuestionSet, parse_set, split_of
@@ -177,7 +178,7 @@ async def get_eval_set(
     version: Annotated[int | None, Query(ge=1, description="this version, not the latest")] = None,
     split: Annotated[Literal["all", "tune", "holdout"], Query(description="only this part of the set")] = ALL_TYPES,
     answers: Annotated[bool, Query(description="false: no question carries its answers")] = True,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> EvalSetView:
     """The project's retrieval question set, or one part of it; holdout questions come without their answers."""
     async with request.app.state.engine.begin() as conn:
@@ -185,7 +186,7 @@ async def get_eval_set(
         if access.role is None:
             raise HTTPException(403, f"reading the question set of project {access.name} needs a grant on it")
         if not access.visible(
-            access.rules.default_label, plan_routes._sink(access, kg_run_access.sink(user, sink)) or ""
+            access.rules.default_label, plan_service.read_sink(access, kg_run_access.sink(user, sink)) or ""
         ):
             raise HTTPException(404, f"project {project} has no question set you can read")
         row = await latest_row(conn, access.project_id, version)

@@ -18,11 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, hub_settings
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.curator import NIGHT_SHIFT, zone_sql
 from evo_agents.hub.server.infra_breaker import infra_of
 from evo_agents.hub.server.night_cost import next_run_budget, night_figures
 from evo_agents.hub.server.night_duty import Duty, idle_nodes, on_duty
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run, plan_run_repos
@@ -88,7 +88,7 @@ async def _next_plan(conn: AsyncConnection, access: ProjectAccess, charter: dict
     runtime = charter["builder"]["runtime"]
     skipped = []
     for plan_id in charter["night_plans"]:
-        held, through = await plan_routes._held(conn, access, plan_id), plan_routes._sink(access, None)
+        held, through = await plan_service.held(conn, access, plan_id), plan_service.read_sink(access, None)
         if held is None or through is None or not access.visible(held.label, through):
             skipped.append(f"{plan_id}: not on the hub")
             continue

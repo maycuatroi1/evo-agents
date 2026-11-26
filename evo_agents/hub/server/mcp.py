@@ -83,7 +83,6 @@ from evo_agents.hub.server import (
     local_runs,
     memories,
     opportunity_mcp,
-    plans,
     plugin_tools,
     probe_report,
     problem_evidence,
@@ -112,6 +111,7 @@ from evo_agents.hub.server.mcp_text import (
     problem_line,
     problem_lines,
 )
+from evo_agents.hub.server.plans import routes as plans
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (

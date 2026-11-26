@@ -47,13 +47,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import excerpts, facet_job, history, history_index, review, tables
 from evo_agents.hub import transcripts as local
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import rankers
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.digests import SessionId
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.history import cluster_rows
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.runs.service.views import agent_reads, agent_reads_chats, sees_unplanned, visible_plans
@@ -309,7 +310,7 @@ async def list_history(
     offset: int = 0,
 ) -> HistorySessions:
     """The sessions and runs of the project ``user`` may read that match (see the module)."""
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     runs_read = await run_reader(conn, user, access, sink)
     into = {row.key: row.merged_into for row in await cluster_rows(conn, access.project_id)}
     query = _facet_rows(access.project_id, kind, _day(since), _day(until), login, runtime)
@@ -345,7 +346,7 @@ async def history_sessions(
     cluster: Annotated[str | None, Query(pattern=history.KEY.pattern, description="a cluster's key")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 20,
     offset: Annotated[int, Query(ge=0, le=SCAN_ROWS)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> HistorySessions:
     """The sessions and runs of the project's whole history, the latest first, with the numbers of their facets."""
     async with request.app.state.engine.begin() as conn:
@@ -653,7 +654,7 @@ async def search_history(
     asked = [source for source in SOURCES if source in (sources or (SOURCES if chats else AGENT_SOURCES))]
     query = history_index.tsquery(text)
     start, end = _day(since), _day(until)
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     hits: list[HistoryHit] = []
     if "transcript" in asked:
         hits += await _transcript_hits(conn, access, through, query, start, end, login, runtime)
@@ -691,7 +692,7 @@ async def history_search(
     runtime: Annotated[Literal[local.RUNTIMES] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_SEARCH)] = 20,
     offset: Annotated[int, Query(ge=0, le=1000)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> HistorySearch:
     """The words of the query in the project's transcripts, run logs and group chats, best first."""
     async with request.app.state.engine.begin() as conn:
@@ -756,7 +757,7 @@ async def transcript_lines(
                 .where(t.c.project_id == access.project_id, t.c.session_id == session_id, t.c.file == file)
             )
         ).one_or_none()
-        through = plan_routes._sink(access, sink)
+        through = plan_service.read_sink(access, sink)
         if row is None or row.deleted_at is not None or through is None or not access.visible(row.label, through):
             raise HTTPException(404, f"project {project} has no transcript {file} of session {session_id} you may read")
         if line > row.lines:
@@ -803,7 +804,7 @@ async def show_lines(
     file: FileKey = local.MAIN,
     before: Annotated[int, Query(ge=0, le=MAX_AROUND)] = 10,
     after: Annotated[int, Query(ge=0, le=MAX_AROUND)] = 10,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> TranscriptLines:
     """The lines of a transcript around ``line``, each as its entries."""
     return await transcript_lines(

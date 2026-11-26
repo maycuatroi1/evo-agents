@@ -54,12 +54,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server import agent_placement, probe_report, today_digest
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.curator import curator_state, night_figures
 from evo_agents.hub.server.curator_shift import due_schedules, owner_access
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.notifications import notify, one_line
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess
 
 log = logging.getLogger(__name__)
@@ -240,7 +240,7 @@ async def _planned(conn: AsyncConnection, access: ProjectAccess) -> tuple[int, l
         .where(c.c.project_id == access.project_id, or_(c.c.state == "planned", no_plan))
         .order_by(c.c.id)
     )
-    through = plan_routes._sink(access, None)
+    through = plan_service.read_sink(access, None)
     readable = [row for row in (await conn.execute(query)).all() if access.visible(row.label, through)]
     listed = [
         {
@@ -312,7 +312,7 @@ async def _proposals(conn: AsyncConnection, access: ProjectAccess) -> tuple[int,
         .where(p.c.project_id == access.project_id, p.c.state == "open")
         .order_by(p.c.evidence_count.desc(), p.c.id)
     )
-    through = plan_routes._sink(access, None)
+    through = plan_service.read_sink(access, None)
     readable = [row for row in (await conn.execute(query)).all() if access.visible(row.label, through)]
     listed = [
         {"id": row.id, "tier": row.tier, "title": row.title, "evidence": row.evidence_count}
