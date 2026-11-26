@@ -39,9 +39,10 @@ from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.accounts import FIVE_HOUR, SEVEN_DAY, used_now, window_of
 from evo_agents.hub.model_router import NATIVE_RUNTIME, Choice, Quota, Rating
 from evo_agents.hub.plans import CLOSED_STEP_STATUSES, PlanProblem, step_index, step_key
-from evo_agents.hub.server import gateway_accounts, system_traces
+from evo_agents.hub.server import gateway_accounts
 from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
 from evo_agents.hub.server.runs.service.views import current_plan
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 MAX_RATED_CHARS = 20_000  # of a request or a chat message the rules read
 USED_UP = Quota(weekly_left=0.0, five_hour_used=1.0, known=True)  # every account of the subscription paused or cooling

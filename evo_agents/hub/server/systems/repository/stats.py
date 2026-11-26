@@ -18,7 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context, tables
-from evo_agents.hub.server import system_store, system_traces
+from evo_agents.hub.server.systems.models.traces import RESUME
+from evo_agents.hub.server.systems.repository import store as system_store
 
 
 async def tree_usage(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, tuple[int, float, int | None]]:
@@ -75,9 +76,7 @@ async def _crossings(
 ) -> dict[int, list[tuple[str | None, str | None, bool, bool]]]:
     """{trace: [(from, to, off design as stored, refused)]} of the attempts to cross an edge."""
     s = tables.system_spans
-    handed = (
-        (s.c.name == system_context.INVOKE) & s.c.from_node.is_not(None) & ~s.c.attributes.has_key(system_traces.RESUME)
-    )
+    handed = (s.c.name == system_context.INVOKE) & s.c.from_node.is_not(None) & ~s.c.attributes.has_key(RESUME)
     refused = (
         (s.c.name == system_context.TOOL)
         & s.c.tool.in_((system_context.TOOL_ASK, system_context.TOOL_MENTION))

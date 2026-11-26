@@ -1,5 +1,5 @@
 """The default system of a project and the ops of a system (plan hub-steward, criterion a11;
-``evo_agents.hub.server.system_ops``, ``system_seed``, the key ``ops`` and ``limits.ops_daily_usd`` of
+``evo_agents.hub.server.systems``, ``system_seed``, the key ``ops`` and ``limits.ops_daily_usd`` of
 ``evo_agents.hub.system_spec``).
 
 Without a database: a spec from before ``ops`` reads as ops off and is stored as it is; ``ops`` and ``ops_daily_usd``
@@ -112,7 +112,7 @@ def path(hub, tail: str) -> str:
 
 
 def seed_pass(client) -> int:
-    from evo_agents.hub.server.system_seed import seed_pass
+    from evo_agents.hub.server.systems.service.seed import seed_pass
 
     return client.portal.call(seed_pass, client.app.state.engine)
 

@@ -56,7 +56,6 @@ from evo_agents.hub.server import (
     audit,
     cross_labels,
     run_waits,
-    system_traces,
 )
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chats.models.agents import REFUSALS, Handle
@@ -72,6 +71,7 @@ from evo_agents.hub.server.projects import access_of
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 
 log = logging.getLogger(__name__)
@@ -300,7 +300,9 @@ async def ask_agent(
             },
         )
     if child is not None:
-        from evo_agents.hub.server import orchestrator  # it hands work through chat_runs, as this module does
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it hands work through chat_runs, as this module does
+        )
 
         await orchestrator.check_loop(conn, child)  # a question a session took in its inbox joined no trace again
     await work_chats.say(conn, run_id, (chat.chat_id, chat.root_id), shown, place, repeats=message_id)

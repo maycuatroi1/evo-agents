@@ -50,8 +50,6 @@ from evo_agents.hub.server import (
     agent_asks,
     kg,
     ops_actions,
-    orchestrator,
-    orchestrator_actions,
     work_cards,
     work_status_models,
 )
@@ -62,6 +60,9 @@ from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.models import Written
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
+from evo_agents.hub.server.orchestrator import models as orchestrator_models
+from evo_agents.hub.server.orchestrator.service import actions as orchestrator_actions
+from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.outputs.models import OutputIn
 from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.runs.service.plan_runs import held_row
@@ -336,7 +337,7 @@ async def agent_ask(turn: Turn, arguments: dict) -> str:
 
 async def escalate(turn: Turn, arguments: dict) -> str:
     fields = ("question", *system_context.BRIEF_FIELDS, "refs")
-    body = orchestrator.EscalateIn(**{key: arguments[key] for key in fields if arguments.get(key)})
+    body = orchestrator_models.EscalateIn(**{key: arguments[key] for key in fields if arguments.get(key)})
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
@@ -352,14 +353,14 @@ async def escalate(turn: Turn, arguments: dict) -> str:
 
 
 async def orchestrator_answer(turn: Turn, arguments: dict) -> str:
-    body = orchestrator_actions.OrchestratorAnswerIn(**arguments)
+    body = orchestrator_models.OrchestratorAnswerIn(**arguments)
     async with turn.engine.begin() as conn:
         acted = await orchestrator_actions.answer(conn, turn.sealer, await _agent_run(conn, turn), body)
     return f"answered (run #{acted.run_id}); Decision line #{acted.message_id}"
 
 
 async def orchestrator_reassign(turn: Turn, arguments: dict) -> str:
-    body = orchestrator_actions.OrchestratorReassignIn(
+    body = orchestrator_models.OrchestratorReassignIn(
         **{**arguments, "handle": str(arguments.get("handle") or "").lstrip("@")}
     )
     async with turn.engine.begin() as conn:
@@ -368,7 +369,7 @@ async def orchestrator_reassign(turn: Turn, arguments: dict) -> str:
 
 
 async def orchestrator_ask_owner(turn: Turn, arguments: dict) -> str:
-    body = orchestrator_actions.OrchestratorAskOwnerIn(**arguments)
+    body = orchestrator_models.OrchestratorAskOwnerIn(**arguments)
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))

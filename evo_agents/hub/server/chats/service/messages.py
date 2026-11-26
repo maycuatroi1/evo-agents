@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats
 from evo_agents.hub.credentials import dispatch_credential
-from evo_agents.hub.server import audit, direct_systems
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.attachments.service import messages as attachment_store
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.messages import NOT_IN_CHAT, NOT_IN_DIRECT, NOT_THERE, ChatMessageIn
@@ -47,6 +47,7 @@ from evo_agents.hub.server.chats.service.progress import by_message, chat_progre
 from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
 from evo_agents.hub.server.chats.service.views import messages_view
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import direct as direct_systems
 from evo_agents.hub.server.work_chats import service as work_chats
 
 

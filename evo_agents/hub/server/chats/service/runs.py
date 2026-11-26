@@ -49,8 +49,6 @@ from evo_agents.hub.server import (
     pool_accounts,
     run_access_rules,
     run_autonomy,
-    system_store,
-    system_traces,
 )
 from evo_agents.hub.server.attachments import repository as attachment_store
 from evo_agents.hub.server.chats.models.access import ChatAccess
@@ -73,6 +71,8 @@ from evo_agents.hub.server.runs.models.attachment_parts import as_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.priority import ahead
 from evo_agents.hub.server.runs.service.worker_fit import NO_FREE_SLOT, worker_problems
+from evo_agents.hub.server.systems.repository import store as system_store
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 log = logging.getLogger(__name__)
 
@@ -642,7 +642,9 @@ async def _moved(conn: AsyncConnection, run_id: int, new: str, old: str | None) 
     if new == "failed" and profile is not None:  # failed is a terminal state: profile is read
         why = found.error or "its worker gave no reason"
         await hub_reply(conn, found.chat_id, found.root_id, f"Run #{run_id} of @{profile.handle} failed: {why}")
-        from evo_agents.hub.server.orchestrator import on_turn_failed  # it hands work through this module
+        from evo_agents.hub.server.orchestrator.service.threads import (
+            on_turn_failed,  # it hands work through this module
+        )
 
         await on_turn_failed(conn, run_id)
     went_on = await _go_on_untaken(conn, run_id, found) if new == "done" else None

@@ -18,7 +18,7 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import hub_events, system_context, tables
-from evo_agents.hub.server import system_traces
+from evo_agents.hub.server.systems.service import traces as system_traces
 from tests.hub.live import sql
 from tests.hub.test_ops_batches import a_run, project_id, run_pass, system
 from tests.hub.test_runs import OWNER, client, hub  # noqa: F401 (fixtures)

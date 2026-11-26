@@ -41,7 +41,6 @@ from evo_agents.hub.plans import (
     verify_refusal,
 )
 from evo_agents.hub.problems import number_of
-from evo_agents.hub.server import system_traces
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.base.scope import Noun, ProjectScope
@@ -79,6 +78,7 @@ from evo_agents.hub.server.plans.models import (
 from evo_agents.hub.server.plans.repository import STORE
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)

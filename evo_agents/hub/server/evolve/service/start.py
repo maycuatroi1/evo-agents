@@ -9,7 +9,6 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, evolve
-from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
 from evo_agents.hub.server.changes.repository.views import charter_of
@@ -19,6 +18,7 @@ from evo_agents.hub.server.evolve.service.runs import pick_tasks, queue_run, set
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, check_seat
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import curation as system_curation
 
 log = logging.getLogger(__name__)
 

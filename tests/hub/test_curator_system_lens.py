@@ -1,4 +1,4 @@
-"""The Curator's lens agent_system (plan multi-agent-systems, criterion a8; ``evo_agents.hub.server.system_curation``,
+"""The Curator's lens agent_system (plan multi-agent-systems, criterion a8; ``evo_agents.hub.server.systems``,
 ``docs/curator.md``, The lens agent_system).
 
 Checked without a database: the lens is on demand, the evidence ``span:ID`` parses, a system change names one target
@@ -62,7 +62,7 @@ def _system_curation():
     _hub_server()
     from evo_agents.hub.server import app  # noqa: F401 (the server's modules import in its order)
 
-    return import_module("evo_agents.hub.server.system_curation")
+    return import_module("evo_agents.hub.server.systems.service.curation")
 
 
 def test_a_system_change_names_one_target_with_at_least_one_change():
@@ -105,7 +105,7 @@ def test_a_proposal_carries_a_system_change_only_with_the_lens_and_the_kind():
 def test_a_kg_span_keeps_the_count_a_result_says_it_read():
     _hub_server()
     from evo_agents.hub.server import app  # noqa: F401
-    from evo_agents.hub.server.system_traces import results_read
+    from evo_agents.hub.server.systems.service.traces import results_read
 
     def result(count):
         return {"content": [{"type": "text", "text": "...", "_meta": {READ_META: {"results_read": count}}}]}

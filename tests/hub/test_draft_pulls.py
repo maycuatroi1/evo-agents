@@ -23,7 +23,8 @@ if pg.DSN:
     from sqlalchemy import select, update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server import draft_pulls, orchestrator
+    from evo_agents.hub.server import draft_pulls
+    from evo_agents.hub.server.orchestrator.service import threads as orchestrator
     from tests.hub.fake_github import FakePull
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401

@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import profiles, runs
-from evo_agents.hub.server import system_store
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.plan_run_choice.models import (
     DEFAULT_TIMEOUT_H,
@@ -24,6 +23,7 @@ from evo_agents.hub.server.runs.service import plugin_runtimes
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
 from evo_agents.hub.server.runs.service.profiles import profile_named
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.repository import store as system_store
 from evo_agents.hub.tables_push import SYSTEM, WORKER
 
 

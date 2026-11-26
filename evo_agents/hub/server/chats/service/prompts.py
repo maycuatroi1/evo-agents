@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, runs
-from evo_agents.hub.server import system_traces
 from evo_agents.hub.server.attachments import repository as attachment_store
 from evo_agents.hub.server.chats.models.access import LabelProject
 from evo_agents.hub.server.chats.models.runs import ChatRun
@@ -25,6 +24,7 @@ from evo_agents.hub.server.chats.repository.views import member_names, profiles_
 from evo_agents.hub.server.chats.service.access import agent_projects, label_reader
 from evo_agents.hub.server.chats.service.runs import chat_run, run_profile
 from evo_agents.hub.server.profile_store import Profile
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 
 def _message(row, profiles_by_id: dict) -> dict:

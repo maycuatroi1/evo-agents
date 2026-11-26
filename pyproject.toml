@@ -809,6 +809,39 @@ service and the models, never the routes. A new module of the package goes into 
 docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-systems-layers"
+name = "The agent systems go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.systems"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.systems a route handler opens the transaction and passes the request's parts to a public \
+function of the service (systems, ops, views), which checks the caller's grant and decides; the repository holds the \
+SQL of the systems, their traces and spans, the ops queue's counts and the seed; the models (the API's shapes) import \
+none of them, nor a module of the hub that reaches the service: a shape that holds such a module's models, as a trace \
+holds its timeline, goes into service.views. A repository module takes from the service what it needs of a module \
+that reaches the service (a subquery, a constant) as an argument. Other modules import the service, the repository \
+and the models, never the routes. A new module of the package goes into one of the four layers. See \
+docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-orchestrator-layers"
+name = "The Orchestrator goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.orchestrator"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.orchestrator a route handler checks the worker's run and passes it to a public function of \
+the service (threads, actions), which opens the threads and decides an action; the repository holds the SQL of the \
+threads, the ops chat and the waits; the models (the bodies of the routes and of the hub runtime's tools) import none \
+of them. A repository module takes from the service what it needs of a module that reaches the service (the agent \
+systems' traces, which open threads) as an argument. Other modules import the service and the models, never the \
+routes. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

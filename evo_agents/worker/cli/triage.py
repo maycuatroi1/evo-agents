@@ -1,7 +1,7 @@
 """``evo-agents worker triage rerun|plan|invite|cancel|merge-check|answer|reassign|ask-owner``: what the agent of a
 triage thread does on its own for a failed run (``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules``
 is the frame the hub enforces), for a merge check the hub holds (``evo_agents.hub.server.merge_holds``), or the
-Orchestrator of an agent system in a thread the hub opened to it (``evo_agents.hub.server.orchestrator_actions``).
+Orchestrator of an agent system in a thread the hub opened to it (``evo_agents.hub.server.orchestrator``).
 
 - ``rerun --reason TEXT [--runtime NAME] [--account NAME] [--confirm-cause]``: run the failed run of
   the thread again for its owner, with a runtime or account that is a fit candidate.

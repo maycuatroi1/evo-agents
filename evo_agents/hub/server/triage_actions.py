@@ -44,13 +44,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
-from evo_agents.hub.server import audit, orchestrator
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.chats.service import agents as chat_agents
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.agents import AgentRun
 from evo_agents.hub.server.chats.service.members import put_agent
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.plans import REFUSALS as PLAN_REFUSALS
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service

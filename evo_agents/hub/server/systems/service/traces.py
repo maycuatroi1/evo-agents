@@ -1,5 +1,5 @@
-"""Traces of agent systems in the database (``evo_agents.hub.tables_traces``; ``docs/hub.md``, Agent systems): which
-system a chat run belongs to, the trace and spans its runs write, the brief of an ask, and the budget of a trace.
+"""Traces of agent systems (``evo_agents.hub.tables_traces``; ``docs/hub.md``, Agent systems): which system a chat
+run belongs to, the trace and spans its runs write, the brief of an ask, and the budget of a trace.
 
 A person's message to the entry agent of a system, in any chat (a direct chat on Home included), opens a trace: the
 run it hands is the trace's first ``invoke_agent`` span (``join``). A run goes into the trace of the run whose message
@@ -16,7 +16,7 @@ pins (``chats.service.runs._pinned``).
 
 ``execute_tool`` spans record what a run does through the hub: an ask (with the brief fields present), a mention, a
 forward, a query of a knowledge graph (``gen_ai.data_source.id``), and a refusal. Each write notifies CHANNEL with
-the system's id, which wakes the trace streams of that system (``system_trace_views``); so does ``touch``, for a move
+the system's id, which wakes the trace streams of that system (``routes.traces``); so does ``touch``, for a move
 of the trace's work that writes no span. Tokens and cost are not
 copied into spans: ``run_numbers`` reads them from run_spend when a trace is shown, and ``usage`` sums them over the
 trace's runs and the runs their tree spawned, for the budget (``budget_problem``).
@@ -28,20 +28,18 @@ import logging
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import and_, func, insert, select, update
-from sqlalchemy.dialects.postgresql import distinct_on
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, system_context, system_spec, tables, wake
-from evo_agents.hub.server import system_store
+from evo_agents.hub import system_context, system_spec, wake
 from evo_agents.hub.server.plans.models import PlanTrace
+from evo_agents.hub.server.systems.models.traces import RESUME
+from evo_agents.hub.server.systems.repository import store as system_store
+from evo_agents.hub.server.systems.repository import traces as rows
 from evo_agents.kg.sessions import READ_META
 
 log = logging.getLogger(__name__)
 
 CHANNEL = "evo_system_traces"  # notified with a system's id when a span of one of its traces is written
-RESUME = "evo.resume_of_run_id"  # the attribute of an invoke_agent span of a run that goes on in a session
 ENDED_OK = ("done",)  # the end states of a run whose span is ok; the others are errors
 MAX_RESUMES = 50  # how far back the brief of a session is looked for
 KG_RESULTS = "evo.kg.results"  # the attribute of a kg span: how many results the query read (record_kg)
@@ -98,25 +96,16 @@ async def notify(conn: AsyncConnection, system_id: int | None) -> None:
 async def touch(conn: AsyncConnection, trace_id: int) -> None:
     """Mark trace ``trace_id`` as moved without a span written (its work set, its card changed), so the trace streams
     of its system send it again."""
-    t = tables.system_traces
-    query = update(t).values(last_at=func.now()).where(t.c.id == trace_id).returning(t.c.system_id)
-    system_id = (await conn.execute(query)).scalar_one_or_none()
-    await notify(conn, system_id)
+    await notify(conn, await rows.touch(conn, trace_id))
 
 
-async def _system_row(conn: AsyncConnection, query) -> SystemRef | None:
-    s = tables.agent_systems
-    row = (await conn.execute(select(s.c.id, s.c.slug, s.c.project_id, s.c.revision, s.c.spec).where(query))).first()
+async def _entry_system(conn: AsyncConnection, profile_id: int) -> SystemRef | None:
+    row = await rows.system_by_entry(conn, profile_id)
     return None if row is None else SystemRef(row.id, row.slug, row.project_id, row.revision, row.spec)
 
 
 async def _trace_system(conn: AsyncConnection, trace_id: int) -> SystemRef:
-    t = tables.system_traces
-    row = (
-        await conn.execute(
-            select(t.c.system_id, t.c.system_slug, t.c.project_id, t.c.system_revision).where(t.c.id == trace_id)
-        )
-    ).one()
+    row = await rows.trace_system(conn, trace_id)
     spec = None if row.system_id is None else await system_store.revision_spec(conn, row.system_id, row.system_revision)
     return SystemRef(row.system_id, row.system_slug, row.project_id, row.system_revision, spec or {})
 
@@ -127,18 +116,15 @@ async def system_for(
     """The system profile ``profile_id`` (``handle``, of project ``project_id``) runs in outside a trace: the one it is
     the entry agent of; else the latest system of a trace of chat ``chat_id`` whose spec has it; else the first system
     of the project that has it; None for none."""
-    s, t = tables.agent_systems, tables.system_traces
-    found = await _system_row(conn, s.c.entry_profile_id == profile_id)
+    found = await _entry_system(conn, profile_id)
     if found is not None:
         return found
     if chat_id is not None:
-        query = select(t.c.id).where(t.c.chat_id == chat_id, t.c.system_id.is_not(None)).order_by(t.c.id.desc())
-        for trace_id in (await conn.execute(query.limit(20))).scalars():
+        for trace_id in await rows.chat_traces(conn, chat_id, 20):
             held = await _trace_system(conn, trace_id)
             if system_context.node_of(held.spec, handle) is not None:
                 return held
-    query = select(s.c.id, s.c.slug, s.c.revision, s.c.spec).where(s.c.project_id == project_id).order_by(s.c.id)
-    for row in await conn.execute(query):
+    for row in await rows.project_systems(conn, project_id):
         if system_context.node_of(row.spec, handle) is not None:
             return SystemRef(row.id, row.slug, project_id, row.revision, row.spec)
     return None
@@ -147,36 +133,14 @@ async def system_for(
 async def _span_of(conn: AsyncConnection, run_id: int | None) -> _Span | None:
     if run_id is None:
         return None
-    s = tables.system_spans
-    query = select(
-        s.c.id, s.c.trace_id, s.c.parent_id, s.c.node, s.c.from_node, s.c.off_design, s.c.reason, s.c.message_id
-    ).where(s.c.run_id == run_id, s.c.name == system_context.INVOKE)
-    row = (await conn.execute(query)).one_or_none()
+    row = await rows.invoke_span(conn, run_id)
     return None if row is None else _Span(*row)
-
-
-async def _run_row(conn: AsyncConnection, run_id: int):
-    r, ap = tables.runs, tables.agent_profiles
-    query = (
-        select(
-            r.c.profile_id,
-            r.c.project_id,
-            r.c.runtime,
-            r.c.chat_id,
-            r.c.chat_message_id,
-            r.c.resume_of_run_id,
-            ap.c.handle,
-        )
-        .join_from(r, ap, ap.c.id == r.c.profile_id)
-        .where(r.c.id == run_id)
-    )
-    return (await conn.execute(query)).one_or_none()
 
 
 async def of_run(conn: AsyncConnection, run_id: int) -> Membership | None:
     """The system run ``run_id`` is a run of, and its trace and span when it has one; None for a run of no agent of a
     system."""
-    row = await _run_row(conn, run_id)
+    row = await rows.run_row(conn, run_id)
     if row is None:
         return None
     span = await _span_of(conn, run_id)
@@ -192,10 +156,9 @@ async def of_run(conn: AsyncConnection, run_id: int) -> Membership | None:
 async def pinned_for(conn: AsyncConnection, profile_id: int, handle: str, project_id: int, message_id: int | None):
     """The system a new session of profile ``profile_id``, woken by message ``message_id``, runs in: the trace's of
     the run that wrote the message when its spec has the profile, else ``system_for``; None for none."""
-    m = tables.chat_messages
     row = None
     if message_id is not None:
-        row = (await conn.execute(select(m.c.run_id, m.c.chat_id).where(m.c.id == message_id))).one_or_none()
+        row = await rows.message_run(conn, message_id)
     asker = await _span_of(conn, row.run_id if row is not None else None)
     if asker is not None:
         held = await _trace_system(conn, asker.trace_id)
@@ -218,7 +181,6 @@ def pinned_version(spec: dict, handle: str) -> int | None:
 async def _open(
     conn: AsyncConnection, held: SystemRef, chat_id: int | None, message_id: int | None, user_id: int
 ) -> int:
-    t = tables.system_traces
     values = {
         "project_id": held.project_id,
         "system_id": held.id,
@@ -228,7 +190,7 @@ async def _open(
         "message_id": message_id,
         "opened_by": user_id,
     }
-    return (await conn.execute(insert(t).values(**values).returning(t.c.id))).scalar_one()
+    return await rows.open_trace(conn, values)
 
 
 async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = None) -> int | None:
@@ -236,15 +198,13 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
     on from; the trace's id, None when it is in none. A run in a trace already is left as it is."""
     if await _span_of(conn, run_id) is not None:
         return None
-    row = await _run_row(conn, run_id)
+    row = await rows.run_row(conn, run_id)
     if row is None:
         return None
     previous_id = previous_id or row.resume_of_run_id
-    m = tables.chat_messages
     message = None
     if row.chat_message_id is not None:
-        query = select(m.c.author_user_id, m.c.run_id, m.c.copied_from_id).where(m.c.id == row.chat_message_id)
-        message = (await conn.execute(query)).one_or_none()
+        message = await rows.message_author(conn, row.chat_message_id)
     previous = await _span_of(conn, previous_id)
     same_message = previous is not None and previous.message_id == row.chat_message_id
     attributes: dict = {}
@@ -262,7 +222,7 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
         message is not None
         and message.author_user_id is not None
         and message.copied_from_id is None  # a copy from a work chat goes on in its trace (``work_chats``)
-        and (entry := await _system_row(conn, tables.agent_systems.c.entry_profile_id == row.profile_id))
+        and (entry := await _entry_system(conn, row.profile_id))
     ):
         held = entry
         trace_id = await _open(conn, held, row.chat_id, row.chat_message_id, message.author_user_id)
@@ -292,7 +252,6 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
             "gen_ai.conversation.id": str(row.chat_id) if row.chat_id is not None else None,
         }
     )
-    s, t = tables.system_spans, tables.system_traces
     values = {
         "trace_id": trace_id,
         "parent_id": parent,
@@ -309,12 +268,14 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
         "message_id": row.chat_message_id,
         "attributes": {key: value for key, value in attributes.items() if value is not None},
     }
-    await conn.execute(insert(s).values(**values))
-    await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == trace_id))
+    await rows.add_span(conn, values)
+    await rows.touch(conn, trace_id)
     await notify(conn, held.id)
     log.info("run joined a trace", extra={"run_id": run_id, "trace_id": trace_id, "off_design": off})
     if RESUME not in attributes:
-        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it opens threads through chat_runs, which joins runs here
+        )
 
         await orchestrator.check_loop(conn, run_id)
     return trace_id
@@ -322,33 +283,15 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
 
 async def mark_reason(conn: AsyncConnection, run_id: int, reason: str | None) -> None:
     """Record ``reason`` on the off-design edge into run ``run_id``'s span."""
-    if not reason:
-        return
-    s = tables.system_spans
-    await conn.execute(
-        update(s)
-        .values(reason=reason)
-        .where(s.c.run_id == run_id, s.c.name == system_context.INVOKE, s.c.off_design.is_(True))
-    )
+    if reason:
+        await rows.mark_reason(conn, run_id, reason)
 
 
 async def end_run(conn: AsyncConnection, run_id: int, state: str) -> None:
     """End the invoke_agent span of run ``run_id``, which ended in ``state``."""
-    s, t = tables.system_spans, tables.system_traces
-    status = "ok" if state in ENDED_OK else "error"
-    query = (
-        update(s)
-        .values(status=status, ended_at=func.now())
-        .where(s.c.run_id == run_id, s.c.name == system_context.INVOKE, s.c.status == "running")
-        .returning(s.c.trace_id)
-    )
-    trace_id = (await conn.execute(query)).scalar_one_or_none()
-    if trace_id is None:
-        return
-    system_id = (
-        await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == trace_id).returning(t.c.system_id))
-    ).scalar_one()
-    await notify(conn, system_id)
+    trace_id = await rows.end_span(conn, run_id, "ok" if state in ENDED_OK else "error")
+    if trace_id is not None:
+        await notify(conn, await rows.touch(conn, trace_id))
 
 
 async def record_tool(
@@ -370,8 +313,7 @@ async def record_tool(
     to_node = None
     if to_handle is not None:
         to_node = system_context.node_of(membership.spec, to_handle) or system_context.external_node(to_handle)
-    s, t = tables.system_spans, tables.system_traces
-    project_id = (await conn.execute(select(s.c.project_id).where(s.c.id == membership.span_id))).scalar_one_or_none()
+    project_id = await rows.span_project(conn, membership.span_id)
     values = {
         "trace_id": membership.trace_id,
         "parent_id": membership.span_id,
@@ -393,13 +335,14 @@ async def record_tool(
             "gen_ai.agent.name": membership.handle,
             **(attributes or {}),
         },
-        "ended_at": func.now(),
     }
-    span_id = (await conn.execute(insert(s).values(**values).returning(s.c.id))).scalar_one()
-    await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == membership.trace_id))
+    span_id = await rows.add_span(conn, values, ended=True)
+    await rows.touch(conn, membership.trace_id)
     await notify(conn, membership.system.id)
     if status == "refused" and reason is not None and reason.startswith(system_context.BUDGET_REFUSAL):
-        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it opens threads through chat_runs, which joins runs here
+        )
 
         await orchestrator.on_budget(conn, membership, span_id, reason)
     return span_id
@@ -438,16 +381,7 @@ async def record_mention(
 async def usage(conn: AsyncConnection, trace_id: int) -> tuple[int, float]:
     """(runs, USD) of trace ``trace_id``: its runs and every run their tree spawned (``spawned_by_run_id``), and what
     they cost (run_spend, the reported cost else the estimate)."""
-    s, r, rs = tables.system_spans, tables.runs, tables.run_spend
-    seeds = select(s.c.run_id.label("id")).where(
-        s.c.trace_id == trace_id, s.c.name == system_context.INVOKE, s.c.run_id.is_not(None)
-    )
-    tree = seeds.cte("trace_tree", recursive=True)
-    tree = tree.union(select(r.c.id).where(r.c.spawned_by_run_id == tree.c.id))
-    count = (await conn.execute(select(func.count()).select_from(tree))).scalar_one()
-    cost = func.coalesce(func.sum(func.coalesce(rs.c.reported_usd, rs.c.estimated_usd)), 0)
-    usd = (await conn.execute(select(cost).where(rs.c.run_id.in_(select(tree.c.id))))).scalar_one()
-    return int(count), float(usd or 0)
+    return await rows.usage(conn, trace_id)
 
 
 async def budget_problem(conn: AsyncConnection, membership: Membership | None) -> str | None:
@@ -466,20 +400,9 @@ async def plan_traces(conn: AsyncConnection, project_id: int, plan_id: str | Non
     """The trace a system dispatch of each plan of the project opened that has a run active (its ``invoke_agent``
     spans name its runs), with its latest active run, by plan id; ``plan_id``'s alone when given. A plan whose every
     trace has no run active is not in it. A chat run names no plan, so the plan's own runs never show these."""
-    t, s, r = tables.system_traces, tables.system_spans, tables.runs
-    query = (
-        select(t.c.plan_id, t.c.id, t.c.system_slug, r.c.id.label("run_id"), r.c.state)
-        .join_from(t, s, and_(s.c.trace_id == t.c.id, s.c.name == system_context.INVOKE))
-        .join(r, r.c.id == s.c.run_id)
-        .where(t.c.project_id == project_id, t.c.plan_id.is_not(None), r.c.state.in_(runs.ACTIVE_STATES))
-        .ext(distinct_on(t.c.plan_id))
-        .order_by(t.c.plan_id, r.c.id.desc())
-    )
-    if plan_id is not None:
-        query = query.where(t.c.plan_id == plan_id)
     return {
         row.plan_id: PlanTrace(id=row.id, system=row.system_slug, run_id=row.run_id, state=row.state)
-        for row in await conn.execute(query)
+        for row in await rows.plan_traces(conn, project_id, plan_id)
     }
 
 
@@ -491,15 +414,7 @@ async def take_plan(conn: AsyncConnection, run_id: int, plan_id: str) -> int | N
     span = await _span_of(conn, run_id)
     if span is None:
         return None
-    t, p = tables.system_traces, tables.plans
-    revision = select(p.c.revision).where(p.c.project_id == t.c.project_id, p.c.plan_id == plan_id).scalar_subquery()
-    query = (
-        update(t)
-        .values(plan_id=plan_id, plan_revision=revision)
-        .where(t.c.id == span.trace_id, t.c.plan_id.is_(None), revision.is_not(None))
-        .returning(t.c.id)
-    )
-    taken = (await conn.execute(query)).scalar_one_or_none()
+    taken = await rows.take_plan(conn, span.trace_id, plan_id)
     if taken is not None:
         await touch(conn, taken)
         log.info("trace took a plan", extra={"run_id": run_id, "trace_id": taken, "plan_id": plan_id})
@@ -543,29 +458,7 @@ async def plan_work(conn: AsyncConnection, run_id: int) -> list[tuple[int, str, 
     (``ref_steps``), of the project of its trace, else of its own; else, for a run of the coordinator's session of a
     trace that holds a plan (a plan handed to a system, ``plan_systems``), (the trace's project, the plan, None): every
     open step of it. [] for a run that works on none."""
-    t, s, r, sy = tables.system_traces, tables.system_spans, tables.runs, tables.agent_systems
-    mine, first = tables.chat_messages.alias("mine"), tables.chat_messages.alias("first")
-    query = (
-        select(
-            t.c.project_id,
-            t.c.plan_id,
-            r.c.project_id.label("own_project_id"),
-            (
-                (sy.c.entry_profile_id == r.c.profile_id)
-                & (mine.c.chat_id == first.c.chat_id)
-                & (func.coalesce(mine.c.thread_root_id, mine.c.id) == func.coalesce(first.c.thread_root_id, first.c.id))
-            ).label("coordinates"),
-        )
-        .select_from(
-            r.outerjoin(s, and_(s.c.run_id == r.c.id, s.c.name == system_context.INVOKE))
-            .outerjoin(t, t.c.id == s.c.trace_id)
-            .outerjoin(sy, sy.c.id == t.c.system_id)
-            .outerjoin(mine, mine.c.id == r.c.chat_message_id)
-            .outerjoin(first, first.c.id == t.c.message_id)
-        )
-        .where(r.c.id == run_id)
-    )
-    row = (await conn.execute(query.limit(1))).one_or_none()
+    row = await rows.plan_work(conn, run_id)
     if row is None:
         return []
     briefed = await brief_of(conn, run_id)
@@ -588,16 +481,14 @@ async def save_brief(conn: AsyncConnection, run_id: int, asked_by: int, brief: d
     found.pop("reason", None)
     if not found:
         return
-    b = tables.agent_ask_briefs
-    statement = pg_insert(b).values(run_id=run_id, asked_by_run_id=asked_by, brief=found)
-    await conn.execute(
-        statement.on_conflict_do_update(index_elements=[b.c.run_id], set_={"brief": found, "asked_by_run_id": asked_by})
-    )
+    await rows.save_brief(conn, run_id, asked_by, found)
     for plan_id in ref_plans(found):
         if await take_plan(conn, run_id, plan_id) is not None:
             break
     if found.get("goal"):
-        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it opens threads through chat_runs, which joins runs here
+        )
 
         await orchestrator.check_loop(conn, run_id)
 
@@ -605,17 +496,15 @@ async def save_brief(conn: AsyncConnection, run_id: int, asked_by: int, brief: d
 async def brief_of(conn: AsyncConnection, run_id: int) -> tuple[dict, str | None, int | None] | None:
     """(the brief, the asking agent's handle, the asking run) of the session of run ``run_id``: the brief of the run
     an ask made, which the runs that go on in its session keep; None for none."""
-    b, r, ap = tables.agent_ask_briefs, tables.runs, tables.agent_profiles
     current = run_id
     for _ in range(MAX_RESUMES):
-        row = (await conn.execute(select(b.c.brief, b.c.asked_by_run_id).where(b.c.run_id == current))).one_or_none()
+        row = await rows.brief(conn, current)
         if row is not None:
             handle = None
             if row.asked_by_run_id is not None:
-                query = select(ap.c.handle).join_from(r, ap, ap.c.id == r.c.profile_id)
-                handle = (await conn.execute(query.where(r.c.id == row.asked_by_run_id))).scalar_one_or_none()
+                handle = await rows.handle_of_run(conn, row.asked_by_run_id)
             return row.brief, handle, row.asked_by_run_id
-        current = (await conn.execute(select(r.c.resume_of_run_id).where(r.c.id == current))).scalar_one_or_none()
+        current = await rows.resume_of(conn, current)
         if current is None:
             return None
     return None
@@ -683,30 +572,5 @@ async def record_kg(conn: AsyncConnection, run_id: int, tool: str, graph: str | 
 
 
 async def run_numbers(conn: AsyncConnection, run_ids: list[int]) -> dict[int, dict]:
-    """{run: {input_tokens, output_tokens, usd, state, seconds}} of chat runs ``run_ids``, from run_spend and runs."""
-    if not run_ids:
-        return {}
-    r, rs = tables.runs, tables.run_spend
-    spend = (
-        select(
-            rs.c.run_id,
-            func.sum(rs.c.input_tokens).label("input_tokens"),
-            func.sum(rs.c.output_tokens).label("output_tokens"),
-            func.sum(func.coalesce(rs.c.reported_usd, rs.c.estimated_usd)).label("usd"),
-        )
-        .where(rs.c.run_id.in_(run_ids))
-        .group_by(rs.c.run_id)
-    )
-    found = {row.run_id: dict(row._mapping) for row in await conn.execute(spend)}
-    states = select(r.c.id, r.c.state, r.c.model).where(r.c.id.in_(run_ids))
-    out = {}
-    for row in await conn.execute(states):
-        numbers = found.get(row.id, {})
-        out[row.id] = {
-            "state": row.state,
-            "model": row.model,
-            "input_tokens": int(numbers.get("input_tokens") or 0),
-            "output_tokens": int(numbers.get("output_tokens") or 0),
-            "usd": float(numbers.get("usd") or 0),
-        }
-    return out
+    """{run: {input_tokens, output_tokens, usd, state, model}} of chat runs ``run_ids``, from run_spend and runs."""
+    return await rows.run_numbers(conn, run_ids)
