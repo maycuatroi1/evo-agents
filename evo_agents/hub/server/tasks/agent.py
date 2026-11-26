@@ -6,7 +6,7 @@ The hub lists it in a session whose project enabled the plugin, and checks its a
 schema first. It acts for a person: the agent of a chat run for the person who mentioned the agent, the origin of the
 chain (``chat_runs.ChatRun.dispatcher_id``), also when the run went to the worker of its agent type's run_as; the agent
 of the task run of @ba that splits the frame tasks of an approved SRS version or use case
-(``hub.server.srs.auto_tasks``) for the member whose approval made it approved, whom the hub keeps for that run
+(``hub.server.srs.service.auto_tasks``) for the member whose approval made it approved, whom the hub keeps for that run
 (srs_approval_tasks.approved_by by split_run_id, or srs_use_case_releases.released_by by the split run its ``tasks``
 keeps; the task's first run, which a lost attempt's next goes on from); a member's own session (no run) for
 that member. The agent of any other run gets a refusal: nobody asked it for a task. The person must hold writer on

@@ -1,4 +1,4 @@
-"""What the plugin srs tells members (``evo_agents.hub.server.srs.notices``) and the queue of versions in review
+"""What the plugin srs tells members (``evo_agents.hub.server.srs.service.notices``) and the queue of versions in review
 (GET /v1/x/srs/<project>/reviews). The sample is ``tests/hub/fixtures/srs/demo-shop-srs.md``: chi writes version 1,
 whose three use cases are all to review; owner (admin) and someone-else are the other writers, reader only reads."""
 
@@ -16,7 +16,8 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.srs import notices, store
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.service import notices
 from tests.hub.test_ba_agent import (  # noqa: F401
     CHI,
     DOC,

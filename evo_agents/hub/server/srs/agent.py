@@ -43,28 +43,32 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.server.agent_types import enabled_type
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
-from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, revisions, store, threads
-from evo_agents.hub.server.srs.auto_review import review_entered
-from evo_agents.hub.server.srs.diff import diff as item_changes
-from evo_agents.hub.server.srs.diff import text_of
-from evo_agents.hub.server.srs.doc import Document, SrsError
-from evo_agents.hub.server.srs.edits import edited
-from evo_agents.hub.server.srs.models import SrsChange, edit_changes
-from evo_agents.hub.server.srs.settle import proposer
-from evo_agents.hub.server.srs.store import compare_path
-from evo_agents.hub.server.srs.template import code_key
-from evo_agents.hub.server.srs.writes import Writer, give_screen_codes, write_version
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models import checks, markdown
+from evo_agents.hub.server.srs.models.api import SrsChange
+from evo_agents.hub.server.srs.models.diff import diff as item_changes
+from evo_agents.hub.server.srs.models.diff import text_of
+from evo_agents.hub.server.srs.models.doc import Document, SrsError
+from evo_agents.hub.server.srs.models.template import code_key
+from evo_agents.hub.server.srs.repository import people, revisions, store
+from evo_agents.hub.server.srs.repository.settle import proposer
+from evo_agents.hub.server.srs.repository.store import compare_path
+from evo_agents.hub.server.srs.repository.versions import Writer
+from evo_agents.hub.server.srs.service import findings, notices, reviews, threads
+from evo_agents.hub.server.srs.service.auto_review import review_entered
+from evo_agents.hub.server.srs.service.convert import edit_changes
+from evo_agents.hub.server.srs.service.edits import edited
+from evo_agents.hub.server.srs.service.writes import give_screen_codes, write_version
 
 log = logging.getLogger(__name__)
 
@@ -129,17 +133,13 @@ async def _is_ba(conn: AsyncConnection, context: CoreContext, profile_id: int | 
 async def acting(conn: AsyncConnection, params: dict, context: CoreContext) -> Acting:
     """Who the tool of ``params`` acts for (see the module)."""
     if context.run_id is None:
-        u = tables.users
         login = (params.get("caller") or {}).get("login") or ""
-        user_id = (await conn.execute(select(u.c.id).where(u.c.login == login))).scalar_one_or_none()
+        user_id = await people.user_id(conn, login)
         if user_id is None:
             raise SrsError(403, f"no member {login} on the hub")
         person = await _principal(conn, user_id, context.config)
         return Acting(await _access(conn, person, context.project), person, context.sink)
-    r = tables.runs
-    row = (
-        await conn.execute(select(r.c.kind, r.c.profile_id, r.c.dispatched_by).where(r.c.id == context.run_id))
-    ).one()
+    row = await people.run(conn, context.run_id)
     person_id = row.dispatched_by
     found = await chat_run(conn, context.run_id) if row.kind == "chat" else None
     if found is not None:
@@ -162,8 +162,9 @@ async def _document(conn: AsyncConnection, who: Acting, slug: str, *, lock: bool
 
 async def _answer(params: dict, context: CoreContext, work) -> dict:
     """``work(conn, acting)`` in one transaction, its text the tool's answer; a refusal as the tool's error."""
+    assert context.engine is not None  # the hub calls a tool of its own feature with its engine
     try:
-        async with context.engine.begin() as conn:
+        async with UnitOfWork(context.engine) as conn:
             return _text(await work(conn, await acting(conn, params, context), params.get("arguments") or {}))
     except SrsError as exc:
         shown = [problem.message for problem in exc.problems[:SHOWN_PROBLEMS]]
@@ -380,7 +381,7 @@ async def _loop_author(conn: AsyncConnection, who: Acting) -> int | None:
 
 async def _author(conn: AsyncConnection, who: Acting, doc: store.DocumentRow) -> tuple[Principal, ProjectAccess]:
     """(who a version @ba proposes of ``doc`` is written as, their access): the author of the version whose settle
-    chat the run is in (``settle.proposer``); for the Loop's use case, the goal's owner; else the person the run acts
+    chat the run is in (``repository.settle.proposer``); for the Loop's use case, the goal's owner; else the person the run acts
     for."""
     author_id = await _loop_author(conn, who) or await proposer(conn, who.run_id, doc.id)
     if author_id is None or author_id == who.person.user_id:
@@ -413,7 +414,7 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     await give_screen_codes(conn, access.project_id, content)
     settings = await store.settings(conn, access)
     writer = Writer(access.project_id, doc.id, author.user_id, False, who.run_id)
-    made = await write_version(conn, writer, content, latest, settings.template, args["summary"])
+    made = await write_version(conn, writer, content, latest, settings.template, args["summary"], number)
     doc = await store.document(conn, access, slug, who.sink)
     sent = await reviews.submit(conn, access, doc, made, settings)
     review = await review_entered(conn, access, doc, sent)
@@ -465,8 +466,7 @@ async def _settler(conn: AsyncConnection, who: Acting, login: str | None) -> int
     """The id of the member ``login`` names as having settled a finding, who must hold a grant on the project."""
     if login is None:
         return None
-    u = tables.users
-    user_id = (await conn.execute(select(u.c.id).where(u.c.login == login))).scalar_one_or_none()
+    user_id = await people.user_id(conn, login)
     if user_id is None:
         raise SrsError(422, f"no member {login} on the hub settled the finding")
     access = await _access(conn, await _principal(conn, user_id, None), who.access.name)

@@ -18,15 +18,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs.doc import Document, Item, SrsError
-from evo_agents.hub.server.srs.template import Template, TemplateError, code_key, template_of
+from evo_agents.hub.server.srs.models.doc import Document, Item, SrsError
+from evo_agents.hub.server.srs.models.template import Template, TemplateError, code_key, template_of
 from evo_agents.plugins import config as plugin_config
 
 PLUGIN = "srs"
@@ -182,6 +182,25 @@ async def document_by_id(conn: AsyncConnection, project_id: int, document_id: in
     return None if row is None else DocumentRow(**row._mapping)
 
 
+async def project_of_document(conn: AsyncConnection, document_id: int) -> int | None:
+    """The project document ``document_id`` is of, or None."""
+    d = tables.srs.documents
+    return await conn.scalar(select(d.c.project_id).where(d.c.id == document_id))
+
+
+async def slug_taken(conn: AsyncConnection, project_id: int, slug: str) -> bool:
+    """Whether project ``project_id`` has a document ``slug``, archived or not."""
+    d = tables.srs.documents
+    taken = await conn.execute(select(d.c.id).where(d.c.project_id == project_id, d.c.slug == slug))
+    return taken.first() is not None
+
+
+async def create_document(conn: AsyncConnection, values: dict) -> int:
+    """Write a new document with ``values``; its id."""
+    d = tables.srs.documents
+    return (await conn.execute(insert(d).values(values).returning(d.c.id))).scalar_one()
+
+
 async def documents(
     conn: AsyncConnection, access: ProjectAccess, sink: str | None, *, with_archived: bool = False
 ) -> list[DocumentRow]:
@@ -304,6 +323,31 @@ async def version(conn: AsyncConnection, doc: DocumentRow, number: int | None = 
         raise SrsError(404, f"document {doc.slug} has no version {wanted}")
     reviews = await _reviews(conn, [row.id])
     return VersionRow(**row._mapping, reviews=reviews.get(row.id, []))
+
+
+async def numbers_before(conn: AsyncConnection, document_id: int, number: int) -> list[int]:
+    """The numbers of the versions of document ``document_id`` before ``number``, newest first."""
+    v = tables.srs.versions
+    query = select(v.c.number).where(v.c.document_id == document_id, v.c.number < number)
+    return sorted((await conn.execute(query)).scalars(), reverse=True)
+
+
+async def decided_at(conn: AsyncConnection, document_id: int, number: int) -> datetime | None:
+    """When version ``number`` of document ``document_id`` was decided, or None."""
+    v = tables.srs.versions
+    return await conn.scalar(select(v.c.decided_at).where(v.c.document_id == document_id, v.c.number == number))
+
+
+async def version_author(conn: AsyncConnection, document_id: int, number: int | None) -> int | None:
+    """The author of version ``number`` of document ``document_id``, or None."""
+    v = tables.srs.versions
+    return await conn.scalar(select(v.c.author_id).where(v.c.document_id == document_id, v.c.number == number))
+
+
+async def set_review_run(conn: AsyncConnection, version_id: int, run_id: int) -> None:
+    """Make run ``run_id`` the review of the current round of version ``version_id``."""
+    v = tables.srs.versions
+    await conn.execute(update(v).where(v.c.id == version_id).values(review_run_id=run_id))
 
 
 async def text(conn: AsyncConnection, sha256: str | None) -> str:
@@ -499,6 +543,11 @@ def owners_of_config(value) -> dict[str, tuple[str, ...]]:
 
 
 __all__ = [
+    "set_review_run",
+    "version_author",
+    "decided_at",
+    "numbers_before",
+    "project_of_document",
     "PLUGIN",
     "SINK_HEADER",
     "DocumentRow",
@@ -508,6 +557,7 @@ __all__ = [
     "VersionRow",
     "approved_documents",
     "compare_path",
+    "create_document",
     "document",
     "document_by_id",
     "document_path",
@@ -523,6 +573,7 @@ __all__ = [
     "reader",
     "settings",
     "sink_of",
+    "slug_taken",
     "snapshot",
     "text",
     "version",

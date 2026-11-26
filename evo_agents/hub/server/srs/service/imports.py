@@ -13,17 +13,17 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
 
-from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import checks, markdown, store
-from evo_agents.hub.server.srs.diff import text_of
-from evo_agents.hub.server.srs.doc import Document, Problem, SrsError
-from evo_agents.hub.server.srs.writes import (
-    Writer,
+from evo_agents.hub.server.srs.models import checks, markdown
+from evo_agents.hub.server.srs.models.api import MAX_MARKDOWN_BYTES
+from evo_agents.hub.server.srs.models.diff import text_of
+from evo_agents.hub.server.srs.models.doc import Document, Problem, SrsError
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.repository.versions import Writer
+from evo_agents.hub.server.srs.service.writes import (
     dropped,
     give_screen_codes,
     match_keys,
@@ -31,7 +31,6 @@ from evo_agents.hub.server.srs.writes import (
     write_version,
 )
 
-MAX_MARKDOWN_BYTES = 4 * 1024 * 1024
 SLUG_CHARS = 100
 
 
@@ -107,9 +106,7 @@ def preview_of(doc: Document, base: store.Snapshot | None, problems: list[Proble
 
 
 async def _slug_free(conn: AsyncConnection, access: ProjectAccess, slug: str) -> None:
-    d = tables.srs.documents
-    taken = await conn.execute(select(d.c.id).where(d.c.project_id == access.project_id, d.c.slug == slug))
-    if taken.first() is not None:
+    if await store.slug_taken(conn, access.project_id, slug):
         raise SrsError(
             409, f"project {access.name} has a document {slug}: import with --doc {slug} for its next version"
         )
@@ -117,7 +114,6 @@ async def _slug_free(conn: AsyncConnection, access: ProjectAccess, slug: str) ->
 
 async def _create(conn: AsyncConnection, access: ProjectAccess, user_id: int, request: ImportRequest, doc) -> int:
     title = (request.title or markdown.title_of(doc) or request.slug or "Untitled").strip()[:300]
-    d = tables.srs.documents
     values = {
         "project_id": access.project_id,
         "slug": request.slug,
@@ -126,7 +122,7 @@ async def _create(conn: AsyncConnection, access: ProjectAccess, user_id: int, re
         "label": access.push_label(request.label),
         "created_by": user_id,
     }
-    return (await conn.execute(insert(d).values(values).returning(d.c.id))).scalar_one()
+    return await store.create_document(conn, values)
 
 
 def _writer_check(access: ProjectAccess, request: ImportRequest) -> None:

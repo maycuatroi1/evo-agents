@@ -14,11 +14,12 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, replace
 
-from evo_agents.hub.server.srs import CODED_KINDS, markdown
-from evo_agents.hub.server.srs.diff import text_of
-from evo_agents.hub.server.srs.doc import Document, Item, SrsError
-from evo_agents.hub.server.srs.store import Snapshot
-from evo_agents.hub.server.srs.template import ROW_KINDS, code_key, tidy
+from evo_agents.hub.server.srs import CODED_KINDS
+from evo_agents.hub.server.srs.models import markdown
+from evo_agents.hub.server.srs.models.diff import text_of
+from evo_agents.hub.server.srs.models.doc import Document, Item, SrsError
+from evo_agents.hub.server.srs.models.template import ROW_KINDS, code_key, tidy
+from evo_agents.hub.server.srs.repository.store import Snapshot
 from evo_agents.hub.tables_srs import ITEM_KINDS, REF_RELS
 
 KEPT_FIELDS = {  # the fields an item's heading or place holds, which editing its body leaves

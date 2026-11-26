@@ -25,7 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.srs.doc import Document
+from evo_agents.hub.server.srs.models.doc import Document
 
 USE_CASE, BUSINESS_RULE = "use_case", "business_rule"
 ADDED, CHANGED, REMOVED = "added", "changed", "removed"  # tables_srs.RELEASE_CHANGES

@@ -15,8 +15,8 @@ if not pg.DSN:
 from sqlalchemy import func, select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.use_case_reviews import needed
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.service.use_case_reviews import needed
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import (  # noqa: F401
     client,

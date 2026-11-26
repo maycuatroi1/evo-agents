@@ -23,7 +23,7 @@ The tool ``tasks__create`` of the hub's /mcp (``agent``) makes a task for the me
 of a chat run, such as @ba of the plugin srs making a task of a use case, for the member who mentioned it, while that
 member holds writer; and the run of @ba that splits the frame tasks of an approved SRS version into child tasks
 (``parent``), for the member who approved it. The plugin srs makes those frame tasks itself, through the hub's tables,
-when a version is approved (``evo_agents.hub.server.srs.auto_tasks``).
+when a version is approved (``evo_agents.hub.server.srs.service.auto_tasks``).
 
 The hub imports this package for the manifest only. Its modules are in layers, each importing only those below it:
 ``routes`` (the API), ``agent`` (the tool, its table ``TOOLS``), ``kg`` (the knowledge graph's tickets) and ``events``

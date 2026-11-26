@@ -38,15 +38,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server.srs import revisions, store
-from evo_agents.hub.server.srs.doc import Document
-from evo_agents.hub.server.srs.revisions import History, Revision, fingerprints
-from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
+from evo_agents.hub.server.srs.models.doc import Document
+from evo_agents.hub.server.srs.repository import people, revisions, store
+from evo_agents.hub.server.srs.repository import use_case_reviews as rows
+from evo_agents.hub.server.srs.repository.revisions import History, Revision, fingerprints
+from evo_agents.hub.server.srs.repository.store import DocumentRow, ReviewRow, Settings, VersionRow
 
 APPROVE, REQUEST_CHANGES = "approve", "request_changes"
 USE_CASE, BUSINESS_RULE = "use_case", "business_rule"
@@ -174,63 +173,28 @@ def needed(old: Document | None, new: Document) -> list[Case]:
 
 async def authors_since(conn: AsyncConnection, doc: DocumentRow, number: int) -> set[int]:
     """The authors of the versions of ``doc`` after the one approved last, up to ``number``."""
-    v = tables.srs.versions
-    since = doc.approved_version or 0
-    query = select(v.c.author_id).where(v.c.document_id == doc.id, v.c.number > since, v.c.number <= number)
-    return set((await conn.execute(query)).scalars())
+    return await rows.authors_between(conn, doc, doc.approved_version or 0, number)
 
 
 async def _approved_before(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) -> int | None:
     """The version approved before ``held`` when it was approved, as its event ``srs.version.approved`` says; None
     when none was, or the event is not there."""
-    e = tables.hub_events
-    query = (
-        select(e.c.payload["previous"].astext)
-        .where(
-            e.c.kind == "srs.version.approved",
-            e.c.payload["document_id"].astext == str(doc.id),
-            e.c.payload["version"].astext == str(held.number),
-        )
-        .order_by(e.c.id.desc())
-        .limit(1)
-    )
-    found = (await conn.execute(query)).scalar()
+    found = await rows.approved_before(conn, doc.id, held.number)
     return int(found) if found and found.isdigit() else None
 
 
 async def _rows(conn: AsyncConnection, doc: DocumentRow, number: int) -> list[tuple[str, CaseReview]]:
     """(key of the use case, review) recorded on the versions after the one approved last, up to ``number``, oldest
     first."""
-    s = tables.srs
-    r, v, i, u = s.use_case_reviews, s.versions, s.items, tables.users
-    query = (
-        select(
-            i.c.key,
-            u.c.login.label("reviewer"),
-            r.c.reviewer_id,
-            r.c.role,
-            r.c.decision,
-            r.c.body,
-            v.c.number.label("version"),
-            r.c.created_at,
-        )
-        .select_from(
-            r.join(v, v.c.id == r.c.version_id).join(i, i.c.id == r.c.item_id).join(u, u.c.id == r.c.reviewer_id)
-        )
-        .where(v.c.document_id == doc.id, v.c.number > (doc.approved_version or 0), v.c.number <= number)
-        .order_by(r.c.id)
-    )
     return [
         (row.key, CaseReview(**{k: val for k, val in row._mapping.items() if k != "key"}))
-        for row in await conn.execute(query)
+        for row in await rows.reviews(conn, doc, number)
     ]
 
 
 async def _roles(conn: AsyncConnection, project_id: int, ids: set[int]) -> dict[int, str]:
     """The role on project ``project_id`` of each of the members ``ids`` who has a grant on it."""
-    g = tables.grants
-    query = select(g.c.user_id, g.c.role).where(g.c.project_id == project_id, g.c.user_id.in_(ids or [0]))
-    return {row.user_id: row.role for row in await conn.execute(query)}
+    return await people.roles(conn, project_id, ids)
 
 
 def _decides(owners: Sequence[str], admins: set[int], review: CaseReview | ReviewRow) -> bool:
@@ -359,8 +323,7 @@ def ready(cases: Sequence[CaseState]) -> bool:
 
 
 async def key_of(conn: AsyncConnection, item_id: int) -> str:
-    i = tables.srs.items
-    return (await conn.execute(select(i.c.key).where(i.c.id == item_id))).scalar_one()
+    return await rows.key_of(conn, item_id)
 
 
 async def record(
@@ -375,7 +338,7 @@ async def record(
         "decision": decision,
         "body": body,
     }
-    await conn.execute(insert(tables.srs.use_case_reviews).values(values))
+    await rows.insert_review(conn, values)
 
 
 __all__ = [

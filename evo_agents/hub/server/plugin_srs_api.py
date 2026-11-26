@@ -23,8 +23,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plugin_api_access import acting, feature_on, granted
-from evo_agents.hub.server.srs import store
-from evo_agents.hub.server.srs.doc import SrsError
+from evo_agents.hub.server.srs.models.doc import SrsError
+from evo_agents.hub.server.srs.repository import store
 from evo_agents.hub.server.task_dispatch import plugin_of_request
 from evo_agents.hub.tables_srs import SLUG
 

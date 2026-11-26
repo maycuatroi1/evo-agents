@@ -1,4 +1,4 @@
-"""Threads of comments anchored to a passage of an item (``evo_agents.hub.server.srs.threads``, migration 0227): a
+"""Threads of comments anchored to a passage of an item (``evo_agents.hub.server.srs.service.threads``, migration 0227): a
 passage found again in a later version or said to have changed, answers joining their thread, the notice srs_comment to
 the people of a thread and the author of the item's revision, resolve and reopen by a member only, and @ba asked in a
 comment answering in the thread. The sample is ``tests/hub/fixtures/srs/demo-shop-srs.md``: chi writes it."""
@@ -12,8 +12,8 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from evo_agents.hub.server.srs import threads
-from evo_agents.hub.server.srs.doc import Document, Item
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.service import threads
 from tests.hub.test_ba_agent import (  # noqa: F401 (fixtures)
     DOC,
     OTHER,

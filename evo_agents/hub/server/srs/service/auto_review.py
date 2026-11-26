@@ -32,14 +32,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import BA, findings, revisions
-from evo_agents.hub.server.srs.store import PLUGIN, DocumentRow, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import CaseState, case_name
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import PLUGIN, DocumentRow, VersionRow
+from evo_agents.hub.server.srs.service import findings
+from evo_agents.hub.server.srs.service.use_case_reviews import CaseState, case_name
 from evo_agents.hub.server.task_dispatch import hand_own_task
 
 log = logging.getLogger(__name__)
@@ -138,8 +138,7 @@ async def review_entered(conn: AsyncConnection, access: ProjectAccess, doc: Docu
         extra = {"project": access.name, "document": doc.slug, "version": version.number, "why": why}
         log.info("no review by @ba", extra=extra)
         return None
-    v = tables.srs.versions
-    await conn.execute(update(v).where(v.c.id == version.id).values(review_run_id=run_id))
+    await store.set_review_run(conn, version.id, run_id)
     log.info("review by @ba queued", extra={"project": access.name, "document": doc.slug, "run_id": run_id})
     return run_id
 

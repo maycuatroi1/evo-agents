@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import re
 
-from evo_agents.hub.server.srs.doc import ERROR, WARNING, Document, Item, Problem
-from evo_agents.hub.server.srs.template import Template, code_key
+from evo_agents.hub.server.srs.models.doc import ERROR, WARNING, Document, Item, Problem
+from evo_agents.hub.server.srs.models.template import Template, code_key
 
 USE_CASE_BLOCK = re.compile(r"UC ([A-Z]+)-(\d+)")
 RULE_BLOCK = re.compile(r"BR ([A-Z]+)(\d+)-\d+")

@@ -414,6 +414,23 @@ into the models. Other modules import the service, the repository and the models
 the package goes into one of the seven layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-srs-layers"
+name = "The BA documents of a project go from their routes, agent tools, graph and event handlers to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.srs"]
+layers = ["routes | agent | kg | handlers", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.srs a route handler (routes), a tool of @ba (agent), the knowledge graph's reader (kg) or a \
+handler of an event (handlers) only opens its transaction (evo_agents.hub.server.base.unit_of_work) and passes the \
+request's parts to a public function of the service (reading, writing, reviews, findings, settle and the rest), which \
+checks and decides; the repository holds every query on the tables (store, versions with its VersionStore, reviews, \
+findings, people and the rest); the models hold the API's shapes, the parsed document and its checks, and import none \
+of them. Move the code that reaches up into the layer that needs it: a check or a message into the service, a query \
+into the repository, a shape or a limit into the models. The package's __init__ keeps the manifest and its constants \
+alone. A new module of the package goes into one of the seven. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "hub-decisions-layers"
 name = "The decisions of a run go from their routes to their service to their repository to their models, never back"
 type = "layers"

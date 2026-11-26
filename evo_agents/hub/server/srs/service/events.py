@@ -1,4 +1,5 @@
-"""The event ``srs.version.approved`` (plan loop-engine, criterion a3) and the plugin's own handler of it.
+"""The event ``srs.version.approved`` (plan loop-engine, criterion a3), and what the plugin's own handlers of it
+(``handlers``) call.
 
 ``version_approved`` emits it when a version of a document is approved, in the transaction of the approval
 (``reviews.review``): the document (slug and id), the version (number and id), the version approved before it (None
@@ -7,7 +8,7 @@ fields or place) and dropped since that one, by kind; every coded item is added 
 ``srs:read`` get it, and the plugin srs itself ungranted (``plugin_events.OWN``), at least once; the hub keeps it in
 hub_events, where the Loop reads it by cursor (``evo_agents.hub.plugin_events``).
 
-``on_version_approved`` is the plugin's events contribution ``approvals``: it calls ``auto_tasks.approved`` with the
+``handlers.on_version_approved`` is the plugin's events contribution ``approvals``: it calls ``auto_tasks.approved`` with the
 event's payload when the hub delivers it, in a transaction of its own, so the tasks of an approved version (frame
 tasks, comments, cancellations and @ba's split run) come from the event in every project that enables the plugin
 tasks, whether its Loop is on or off. The hub delivers it again after a failure; ``approved`` is idempotent by
@@ -23,7 +24,7 @@ it has one, and the approver. A revision is released and emitted once, whatever 
 version stays as it is, and a version approved emits the use cases it needs reviewed that no release told of yet,
 before its own event.
 
-``on_use_case_approved`` is the plugin's events contribution ``releases``: it calls ``auto_tasks.released`` with the
+``handlers.on_use_case_approved`` is the plugin's events contribution ``releases``: it calls ``auto_tasks.released`` with the
 release the event names, in a transaction of its own, so the frame task of a new use case, the comments on the tasks of
 one that changed and the cancellations of one removed come from each use case's approval, not from its version's.
 
@@ -36,18 +37,17 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import feature_rule, hub_events, plugin_events, tables
-from evo_agents.hub.plugin_calls import CoreContext
+from evo_agents.hub import feature_rule, hub_events, plugin_events
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.srs import auto_tasks, revisions, store
-from evo_agents.hub.server.srs.diff import diff
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.store import DocumentRow, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import APPROVED as APPROVED_STATE
-from evo_agents.hub.server.srs.use_case_reviews import REMOVED, CaseState
+from evo_agents.hub.server.srs.models.diff import diff
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import DocumentRow, VersionRow
+from evo_agents.hub.server.srs.service import auto_tasks
+from evo_agents.hub.server.srs.service.use_case_reviews import APPROVED as APPROVED_STATE
+from evo_agents.hub.server.srs.service.use_case_reviews import REMOVED, CaseState
 
 APPROVED = hub_events.SRS_APPROVED
 USE_CASE_APPROVED = hub_events.SRS_USE_CASE_APPROVED
@@ -107,9 +107,7 @@ def _parent(doc: Document, item: Item) -> str | None:
 async def _home(conn: AsyncConnection, doc: DocumentRow, version: VersionRow, key: str) -> tuple[Document, Item] | None:
     """The document a use case ``version`` dropped was in, and the use case there: the newest version before it that
     holds it."""
-    v = tables.srs.versions
-    numbers = select(v.c.number).where(v.c.document_id == doc.id, v.c.number < version.number)
-    for number in sorted((await conn.execute(numbers)).scalars(), reverse=True):
+    for number in await store.numbers_before(conn, doc.id, version.number):
         content = (await store.snapshot(conn, await store.version(conn, doc, number))).doc
         item = next((item for item in content.items if item.key == key), None)
         if item is not None:
@@ -185,57 +183,12 @@ async def use_cases_released(
     return done
 
 
-def _ids(payload: dict) -> tuple[int, int, int | None, int] | None:
-    """(document, version, version approved before, approver) of a payload, or None when one is not an id."""
-    found = payload.get("document_id"), payload.get("version"), payload.get("previous"), payload.get("approver_id")
-    document_id, version, previous, approver_id = found
-    if not all(isinstance(value, int) for value in (document_id, version, approver_id)):
-        return None
-    return found if previous is None or isinstance(previous, int) else None
-
-
-async def _tasks_since(conn: AsyncConnection, project_id: int, document_id: int, version: int) -> bool:
+async def tasks_since(conn: AsyncConnection, project_id: int, document_id: int, version: int) -> bool:
     """Whether project ``project_id`` turned the feature tasks on after version ``version`` of document
     ``document_id`` was approved."""
-    v = tables.srs.versions
-    decided = select(v.c.decided_at).where(v.c.document_id == document_id, v.c.number == version)
-    decided_at = await conn.scalar(decided)
+    decided_at = await store.decided_at(conn, document_id, version)
     since = await feature_rule.on_since(conn, auto_tasks.TASKS, project_id)
     return since is not None and decided_at is not None and since > decided_at
-
-
-async def on_use_case_approved(params: dict, context: CoreContext) -> dict:
-    """The contribution ``releases``: ``params`` is plugin/1's ``event`` (the payload of ``use_cases_released``). A
-    document of another project than the delivery's is left alone, and an event of an older shape (no release) too."""
-    payload = params.get("payload") or {}
-    release_id, document_id = payload.get("release_id"), payload.get("document_id")
-    if params.get("kind") != USE_CASE_APPROVED or context.engine is None or context.project_id is None:
-        return {}
-    if not isinstance(release_id, int) or not isinstance(document_id, int):
-        return {}
-    d = tables.srs.documents
-    async with context.engine.begin() as conn:
-        if await conn.scalar(select(d.c.project_id).where(d.c.id == document_id)) != context.project_id:
-            return {}
-        batch = [one for one in payload.get("batch") or [] if isinstance(one, int)]
-        await auto_tasks.released(conn, release_id, batch or [release_id])
-    return {}
-
-
-async def on_version_approved(params: dict, context: CoreContext) -> dict:
-    """The contribution ``approvals``: ``params`` is plugin/1's ``event`` (the payload of ``version_approved`` and
-    its delivery). A document of another project than the delivery's is left alone."""
-    ids = _ids(params.get("payload") or {})
-    if params.get("kind") != APPROVED or ids is None or context.engine is None or context.project_id is None:
-        return {}
-    document_id, version, previous, approver_id = ids
-    d = tables.srs.documents
-    async with context.engine.begin() as conn:
-        if await conn.scalar(select(d.c.project_id).where(d.c.id == document_id)) != context.project_id:
-            return {}
-        if not await _tasks_since(conn, context.project_id, document_id, version):
-            await auto_tasks.approved(conn, document_id, version, previous, approver_id)
-    return {}
 
 
 __all__ = [
@@ -243,8 +196,7 @@ __all__ = [
     "USE_CASE_APPROVED",
     "Released",
     "item_changes",
-    "on_use_case_approved",
-    "on_version_approved",
+    "tasks_since",
     "use_cases_released",
     "version_approved",
 ]

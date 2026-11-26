@@ -97,7 +97,7 @@ if pg.DSN:  # the hub-server extra is installed (tests/hub/conftest.py)
 
     from evo_agents.hub import tables
     from evo_agents.hub.server.app import create_app
-    from evo_agents.hub.server.srs import markdown
+    from evo_agents.hub.server.srs.models import markdown
     from tests.hub.test_chats import OPEN_SINKS
     from tests.hub.test_plans import registration
     from tests.hub.test_run_stream import serving

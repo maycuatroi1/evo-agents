@@ -15,7 +15,7 @@ The agent of a run of @ba writes them with the tool srs__finding (``agent``): it
 open one, and reopens one settled at most REOPEN_HOURS ago. A resolution says how it was settled and names either
 the member who settled it (with the link of the chat message) or, settled from the graph, the sources that settled it,
 which may also be a later version of the document; a waiver says why. An admin of the project waives an open finding
-with a reason (``server``, ``evo-agents hub srs waive``), and every member with a grant reads them
+with a reason (``routes``, ``evo-agents hub srs waive``), and every member with a grant reads them
 (``evo-agents hub srs findings``). An archived document takes none of these writes (``store.writable``).
 
 ``approval_hold`` is the gate of an approval (``reviews.review``): a version is not approved while its document has an
@@ -36,18 +36,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 
-from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import BA, store
-from evo_agents.hub.server.srs.doc import Document, SrsError
-from evo_agents.hub.server.srs.store import DocumentRow, VersionRow
-from evo_agents.hub.server.srs.template import code_key
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models.doc import Document, SrsError
+from evo_agents.hub.server.srs.models.template import code_key
+from evo_agents.hub.server.srs.repository import findings as repo
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.repository.findings import OPEN, FindingRow
+from evo_agents.hub.server.srs.repository.store import DocumentRow, VersionRow
 from evo_agents.hub.tables_srs import (
     FINDING_KINDS,
     FINDING_LEVELS,
@@ -58,7 +58,7 @@ from evo_agents.hub.tables_srs import (
     SOURCE_KINDS,
 )
 
-OPEN, RESOLVED, WAIVED = "open", "resolved", "waived"
+RESOLVED, WAIVED = "resolved", "waived"
 DECIDE = "decide"  # the level whose open findings hold approval
 REOPEN_HOURS = 24  # how long after it was settled a finding may be reopened
 MIN_OPTIONS, MAX_OPTIONS, MAX_OPTION_CHARS = 2, 4, 300  # the choices of a finding, when it has any
@@ -71,29 +71,6 @@ ACTIONS = {  # what srs__finding takes for each action: (required, also allowed)
     "waive": (("finding", "resolution"), ("settled_by", "chat_link")),
     "reopen": (("finding",), ()),
 }
-
-
-@dataclass(frozen=True)
-class FindingRow:
-    """A finding with the number of the version it was found on, its item's key and code, and its settler's login."""
-
-    id: int
-    version: int
-    item: str | None
-    item_code: str | None
-    kind: str
-    level: str
-    sources: list[dict]
-    summary: str
-    status: str
-    resolution: str | None
-    resolution_sources: list[dict]
-    settled_by: str | None
-    settled_at: datetime | None
-    chat_link: str | None
-    run_id: int | None
-    created_at: datetime
-    options: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -112,45 +89,9 @@ class Source:
 # Reading
 
 
-def _query(document_id: int):
-    s, u = tables.srs, tables.users
-    f, v, i = s.findings, s.versions, s.items
-    return (
-        select(
-            f.c.id,
-            v.c.number.label("version"),
-            i.c.key.label("item"),
-            i.c.code.label("item_code"),
-            f.c.kind,
-            f.c.level,
-            f.c.sources,
-            f.c.summary,
-            f.c.status,
-            f.c.resolution,
-            f.c.resolution_sources,
-            u.c.login.label("settled_by"),
-            f.c.settled_at,
-            f.c.chat_link,
-            f.c.run_id,
-            f.c.created_at,
-            f.c.options,
-        )
-        .select_from(
-            f.join(v, v.c.id == f.c.version_id)
-            .outerjoin(i, i.c.id == f.c.item_id)
-            .outerjoin(u, u.c.id == f.c.settled_by)
-        )
-        .where(f.c.document_id == document_id)
-    )
-
-
 async def findings(conn: AsyncConnection, doc: DocumentRow, status: str | None = None) -> list[FindingRow]:
     """The findings of ``doc``, oldest first; those in ``status`` only when given."""
-    f = tables.srs.findings
-    query = _query(doc.id)
-    if status is not None:
-        query = query.where(f.c.status == status)
-    return [FindingRow(**row._mapping) for row in await conn.execute(query.order_by(f.c.id))]
+    return await repo.findings(conn, doc, status)
 
 
 async def code_documents(
@@ -164,23 +105,13 @@ async def code_documents(
     through = store.sink_of(access, sink)
     if not keys or through is None:
         return {}
-    s = tables.srs
-    c, i, d = s.codes, s.items, s.documents
-    query = (
-        select(c.c.code_key, d.c.slug, d.c.label)
-        .join_from(c, i, i.c.id == c.c.item_id)
-        .join(d, d.c.id == i.c.document_id)
-        .where(c.c.project_id == access.project_id, c.c.code_key.in_(keys))
-    )
-    return {row.code_key: row.slug for row in await conn.execute(query) if access.visible(row.label, through)}
+    held = await repo.code_holders(conn, access.project_id, keys)
+    return {key: slug for key, slug, label in held if access.visible(label, through)}
 
 
 async def finding(conn: AsyncConnection, doc: DocumentRow, finding_id: int) -> FindingRow:
     """Finding ``finding_id`` of ``doc``; 404 when the document has none such."""
-    row = (await conn.execute(_query(doc.id).where(tables.srs.findings.c.id == finding_id))).first()
-    if row is None:
-        raise SrsError(404, f"document {doc.slug} has no finding {finding_id}")
-    return FindingRow(**row._mapping)
+    return await repo.finding(conn, doc, finding_id)
 
 
 # What srs__finding takes
@@ -301,9 +232,7 @@ async def held_problems(
     problems = []
     codes = {code_key(source.ref): source.ref for source in sources if source.kind == "code"}
     if codes:
-        c = tables.srs.codes
-        query = select(c.c.code_key).where(c.c.project_id == access.project_id, c.c.code_key.in_(list(codes)))
-        held = set((await conn.execute(query)).scalars())
+        held = await repo.held_code_keys(conn, access.project_id, list(codes))
         problems += [
             f"no item of project {access.name} holds code {code}" for key, code in codes.items() if key not in held
         ]
@@ -356,7 +285,6 @@ async def record(
     if problems:
         raise refused(problems)
     item_id = await store.item_id(conn, access, doc, new.item) if new.item else None
-    f = tables.srs.findings
     values = {
         "document_id": doc.id,
         "version_id": row.id,
@@ -370,7 +298,7 @@ async def record(
         "commit_authors": list(dict.fromkeys(commit_authors))[:MAX_COMMIT_AUTHORS],
         "options": options,
     }
-    return await finding(conn, doc, (await conn.execute(insert(f).values(values).returning(f.c.id))).scalar_one())
+    return await finding(conn, doc, await repo.insert_finding(conn, values))
 
 
 @dataclass(frozen=True)
@@ -407,12 +335,10 @@ async def settle(
         "resolution": settling.resolution,
         "resolution_sources": [source.as_json() for source in settling.sources],
         "settled_by": settling.settled_by,
-        "settled_at": func.now(),
     }
     if settling.chat_link is not None:
         values["chat_link"] = settling.chat_link
-    f = tables.srs.findings
-    await conn.execute(update(f).where(f.c.id == finding_id).values(values))
+    await repo.settle(conn, finding_id, values)
     return await finding(conn, doc, finding_id)
 
 
@@ -422,11 +348,7 @@ async def reopen(conn: AsyncConnection, doc: DocumentRow, finding_id: int) -> Fi
     held = await finding(conn, doc, finding_id)
     if held.status == OPEN:
         raise SrsError(409, f"finding {finding_id} of {doc.slug} is open already")
-    f = tables.srs.findings
-    recent = and_(f.c.id == finding_id, f.c.settled_at > func.now() - timedelta(hours=REOPEN_HOURS))
-    values = {"status": OPEN, "resolution": None, "resolution_sources": [], "settled_by": None, "settled_at": None}
-    done = await conn.execute(update(f).where(recent).values(values))
-    if not done.rowcount:
+    if not await repo.reopen(conn, finding_id, REOPEN_HOURS):
         raise SrsError(
             409,
             f"finding {finding_id} of {doc.slug} was {held.status} more than {REOPEN_HOURS} hours ago and is not "
@@ -444,15 +366,9 @@ def _named(row: FindingRow) -> str:
     return f"#{row.id} ({row.kind}{about}{chat})"
 
 
-async def _review_run(conn: AsyncConnection, held: VersionRow):
-    v, r = tables.srs.versions, tables.runs
-    query = select(r.c.id, r.c.state).join_from(v, r, r.c.id == v.c.review_run_id).where(v.c.id == held.id)
-    return (await conn.execute(query)).first()
-
-
 async def review_run(conn: AsyncConnection, held: VersionRow):
     """@ba's review of the round of version ``held`` (its id and state), or None when the hub handed none."""
-    return await _review_run(conn, held)
+    return await repo.version_review_run(conn, held.id)
 
 
 @dataclass(frozen=True)
@@ -466,25 +382,18 @@ class Case:
     review_run_id: int | None = None
 
 
-async def _run(conn: AsyncConnection, run_id: int | None):
-    if run_id is None:
-        return None
-    r = tables.runs
-    return (await conn.execute(select(r.c.id, r.c.state).where(r.c.id == run_id))).first()
-
-
 async def holds(conn: AsyncConnection, doc: DocumentRow, held: VersionRow, case: Case | None = None):
     """What holds an approval of version ``held`` of ``doc`` now: the open findings of level decide of the document, and
     @ba's review of the version's round (its id and state) while it is queued or running, else None. With ``case``,
     of that use case alone (see the module)."""
     deciding = [row for row in await findings(conn, doc, OPEN) if row.level == DECIDE]
-    run = await _review_run(conn, held)
+    run = await repo.version_review_run(conn, held.id)
     run = run if run is not None and run.state in ACTIVE_STATES else None
     if case is None:
         return deciding, run
     under = use_case_of(case.content)
     deciding = [row for row in deciding if row.item is None or under.get(row.item) == case.key]
-    own = await _run(conn, case.review_run_id)
+    own = await repo.run(conn, case.review_run_id)
     return deciding, run or (own if own is not None and own.state in ACTIVE_STATES else None)
 
 
@@ -530,7 +439,6 @@ __all__ = [
     "REOPEN_HOURS",
     "RESOLVED",
     "WAIVED",
-    "FindingRow",
     "NewFinding",
     "Settling",
     "Source",

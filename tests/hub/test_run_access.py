@@ -75,8 +75,8 @@ from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.service import dispatch
 from evo_agents.hub.server.security import RUN, Principal
-from evo_agents.hub.server.srs import doc as srs_doc
-from evo_agents.hub.server.srs import reviews as srs_reviews
+from evo_agents.hub.server.srs.models import doc as srs_doc
+from evo_agents.hub.server.srs.service import reviews as srs_reviews
 from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.account_pool_setup import give_account_pool

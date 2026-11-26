@@ -1,5 +1,5 @@
 """The owners of groups of use case codes and the switch that lets an approval go without @ba, on the hub (the config's
-``owners`` and ``wait_for_ba``; ``evo_agents.hub.server.srs.use_case_reviews.may_decide``, ``reviews``, ``notices``).
+``owners`` and ``wait_for_ba``; ``evo_agents.hub.server.srs.service.use_case_reviews.may_decide``, ``reviews``, ``notices``).
 The sample is ``tests/hub/fixtures/srs/demo-shop-srs.md``: chi writes version 1, whose use cases UC ORD-1, UC ORD-2 and
 UC RET-1 are all to review; owner (admin) and someone-else are the other writers, reader only reads."""
 
@@ -9,9 +9,9 @@ import pytest
 
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub.server.srs import notices
-from evo_agents.hub.server.srs.store import owners_of_config
-from evo_agents.hub.server.srs.use_case_reviews import code_group, may_decide
+from evo_agents.hub.server.srs.repository.store import owners_of_config
+from evo_agents.hub.server.srs.service import notices
+from evo_agents.hub.server.srs.service.use_case_reviews import code_group, may_decide
 from tests.hub import pg
 
 if not pg.DSN:

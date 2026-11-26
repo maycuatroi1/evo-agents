@@ -7,8 +7,8 @@ from __future__ import annotations
 import difflib
 from dataclasses import dataclass, field
 
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.template import heading_text
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.models.template import heading_text
 
 CONTEXT_LINES = 2
 
