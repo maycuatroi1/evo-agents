@@ -86,7 +86,7 @@ REVIEW_ROLES = ("ba", "qa", "dev")  # srs_reviews.role
 REVIEW_DECISIONS = ("approve", "request_changes")  # srs_reviews.decision
 RELEASE_CHANGES = ("added", "changed", "removed")  # srs_use_case_releases.change
 # srs_use_case_releases.tasks.no_split of a release that made a frame task while the rest of its review is still to be
-# handled: the last release of the review hands the one split run (hub.server.srs.auto_tasks), the Loop waits for it
+# handled: the last release of the review hands the one split run (hub.server.srs.service.auto_tasks), the Loop waits for it
 PENDING_SPLIT = "another release of the same review is still to be handled: the last one splits"
 SLUG = r"^[a-z0-9][a-z0-9-]{0,99}$"  # srs_documents.slug
 MAX_TITLE_CHARS = 300  # of a document

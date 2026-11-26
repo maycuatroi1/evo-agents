@@ -81,7 +81,7 @@ PLAN = {
     ],
 }
 USE_CASE = "usecase:UC ORD-1"
-TICKET = "plugin.tasks:ticket:T-4"  # approving the sample made T-1 to T-3, its frame tasks (srs.auto_tasks)
+TICKET = "plugin.tasks:ticket:T-4"  # approving the sample made T-1 to T-3, its frame tasks (srs.service.auto_tasks)
 STEP = "plan:rollout/step:1"
 COMMIT = f"commit:alpha-app@{SHA}"
 
@@ -217,7 +217,9 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
 
 def test_srs_plugin_graph_leaves_out_an_archived_document_and_takes_it_back_once_unarchived(hub, tmp_path):
     off = hub.client.post(f"/v1/projects/{PROJECT}/plugins/tasks/disable", headers=hub.owner)
-    assert off.status_code == 200, off.text  # no frame task of the approval mentions the use case (srs.auto_tasks)
+    assert off.status_code == 200, (
+        off.text
+    )  # no frame task of the approval mentions the use case (srs.service.auto_tasks)
     machine(hub, tmp_path)
     run_and_serve(hub)
     approve_sample(hub)

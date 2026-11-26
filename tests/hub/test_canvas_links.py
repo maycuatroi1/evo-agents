@@ -1,6 +1,6 @@
 """What a claim of the core plugin canvas links, as criterion a7 of plan living-lean-canvas names it: the use cases of
 the plugin srs that realize it and the keys of the project's registry of signals that measure it
-(``evo_agents.hub.server.canvas.links``); and, as criterion a3 of plan problem-oriented-hub names it, the problems of
+(``evo_agents.hub.server.canvas.service.links``); and, as criterion a3 of plan problem-oriented-hub names it, the problems of
 the project it answers: one open or solved links, a code the project lacks or a dropped problem is refused, a link held
 before its problem was dropped stays, an export holds them and an import leaves out those the project lacks, problem
 show lists the claims that link it, and canvas__read names them.
@@ -343,9 +343,9 @@ def test_canvas_read_names_the_opportunities_a_claim_links():
     from datetime import UTC, datetime
 
     from evo_agents.hub import opportunities as opportunity_model
-    from evo_agents.hub.server.canvas import tools
     from evo_agents.hub.server.canvas.agent import CLAIM_FIELDS, _claim_lines
-    from evo_agents.hub.server.canvas.store import ClaimRow
+    from evo_agents.hub.server.canvas.models import tools
+    from evo_agents.hub.server.canvas.models.rows import ClaimRow
 
     now = datetime.now(UTC)
     row = ClaimRow(
@@ -376,9 +376,9 @@ def test_canvas_read_names_the_problems_a_claim_links():
     from datetime import UTC, datetime
 
     from evo_agents.hub import problems as problem_model
-    from evo_agents.hub.server.canvas import tools
     from evo_agents.hub.server.canvas.agent import CLAIM_FIELDS, _claim_lines
-    from evo_agents.hub.server.canvas.store import ClaimRow
+    from evo_agents.hub.server.canvas.models import tools
+    from evo_agents.hub.server.canvas.models.rows import ClaimRow
 
     now = datetime.now(UTC)
     row = ClaimRow(

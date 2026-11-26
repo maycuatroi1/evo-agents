@@ -14,7 +14,7 @@ the config's ``self_approval`` on, the author may give one of those reviews too.
 A Markdown file whose headings follow the template imports as a document or as its next version, and a version
 exports as Markdown with the same structure and codes.
 
-The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
+The routes are under /v1/x/srs/<project>/ (``routes``) for members with a grant on a project that enabled the plugin;
 readers read, writers write, admins drop coded items (by their codes too: ``retire``), archive documents and
 unarchive them. The hub's web shows them on the plugin's native pages (``PAGES``): the documents, a document's
 contents with each section read and edited in place, an item's page with the trace the knowledge graph holds, the
@@ -57,19 +57,25 @@ linked to it, the open tasks of a use case that changed get a comment, and those
 cancelled; then @ba, in a task run, splits each frame task into child tasks with tasks__create, for the member who
 approved the version. A second delivery of the event does nothing (srs_approval_tasks).
 
-The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
-``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
-comments, ``findings`` keeps the conflicts and gates approval, ``diff`` compares two versions, ``models`` and
-``server`` are the API, ``kg`` gives the knowledge graph its approved versions, ``agent``, ``auto_review`` and
-``settle`` are @ba's, ``events`` emits an approval and takes it, ``auto_tasks`` keeps the tasks of an approved
-version.
+The hub imports this package for the manifest only. Its modules sit in layers, each importing only those below it
+(the import-linter contract hub-srs-layers): on top ``routes`` (the API), ``agent`` (@ba's tools), ``kg`` (the
+knowledge graph's approved versions) and ``handlers`` (the plugin's events contributions and the end of @ba's review);
+then ``service``, which checks and decides: ``reading`` and ``writing`` behind the routes, ``reviews`` decides versions
+and keeps comments, ``findings`` keeps the conflicts and gates approval, ``writes`` and ``edits`` make a version,
+``imports`` reads Markdown in, ``auto_review``, ``settle``, ``notices`` and ``threads`` are @ba's and the reviewers',
+``events`` emits an approval, ``auto_tasks`` keeps the tasks of an approved version, ``convert`` makes the API's
+models; then ``repository``, which holds every query: ``store``, ``versions`` (its VersionStore writes a version),
+``revisions``, ``reviews``, ``findings``, ``settle``, ``tasks``, ``people`` and ``use_case_reviews``; and at the
+bottom ``models``: ``api`` (the API's shapes), ``doc``, ``template`` and ``markdown`` read and write documents,
+``checks`` finds what is wrong with one, ``diff`` compares two versions.
 """
 
-SERVER = "evo_agents.hub.server.srs.server"
+from evo_agents.hub.server.base.tools import Tool, Tools
+
+SERVER = "evo_agents.hub.server.srs.routes"
 KG = "evo_agents.hub.server.srs.kg"
 AGENT = "evo_agents.hub.server.srs.agent"
-SETTLE = "evo_agents.hub.server.srs.settle"
-EVENTS = "evo_agents.hub.server.srs.events"
+HANDLERS = "evo_agents.hub.server.srs.handlers"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")
@@ -374,8 +380,9 @@ FINDING_SCHEMA = {
         },
     },
 }
-TOOLS = (
-    (
+TOOLS = Tools(
+    AGENT,
+    Tool(
         "read",
         "Read the SRS documents",
         "Read a BA document of the project: without document, the list of documents; with it, a version as Markdown "
@@ -383,14 +390,14 @@ TOOLS = (
         "and the items under it.",
         READ_SCHEMA,
     ),
-    (
+    Tool(
         "search",
         "Search the SRS items",
         "Find items of the latest version of each document by code, alias or words of their title or body.",
         SEARCH_SCHEMA,
     ),
-    ("diff", "Compare two versions", "What changed between two versions of a document, item by item.", DIFF_SCHEMA),
-    (
+    Tool("diff", "Compare two versions", "What changed between two versions of a document, item by item.", DIFF_SCHEMA),
+    Tool(
         "propose",
         "Propose a new version",
         "Propose changes of a document's items as its next version, which goes to review at once and which members "
@@ -398,14 +405,14 @@ TOOLS = (
         "call it; it never drops an item or changes a code.",
         PROPOSE_SCHEMA,
     ),
-    (
+    Tool(
         "comment",
         "Comment on a document",
         "Comment on a document, a version or an item, as the member the run works for, marked as drafted by the run. "
         "Only the agent of a run of @ba may call it; a comment is advice and blocks no approval.",
         COMMENT_SCHEMA,
     ),
-    (
+    Tool(
         "finding",
         "Record or settle a conflict",
         "Record a conflict of a document as a finding with the sources that show it (graph nodes, codes, paths), each "
@@ -487,10 +494,7 @@ MANIFEST = {
                 },
             }
         ],
-        "mcp_tools": [
-            {"name": name, "title": title, "description": text, "python": f"{AGENT}:{name}", "input_schema": schema}
-            for name, title, text, schema in TOOLS
-        ],
+        "mcp_tools": TOOLS.contributions(),
         "events": [
             {
                 "name": "reviews",
@@ -498,7 +502,7 @@ MANIFEST = {
                 "description": "Opens the settle chat of a version whose review left findings of level decide open, "
                 "or tells its reviewers that it waits for them when none is.",
                 "on": ["task.result"],
-                "python": f"{SETTLE}:review_ended",
+                "python": f"{HANDLERS}:review_ended",
             },
             {
                 "name": "approvals",
@@ -506,7 +510,7 @@ MANIFEST = {
                 "description": "Keeps the project's tasks in step with a version approved, when it enables the plugin "
                 "tasks: a frame task of each new use case, comments, cancellations and @ba's split run.",
                 "on": ["srs.version.approved"],
-                "python": f"{EVENTS}:on_version_approved",
+                "python": f"{HANDLERS}:on_version_approved",
             },
             {
                 "name": "releases",
@@ -515,7 +519,7 @@ MANIFEST = {
                 "enables the plugin tasks: a frame task of a new use case and @ba's split run, comments on the tasks "
                 "of one that changed, cancellations of those of one removed.",
                 "on": ["srs.use_case.approved"],
-                "python": f"{EVENTS}:on_use_case_approved",
+                "python": f"{HANDLERS}:on_use_case_approved",
             },
         ],
         "routes": [{"name": "documents", "title": "The BA documents of a project", "python": f"{SERVER}:router"}],

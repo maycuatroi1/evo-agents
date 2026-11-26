@@ -25,7 +25,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.kg_sources import checked
 from evo_agents.hub.server.docs import typed
 from evo_agents.hub.server.docs.kg import document_item
-from evo_agents.hub.server.docs.store import KgDocument
+from evo_agents.hub.server.docs.models import KgDocument
 from tests.hub import pg
 
 SOURCE = "plugin.docs"

@@ -84,7 +84,7 @@ diff compares two revs field by field, each field of the test card on its own.
 
 ## The rule of evidence
 
-`evo_agents/hub/server/canvas/rules.py` checks every path that changes a status: an edit on the web, the command line
+`evo_agents/hub/server/canvas/models/rules.py` checks every path that changes a status: an edit on the web, the command line
 or the API, an import, an undo, a proposal and its acceptance, @strategist's tools, and the decisions on a baseline.
 
 - A claim goes to `validated` only with at least one piece of real evidence that supports it. Real evidence is not

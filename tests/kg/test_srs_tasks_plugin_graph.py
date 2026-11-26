@@ -31,13 +31,13 @@ pytest.importorskip("sqlalchemy", reason="the kg sources of srs and tasks need t
 from evo_agents.hub import kg_sources
 from evo_agents.hub.kg_sources import SourceFailure, checked, keep_sources, knowledge_with
 from evo_agents.hub.server.srs import kg as srs_kg
-from evo_agents.hub.server.srs import markdown
-from evo_agents.hub.server.srs.store import DocumentRow, Snapshot, VersionRow
-from evo_agents.hub.server.srs.template import template_of
+from evo_agents.hub.server.srs.models import markdown
+from evo_agents.hub.server.srs.models.template import template_of
+from evo_agents.hub.server.srs.repository.store import DocumentRow, Snapshot, VersionRow
 from evo_agents.hub.server.tasks import DEFAULT_STATUSES
-from evo_agents.hub.server.tasks import kg as tasks_kg
-from evo_agents.hub.server.tasks.settings import Settings, Status
-from evo_agents.hub.server.tasks.store import People, TaskRow
+from evo_agents.hub.server.tasks.models.rows import People, TaskRow
+from evo_agents.hub.server.tasks.models.values import Settings, Status
+from evo_agents.hub.server.tasks.service import backlog as tasks_kg
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import finalize_item
 from evo_agents.kg.replace import replace_source

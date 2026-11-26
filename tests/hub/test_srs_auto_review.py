@@ -1,4 +1,4 @@
-"""@ba's review of every version that enters review (``evo_agents.hub.server.srs.auto_review``), as criterion a6 of
+"""@ba's review of every version that enters review (``evo_agents.hub.server.srs.service.auto_review``), as criterion a6 of
 plan srs-conflicts-and-tasks names it.
 
 Each submit, in every round, from a member or from a proposal of @ba, hands @ba a review run while its agent type is
@@ -56,7 +56,7 @@ from tests.hub.test_runs import moved
 from tests.hub.test_srs_findings import billing, findings, graph, recorded, reviewing, settle  # noqa: F401 (graph)
 
 PACK = Path(srs.__file__).parent / "packs" / "ba"
-LOGGER = "evo_agents.hub.server.srs.auto_review"
+LOGGER = "evo_agents.hub.server.srs.service.auto_review"
 
 
 def review_titles(db) -> list[str]:

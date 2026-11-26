@@ -11,7 +11,7 @@ MAX_IMAGE_BYTES, checked by its first bytes and kept once per project by its SHA
 shows by the names its Markdown gives them (``![Board](shots/board.png "Caption")``), and the hub serves each image to
 the readers of the document from its own origin; the web never loads an image from anywhere else.
 
-The routes are under /v1/x/docs/<project>/ (``server``) for members with a grant on a project the feature is on in:
+The routes are under /v1/x/docs/<project>/ (``routes``) for members with a grant on a project the feature is on in:
 readers read, writers create documents, save versions and upload images. A document carries a label, the project's by
 default or one an admin gives it when creating it, and every version and image of it is read under that label through
 the sink X-Evo-Sink names, else the project's hub sink, as plans are read. The hub's web shows them on the feature's
@@ -21,13 +21,17 @@ it and saves the file as the next version, or saves an ``.html`` file as a page.
 The project's knowledge graph holds the latest version of each document, under its label (``kg``, source
 ``plugin.docs``; a page's text as ``page_text`` reads it), so ``kg_search`` finds a document by what it says.
 
-The hub imports this package for the manifest only: ``store`` reads and writes the documents, ``images`` keeps and
-serves their images, ``models`` and ``server`` are the API, ``agent`` is the tool, ``kg`` the graph's source.
+The hub imports this package for the manifest only. Its modules are in layers (contract ``hub-docs-layers``): the
+routes (``routes``), the tool (``agent``) and the graph's source (``kg``) call the ``service``, which checks and
+decides, and ``images``, which keeps and serves the images; both read and write through the ``repository``, which
+holds every SQL statement and saves a document as a ``VersionedStore``; ``models`` (the error, the rows and the API's
+models) and ``page_text`` import none of them.
 """
 
+from evo_agents.hub.server.base.tools import Tool, Tools
 from evo_agents.hub.tables_docs import MAX_IMAGE_BYTES, SLUG
 
-SERVER = "evo_agents.hub.server.docs.server"
+SERVER = "evo_agents.hub.server.docs.routes"
 AGENT = "evo_agents.hub.server.docs.agent"
 KG = "evo_agents.hub.server.docs.kg"
 
@@ -43,8 +47,9 @@ READ_SCHEMA = {
         "version": {"type": "integer", "minimum": 1, "description": "a version's number; the latest when left out"},
     },
 }
-TOOLS = (
-    (
+TOOLS = Tools(
+    AGENT,
+    Tool(
         "read",
         "Read the project's docs",
         "Read a document of the project: without document, the list of documents; with it, a version (the latest unless "
@@ -76,10 +81,7 @@ MANIFEST = {
     "engines": {"evo-agents": ">=0.20"},
     "plugin_api": 1,
     "contributes": {
-        "mcp_tools": [
-            {"name": name, "title": title, "description": text, "python": f"{AGENT}:{name}", "input_schema": schema}
-            for name, title, text, schema in TOOLS
-        ],
+        "mcp_tools": TOOLS.contributions(),
         "routes": [{"name": "documents", "title": "The documents of a project", "python": f"{SERVER}:router"}],
         "kg_sources": [
             {"name": "documents", "title": "The latest version of each document", "python": f"{KG}:kg_source"}

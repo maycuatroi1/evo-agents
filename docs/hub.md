@@ -1706,7 +1706,7 @@ its main line that mentions no agent goes to the coordinator's session in the ro
 
 **Settle chats.** A settle chat (`kind` settle) is a chat the hub opens, never a person, for something members settle
 with one agent: today the conflicts @ba found in a version of a BA document of the core plugin srs, whose review left
-findings of level decide open (`docs/srs-plugin.md`, `evo_agents/hub/server/srs/settle.py`). It is a group chat in
+findings of level decide open (`docs/srs-plugin.md`, `evo_agents/hub/server/srs/service/settle.py`). It is a group chat in
 all but two things. It names its agent on its row (`chats.direct_profile_id`, no person), and each message of a person
 whose mentions do not reach that agent goes to it as if it mentioned it (`via` settle), in the sender's session of the
 message's thread, within the chat's hops: an `@` of it makes the same one run, and a mention of another

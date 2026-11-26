@@ -66,8 +66,8 @@ from evo_agents.hub.server import (
     worker_shares,
 )
 from evo_agents.hub.server import org as org_routes
-from evo_agents.hub.server.canvas import content as canvas_content
-from evo_agents.hub.server.canvas import server as canvas_server
+from evo_agents.hub.server.canvas import routes as canvas_routes
+from evo_agents.hub.server.canvas.models import content as canvas_content
 from evo_agents.hub.server.goals import service as goals
 from evo_agents.hub.server.loop import breaker as loop_breaker
 from evo_agents.hub.server.opportunities import service as opportunities
@@ -75,8 +75,8 @@ from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.service import dispatch
 from evo_agents.hub.server.security import RUN, Principal
-from evo_agents.hub.server.srs import doc as srs_doc
-from evo_agents.hub.server.srs import reviews as srs_reviews
+from evo_agents.hub.server.srs.models import doc as srs_doc
+from evo_agents.hub.server.srs.service import reviews as srs_reviews
 from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.account_pool_setup import give_account_pool
@@ -617,7 +617,7 @@ GUARDED = (
 RAISING = (
     ("builder answer", lambda user, access: builder_server.answer_as(None, user, PROJECT, 1, "approve", "0")),
     ("srs review", lambda user, access: srs_reviews._may_review(None, access, user, None, None, None)),
-    ("canvas decide", lambda user, access: canvas_server._no_run(user, "decides an item of a baseline")),
+    ("canvas decide", lambda user, access: canvas_routes._no_run(user, "decides an item of a baseline")),
     ("merge queue", lambda user, access: post_merge.admin_only(user, access)),
     ("loop breaker", lambda user, access: loop_breaker.resume(None, user, access)),
     ("org chart", lambda user, access: org_routes.actor(user)),

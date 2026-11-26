@@ -1,4 +1,4 @@
-"""The revisions of each use case and its approved baseline (``evo_agents.hub.server.srs.revisions``, migration 0226):
+"""The revisions of each use case and its approved baseline (``evo_agents.hub.server.srs.repository.revisions``, migration 0226):
 a use case's own revision number (r1 and up), the link of its review on every answer, the author rule and the findings
 gate narrowed to one use case, a use case sent to review on its own and released into the baseline the knowledge graph
 reads. The sample is ``tests/hub/fixtures/srs/demo-shop-srs.md``: chi writes version 1, someone-else and owner review."""
@@ -19,8 +19,8 @@ from sqlalchemy import delete, select
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.srs import kg as srs_kg
-from evo_agents.hub.server.srs import notices
-from evo_agents.hub.server.srs.doc import Document, Item
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.service import notices
 from tests.hub.live import engine as live_engine
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import (  # noqa: F401 (fixtures)

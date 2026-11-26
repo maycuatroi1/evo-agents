@@ -14,7 +14,7 @@ A document may declare in the YAML block its Markdown opens with a type, links t
 audience (``typed``): a declared type is a node of that kind the document defines, each link an edge of its relation,
 and the item's label is the document's joined with the declared level and audience, so a document of a brand space
 shows only to the members of the space's chat. What it may declare is what the project's ontology and ladder name
-(``store.kg_frame``); a document whose audience cannot be read is left out.
+(``repository.kg_frame``); a document whose audience cannot be read is left out.
 
 A document links its page on the hub's web (``uri``, ``document_url``) when the hub knows its public URL
 (``EVO_HUB_PUBLIC_URL``). The cursor is the document saved last, so ``kg_status`` names how recent the source is
@@ -28,7 +28,9 @@ from urllib.parse import quote
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.docs import store, typed
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.docs import repository, typed
+from evo_agents.hub.server.docs.models import KgDocument
 from evo_agents.hub.server.docs.page_text import page_text
 from evo_agents.kg.ids import utc_text
 from evo_agents.kg.text import split_markdown
@@ -43,7 +45,7 @@ def document_url(base_url: str, project: str, slug: str) -> str:
 
 def document_item(
     source: str,
-    row: store.KgDocument,
+    row: KgDocument,
     page: tuple[str, str] | None = None,
     declared: tuple[typed.Declared, typed.Frame] | None = None,
     kinds: dict[str, str] | None = None,
@@ -80,8 +82,8 @@ async def read(conn: AsyncConnection, source: str, project_id: int, project: str
     """The answer of the source: an item per document of the project, no identifiers, and as its cursor the document
     saved last; each document links its page on the hub's web when the hub knows its public URL (``base_url``)."""
     page = (base_url, project) if base_url else None
-    rows = await store.kg_documents(conn, project_id)
-    frame = typed.Frame.of(*await store.kg_frame(conn, project_id))
+    rows = await repository.kg_documents(conn, project_id)
+    frame = typed.Frame.of(*await repository.kg_frame(conn, project_id))
     found = {row.slug: typed.declared(row.body, frame) for row in rows if row.format != "html"}
     kinds = {slug: typed.node_id(source, d.kind, slug) for slug, d in found.items() if d.kind is not None}
     rows = [row for row in rows if not (row.slug in found and found[row.slug].closed)]
@@ -102,7 +104,7 @@ async def kg_source(params: dict, context: CoreContext) -> dict:
         return {"items": [], "identifiers": []}
     base_url = getattr(context.config, "public_url", None)
     base_url = base_url if isinstance(base_url, str) else None
-    async with context.engine.begin() as conn:
+    async with UnitOfWork(context.engine) as conn:
         return await read(conn, params["source"], context.project_id, context.project or params["project"], base_url)
 
 

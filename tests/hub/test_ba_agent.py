@@ -183,7 +183,7 @@ def review(client, headers, number: int, decision: str = "approve", **body):
 def delivered(client) -> dict:
     """One pass of the job hub.deliver_plugin_events, as the hub runs it every minute, none of whose deliveries fails:
     the event srs.version.approved of an approval reaches the plugin srs, whose handler keeps the tasks in step
-    (``evo_agents.hub.server.srs.events``)."""
+    (``evo_agents.hub.server.srs.service.events``)."""
     report = client.portal.call(lambda: plugin_events.deliver(client.app.state.engine))
     assert (report["retried"], report["failed"]) == (0, 0), report
     return report

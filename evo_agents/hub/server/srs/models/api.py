@@ -1,0 +1,521 @@
+"""The API of the plugin srs as Pydantic models: what its routes take and answer, and how a document, a version and
+an item become an answer. Every model is named ``Srs...`` in the hub's OpenAPI document.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from evo_agents.hub.runs import RUN_STATES
+from evo_agents.hub.server.projects import LabelIn
+from evo_agents.hub.tables_srs import (
+    DOCUMENT_KINDS,
+    FINDING_KINDS,
+    FINDING_LEVELS,
+    FINDING_STATUSES,
+    ITEM_KINDS,
+    MAX_COMMENT_CHARS,
+    MAX_CONTEXT_CHARS,
+    MAX_FIELD_CHARS,
+    MAX_QUOTE_CHARS,
+    MAX_RESOLUTION_CHARS,
+    MAX_REVIEW_CHARS,
+    MAX_SUMMARY_CHARS,
+    MAX_TITLE_CHARS,
+    REF_RELS,
+    REVIEW_DECISIONS,
+    REVIEW_ROLES,
+    SLUG,
+    SOURCE_KINDS,
+    VERSION_STATES,
+)
+
+MAX_MARKDOWN_BYTES = 4 * 1024 * 1024  # of a document imported
+MAX_BODY_CHARS = 200_000  # of one item
+MAX_CHANGES = 500  # in one save
+CHANGES = ("added", "removed", "changed", "moved")
+USE_CASE_CHANGES = ("added", "changed", "removed")
+USE_CASE_STATES = ("pending", "approved", "changes_requested", "superseded")
+
+
+class SrsDocumentSummary(BaseModel):
+    """A BA document of a project, with its latest version."""
+
+    slug: str
+    title: str
+    kind: Literal[DOCUMENT_KINDS]
+    template: str
+    approved_version: int | None = Field(description="the version approved last")
+    latest_version: int | None
+    latest_state: Literal[VERSION_STATES] | None
+    label: dict = Field(description="the label every row of the document carries")
+    created_by: str
+    created_at: datetime
+    archived_at: datetime | None
+
+
+class SrsReview(BaseModel):
+    reviewer: str
+    role: Literal[REVIEW_ROLES] | None = Field(description="the role the review counts for")
+    decision: Literal[REVIEW_DECISIONS]
+    body: str
+    round: int
+    created_at: datetime
+
+
+class SrsReviewRun(BaseModel):
+    """@ba's review of a version's current round: the task run the hub handed when the version entered review."""
+
+    id: int
+    state: Literal[RUN_STATES] = Field(description="approving the version waits while it is queued or running")
+
+
+class SrsVersion(BaseModel):
+    """A version of a document, never changed after it was saved, and the reviews of each round."""
+
+    number: int
+    parent_number: int | None = Field(description="the version it was built on")
+    state: Literal[VERSION_STATES]
+    round: int = Field(description="how many times it was submitted")
+    author: str
+    drafted_by_run: int | None = Field(description="the run of the agent that drafted it, when one did")
+    summary: str
+    created_at: datetime
+    submitted_at: datetime | None
+    decided_at: datetime | None
+    review_run: SrsReviewRun | None = Field(
+        description="@ba's review of the current round, when the hub handed one; none in a project without @ba"
+    )
+    reviews: list[SrsReview]
+
+
+class SrsUseCaseReview(BaseModel):
+    """A review of a use case that counts for the version, with the version it was recorded on."""
+
+    reviewer: str
+    role: Literal[REVIEW_ROLES] | None = Field(description="the role the review counts for")
+    decision: Literal[REVIEW_DECISIONS]
+    body: str
+    version: int = Field(description="the version it was recorded on: an earlier one when the use case reads the same")
+    created_at: datetime
+
+
+class SrsUseCase(BaseModel):
+    """A use case a version needs reviewed, with its state, its revision and the reviews that count."""
+
+    key: str
+    code: str | None
+    title: str
+    change: Literal[USE_CASE_CHANGES] = Field(description="what the version does to it since the version approved last")
+    state: Literal[USE_CASE_STATES] = Field(
+        description="approved once the approved baseline holds its revision (or its removal), superseded when the "
+        "baseline holds a newer revision, else changes_requested, approved or pending by the reviews that count"
+    )
+    reviews: list[SrsUseCaseReview]
+    rev: int | None = Field(None, description="its revision in this version: r1 and up, one more each time it changed")
+    released: int | None = Field(None, description="the revision of it the approved baseline holds; null for none")
+    submitted: bool = Field(False, description="whether its revision was sent to review on its own")
+    author: str | None = Field(None, description="who wrote its revision in this version")
+    authors: list[str] = Field(
+        default_factory=list,
+        description="who wrote a revision of it since its newest release, and so may not review it (empty when "
+        "self_approval is on)",
+    )
+    owners: list[str] = Field(
+        default_factory=list,
+        description="the members the config's owners names for its group (ORD of UC ORD-3): they and the project's "
+        "admins alone review it; empty when the config names none, and anyone may",
+    )
+    link: str = Field("", description="its review on the hub's web, a path")
+
+
+class SrsVersionCases(SrsVersion):
+    """A version with the use cases it needs reviewed: those it adds, changes (the use case, or a business rule under
+    it) or drops since the version approved last, every use case while none was approved; empty for a version that is
+    neither a draft nor in review."""
+
+    use_cases: list[SrsUseCase]
+
+
+class SrsQueuedUseCase(SrsUseCase):
+    """A use case to review in the queue, with what a reviewer reads first and the open findings about it (itself or a
+    business rule under it)."""
+
+    intent: str | None = Field(
+        description="what its actor wants (its Intent, or the Objective of an older use case), as the version reads; "
+        "null for one it drops"
+    )
+    deciding: int = Field(
+        description="its open findings of level decide, which hold its approval unless wait_for_ba is off"
+    )
+    noted: int = Field(description="its open findings of another level, advice only")
+    held_by: Literal["ba_review", "findings"] | None = Field(
+        None,
+        description="what holds its approval now: @ba's review of the version's round or of its own, then the open "
+        "findings of level decide about it, a business rule under it or the whole document; null when none, and "
+        "always when the config's wait_for_ba is off",
+    )
+    may_review: bool = Field(
+        False,
+        description="whether the caller may review it: a writer who wrote no revision of it since its newest "
+        "release (any writer when self_approval is on) and, when it has owners, one of them or an admin; never the "
+        "agent of a run",
+    )
+
+
+class SrsQueuedVersion(SrsVersionCases):
+    """A version in review of a document the caller sees, or the latest version of one whose use cases were sent to
+    review on their own (a draft, listing those alone), with the use cases it needs reviewed, what holds its approval
+    now and whether the caller may review it."""
+
+    use_cases: list[SrsQueuedUseCase]  # pyright: ignore[reportIncompatibleVariableOverride]
+    document: str = Field(description="the document's slug")
+    document_title: str
+    held_by: Literal["ba_review", "findings"] | None = Field(
+        description="what holds an approval now: @ba's review of the round while it is queued or running, then the open "
+        "findings of level decide of the document; null when it may be approved, and always when wait_for_ba is off"
+    )
+    deciding: int = Field(description="the open findings of level decide of the document")
+    may_review: bool = Field(
+        description="whether the caller may review one of its use cases (each says), or the version when it has none "
+        "to review: a writer who wrote no version of the document since the one approved last"
+    )
+
+
+class SrsRef(BaseModel):
+    rel: Literal[REF_RELS]
+    to: str = Field(description="the key of the item it links to")
+    to_code: str | None
+
+
+class SrsItem(BaseModel):
+    """An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a
+    table row), the fields its kind holds, its Markdown body and its links; a use case its revision there."""
+
+    key: str
+    kind: Literal[ITEM_KINDS]
+    code: str | None
+    aliases: list[str]
+    title: str
+    parent: str | None
+    heading_level: int | None
+    fields: dict[str, Any]
+    body: str
+    refs: list[SrsRef]
+    rev: int | None = Field(
+        None, description="a use case's revision in this version (r1 and up); null for another item"
+    )
+    released: int | None = Field(
+        None, description="of a use case: the revision the approved baseline holds; null when it holds none"
+    )
+
+
+class SrsProblem(BaseModel):
+    level: Literal["error", "warning"]
+    check: str
+    message: str
+    code: str | None
+    item: str | None = Field(description="the key of the item")
+    line: int | None = Field(description="the line of the Markdown it came from")
+
+
+class SrsVersionDetail(SrsVersionCases):
+    """A version with its content and what is wrong with it."""
+
+    document: str
+    preamble: str
+    items: list[SrsItem]
+    problems: list[SrsProblem]
+
+
+class SrsDocument(SrsDocumentSummary):
+    """A document with every version, the newest first, and one of them whole (the latest unless asked)."""
+
+    versions: list[SrsVersion]
+    shown: SrsVersionDetail | None
+
+
+class SrsRevision(BaseModel):
+    """A revision of a use case: the version it first appears in, its author, and whether it was sent to review on
+    its own."""
+
+    rev: int
+    version: int
+    author: str
+    created_at: datetime
+    dropped: bool = Field(description="the revision of the version that dropped the use case")
+    submitted_at: datetime | None
+    submitted_by: str | None
+
+
+class SrsItemDetail(SrsItem):
+    """An item of a version, with the items above it and those under it; a use case also the revision the approved
+    baseline holds and every revision it had."""
+
+    document: str
+    version: int
+    path: list[str] = Field(description="the titles of the items above it, the top first")
+    children: list[SrsItem]
+    revisions: list[SrsRevision] = Field(default_factory=list, description="of a use case: its revisions, r1 first")
+
+
+class SrsUseCaseSubmitted(SrsVersionCases):
+    """The latest version of a document after one of its use cases was sent to review on its own: the use case, and
+    @ba's review of its round when the hub handed one."""
+
+    use_case: SrsUseCase
+    use_case_review_run: SrsReviewRun | None = Field(
+        description="@ba's review of the use case's round; none in a project without @ba"
+    )
+
+
+class SrsImport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    markdown: str = Field(min_length=1, max_length=MAX_MARKDOWN_BYTES)
+    document: str | None = Field(None, pattern=SLUG, description="the document whose next version this is")
+    slug: str | None = Field(None, pattern=SLUG, description="the slug of a new document; from its title if left out")
+    title: str | None = Field(None, min_length=1, max_length=MAX_TITLE_CHARS)
+    kind: Literal[DOCUMENT_KINDS] = "srs"
+    summary: str = Field("", max_length=MAX_SUMMARY_CHARS)
+    label: LabelIn | None = Field(None, description="a new document's label, an admin's choice; the project's if not")
+    dry_run: bool = False
+
+
+class SrsPreviewItem(BaseModel):
+    kind: Literal[ITEM_KINDS]
+    code: str | None
+    title: str
+    level: int | None
+    parent: int | None = Field(description="the index of its parent in items")
+    line: int | None
+
+
+class SrsPreview(BaseModel):
+    items: list[SrsPreviewItem]
+    counts: dict[str, int] = Field(description="items per kind")
+    problems: list[SrsProblem]
+    added: list[str] = Field(description="the codes (or titles) of the items an import adds to the document")
+    changed: list[str]
+    removed: list[str]
+
+
+class SrsImportResult(BaseModel):
+    document: str
+    created: bool = Field(description="whether the import created the document")
+    version: int | None = Field(description="the version saved; null for a dry run")
+    dry_run: bool
+    preview: SrsPreview
+
+
+class SrsRefIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rel: Literal[REF_RELS]
+    to: str = Field(min_length=1, max_length=100, description="the code or key of the item it links to")
+
+
+class SrsNewItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[ITEM_KINDS]
+    title: str = Field(min_length=1, max_length=500)
+    body: str = Field("", max_length=MAX_BODY_CHARS)
+    code: str | None = Field(None, min_length=1, max_length=100)
+    parent: str | None = Field(None, description="the key of its parent")
+    after: str | None = Field(None, description="the key of the sibling it follows")
+    heading_level: int | None = Field(None, ge=1, le=6)
+    steps: list[str] | None = Field(None, max_length=50, description="a business rule's steps of its use case")
+
+
+class SrsChange(BaseModel):
+    """A change of the item ``key`` (title, body, steps, links, or drop it with ``retire``), or a ``new`` item."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str | None = Field(None, min_length=1, max_length=64)
+    title: str | None = Field(None, min_length=1, max_length=500)
+    body: str | None = Field(None, max_length=MAX_BODY_CHARS)
+    steps: list[str] | None = Field(None, max_length=50)
+    refs: list[SrsRefIn] | None = Field(None, max_length=100)
+    retire: bool = False
+    new: SrsNewItem | None = None
+
+    @model_validator(mode="after")
+    def _one_target(self):
+        if (self.key is None) == (self.new is None):
+            raise ValueError("a change names an item (key) or a new one (new), not both")
+        return self
+
+
+class SrsSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_version: int = Field(ge=1, description="the version the changes were made on")
+    summary: str = Field("", max_length=MAX_SUMMARY_CHARS)
+    preamble: str | None = Field(None, max_length=MAX_BODY_CHARS)
+    changes: list[SrsChange] = Field(min_length=1, max_length=MAX_CHANGES)
+
+
+class SrsReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal[REVIEW_DECISIONS]
+    role: Literal[REVIEW_ROLES] | None = Field(None, description="the role it counts for; one the reviewer holds")
+    body: str = Field("", max_length=MAX_REVIEW_CHARS)
+
+
+class SrsWithdrawIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = Field(
+        None, min_length=1, max_length=MAX_COMMENT_CHARS, description="why, kept as a comment on the version"
+    )
+
+
+class SrsRetireIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    codes: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        min_length=1, max_length=MAX_CHANGES, description="the codes or aliases of the items to retire"
+    )
+    summary: str = Field("", max_length=MAX_SUMMARY_CHARS, description="the new version's; from the codes if left out")
+    dry_run: bool = False
+
+
+class SrsRetiredItem(BaseModel):
+    key: str
+    kind: Literal[ITEM_KINDS]
+    code: str | None
+    title: str
+
+
+class SrsRetireResult(BaseModel):
+    document: str
+    version: int | None = Field(description="the version saved, a draft; null for a dry run")
+    dry_run: bool
+    dropped: list[SrsRetiredItem] = Field(
+        description="every item the version drops: each one retired and the items under it, in document order"
+    )
+
+
+class SrsDiffItem(BaseModel):
+    key: str
+    kind: Literal[ITEM_KINDS]
+    code: str | None
+    change: Literal[CHANGES]
+    title_from: str | None
+    title_to: str | None
+    lines: list[str] = Field(description="a unified diff of the item's Markdown")
+
+
+class SrsDiff(BaseModel):
+    document: str
+    from_version: int
+    to_version: int
+    preamble: list[str] = Field(description="a unified diff of the text before the first heading; empty when the same")
+    items: list[SrsDiffItem]
+
+
+class SrsExport(BaseModel):
+    document: str
+    version: int
+    markdown: str
+
+
+class SrsComment(BaseModel):
+    """A comment: the root of a thread (no ``parent_id``) or an answer in it. A thread on an item may be anchored to a
+    passage of it."""
+
+    id: int
+    version: int | None = Field(description="the version it was made on, when it names one")
+    item: str | None = Field(description="the key of the item")
+    item_code: str | None
+    parent_id: int | None = Field(description="the root of its thread; null for a root")
+    author: str
+    run_id: int | None = Field(description="the run of the agent that wrote it, when an agent did")
+    body: str
+    created_at: datetime
+    resolved_by: str | None
+    resolved_at: datetime | None
+    field: str | None = Field(None, description="of a passage: the part of the item it is in (body, a field, steps)")
+    quote: str | None = Field(None, description="the passage the thread is anchored to, as it was selected")
+    prefix: str | None = Field(None, description="the text just before the passage")
+    suffix: str | None = Field(None, description="the text just after the passage")
+    start_offset: int | None = Field(None, description="where the passage started in its part")
+    anchor: Literal["found", "changed"] | None = Field(
+        None,
+        description="of a passage, in the version read (the latest unless asked): found while the item still holds "
+        "its words, changed when not or the item is gone; null for a comment on no passage",
+    )
+    ask_run_id: int | None = Field(None, description="the run of @ba this comment asked to answer its thread")
+
+
+class SrsCommentIn(BaseModel):
+    """A comment to write: ``@ba`` in its body asks @ba to answer in the thread."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=1, max_length=MAX_COMMENT_CHARS)
+    version: int | None = Field(None, ge=1)
+    item: str | None = Field(None, min_length=1, max_length=100, description="the code or key of the item")
+    parent_id: int | None = Field(None, ge=1, description="the comment it answers (its thread's root or an answer)")
+    field: str | None = Field(None, min_length=1, max_length=MAX_FIELD_CHARS, description="the part a passage is in")
+    quote: str | None = Field(
+        None, min_length=1, max_length=MAX_QUOTE_CHARS, description="a passage of the item the comment is on"
+    )
+    prefix: str | None = Field(None, max_length=MAX_CONTEXT_CHARS, description="the text just before the passage")
+    suffix: str | None = Field(None, max_length=MAX_CONTEXT_CHARS, description="the text just after the passage")
+    start_offset: int | None = Field(None, ge=0, description="where the passage starts in its part")
+
+
+class SrsFindingSource(BaseModel):
+    kind: Literal[SOURCE_KINDS] = Field(
+        description="node: an id of the project's knowledge graph; code: a code an item of the project holds; path: "
+        "repo:path, or a path, a file or document node carries; version: a later version of the document"
+    )
+    ref: str
+    note: str | None = None
+    document: str | None = Field(
+        None, description="of a code: the slug of the document whose item holds it, when the reader sees that document"
+    )
+
+
+class SrsFinding(BaseModel):
+    """A conflict found in a document, with the sources that show it and, once settled, how."""
+
+    id: int
+    version: int = Field(description="the version it was found on")
+    item: str | None = Field(description="the key of the item it is about; null for the whole document")
+    item_code: str | None
+    kind: Literal[FINDING_KINDS]
+    level: Literal[FINDING_LEVELS] = Field(description="an open finding of level decide holds approval")
+    sources: list[SrsFindingSource] = Field(description="what shows the conflict, at least one")
+    summary: str
+    status: Literal[FINDING_STATUSES]
+    resolution: str | None = Field(description="how it was settled, or why it was waived")
+    resolution_sources: list[SrsFindingSource] = Field(description="what settled it, when settled from the graph")
+    settled_by: str | None = Field(description="the member who settled it; null when settled from the graph")
+    settled_at: datetime | None
+    chat_link: str | None = Field(description="the link of the chat message that settled it")
+    run_id: int | None = Field(description="the run of @ba that recorded it")
+    created_at: datetime
+    options: list[str] = Field(description="the choices a member picks from to settle it (A, B, ...); empty for none")
+
+
+class SrsWaiveIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=MAX_RESOLUTION_CHARS, description="why, kept as its resolution")
+
+
+class SrsSettleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option: int | None = Field(None, ge=0, le=3, description="the choice picked, 0 for A; needed when it offers any")
+    note: str = Field(
+        "", max_length=MAX_RESOLUTION_CHARS, description="why; the resolution of a finding with no choice"
+    )

@@ -31,8 +31,8 @@ from sqlalchemy import select
 
 from evo_agents.hub import plugin_calls, tables, tables_canvas, tables_srs
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.canvas import content, proposals, tools, writes
-from evo_agents.hub.server.canvas.tools import STRATEGIST_INSTRUCTIONS
+from evo_agents.hub.server.canvas.models import content, tools, writing
+from evo_agents.hub.server.canvas.models.tools import STRATEGIST_INSTRUCTIONS
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import test_credentials_api as credentials_api
@@ -260,16 +260,16 @@ def test_strategist_tool_schemas_copy_the_plugins_names_and_leave_validated_out(
     assert set(tools.AGENT_STATUSES) == set(tables_canvas.STATUSES) - {"validated"}
     assert (tools.CONFIDENCES, tools.DIRECTIONS) == (tables_canvas.CONFIDENCES, tables_canvas.DIRECTIONS)
     assert (tools.AGGREGATES, tools.COMPARATORS) == (content.AGGREGATES, content.COMPARATORS)
-    assert set(tools.AGENT_EVIDENCE_KINDS) < set(writes.ADDED_KINDS)
+    assert set(tools.AGENT_EVIDENCE_KINDS) < set(writing.ADDED_KINDS)
     assert (tools.MAX_TEXT_CHARS, tools.MAX_REASON_CHARS) == (
         tables_canvas.MAX_TEXT_CHARS,
         tables_canvas.MAX_REASON_CHARS,
     )
-    assert (tools.MAX_CHANGES, tools.MAX_PROPOSED) == (writes.MAX_CHANGES, proposals.MAX_PROPOSED)
+    assert (tools.MAX_CHANGES, tools.MAX_PROPOSED) == (writing.MAX_CHANGES, writing.MAX_PROPOSED)
     assert (tools.MAX_LINKS, tools.MAX_CODE_CHARS) == (content.MAX_LINKS, tables_srs.MAX_CODE_CHARS)
     assert set(tools.TEST_CARD["properties"]) == set(content.CARD_FIELDS)
-    for _, _, _, schema in tools.TOOLS:
-        assert "validated" not in enums(schema), "no tool of @strategist takes the status validated"
+    for given in tools.TOOLS:
+        assert "validated" not in enums(given.input_schema), "no tool of @strategist takes the status validated"
 
 
 # Edits in chat

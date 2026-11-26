@@ -1,6 +1,6 @@
 """The Loop's brainstorm runs of a goal, read from the tables alone. Here, not in the canvas feature, because the goals
 read them (``stale_for_goal``) and a feature may be imported by no other (lint-imports, contract hub-feature-canvas);
-``server.canvas.proposals`` re-exports both."""
+the goals and the Loop's board gates import them from here."""
 
 from __future__ import annotations
 

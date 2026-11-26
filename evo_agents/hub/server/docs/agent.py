@@ -13,14 +13,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chat_runs import chat_run
-from evo_agents.hub.server.docs import store
-from evo_agents.hub.server.docs.store import DocsError, DocumentRow
+from evo_agents.hub.server.docs import repository, service
+from evo_agents.hub.server.docs.models import DocsError, DocumentRow
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
 
@@ -42,7 +41,7 @@ class Reader:
     def sees(self, doc: DocumentRow) -> bool:
         if self.worker is None:
             return True
-        through = store.sink_of(self.worker, self.sink)
+        through = service.sink_of(self.worker, self.sink)
         return through is not None and self.worker.visible(doc.label, through)
 
 
@@ -61,15 +60,12 @@ async def reader(conn: AsyncConnection, params: dict, context: CoreContext) -> R
     """Who the tool of ``params`` reads for (see the module)."""
     if context.run_id is None:
         login = (params.get("caller") or {}).get("login") or ""
-        user_id = (
-            await conn.execute(select(tables.users.c.id).where(tables.users.c.login == login))
-        ).scalar_one_or_none()
+        user_id = await repository.user_id_of(conn, login)
         if user_id is None:
             raise DocsError(403, f"no member {login} on the hub")
         person = await _principal(conn, user_id, context.config)
         return Reader(await _access(conn, person, context.project), person.login, context.sink)
-    r = tables.runs
-    row = (await conn.execute(select(r.c.kind, r.c.dispatched_by).where(r.c.id == context.run_id))).one()
+    row = await repository.run_of(conn, context.run_id)
     person_id = row.dispatched_by
     found = await chat_run(conn, context.run_id) if row.kind == "chat" else None
     if found is not None:
@@ -83,7 +79,7 @@ async def reader(conn: AsyncConnection, params: dict, context: CoreContext) -> R
 
 
 async def _documents(conn: AsyncConnection, who: Reader) -> str:
-    rows = [doc for doc in await store.documents(conn, who.access, who.sink) if who.sees(doc)]
+    rows = [doc for doc in await service.documents(conn, who.access, who.sink) if who.sees(doc)]
     if not rows:
         return f"Project {who.access.name} has no document that {who.login} sees."
     lines = [f"The documents of project {who.access.name}:"]
@@ -93,10 +89,10 @@ async def _documents(conn: AsyncConnection, who: Reader) -> str:
 
 
 async def _document(conn: AsyncConnection, who: Reader, slug: str, number: int | None) -> str:
-    doc = await store.document(conn, who.access, slug, who.sink)
+    doc = await service.document(conn, who.access, slug, who.sink)
     if not who.sees(doc):
-        raise store.missing(who.access.name, slug)
-    row = await store.version(conn, doc, number)
+        raise service.missing(who.access.name, slug)
+    row = await service.version(conn, doc, number)
     when = row.created_at.strftime("%Y-%m-%d %H:%M UTC")
     lines = [f"{doc.slug}: {row.title}", f"Version {row.number} of {doc.latest_version}, by {row.author}, {when}."]
     if row.format == "html":
@@ -109,8 +105,9 @@ async def _document(conn: AsyncConnection, who: Reader, slug: str, number: int |
 async def read(params: dict, context: CoreContext) -> dict:
     """``docs__read``: the documents of the project, or one version of one: its Markdown, or an HTML page's source."""
     arguments = params.get("arguments") or {}
+    assert context.engine is not None  # the hub hands a tool its engine
     try:
-        async with context.engine.begin() as conn:
+        async with UnitOfWork(context.engine) as conn:
             who = await reader(conn, params, context)
             if not arguments.get("document"):
                 return _text(await _documents(conn, who))

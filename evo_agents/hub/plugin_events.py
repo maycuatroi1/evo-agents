@@ -100,7 +100,7 @@ PERMISSION = {
     NOTIFICATION: "notifications:send",
 }
 # the core plugin each of these kinds belongs to, which takes it ungranted: srs keeps the tasks of an approved version
-# in step from its own event (``evo_agents.hub.server.srs.auto_tasks``)
+# in step from its own event (``evo_agents.hub.server.srs.service.auto_tasks``)
 OWN = {
     hub_events.SRS_APPROVED: "srs",
     hub_events.SRS_USE_CASE_APPROVED: "srs",
