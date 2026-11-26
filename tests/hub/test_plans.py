@@ -997,11 +997,12 @@ def test_complete_needs_every_step_done_and_moves_the_plan_once(client, github, 
         complete_plan(alice, PROJECT, "rollout")
     assert (refused.value.status, refused.value.code) == (409, "conflict") and counts(hub_db) == before
 
-    patch_item(alice, PROJECT, "rollout", "steps", {"status": "done"}, step=2)
+    closed = patch_item(alice, PROJECT, "rollout", "steps", {"status": "done"}, step=2)
+    assert (closed["area"], closed["revision"]) == ("completed", 4)  # the write that closes the last step completes it
     stale = client.post(plan_url("rollout", "complete"), json={"if_revision": 1}, headers=alice.headers)
     assert stale.status_code == 409 and stale.json()["error"] == "revision_conflict"
     done = complete_plan(alice, PROJECT, "rollout")
-    assert (done["area"], done["revision"], done["changed"]) == ("completed", 4, True)
+    assert (done["area"], done["revision"], done["changed"]) == ("completed", 4, False)
     again = client.post(plan_url("rollout", "complete"), headers=alice.headers)
     assert again.status_code == 200 and again.json()["changed"] is False and again.json()["revision"] == 4
     assert alice.call("GET", plan_url("rollout", "revisions"))[0]["summary"] == "completed: moved from active"

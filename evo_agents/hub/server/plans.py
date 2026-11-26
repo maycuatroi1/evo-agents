@@ -19,9 +19,13 @@ revision whose body names no problem says so in its warnings, and stores it all 
   needs ``if_revision`` too. A client that gets the 409 reads the plan again and retries on the new revision.
 - POST .../complete moves the plan to the completed area, only when every step is done or descoped, or with
   ``mark_steps_done`` after marking each other step done with today's date.
+- A PUT or PATCH of a plan the hub holds (an author run's and the hub's own writes of a run's step too) that leaves
+  an active plan with steps, every one done or descoped, completes it in the same transaction, with the revision and
+  audit row of POST .../complete; one that leaves a step open on a completed plan puts it back in the active area,
+  with those of POST .../reopen. An abandoned or superseded plan stays where it is (``plans.settled_area``).
 - POST .../abandon moves an active or completed plan to the completed area as abandoned (or superseded by another
-  plan), with a date and a reason, leaving each step's status as it was; POST .../reopen puts an abandoned or
-  superseded plan back in the active area.
+  plan), with a date and a reason, leaving each step's status as it was; POST .../reopen puts a completed plan,
+  abandoned, superseded or not, back in the active area.
 
 Reads go through a sink of the project (X-Evo-Sink, by default its hub sink) and follow ``ProjectAccess.visible``;
 a plan the caller cannot see answers the same 404 as one that does not exist. Reading needs a grant on the project:
@@ -43,8 +47,21 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import Field
-from sqlalchemy import ColumnElement, Label, Select, bindparam, case, func, insert, select, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import (
+    ColumnElement,
+    Label,
+    Select,
+    bindparam,
+    case,
+    cast,
+    column,
+    func,
+    insert,
+    literal,
+    select,
+    update,
+)
+from sqlalchemy.dialects.postgresql import JSONB, JSONPATH, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -60,7 +77,9 @@ from evo_agents.hub.plans import (
     PlanTooLarge,
     abandoned_body,
     check_body,
+    glance,
     reopened_body,
+    settled_area,
     step_index,
     step_key,
     steps_marked_done,
@@ -240,9 +259,40 @@ def step_counts(body: ColumnElement) -> tuple[Label, Label]:
     )
 
 
+STEP_WHAT_CHARS = 200  # of a step's what, the list's fallback for its title (plans.glance)
+GOAL_READ_CHARS = 1000  # of a plan's goal, which plans.glance cuts further
+REPO_NAMES = "$.repos[*].repo"  # the names of a plan's repos, those that are objects with one
+
+
+def step_glances(body: ColumnElement) -> Label:
+    """A column over ``body``, the JSONB expression of a plan body: each step's id, order, status, title and the start
+    of its what, in order, for ``plans.glance``, so a list never reads a step's evidence or verify. None when the steps
+    are not an array; a step that is not an object gives nulls."""
+    steps = body["steps"]
+    each = func.jsonb_array_elements(steps).table_valued(column("value", JSONB), with_ordinality="n").render_derived()
+    step = each.c.value
+    item = func.jsonb_build_object(
+        "id",
+        step["id"],
+        "order",
+        step["order"],
+        "status",
+        step["status"],
+        "title",
+        step["title"],
+        "what",
+        func.left(step["what"].astext, STEP_WHAT_CHARS),
+    )
+    projected = (
+        select(func.jsonb_agg(aggregate_order_by(item, each.c.n), type_=JSONB)).select_from(each).scalar_subquery()
+    )
+    return case((func.jsonb_typeof(steps) == "array", projected), else_=None).label("steps")
+
+
 def _listed(project_id, area) -> Select:
-    """The plans of project ``project_id`` with what PlanSummary shows, column by field name, and their label; those
-    of ``area`` alone when given. Built once per shape (_LISTED) with bind parameters for both."""
+    """The plans of project ``project_id`` with what PlanSummary shows, column by field name (goal, steps and repos
+    the way ``plans.glance`` reads them), and their label; those of ``area`` alone when given. Built once per
+    shape (_LISTED) with bind parameters for both."""
     plans, users = tables.plans, tables.users
     query = (
         select(
@@ -256,6 +306,9 @@ def _listed(project_id, area) -> Select:
             users.c.login.label("updated_by"),
             *step_counts(plans.c.body),
             plans.c.body["problems"].label("problems"),
+            func.left(plans.c.body["goal"].astext, GOAL_READ_CHARS).label("goal"),
+            step_glances(plans.c.body),
+            func.jsonb_path_query_array(plans.c.body, cast(literal(REPO_NAMES), JSONPATH), type_=JSONB).label("repos"),
         )
         .join_from(plans, users, users.c.id == plans.c.updated_by)
         .where(plans.c.project_id == project_id)
@@ -287,7 +340,7 @@ async def list_plans(
     through = _sink(access, sink)
     return page.of(
         [
-            PlanSummary(**row._mapping, trace=traces.get(row.plan_id))
+            PlanSummary(**{**row._mapping, **glance(row.goal, row.steps, row.repos)}, trace=traces.get(row.plan_id))
             for row in rows
             if access.visible(row.label, through)
         ]
@@ -623,6 +676,33 @@ def _logged(project: str, held: Held, outcome: str, user) -> None:
     )
 
 
+async def _settle(conn, access, user, held: Held, run_id: int | None = None) -> Held:
+    """After a write of ``held``, in its transaction: move the plan to the area its steps put it in
+    (``plans.settled_area``) with a revision of its own, as POST .../complete (audit ``plan.complete``) or .../reopen
+    (audit ``plan.reopen``) would; the plan as held afterwards, ``held`` itself when it stays where it is."""
+    area = settled_area(held.area, held.body)
+    if area == held.area:
+        return held
+    if area == "completed":
+        summary, action, outcome = "completed: moved from active", PLAN_COMPLETE, area
+    else:
+        summary, action, outcome = "reopened: back to active", PLAN_REOPEN, "reopened"
+    stored = await _store(
+        conn,
+        access,
+        user,
+        held,
+        area=area,
+        label=held.label,
+        body=held.body,
+        summary=summary,
+        action=action,
+        run_id=run_id,
+    )
+    _logged(access.name, stored, outcome, user)
+    return stored
+
+
 @router.put("/{plan_id}", response_model=Written, responses=REFUSALS)
 async def put(request: Request, project: ProjectName, plan_id: PlanId, payload: PlanPut, user: CurrentUser):
     """Create the plan, or replace the revision ``if_revision`` names with ``body``."""
@@ -702,17 +782,17 @@ async def write_plan(
             return _written(access, stored, created=True, changed=True, warnings=warnings)
         if not access.visible(held.label, _sink(access, None)):
             raise PlanError(409, f"plan {plan_id} already exists in project {project}")
-        if area and area != held.area:
-            raise PlanError(
-                422,
-                f"plan {plan_id} is {held.area} on the hub, and a put does not move it: "
-                f"`evo-agents hub plan complete` does, and its copy belongs in plans/{held.area}/",
-            )
         new_label = given_label if label is not None else access.push_label(held.label)
         warnings = await plan_warnings.warnings(conn, access, body, held.area)
         if plan_digest(body) == held.digest and new_label == held.label:
             _logged(project, held, "unchanged", user)
             return _written(access, held, created=False, changed=False, warnings=warnings)
+        if area and area not in (held.area, settled_area(held.area, body)):
+            raise PlanError(
+                422,
+                f"plan {plan_id} is {held.area} on the hub, and a put does not move it: "
+                f"`evo-agents hub plan complete` does, and its copy belongs in plans/{held.area}/",
+            )
         if if_revision != held.revision:
             raise _stale(access, held, if_revision)
         if guard is not None:
@@ -730,6 +810,7 @@ async def write_plan(
             run_id=run_id,
         )
         _logged(project, stored, "replaced", user)
+        stored = await _settle(conn, access, user, stored, run_id)
         warnings += plan_problems.warnings(body)
         return _written(access, stored, created=False, changed=True, warnings=warnings)
     raise PlanError(409, f"plan {plan_id} was created and changed while this request ran; try again")
@@ -841,7 +922,7 @@ async def apply_patch(
         run_id=run_id,
     )
     _logged(access.name, stored, "patched", user)
-    return stored, True, warnings
+    return await _settle(conn, access, user, stored, run_id), True, warnings
 
 
 @router.post("/{plan_id}/complete", response_model=Written, responses=REFUSALS)
@@ -942,8 +1023,9 @@ async def abandon(request: Request, project: ProjectName, plan_id: PlanId, user:
 async def reopen(
     request: Request, project: ProjectName, plan_id: PlanId, user: CurrentUser, payload: PlanReopen | None = None
 ):
-    """Put an abandoned or superseded plan back in the active area, without its abandon keys. Any other plan is a
-    409: a completed plan is not reopened by this."""
+    """Put a completed plan back in the active area with status active, an abandoned or superseded one without its
+    abandon keys; an active plan that is not abandoned is a 409. A write that leaves a step open on a completed plan
+    reopens it too (``_settle``); this reopens one whose steps are all done as well."""
     given = payload.if_revision if payload else None
     try:
         async with request.app.state.engine.begin() as conn:
@@ -954,7 +1036,7 @@ async def reopen(
             if given is not None and given != held.revision:
                 raise _stale(access, held, given)
             try:
-                body = reopened_body(held.body)
+                body = reopened_body(held.body, completed=held.area == "completed")
                 check_body(body, plan_id)
             except PlanProblem as exc:
                 raise PlanError(409, str(exc)) from exc

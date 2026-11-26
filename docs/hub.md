@@ -1994,10 +1994,25 @@ evo-agents hub plan patch rollout --step 2 --set note="merged at abc1234"
 evo-agents hub plan history rollout
 evo-agents hub plan handoff rollout --step 3          # what a new session needs to take step 3 up
 evo-agents hub plan complete rollout                  # every step done or descoped: move it to completed
+evo-agents hub plan close-finished --dry-run          # list the active plans whose steps are all closed
+evo-agents hub plan close-finished                    # and complete each of them
 evo-agents hub plan abandon rollout --reason "replaced" [--superseded-by rollout-v2]  # completed as abandoned/superseded
-evo-agents hub plan reopen rollout                    # an abandoned plan back to active
+evo-agents hub plan reopen rollout                    # a completed or abandoned plan back to active
 evo-agents hub plan export . --commit                 # write the copies, commit exactly the ones that changed
 ```
+
+A plan closes itself. A write (`plan step`, `plan patch`, `plan put`, an author run's plan, the hub's own write of a
+run's step) that leaves an active plan with steps, every one done or descoped, completes it in the same transaction:
+one more revision, `completed: moved from active`, and the audit row `plan.complete`, as `plan complete` writes them.
+`plan complete` afterwards answers that nothing changed. A write that leaves a step open on a completed plan puts it
+back in the active area the same way, with `reopened: back to active` and `plan.reopen`. An abandoned or superseded
+plan stays where it is. `plan reopen` takes any completed plan, so a finished one can be opened again without
+changing a step. `plan close-finished` completes the active plans whose last step was closed before the hub did
+this, and prints each one; with `--dry-run` it only lists them. Run `plan export` afterwards to move their copies.
+
+`GET /v1/projects/{p}/plans` lists with each plan, beside its counts, the start of its goal (`goal`), the key and
+status of each step in order (`steps`), the first step neither done nor descoped (`current_step`, with its title,
+else the start of its `what`; null when there is none), and the names of its repos (`repos`).
 
 `--project` names the hub project when the current directory is not inside the harness. A write names the revision it
 read. When someone else wrote in between, the hub answers 409 with the current plan, and `plan step` and `plan patch`

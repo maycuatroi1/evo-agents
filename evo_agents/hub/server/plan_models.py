@@ -30,6 +30,17 @@ class PlanTrace(BaseModel):
     state: runs.ActiveState
 
 
+class PlanStepState(BaseModel):
+    """A step of a plan as the list shows it: how the plan names it (``plans.step_key``) and its status."""
+
+    key: str
+    status: str | None = Field(description="done, in_progress, pending, blocked or descoped; null when it has none")
+
+
+class PlanCurrentStep(PlanStepState):
+    title: str | None = Field(description="the step's title, else the start of its what")
+
+
 class PlanSummary(BaseModel):
     plan_id: str
     area: Literal[AREAS]
@@ -40,6 +51,12 @@ class PlanSummary(BaseModel):
     steps_done: int
     updated_at: datetime
     updated_by: str
+    goal: str | None = Field(default=None, description="the plan's goal, cut to its first characters")
+    steps: list[PlanStepState] = Field(default_factory=list, description="each step in the plan's order")
+    current_step: PlanCurrentStep | None = Field(
+        default=None, description="the first step neither done nor descoped; null when there is none"
+    )
+    repos: list[str] = Field(default_factory=list, description="the names of the repos the plan works in")
     problems: list[str] = Field(
         default_factory=list, description="the codes (P-<number>) of the problems of the project its body names"
     )

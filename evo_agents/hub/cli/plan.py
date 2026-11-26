@@ -3,7 +3,9 @@
 ``import`` pushes every plans/<area>/*.yaml of a harness once (a plan already on the hub with the same digest is
 left alone, one that differs is reported, never overwritten). ``put`` creates a plan from a draft, or replaces one
 with ``--if-revision``, then rewrites the file as the hub's copy. ``patch``, ``step`` and ``complete`` change one
-plan on the hub; ``export`` writes the copies back into the harness (``evo_agents.hub.mirror``). ``list``,
+plan on the hub, and ``close-finished`` completes every active plan whose steps are all done or descoped (the hub
+completes such a plan on the write that closes its last step; this closes those written before it did); ``export``
+writes the copies back into the harness (``evo_agents.hub.mirror``). ``list``,
 ``show`` and ``history`` read, and ``handoff`` prints what a new session needs to take a plan up, as the hub builds
 it within a token budget (``evo_agents.hub.handoff``), the same text as the MCP tool plan_handoff.
 
@@ -60,7 +62,12 @@ SUMMARY_KEYS = (
     "updated_by",
     "problems",
     "trace",
+    "goal",
+    "steps",
+    "current_step",
+    "repos",
 )
+CLOSED_KEYS = ("plan_id", "title", "steps_total", "revision", "closed", "error")
 HANDOFF_KEYS = (
     "project",
     "plan_id",
@@ -427,6 +434,51 @@ class PlanComplete(HubCommand):
         return Result(result, Text(said))
 
 
+def closed_row(plan: dict) -> dict:
+    """What ``close-finished --json`` prints of a plan of the list, before it tries to complete it."""
+    return {key: plan.get(key) for key in ("plan_id", "title", "steps_total", "revision")} | {
+        "closed": False,
+        "error": None,
+    }
+
+
+class PlanCloseFinished(HubCommand):
+    name = "close-finished"
+    help = "complete every active plan that has steps, all of them done or descoped"
+    arguments = (
+        Arg("--dry-run", action="store_true", help="list the plans it would complete, and change none"),
+        PROJECT,
+    )
+    output = returns_array(*CLOSED_KEYS)
+
+    def run(self, ctx: HubContext) -> Result:
+        finished = [
+            plan
+            for plan in Plans.of(ctx).list("active")
+            if plan["steps_total"] > 0 and plan["steps_done"] == plan["steps_total"]
+        ]
+        rows, lines, failed = [], [], False
+        for plan in finished:
+            row = closed_row(plan)
+            if ctx.args.dry_run:
+                lines.append(f"would complete {plan['plan_id']}: {plan['steps_total']} steps done")
+            else:
+                try:
+                    result = complete_plan(ctx.hub, ctx.project, plan["plan_id"])
+                except HubError as exc:
+                    row["error"], failed = str(exc), True
+                    lines.append(f"could not complete {plan['plan_id']}: {exc}")
+                else:
+                    row |= {"closed": result["area"] == "completed", "revision": result["revision"]}
+                    lines.append(f"completed {plan['plan_id']}: revision {result['revision']}")
+            rows.append(row)
+        if not finished:
+            lines.append(f"No active plan of {ctx.project} has every step done or descoped.")
+        elif not ctx.args.dry_run:
+            lines.append("`evo-agents hub plan export` moves their copies to plans/completed/.")
+        return Result(rows, Text(*lines), 1 if failed else 0)
+
+
 class PlanAbandon(HubCommand):
     name = "abandon"
     help = "drop a plan: move it to completed as abandoned (or superseded), with a reason; its steps stay as they are"
@@ -457,7 +509,7 @@ class PlanAbandon(HubCommand):
 
 class PlanReopen(HubCommand):
     name = "reopen"
-    help = "put an abandoned or superseded plan back to active"
+    help = "put a completed plan (abandoned, superseded or finished) back to active"
     arguments = (PLAN_REF, IF_REVISION, PROJECT)
     output = WRITTEN
 
@@ -483,6 +535,7 @@ PLAN = Group(
         PlanPatch(),
         PlanStep(),
         PlanComplete(),
+        PlanCloseFinished(),
         PlanAbandon(),
         PlanReopen(),
         PlanExport(),

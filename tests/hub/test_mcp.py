@@ -1480,14 +1480,13 @@ def test_plan_complete_moves_a_plan_whose_steps_are_all_done_and_refuses_one_lef
     for step in (1, 2, 3):
         ok(hub, "alice", "plan_step", {"plan_id": "rollout", "step": step, "status": "done", "evidence": "checked"})
     assert "writer role" in failed(hub, "bob", "plan_complete", {"plan_id": "rollout"})
-    assert "revision 4 on the hub, not 1" in failed(
+    assert "revision 5 on the hub, not 1" in failed(
         hub, "alice", "plan_complete", {"plan_id": "rollout", "if_revision": 1}
     )
 
-    done = ok(hub, "alice", "plan_complete", {"plan_id": "rollout"})
-    assert "Plan rollout is now completed on the hub: revision 5" in done["content"][0]["text"]
-    assert done["structuredContent"]["changed"] and done["structuredContent"]["revision"] == 5
+    # the step that closed the last one completed the plan (revision 5); plan_complete then changes nothing
     again = ok(hub, "alice", "plan_complete", {"plan_id": "rollout"})
+    assert again["structuredContent"]["revision"] == 5
     assert "was already completed" in again["content"][0]["text"] and not again["structuredContent"]["changed"]
     listed = hub.client.get(f"/v1/projects/{PROJECT}/plans", params={"area": "completed"}, headers=hub.alice).json()
     assert [plan["plan_id"] for plan in listed] == ["rollout"]

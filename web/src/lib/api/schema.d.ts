@@ -863,8 +863,9 @@ export interface paths {
         put?: never;
         /**
          * Reopen
-         * @description Put an abandoned or superseded plan back in the active area, without its abandon keys. Any other plan is a
-         *     409: a completed plan is not reopened by this.
+         * @description Put a completed plan back in the active area with status active, an abandoned or superseded one without its
+         *     abandon keys; an active plan that is not abandoned is a 409. A write that leaves a step open on a completed plan
+         *     reopens it too (``_settle``); this reopens one whose steps are all done as well.
          */
         post: operations["reopen_v1_projects__project__plans__plan_id__reopen_post"];
         delete?: never;
@@ -33365,6 +33366,11 @@ export interface components {
              * @default 30
              */
             plan_stall_minutes: number;
+            /**
+             * Quiet Workers
+             * @description ids of workers whose queued runs write no run.queued_long
+             */
+            quiet_workers?: number[];
         };
         /** OpsWaitIn */
         OpsWaitIn: {
@@ -34762,6 +34768,21 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PlanCurrentStep */
+        PlanCurrentStep: {
+            /** Key */
+            key: string;
+            /**
+             * Status
+             * @description done, in_progress, pending, blocked or descoped; null when it has none
+             */
+            status: string | null;
+            /**
+             * Title
+             * @description the step's title, else the start of its what
+             */
+            title: string | null;
+        };
         /** PlanDiff */
         PlanDiff: {
             /** Plan Id */
@@ -35152,6 +35173,19 @@ export interface components {
              */
             as_me: boolean;
         };
+        /**
+         * PlanStepState
+         * @description A step of a plan as the list shows it: how the plan names it (``plans.step_key``) and its status.
+         */
+        PlanStepState: {
+            /** Key */
+            key: string;
+            /**
+             * Status
+             * @description done, in_progress, pending, blocked or descoped; null when it has none
+             */
+            status: string | null;
+        };
         /** PlanStepWait */
         PlanStepWait: {
             /** Plan */
@@ -35202,6 +35236,23 @@ export interface components {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+            /**
+             * Goal
+             * @description the plan's goal, cut to its first characters
+             */
+            goal?: string | null;
+            /**
+             * Steps
+             * @description each step in the plan's order
+             */
+            steps?: components["schemas"]["PlanStepState"][];
+            /** @description the first step neither done nor descoped; null when there is none */
+            current_step?: components["schemas"]["PlanCurrentStep"] | null;
+            /**
+             * Repos
+             * @description the names of the repos the plan works in
+             */
+            repos?: string[];
             /**
              * Problems
              * @description the codes (P-<number>) of the problems of the project its body names
