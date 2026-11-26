@@ -21,6 +21,7 @@ import sys
 from datetime import date
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in
 from evo_agents.hub.cli.org.workers import register_workers
 from evo_agents.hub.client import HubError
@@ -426,3 +427,7 @@ def register_org(hsub) -> None:
     _register_units(osub)
     _register_seats(osub)
     register_workers(osub)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+ORG = Legacy(register_org)

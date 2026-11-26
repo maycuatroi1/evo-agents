@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import urlencode
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.user_emails import NOREPLY_DOMAIN, email_key, email_problem
@@ -112,3 +113,7 @@ def register_emails(hsub) -> None:
     _user_option(remove)
     json_option(remove, returns_object(*EMAIL_KEYS, schema="UserEmail"))
     remove.set_defaults(func=cmd_remove)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+EMAIL = Legacy(register_emails)

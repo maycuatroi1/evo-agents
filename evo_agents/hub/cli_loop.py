@@ -22,8 +22,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from evo_agents.hub.cli.base import client_command, print_json, project_of, signed_in, when
-from evo_agents.hub.cli.policy import PROJECT_HELP
+from evo_agents.hub.cli.base import PROJECT_HELP, client_command, print_json, project_of, signed_in, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES

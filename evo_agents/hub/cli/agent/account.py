@@ -26,6 +26,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote, urlencode
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.cli.secret.values import Refused, check_name, check_value, expires_at, read_value
@@ -352,3 +353,7 @@ def register_agent_accounts(asub) -> None:
     _named(csub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_pause)
     _named(csub, "resume", "let new runs take a paused account again", cmd_resume)
     _named(csub, "remove", "delete an account: its value and bindings go, its leases out are revoked", cmd_remove)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+AGENT_ACCOUNT = Legacy(register_agent_accounts)  # hub agent account

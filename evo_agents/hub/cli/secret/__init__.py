@@ -54,6 +54,7 @@ import webbrowser
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub import claude_oauth, setup_token
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
@@ -63,7 +64,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.cli.account.policy import register_policy
 from evo_agents.hub.cli.base import EXIT_FAILED, client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli.provider_account import print_gateway, provider_text, register_provider_accounts
+from evo_agents.hub.cli.provider_account import print_gateway, provider_text
 from evo_agents.hub.cli.secret import shares as cli_shares
 from evo_agents.hub.cli.secret.bindings import (
     BOTH,
@@ -263,9 +264,6 @@ def register_secrets(hsub) -> None:
     delete.set_defaults(func=cmd_delete)
     register_bind(ssub)
     cli_shares.register_share_commands(ssub, "secret")
-
-    register_accounts(hsub)
-    register_provider_accounts(hsub)  # and `hub model-catalog`, the providers an account is added for
 
 
 # `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
@@ -913,3 +911,8 @@ def register_accounts(hsub) -> None:
     cli_shares.register_share_commands(asub, "account")
 
     register_policy(asub)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+SECRET = Legacy(register_secrets)
+ACCOUNT = Legacy(register_accounts)

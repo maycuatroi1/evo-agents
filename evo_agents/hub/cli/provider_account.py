@@ -20,8 +20,8 @@ import sys
 from datetime import UTC, datetime
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
-from evo_agents.hub.cli.model_catalog import register_model_catalog
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.provider_accounts import API_FORMATS
 
@@ -304,7 +304,6 @@ def print_gateway(a: dict) -> None:
 
 
 def register_provider_accounts(hsub) -> None:
-    register_model_catalog(hsub)
     parser = hsub.add_parser("provider-account", help="your API keys of model providers, reached through the gateway")
     psub = parser.add_subparsers(dest="provider_account_command", required=True)
     add = psub.add_parser("add", help="add a provider account, or replace it whole; the key from stdin or a prompt")
@@ -349,3 +348,7 @@ def register_provider_accounts(hsub) -> None:
     quota.add_argument("--project", metavar="PROJECT", help="the agent's project (default: the harness's)")
     json_option(quota, returns_object(*QUOTA_KEYS, schema="ProviderQuota"))
     quota.set_defaults(func=cmd_quota)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+PROVIDER_ACCOUNT = Legacy(register_provider_accounts)

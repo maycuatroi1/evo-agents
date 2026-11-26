@@ -26,6 +26,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote, urlencode
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -929,3 +930,8 @@ def register_publishers(psub) -> None:
     removed.add_argument("id", type=int, metavar="ID", help="the signer's id, as `publisher list` prints it")
     json_option(removed, output)
     removed.set_defaults(func=cmd_publisher_remove)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+MARKET = Legacy(register_market)
+PUBLISHER = Legacy(register_publishers)  # hub plugin publisher

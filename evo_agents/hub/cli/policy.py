@@ -23,6 +23,7 @@ from urllib.parse import quote
 
 import yaml
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -259,3 +260,7 @@ def register_policy(hsub) -> None:
     diff.add_argument("--project", help=PROJECT_HELP)
     json_option(diff, returns_object(*COMPARISON_KEYS, schema="PolicyComparison"))
     diff.set_defaults(func=cmd_diff)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+POLICY = Legacy(register_policy)

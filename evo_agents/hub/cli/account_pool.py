@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.accounts import STRATEGIES
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
@@ -236,3 +237,8 @@ def register_agent_account_pool(asub) -> None:
     attach.add_argument("--project", help=PROJECT_HELP)
     json_option(attach, returns_object(*AGENT_KEYS, schema="Agent"))
     attach.set_defaults(func=cmd_attach)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+ACCOUNT_POOL = Legacy(register_account_pools)  # hub account-pool
+AGENT_ACCOUNT_POOL = Legacy(register_agent_account_pool)  # hub agent account-pool

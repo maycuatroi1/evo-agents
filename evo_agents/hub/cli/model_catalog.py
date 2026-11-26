@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 
@@ -41,3 +42,7 @@ def register_model_catalog(hsub) -> None:
     parser.add_argument("--group", metavar="GROUP", help="only this group, such as aggregator, regional or local")
     json_option(parser, returns_object(*CATALOG_KEYS, schema="ModelCatalog"))
     parser.set_defaults(func=cmd_model_catalog)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+MODEL_CATALOG = Legacy(register_model_catalog)

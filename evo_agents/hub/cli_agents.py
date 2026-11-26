@@ -326,8 +326,8 @@ def _handle(parser) -> None:
 
 
 def register_agents(hsub) -> None:
-    from evo_agents.hub.cli.account_pool import register_account_pools, register_agent_account_pool
-    from evo_agents.hub.cli.agent.account import register_agent_accounts
+    from evo_agents.hub.cli.account_pool import ACCOUNT_POOL, AGENT_ACCOUNT_POOL
+    from evo_agents.hub.cli.agent.account import AGENT_ACCOUNT
 
     agent = hsub.add_parser("agent", help="the agent profiles of a project: who its agents are and what they may use")
     asub = agent.add_subparsers(dest="agent_command", required=True)
@@ -371,6 +371,6 @@ def register_agents(hsub) -> None:
     json_option(delete, returns_object(*AGENT_KEYS, schema="Agent"))
     delete.set_defaults(func=cmd_delete)
 
-    register_agent_accounts(asub)
-    register_agent_account_pool(asub)
-    register_account_pools(hsub)
+    AGENT_ACCOUNT.attach(asub)
+    AGENT_ACCOUNT_POOL.attach(asub)
+    ACCOUNT_POOL.attach(hsub)

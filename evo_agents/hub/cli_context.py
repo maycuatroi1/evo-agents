@@ -12,8 +12,7 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli.base import client_command, print_json, project_of, signed_in, table, when
-from evo_agents.hub.cli.policy import PROJECT_HELP
+from evo_agents.hub.cli.base import PROJECT_HELP, client_command, print_json, project_of, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_object
 
 ANSWER_KEYS = ("project", "enabled", "since", "until", "weeks")

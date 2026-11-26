@@ -26,6 +26,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import urlencode
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub import autonomy_levels
 from evo_agents.hub.autonomy_levels import CLASSES, LEVELS
 from evo_agents.hub.cli.base import client_command, print_json, signed_in
@@ -267,3 +268,7 @@ def register_autonomy(hsub) -> None:
         returns_object(*REACH_KEYS, schema="RunReach", variants=(("--allow", written), ("--none", written))),
     )
     reach.set_defaults(func=cmd_run_reach)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+AUTONOMY = Legacy(register_autonomy)

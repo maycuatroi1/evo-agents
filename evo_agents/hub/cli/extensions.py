@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
 from evo_agents.hub.client import HubError
 from evo_agents.hub.plugin_commands import (  # noqa: F401 (moved there; the callers take them from here)
@@ -252,3 +253,7 @@ def refreshed(argv: list[str]) -> bool:
         return False
     refresh()
     return True
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+EXTENSIONS = Legacy(register_plugin_commands)  # hub <plugin> <command>, from the hub's list

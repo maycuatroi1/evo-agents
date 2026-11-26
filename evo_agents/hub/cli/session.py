@@ -30,6 +30,7 @@ import json
 import sys
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.access import ROLES
 from evo_agents.hub.cli.base import call_object, client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import (
@@ -455,7 +456,6 @@ def register_client(hsub) -> None:
     _register_admin(hsub)
     _register_project(hsub)
     _register_registry(hsub)
-    _register_other_groups(hsub)
 
 
 def _register_session(hsub) -> None:
@@ -600,49 +600,5 @@ def _register_registry(hsub) -> None:
     pull.set_defaults(func=cmd_registry_pull)
 
 
-def _register_other_groups(hsub) -> None:
-    """The command groups registered by their own modules, in the order of the CLI contract."""
-    from evo_agents.hub.cli.plan import PLAN
-
-    PLAN.attach(hsub)
-
-    from evo_agents.hub.cli.run import RUN
-
-    RUN.attach(hsub)
-
-    from evo_agents.hub.cli.decision import DECISION
-    from evo_agents.hub.cli.notifications import NOTIFICATIONS
-
-    DECISION.attach(hsub)
-    NOTIFICATIONS.attach(hsub)
-
-    from evo_agents.hub.cli.curator import CURATOR
-
-    CURATOR.attach(hsub)
-
-    from evo_agents.hub.cli_memory import register_memory
-
-    register_memory(hsub)
-
-    from evo_agents.hub.cli_skills import register_skills
-
-    register_skills(hsub)
-
-    from evo_agents.hub.cli.secret import register_secrets
-
-    register_secrets(hsub)
-
-    from evo_agents.hub.cli.kg import KG
-
-    KG.attach(hsub)
-
-    from evo_agents.hub.mcp_proxy import register_mcp
-
-    register_mcp(hsub)
-
-    # the commands of the evo-hub plugin: its hooks, and `hub send`, which the hooks start in the background
-    from evo_agents.hub.cli.send import register_send
-    from evo_agents.hub.hooks import register_hooks
-
-    register_hooks(hsub)
-    register_send(hsub)
+# The node this module attaches, an adapter of its register function until its commands are classes.
+SESSION = Legacy(register_client)  # login, logout, whoami, token, admin, project, registry

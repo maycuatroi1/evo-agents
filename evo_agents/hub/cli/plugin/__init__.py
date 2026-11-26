@@ -21,8 +21,9 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import quote
 
+from evo_agents.clikit import Legacy
 from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli.market import INSTALLED_KEYS, install_github, register_publishers
+from evo_agents.hub.cli.market import INSTALLED_KEYS, PUBLISHER, install_github
 from evo_agents.hub.cli.plugin.projects import list_project, project_list_output, register_project_commands
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
@@ -274,4 +275,8 @@ def register_plugins(hsub) -> None:
     json_option(removed, returns_object(*PLUGIN_KEYS, schema="Plugin"))
     removed.set_defaults(func=cmd_remove)
     register_project_commands(psub, _name)
-    register_publishers(psub)
+    PUBLISHER.attach(psub)
+
+
+# The node this module attaches, an adapter of its register function until its commands are classes.
+PLUGIN = Legacy(register_plugins)
