@@ -35,7 +35,7 @@ A delivery of a decision on a channel, and the edit of its message, is tried for
 stored, which is its first try since the job runs once the transaction commits (question #99): its retries keep to
 RetryAfter or the backoff above, each ``next_at`` no later than the end of the window, and a try that fails at or
 after that end fails the delivery with its error, RetryAfter included. The decision stays open on the hub, and its
-view says the channel failed (``decision_channels``). While a class's ``prepare`` runs, SENDING holds the delivery it
+view says the channel failed (``decisions.service.channels``). While a class's ``prepare`` runs, SENDING holds the delivery it
 prepares for: its id, the kind of its channel, and for an edit the delivery it edits and that message's id, which
 ``member_channels.prepare`` reads to judge a decision by its label against the channel's sink and to tell the class to
 edit. A delivery sent without the notification's content (``extra["restricted"]``) keeps why in ``withheld``.

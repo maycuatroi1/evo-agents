@@ -1,5 +1,5 @@
 """Where the message of each decision stands on the channels of core plugins: ``Decision.channel_deliveries``, which
-every view of a decision shows (``decision_reads.with_outputs``). ``docs/notifications.md`` (Decisions on channels) is the
+every view of a decision shows (``reads.with_outputs``). ``docs/notifications.md`` (Decisions on channels) is the
 design.
 
 A decision the hub told the person asked of has one entry for each kind of channel: each channel that got a delivery
@@ -14,12 +14,11 @@ told of (a wait, a credential request the hub answered itself) has none.
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import core_registry
-from evo_agents.hub.server.decision_models import ChannelDelivery, ChannelEdit, Decision
+from evo_agents.hub.server.decisions import repository
+from evo_agents.hub.server.decisions.models import ChannelDelivery, ChannelEdit, Decision
 
 NOT_LINKED = "{asked} has not linked {kind}"
 TURNED_OFF = "{asked} turned {kind} off"
@@ -42,7 +41,7 @@ def _edit(row) -> ChannelEdit | None:
     if row.edit_state is None:
         return None
     state = STATES.get(row.edit_state, "pending")
-    return ChannelEdit(state=state, error=None if state == "sent" else row.edit_error, sent_at=row.edit_at)
+    return ChannelEdit(state=state, error=None if state == "sent" else row.edit_error, sent_at=row.edit_at)  # pyright: ignore[reportArgumentType]
 
 
 def _entry(row, label: str | None) -> ChannelDelivery:
@@ -52,7 +51,7 @@ def _entry(row, label: str | None) -> ChannelDelivery:
         reason = WITHHELD_REASONS[row.withheld].format(label=label or "-", kind=row.kind)
     return ChannelDelivery(
         channel=row.kind,
-        state=state,
+        state=state,  # pyright: ignore[reportArgumentType]
         external_id=row.external_id,
         reason=reason,
         withheld=row.withheld if state == "sent" else None,
@@ -71,55 +70,24 @@ def _not_sent(kind: str, asked: str, channel) -> ChannelDelivery:
         reason = TURNED_OFF
     else:
         reason = LINKED_LATER
-    return ChannelDelivery(channel=kind, state="not_sent", reason=reason.format(asked=asked, kind=kind))
+    return ChannelDelivery(channel=kind, state="not_sent", reason=reason.format(asked=asked, kind=kind))  # pyright: ignore[reportCallIssue]
 
 
 async def fill(conn: AsyncConnection, decisions: list[Decision]) -> None:
     """Give each of ``decisions`` its ``channel_deliveries``."""
-    from evo_agents.hub.server.decision_reads import asked_person  # it fills its views through this module
-
     if not decisions:
         return
-    d, r, n = tables.decisions, tables.runs, tables.notifications
-    dl, c = tables.notification_deliveries, tables.notification_channels
-    edit = dl.alias("edit")
-    ids = [decision.id for decision in decisions]
-    told_query = (
-        select(n.c.decision_id, n.c.id.label("notification_id"), n.c.user_id)
-        .select_from(n.join(d, d.c.id == n.c.decision_id).join(r, r.c.id == d.c.run_id))
-        .where(n.c.decision_id.in_(ids), n.c.user_id == asked_person())
-    )
-    told = {row.decision_id: row for row in (await conn.execute(told_query)).all()}
+    told = {row.decision_id: row for row in await repository.told(conn, [decision.id for decision in decisions])}
     if not told:
         return
-    sent_query = (
-        select(
-            dl.c.notification_id,
-            c.c.kind,
-            dl.c.state,
-            dl.c.external_id,
-            dl.c.last_error,
-            dl.c.attempts,
-            dl.c.created_at,
-            dl.c.delivered_at,
-            dl.c.withheld,
-            edit.c.state.label("edit_state"),
-            edit.c.last_error.label("edit_error"),
-            edit.c.delivered_at.label("edit_at"),
-        )
-        .select_from(dl.join(c, c.c.id == dl.c.channel_id).outerjoin(edit, edit.c.edit_of == dl.c.id))
-        .where(dl.c.notification_id.in_([row.notification_id for row in told.values()]), dl.c.edit_of.is_(None))
-        .order_by(dl.c.id)
-    )
     by_notification: dict[int, list] = {}
-    for row in (await conn.execute(sent_query)).all():
+    for row in await repository.deliveries(conn, [row.notification_id for row in told.values()]):
         by_notification.setdefault(row.notification_id, []).append(row)
     kinds = contributed_kinds()
     channels: dict[tuple[int, str], object] = {}
     if kinds:
         users = {row.user_id for row in told.values()}
-        linked = select(c.c.user_id, c.c.kind, c.c.enabled).where(c.c.user_id.in_(users), c.c.kind.in_(kinds))
-        channels = {(row.user_id, row.kind): row for row in (await conn.execute(linked)).all()}
+        channels = {(row.user_id, row.kind): row for row in await repository.linked(conn, users, kinds)}
     for decision in decisions:
         found = told.get(decision.id)
         if found is None:

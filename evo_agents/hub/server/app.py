@@ -420,7 +420,7 @@ def _include_kg_routes(app: FastAPI) -> None:
 
     app.include_router(kg_eval_sets.router)
 
-    from evo_agents.hub.server import kg_decisions
+    from evo_agents.hub.server.kg_decisions import routes as kg_decisions
 
     app.include_router(kg_decisions.router)
 
@@ -481,8 +481,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     from evo_agents.hub.server import (
         attachments,
         curator,
-        decision_reads,
-        decisions,
         dlp_policy,
         doc_versions,
         kg_worker,
@@ -502,11 +500,11 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         run_outputs,
         today,
     )
+    from evo_agents.hub.server.decisions import routes as decisions
 
     for routes in (
         kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
-        decision_reads.router,  # reading decisions
-        decisions.router,
+        decisions.router,  # reading and answering decisions
         decisions.worker_router,
         local_runs.router,
         local_runs.batch_router,

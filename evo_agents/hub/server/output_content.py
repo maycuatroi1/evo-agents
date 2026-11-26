@@ -2,7 +2,7 @@
 what lists them, so the hub's pages show images and video under their Content-Security-Policy:
 
 - GET /v1/projects/{p}/runs/{id}/outputs/{oid}/content, to the run's readers (``views.readable_run``);
-- GET /v1/projects/{p}/decisions/{id}/outputs/{oid}/content, to the decision's readers (``decision_reads.readable_decision``),
+- GET /v1/projects/{p}/decisions/{id}/outputs/{oid}/content, to the decision's readers (``decisions.service.reads.readable_decision``),
   for an output the decision carries;
 - GET /v1/chats/{id}/outputs/{oid}/content, to a member of the chat who reads a message of it that carries the output
   (its label cleared, ``chat_access.label_reader``);
@@ -42,7 +42,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.chat_members import ChatId
-from evo_agents.hub.server.decision_reads import readable_decision
+from evo_agents.hub.server.decisions.service.reads import readable_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.output_views import columns
 from evo_agents.hub.server.runs.models import MAX_ID, RunId

@@ -665,7 +665,8 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
         files = await attachment_store.take(conn, body.attachment_ids, user.user_id, run_id=run_id)
         inbox_run = run_id
         if resumes:
-            from evo_agents.hub.server.decision_resume import resume_parked  # it moves runs through this module
+            # it moves runs through this module
+            from evo_agents.hub.server.decisions.service.resume import resume_parked
 
             why = f"as {user.login} replied in its chat"
             inbox_run = await resume_parked(conn, user, run_id, why, woken_by=body.text)

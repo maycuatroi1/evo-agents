@@ -36,7 +36,7 @@ from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import decisions as kg_decisions_cli
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.kg_decisions import Kind, State, Step
+from evo_agents.hub.server.kg_decisions.models import Kind, State, Step
 from tests.hub.s3 import fake_s3
 from tests.hub.test_kg import InProcessHub, make_config, run_jobs, served
 from tests.hub.test_mcp import call as mcp_call

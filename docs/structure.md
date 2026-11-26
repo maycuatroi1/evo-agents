@@ -55,6 +55,8 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `hub-goals-layers` | in `evo_agents.hub.server.goals`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
 | `hub-problems-layers` | in `evo_agents.hub.server.problems`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
 | `hub-opportunities-layers` | in `evo_agents.hub.server.opportunities`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-decisions-layers` | in `evo_agents.hub.server.decisions`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-kg-decisions-layers` | in `evo_agents.hub.server.kg_decisions`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
 
 Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `plugins`, `schema`. import-linter reads imports inside
 functions too, so a lazy import does not get around a contract. To fix a broken one, move the shared code down into
