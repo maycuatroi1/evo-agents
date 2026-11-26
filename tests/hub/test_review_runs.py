@@ -742,7 +742,7 @@ def test_the_overview_reads_each_curator_with_statements_built_once(review, monk
     a list of projects bound as one array (docs/hub.md, Data access), and builds none on a request."""
     from sqlalchemy.dialects import postgresql
 
-    from evo_agents.hub.server import curator as curator_routes
+    from evo_agents.hub.server.curator.repository import status as curator_routes
 
     client, worker, headers = review.client, review.worker, review.headers
     run_id = held_review(review)

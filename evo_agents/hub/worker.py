@@ -420,7 +420,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.FIRE_SCHEDULES, pass_context=True, queueing_lock=jobs.FIRE_SCHEDULES)
 async def fire_schedules(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.curator_shift import fire_schedules as fire
+    from evo_agents.hub.server.curator.service.shift import fire_schedules as fire
 
     found = hub(context)
     return await fire(found.engine, curator_app=getattr(found, "curator_app", None) is not None)

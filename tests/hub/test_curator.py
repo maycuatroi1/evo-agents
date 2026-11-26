@@ -26,8 +26,8 @@ from sqlalchemy import func, select, update
 
 from evo_agents.hub import curator, jobs, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.curator import night_figures
-from evo_agents.hub.server.curator_shift import fire_schedules
+from evo_agents.hub.server.curator.service.shift import fire_schedules
+from evo_agents.hub.server.night_cost import night_figures
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.fake_github import Account

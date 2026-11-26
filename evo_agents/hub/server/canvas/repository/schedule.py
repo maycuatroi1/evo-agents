@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 
-PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # evo_agents.hub.server.curator.PG_TIMEZONES
+PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # curator.repository.charter.PG_TIMEZONES
 
 
 async def known_zone(conn: AsyncConnection, zone: str) -> bool:

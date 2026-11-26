@@ -20,7 +20,7 @@ from evo_agents.hub import kg_build, loop_jobs, plugin_jobs, tables
 from evo_agents.hub.cli.project import archive_lines
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.server import autonomy_hold, project_archive
-from evo_agents.hub.server.curator_shift import due_schedules
+from evo_agents.hub.server.curator.repository.shift import due_schedules
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import ADMIN, sql
 from tests.hub.test_autonomy_level_runs import on_db, user_id

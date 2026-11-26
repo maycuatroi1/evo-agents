@@ -265,7 +265,7 @@ async def proposal_answered(
     chat_run_id: int | None = None,
 ) -> None:
     """The line of an admin's answer: accepted, rejected or deferred, by them, or by the project's ``agent`` for them in
-    chat run ``chat_run_id`` (``curator_threads``), which ``details`` names."""
+    chat run ``chat_run_id`` (``curator.service.threads``), which ``details`` names."""
     state = review.ANSWERED[action]
     what = f"{login} {state} it"
     if action == "defer" and days:
@@ -456,13 +456,14 @@ async def _merged(conn: AsyncConnection, row, line: dict, pull: dict, extra: dic
     if extra.get("merge_request"):  # its merge queue on GitLab merged it
         what = f"{who}'s merge queue merged !{extra['merge_request']} into {extra.get('into')} as {row.merge_sha}"
     details = {"github_login": extra["login"]} if extra.get("login") else {}
-    if extra.get("agent"):  # the agent of the proposal's thread, for its owner (``curator_threads``)
+    if extra.get("agent"):  # the agent of the proposal's thread, for its owner (``curator.service.threads``)
         what = f"{extra['agent']} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
         what += f" for {extra.get('login')} (chat run {extra.get('chat_run')})"
         details = {"agent": extra["agent"], "chat_run": extra.get("chat_run")}
     if actor == "curator":
         details, what = await _replayed_merge(conn, row, details, what)
-    from evo_agents.hub.server import playbook  # it reads the proposals of the routes that import this module
+    # it reads the proposals of the routes that import this module
+    from evo_agents.hub.server.playbook import service as playbook
 
     await playbook.retire_due(conn, row.project_id)  # the entries that held until this proposal landed
     await append(

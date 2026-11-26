@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, evolve, runs, tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.charter_settings import EvolveSettings
+from evo_agents.hub.server.curator.models.settings import EvolveSettings
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 

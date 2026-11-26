@@ -89,7 +89,6 @@ from evo_agents.hub.friction import SKILL_FIELDS
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import (
     audit,
-    curator_threads,
     facet_figures,
     kg_answers,
     kg_health,
@@ -101,9 +100,8 @@ from evo_agents.hub.server import (
     runtime_figures,
     system_curation,
 )
-from evo_agents.hub.server import (
-    kg_entity_map_run as entity_map_runs,
-)
+from evo_agents.hub.server import kg_entity_map_run as entity_map_runs
+from evo_agents.hub.server.curator.service import threads as curator_threads
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.goals import service as project_goals
 from evo_agents.hub.server.history.service import runs as history_figures
@@ -786,8 +784,9 @@ async def queue_optimize_review(conn: AsyncConnection, due, gate: Gate, optimize
 
 async def _remembered(conn: AsyncConnection, row, run_id: int, lenses: list[str]) -> tuple[dict, list]:
     """Earlier nights' findings through ``lenses`` and the playbook's lines (``run_id`` logs which), as its owner reads."""
-    from evo_agents.hub.server import earlier, playbook  # they read the proposals and runs of these routes
+    from evo_agents.hub.server import earlier
     from evo_agents.hub.server.history.service import readers  # it reads the proposals and runs of these routes
+    from evo_agents.hub.server.playbook import service as playbook  # they read the proposals and runs of these routes
 
     access = await readers.owner_access(conn, row.dispatched_by, row.project_id)
     if access is None:
@@ -920,7 +919,7 @@ async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, len
 
 async def reopen_deferred(conn: AsyncConnection) -> int:
     """Open again the proposals deferred until a moment that has passed, and ask the project's agent about each one
-    whose charter has it answer (``curator_threads.on_open``); how many."""
+    whose charter has it answer (``curator.service.threads.on_open``); how many."""
     p = tables.proposals
     opened = await conn.execute(
         update(p)
@@ -951,7 +950,8 @@ async def collect(
     (the database's now when None); how many schedules ended in each outcome, and how many deferred proposals opened
     again. With ``data_dir``, the worker's cache (the job's), the graphs of the projects that are due are measured
     first (``kg_health.measure``, with ``github_app`` and ``blobs``), and ``graphs`` says how many."""
-    from evo_agents.hub.server.curator_shift import due_schedules, gate_of  # it imports this module
+    from evo_agents.hub.server.curator.repository.shift import due_schedules
+    from evo_agents.hub.server.curator.service.shift import gate_of  # it imports this module
 
     measured = optimized = initiated = mapped = None
     if data_dir is not None:

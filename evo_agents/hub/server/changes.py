@@ -365,7 +365,7 @@ async def night_paused(conn: AsyncConnection, project_id: int) -> bool:
 async def _left_for_owner(conn: AsyncConnection, change_id: int) -> None:
     """Tell the thread of the change's proposal, when it has the agent answer, that the hub left the change open for
     its owner (``curator_threads.on_left_open``, in a savepoint of this transaction)."""
-    from evo_agents.hub.server.curator_threads import on_left_open  # it reads changes through this module
+    from evo_agents.hub.server.curator.service.threads import on_left_open  # it reads changes through this module
 
     await on_left_open(conn, change_id)
 

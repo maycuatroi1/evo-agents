@@ -1,6 +1,6 @@
 """``evo-agents worker curator answer|merge``: what the agent of a proposal's thread does on its own for the owner
-(``evo_agents.hub.server.curator_threads``; the skill answering-curator-proposals of the evo-hub plugin says how it
-decides).
+(``evo_agents.hub.server.curator.service.threads``; the skill answering-curator-proposals of the evo-hub plugin says how
+it decides).
 
 - ``answer PROPOSAL accept|reject|defer --note TEXT [--days N]``: answer the proposal of the thread for the owner, an
   admin of the project, as their answer on the web does: accepting one of a tier the charter plans makes the Curator's

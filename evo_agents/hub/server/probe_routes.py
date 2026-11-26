@@ -34,7 +34,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, probe_fixes, probe_runs, probes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.curator import charter_row
+from evo_agents.hub.server.curator.repository.charter import charter_row
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.plans import models as plan_models

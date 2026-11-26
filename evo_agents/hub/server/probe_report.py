@@ -44,8 +44,8 @@ from evo_agents.hub import curator, probes, runs, tables
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import probe_fixes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.curator import charter_row
-from evo_agents.hub.server.curator_shift import owner_access
+from evo_agents.hub.server.curator.repository.charter import charter_row
+from evo_agents.hub.server.curator.service.shift import owner_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.night_cost import usage_cost

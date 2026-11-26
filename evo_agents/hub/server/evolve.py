@@ -189,7 +189,8 @@ async def _checked_proposal(conn: AsyncConnection, access: ProjectAccess, propos
 async def _gate(conn: AsyncConnection, project_id: int):
     """(due, word, gate) of the project's night shift for an evolution its owner asks for now: at any hour, beside the
     schedule's other runs, as an asked-for KG optimize run (``kg_optimize._gate``)."""
-    from evo_agents.hub.server.curator_shift import due_schedules, gate_of  # it imports the routes of the night shift
+    from evo_agents.hub.server.curator.repository.shift import due_schedules
+    from evo_agents.hub.server.curator.service.shift import gate_of  # it imports the routes of the night shift
 
     due = (await conn.execute(due_schedules(None).where(tables.schedules.c.project_id == project_id))).one_or_none()
     if due is None:

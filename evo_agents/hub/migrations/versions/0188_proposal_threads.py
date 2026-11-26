@@ -6,7 +6,7 @@ Create Date: 2026-10-31
 
 proposal_threads is new (plan proposals-answer-themselves): one row for each proposal of the Curator whose project's
 charter has ``answer_by`` agent, the thread the hub opened for it in the project's triage chat
-(``evo_agents.hub.server.curator_threads``). It names the proposal (one row each,
+(``evo_agents.hub.server.curator.service.threads``). It names the proposal (one row each,
 ``proposal_threads_proposal_id_key``), the chat and the first message of the thread (one proposal a thread,
 ``proposal_threads_root_key``), the chat run the hub's latest mention of the agent made, and when the thread was opened
 and the agent last asked.

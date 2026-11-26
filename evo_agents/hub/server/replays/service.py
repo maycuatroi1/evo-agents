@@ -2,18 +2,18 @@
 ``evo_agents.hub.replay`` holds the model and ``evo_agents.hub.replay_suite`` the job that builds each project's suite
 of replay tasks.
 
-The night shift (``curator_shift._fire``) queues, after a judge run that waits and the Builder of a planned change, the replay
-run of the oldest change of the Curator that waits for one (``queue_replay``): a change built (its Builder ran, its
-branch is on origin), not merged or closed (``replay.REPLAY_STATES``) and not failed by the Judge (``passed`` false),
-whose proposal is of kind skill or names a skill, an AGENTS.md or a CLAUDE.md (``replay.harness_path``), with no run of
-its plan active. It takes the tasks of the holdout split of the project's suite in the order they came in, those not
-found unusable whose repos the worker on duty has, up to the charter's ``replay.tasks`` per change, one replay run per
-task: a run of kind replay on the change's plan, pinned to the worker on duty, as the schedule's owner, with the runtime
-and model of the charter's Builder, and caps that keep the night's replay runs within ``replay.budget_usd`` (a charter
-without it, or with ``replay.tasks`` 0, replays nothing). A replay run that ends without both arms is replayed again,
-REPLAY_ATTEMPTS runs in all, then the replay fails with why (``replay_ended``); one whose worker refused it (no base
-commit for the task, no harness file in the change) fails at once, and a task whose commits are nowhere on origin is
-unusable from then on.
+The night shift (``curator.service.shift``) queues, after a judge run that waits and the Builder of a planned change,
+the replay run of the oldest change of the Curator that waits for one (``queue_replay``): a change built (its Builder
+ran, its branch is on origin), not merged or closed (``replay.REPLAY_STATES``) and not failed by the Judge (``passed``
+false), whose proposal is of kind skill or names a skill, an AGENTS.md or a CLAUDE.md (``replay.harness_path``), with no
+run of its plan active. It takes the tasks of the holdout split of the project's suite in the order they came in, those
+not found unusable whose repos the worker on duty has, up to the charter's ``replay.tasks`` per change, one replay run
+per task: a run of kind replay on the change's plan, pinned to the worker on duty, as the schedule's owner, with the
+runtime and model of the charter's Builder, and caps that keep the night's replay runs within ``replay.budget_usd`` (a
+charter without it, or with ``replay.tasks`` 0, replays nothing). A replay run that ends without both arms is replayed
+again, REPLAY_ATTEMPTS runs in all, then the replay fails with why (``replay_ended``); one whose worker refused it (no
+base commit for the task, no harness file in the change) fails at once, and a task whose commits are nowhere on origin
+is unusable from then on.
 
 The claim of a replay run tells its worker the replay, the task and the change's branch and head, and hands it the
 run's own key (``replay_claim``), which the hub keeps as a SHA-256: the worker posts each arm's result with POST
@@ -27,8 +27,13 @@ harness alone (``evo_agents.hub.server.change_tiers``).
 GET /v1/projects/{p}/curator/replay/tasks (reader) lists the project's suite, of ``split`` when given, the tasks of
 plans the caller may read through the project's hub sink; GET .../curator/changes/{id}/replay (reader) a change's
 replays with what each arm found, ``replay.compare`` of them and ``replay.verdict`` at the head of its pull request,
-whether they won. The MCP tool curator_replay answers both (``mcp_answer``); to the agent of a run, the suite's
+whether they won. The MCP tool curator_replay answers both (``mcp.mcp_answer``); to the agent of a run, the suite's
 select split alone and no change's replays, and no replay run reads for it either (``views.agent_reads``).
+
+The package has four layers, which import-linter keeps in order (contract ``hub-replays-layers``): ``routes`` and
+``mcp`` (the HTTP routes and the MCP tool), then ``service`` (this module: queueing, the claim, the worker's report
+and the reads), ``repository`` (every SQL statement, on ``evo_agents.hub.tables``) and ``models`` (the Pydantic
+bodies, the audit action and the refusals).
 """
 
 from __future__ import annotations
@@ -37,160 +42,34 @@ import hashlib
 import hmac
 import logging
 import secrets
-from datetime import datetime
-from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, insert, null, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, replay, runs, tables
+from evo_agents.hub import curator, replay, runs
 from evo_agents.hub.server import audit, change_tiers
-from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.night_cost import kind_cost
-from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
+from evo_agents.hub.server.replays import repository as store
+from evo_agents.hub.server.replays.models import (
+    HARNESS_KINDS,
+    REPLAY,
+    ChangeReplay,
+    Replay,
+    ReplayReport,
+    ReplayTask,
+)
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
-from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId
+from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
-
-REPLAY = "curator.replay"  # the night shift queued a replay run: "<project>/<plan> run:<id> change:<id> task:<id>"
-MAX_TASKS_LISTED = 200
-HARNESS_KINDS = ("skill",)  # the kinds of proposal replayed whatever the paths they name
-AGENT_NO_CHANGE = (
-    "the agent of a run reads no change's replays: they are of the holdout split, which changes are measured on; a "
-    "member reads them with `evo-agents hub curator replay show CHANGE`"
-)
-
-router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-
-ReplayKey = Annotated[
-    str | None,
-    Header(
-        alias=replay.REPLAY_KEY_HEADER,
-        max_length=200,
-        description="the replay run's own key, which its claim handed the daemon; the worker token alone is refused",
-    ),
-]
-Split = Literal[replay.SPLITS]
-
-
-# Models
-
-
-class VerifyRun(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    exit_code: int
-    duration_ms: int | None = Field(None, ge=0)
-
-
-class ArmResult(BaseModel):
-    """What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    passed: bool = Field(description="every verify command exited 0")
-    harness_sha: str = Field(pattern=OBJECT_NAME, description="the commit of the change's repo the arm's harness is at")
-    harness_paths: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(
-        default_factory=list, max_length=replay.MAX_PATHS, description="the files of the change the arm ran with"
-    )
-    verify: list[VerifyRun] = Field(default_factory=list, max_length=10)
-    cost_usd: float | None = Field(None, ge=0, description="the agent's session; null when its runtime names none")
-    turns: int | None = Field(None, ge=0)
-    tool_calls: int = Field(0, ge=0)
-    tool_errors: int = Field(0, ge=0, description="the tool calls that failed")
-    peak_context_tokens: int | None = Field(None, ge=0)
-    duration_ms: int = Field(ge=0, description="the agent's time")
-    agent_error: str | None = Field(None, max_length=replay.MAX_REASON_CHARS, description="why its turn did not end")
-    session_id: str | None = Field(None, max_length=200)
-
-
-class ReplayReport(BaseModel):
-    """One arm's result with the task's base commit; or why the worker cannot replay the task at all."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    arm: Literal[replay.ARMS] | None = None
-    base_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the task's base commit the arm started at")
-    result: ArmResult | None = None
-    refused: str | None = Field(None, min_length=1, max_length=replay.MAX_REASON_CHARS)
-    task_unusable: bool = Field(False, description="with refused: no replay can run the task, whatever the change")
-
-    @model_validator(mode="after")
-    def _one(self):
-        if self.refused is None and (self.arm is None or self.result is None or self.base_sha is None):
-            raise ValueError("a replay report is an arm with its result and base_sha, or refused with why")
-        if self.refused is not None and (self.arm is not None or self.result is not None):
-            raise ValueError("a refused replay reports no arm")
-        return self
-
-
-class ReplayTask(BaseModel):
-    id: int
-    plan_id: str
-    step_key: str
-    repo: str
-    title: str | None
-    what: str
-    verify: str
-    commits: list[str]
-    source: Literal[replay.SOURCES]
-    split: Split
-    base_sha: str | None = Field(description="the first parent of the oldest of its commits, once a replay read it")
-    unusable: str | None = Field(description="why no replay can run it")
-    created_at: datetime
-
-
-class ReplayTaskList(BaseModel):
-    project: str
-    split: Split | None
-    tasks: list[ReplayTask] = Field(description="in the order they came into the suite")
-    total: int
-    counts: dict[str, int] = Field(description="the tasks of each split the caller may read")
-
-
-class Replay(BaseModel):
-    id: int
-    change_id: int
-    task_id: int
-    plan_id: str
-    step_key: str
-    repo: str
-    title: str | None
-    split: Split
-    run_id: int | None
-    state: Literal[replay.STATES]
-    attempts: int
-    base_sha: str | None
-    a: dict | None = Field(description="arm a, the harness of the default branch: ArmResult")
-    b: dict | None = Field(description="arm b, the harness of the change's branch: ArmResult")
-    reason: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class ChangeReplay(BaseModel):
-    project: str
-    change_id: int
-    tasks: int = Field(description="the tasks each change is replayed on, as the charter says now")
-    replays: list[Replay]
-    arms: dict = Field(description="replay.compare: per arm the replays, passed, cost, turns, tool errors, context")
-    verdict: dict = Field(
-        description="replay.verdict at the head of the change's pull request: whether its replays won, and why"
-    )
 
 
 # Queueing
@@ -207,49 +86,26 @@ def _harness_change(row) -> bool:
 
 async def _replayable(conn: AsyncConnection, project_id: int) -> list:
     """The project's changes a replay may measure, oldest first (see the module's docstring)."""
-    c, pr = tables.curator_changes, tables.proposals
-    query = (
-        select(c, pr.c.paths, pr.c.kind.label("kind"), pr.c.title.label("proposal_title"))
-        .join_from(c, pr, pr.c.id == c.c.proposal_id)
-        .where(
-            c.c.project_id == project_id,
-            c.c.state.in_(replay.REPLAY_STATES),
-            c.c.passed.is_not(False),  # the Judge or the hub's detector failed it: no replay gives it its merge
-            c.c.builder_run_id.is_not(None),
-            c.c.branch.is_not(None),
-            c.c.plan_id.is_not(None),
-        )
-        .order_by(c.c.id)
-    )
-    return [row for row in (await conn.execute(query)).all() if _harness_change(row)]
+    return [row for row in await store.replayable(conn, project_id) if _harness_change(row)]
 
 
 async def _next_task(conn: AsyncConnection, due, gate, change, wanted: int, runtime: str):
     """(the task, the replay to run again or None) the night shift replays ``change`` on next; None when it has as
     many replays as the charter wants, or no task fits the worker on duty."""
-    rp, t = tables.curator_replays, tables.replay_tasks
-    query = select(rp, t.c.unusable).join(t, t.c.id == rp.c.task_id).where(rp.c.change_id == change.id)
-    done = (await conn.execute(query.order_by(rp.c.id))).all()
+    done = await store.replays_of_change(conn, change.id)
     for row in done:
         if row.state == "queued" and row.unusable is not None:  # another replay found its task unusable since
             why = f"the task is unusable: {row.unusable}"[: replay.MAX_REASON_CHARS]
-            await conn.execute(
-                update(rp).values(state="failed", reason=why, updated_at=func.now()).where(rp.c.id == row.id)
-            )
+            await store.fail_replay(conn, row.id, why)
     again = next((row for row in done if row.state == "queued" and row.unusable is None), None)
     if again is not None:
-        task = (await conn.execute(select(t).where(t.c.id == again.task_id))).one()
+        task = await store.task(conn, again.task_id)
         return (task, again) if not gate.duty.unfit(due.project, "replay", [task.repo, change.repo], runtime) else None
     counted = [row for row in done if row.unusable is None]  # a task found unusable gives its place to the next
     if any(row.state == "running" for row in done) or len(counted) >= wanted:
         return None
     used = [row.task_id for row in done]
-    candidates = await conn.execute(
-        select(t)
-        .where(t.c.project_id == due.project_id, t.c.split == "holdout", t.c.unusable.is_(None), t.c.id.not_in(used))
-        .order_by(t.c.id)
-    )
-    for task in candidates:
+    for task in await store.holdout_tasks(conn, due.project_id, used):
         if not gate.duty.unfit(due.project, "replay", [task.repo, change.repo], runtime):
             return task, None
     return None
@@ -261,21 +117,10 @@ def _repos(task, change) -> list[dict]:
 
 
 async def _queued(conn: AsyncConnection, due, change, task, again, run_id: int, budget: dict) -> None:
-    rp = tables.curator_replays
     if again is None:
-        await conn.execute(
-            insert(rp).values(
-                project_id=due.project_id, change_id=change.id, task_id=task.id, run_id=run_id, state="running"
-            )
-        )
+        await store.start_replay(conn, due.project_id, change.id, task.id, run_id)
     else:
-        await conn.execute(
-            update(rp)
-            .values(
-                state="running", run_id=run_id, result_a=null(), result_b=null(), reason=None, updated_at=func.now()
-            )
-            .where(rp.c.id == again.id)
-        )
+        await store.restart_replay(conn, again.id, run_id)
     caps = f"cost cap {curator.money(budget['max_usd'])}, {budget['max_seconds'] // 60} minutes of agent time"
     text = (
         f"Queued by the night shift of project {due.project} as the replay of step {task.step_key} of plan "
@@ -373,24 +218,18 @@ def _task_spec(task) -> dict:
 async def replay_claim(conn: AsyncConnection, change, run_id: int) -> dict:
     """What the claim of replay run ``run_id`` of ``change`` adds for its worker: the replay, its task and a new key of
     the run (``replay_key``), whose SHA-256 alone the hub keeps; nothing when the run replays nothing now."""
-    rp, t = tables.curator_replays, tables.replay_tasks
-    row = (
-        await conn.execute(
-            select(rp.c.id, rp.c.task_id).where(rp.c.run_id == run_id, rp.c.state == "running").with_for_update()
-        )
-    ).one_or_none()
+    row = await store.lock_running(conn, run_id)
     if row is None:
         return {}
-    task = (await conn.execute(select(t).where(t.c.id == row.task_id))).one()
+    task = await store.task(conn, row.task_id)
     key = secrets.token_urlsafe(32)
-    await conn.execute(update(rp).values(replay_key=_key_digest(key), updated_at=func.now()).where(rp.c.id == row.id))
+    await store.set_key(conn, row.id, _key_digest(key))
     return {"replay": {"replay_id": row.id, "task": _task_spec(task), "repo": change.repo}, "replay_key": key}
 
 
 async def run_prompt(conn: AsyncConnection, view) -> str:
     """The prompt of replay run ``view``, as its worker builds it for each arm (``replay.replay_prompt``)."""
-    rp, t = tables.curator_replays, tables.replay_tasks
-    task = (await conn.execute(select(t).join(rp, rp.c.task_id == t.c.id).where(rp.c.run_id == view.id))).one_or_none()
+    task = await store.task_of_run(conn, view.id)
     if task is None:
         return "This replay run replays nothing: end it."
     return replay.replay_prompt(view.project, _task_spec(task), folder=task.repo)
@@ -403,48 +242,42 @@ async def _held_replay(conn: AsyncConnection, user: Principal, run_id: int, key:
     """The row of curator_replays of replay run ``run_id``, which the worker of ``user`` holds, locked; 404 for any
     other run, 409 for a replay that waits for nothing of it, 403 without the run's own key."""
     worker_id = (await worker_of(conn, user))[0]
-    r, rp = tables.runs, tables.curator_replays
-    run = (
-        await conn.execute(select(r.c.state, r.c.worker_id, r.c.kind).where(r.c.id == run_id).with_for_update())
-    ).one_or_none()
+    run = await store.lock_run(conn, run_id)
     if run is None or run.worker_id != worker_id or run.state not in runs.HELD_STATES:
-        raise HTTPException(404, NOT_HELD.format(id=run_id))
+        raise NotFound(NOT_HELD.format(id=run_id))
     if run.kind != "replay":
-        raise HTTPException(404, f"run {run_id} is not a replay run: only a replay run reports a replay")
-    row = (await conn.execute(select(rp).where(rp.c.run_id == run_id).with_for_update())).one_or_none()
+        raise NotFound(f"run {run_id} is not a replay run: only a replay run reports a replay")
+    row = await store.lock_replay_of_run(conn, run_id)
     if row is None or row.state != "running":
-        raise HTTPException(409, f"run {run_id} replays nothing that waits for it")
+        raise Conflict(f"run {run_id} replays nothing that waits for it")
     if not key or row.replay_key is None or not hmac.compare_digest(_key_digest(key), row.replay_key):
-        raise HTTPException(
-            403,
+        raise Forbidden(
             f"run {run_id} is a replay run: its results take the run's own key ({replay.REPLAY_KEY_HEADER}), which "
-            "its claim handed the daemon; the worker token alone writes no result",
+            "its claim handed the daemon; the worker token alone writes no result"
         )
     return row
 
 
 async def _refused(conn: AsyncConnection, row, body: ReplayReport, run_id: int) -> None:
-    rp, t = tables.curator_replays, tables.replay_tasks
-    await conn.execute(
-        update(rp).values(state="failed", reason=body.refused, updated_at=func.now()).where(rp.c.id == row.id)
-    )
+    await store.fail_replay(conn, row.id, body.refused)
     if body.task_unusable:
-        await conn.execute(update(t).values(unusable=body.refused).where(t.c.id == row.task_id, t.c.unusable.is_(None)))
+        await store.task_unusable(conn, row.task_id, body.refused)
     what = "the task is unusable from now on" if body.task_unusable else "the replay fails"
     await write_event(conn, run_id, {"text": f"The worker cannot replay the task: {body.refused}; {what}."})
 
 
 async def _arm(conn: AsyncConnection, row, body: ReplayReport, run_id: int) -> None:
-    rp, t = tables.curator_replays, tables.replay_tasks
     if getattr(row, f"result_{body.arm}") is not None:
-        raise HTTPException(409, f"run {run_id} reported arm {body.arm} already")
+        raise Conflict(f"run {run_id} reported arm {body.arm} already")
+    result = body.result
+    assert result is not None  # an arm's report has its result (ReplayReport)
     other = row.result_b if body.arm == "a" else row.result_a
-    values = {f"result_{body.arm}": body.result.model_dump(), "base_sha": row.base_sha or body.base_sha}
+    values = {f"result_{body.arm}": result.model_dump(), "base_sha": row.base_sha or body.base_sha}
     if other is not None:
         values["state"] = "done"
-    await conn.execute(update(rp).values(**values, updated_at=func.now()).where(rp.c.id == row.id))
-    await conn.execute(update(t).values(base_sha=body.base_sha).where(t.c.id == row.task_id, t.c.base_sha.is_(None)))
-    word = "passed" if body.result.passed else "failed"
+    await store.write_replay(conn, row.id, values)
+    await store.task_base(conn, row.task_id, body.base_sha)
+    word = "passed" if result.passed else "failed"
     await write_event(
         conn, run_id, {"text": f"Arm {body.arm} of the replay {word} the step's verify.", "arm": body.arm}
     )
@@ -455,34 +288,29 @@ async def _arm(conn: AsyncConnection, row, body: ReplayReport, run_id: int) -> N
 async def _won_again(conn: AsyncConnection, change_id: int, run_id: int) -> None:
     """A change left open after the Judge passed it goes back to ``judged`` once its replays win, so the job reads its
     pull request again and merges it as tier 0 when everything else still holds."""
-    c = tables.curator_changes
-    change = (await conn.execute(select(c).where(c.c.id == change_id).with_for_update())).one()
+    change = await store.lock_change(conn, change_id)
     if change.state != "open" or change.passed is not True or change.forge != "github":
         return
     found = await change_tiers.replay_verdict(conn, change.id, change.head_sha)
     if not found["won"]:
         return
     why = f"its replays won ({found['reason']}): the hub reads its pull request again to merge it"
-    values = {"state": "judged", "reason": why[: replay.MAX_REASON_CHARS], "updated_at": func.now()}
-    await conn.execute(update(c).values(**values).where(c.c.id == change.id))
+    values = {"state": "judged", "reason": why[: replay.MAX_REASON_CHARS]}
+    await store.judge_again(conn, change.id, values)
     await write_event(conn, run_id, {"text": f"The replays of the Curator's change #{change.id} won.", "won": True})
     log.info("curator change judged again by its replays", extra={"change_id": change.id, "run_id": run_id})
 
 
-@worker_router.post("/runs/{run_id}/replay", response_model=Replay, responses=REFUSALS)
-async def report_replay(
-    request: Request, run_id: RunId, body: ReplayReport, user: CurrentUser, replay_key: ReplayKey = None
-) -> Replay:
-    """One arm's result of the replay run this worker holds, or why it cannot replay its task; with the run's key."""
-    async with request.app.state.engine.begin() as conn:
-        row = await _held_replay(conn, user, run_id, replay_key)
-        if body.refused is not None:
-            await _refused(conn, row, body, run_id)
-        else:
-            await _arm(conn, row, body, run_id)
-        (found,) = await _replays(conn, [row.id])
-    log.info("replay reported", extra={"run_id": run_id, "replay_id": row.id, "arm": body.arm})
-    return found
+async def report(conn: AsyncConnection, user: Principal, run_id: int, body: ReplayReport, key: str | None):
+    """One arm's result of the replay run the worker of ``user`` holds, or why it cannot replay its task: the replay,
+    and its id."""
+    row = await _held_replay(conn, user, run_id, key)
+    if body.refused is not None:
+        await _refused(conn, row, body, run_id)
+    else:
+        await _arm(conn, row, body, run_id)
+    (found,) = await replays(conn, [row.id])
+    return found, row.id
 
 
 async def replay_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
@@ -506,8 +334,7 @@ async def replay_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
             details={"run_kind": "replay", "plan_id": found.plan_id, "error": why},
             link=NOTIFIER.run_link(found.project, found.run_id),
         )
-    rp = tables.curator_replays
-    row = (await conn.execute(select(rp).where(rp.c.run_id == found.run_id).with_for_update())).one_or_none()
+    row = await store.lock_replay_of_run(conn, found.run_id)
     if row is None or row.state != "running":
         return
     attempts = row.attempts + 1
@@ -517,7 +344,7 @@ async def replay_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
     values["reason"] = (f"{attempts} replay runs ended without both arms, the last {new}: {why}" if last else text)[
         : replay.MAX_REASON_CHARS
     ]
-    await conn.execute(update(rp).values(**values, updated_at=func.now()).where(rp.c.id == row.id))
+    await store.write_replay(conn, row.id, values)
 
 
 # Reading
@@ -527,25 +354,18 @@ def _task_view(row) -> ReplayTask:
     return ReplayTask(**{key: getattr(row, key) for key in ReplayTask.model_fields})
 
 
-async def _replays(conn: AsyncConnection, ids: list[int]) -> list[Replay]:
-    rp, t = tables.curator_replays, tables.replay_tasks
-    query = (
-        select(rp, t.c.plan_id, t.c.step_key, t.c.repo, t.c.title, t.c.split)
-        .join(t, t.c.id == rp.c.task_id)
-        .where(rp.c.id.in_(ids))
-        .order_by(rp.c.id)
-    )
+async def replays(conn: AsyncConnection, ids: list[int]) -> list[Replay]:
     return [
         Replay(
             **{key: value for key, value in row._mapping.items() if key in Replay.model_fields},
             a=row.result_a,
             b=row.result_b,
         )
-        for row in await conn.execute(query)
+        for row in await store.replays(conn, ids)
     ]
 
 
-async def _reader_access(conn: AsyncConnection, user: Principal, project: str) -> ProjectAccess:
+async def reader_access(conn: AsyncConnection, user: Principal, project: str) -> ProjectAccess:
     access = await project_access(conn, user, project)
     need_reader(access)
     return access
@@ -554,122 +374,23 @@ async def _reader_access(conn: AsyncConnection, user: Principal, project: str) -
 async def tasks_of(conn: AsyncConnection, access: ProjectAccess, *, split: str | None, limit: int, sink: str | None):
     """The project's suite as the caller may read it through ``sink``: (the tasks of ``split``, at most ``limit``,
     the count of each split)."""
-    t = tables.replay_tasks
-    rows = (await conn.execute(select(t).where(t.c.project_id == access.project_id).order_by(t.c.id))).all()
-    through = plan_service.read_sink(access, sink)
-    readable = [row for row in rows if access.visible(row.label, through)]
+    rows = await store.tasks(conn, access.project_id)
+    readable = [row for row in rows if plan_service.sees(access, row.label, sink)]
     counts = {name: sum(row.split == name for row in readable) for name in replay.SPLITS}
     shown = [_task_view(row) for row in readable if split is None or row.split == split]
     return shown[:limit], counts, len(shown)
 
 
-@router.get("/{project}/curator/replay/tasks", response_model=ReplayTaskList, responses=REFUSALS)
-async def list_tasks(
-    request: Request,
-    project: ProjectName,
-    user: CurrentUser,
-    split: Annotated[Split | None, Query(description="the tasks of this split alone")] = None,
-    limit: Annotated[int, Query(ge=1, le=MAX_TASKS_LISTED)] = 100,
-    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
-) -> ReplayTaskList:
-    """The project's suite of replay tasks, in the order they came in, of the plans the caller may read."""
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader_access(conn, user, project)
-        tasks, counts, total = await tasks_of(conn, access, split=split, limit=limit, sink=sink)
-    return ReplayTaskList(project=access.name, split=split, tasks=tasks, total=total, counts=counts)
-
-
 async def change_replay(conn: AsyncConnection, access: ProjectAccess, change_id: int, sink: str | None) -> ChangeReplay:
     """The replays of change ``change_id`` of the project the caller may read; 404 when it may not read the change."""
-    c, pr, rp, t = tables.curator_changes, tables.proposals, tables.curator_replays, tables.replay_tasks
-    change = (
-        await conn.execute(
-            select(c.c.id, c.c.head_sha, pr.c.label)
-            .join_from(c, pr, pr.c.id == c.c.proposal_id)
-            .where(c.c.id == change_id, c.c.project_id == access.project_id)
-        )
-    ).one_or_none()
-    through = plan_service.read_sink(access, sink)
-    if change is None or not access.visible(change.label, through):
-        raise HTTPException(404, f"project {access.name} has no change #{change_id} of the Curator you may read")
-    rows = await conn.execute(
-        select(rp.c.id, t.c.label).join(t, t.c.id == rp.c.task_id).where(rp.c.change_id == change_id).order_by(rp.c.id)
-    )
-    shown = await _replays(conn, [row.id for row in rows if access.visible(row.label, through)])
-    ch = tables.charters
-    charter = (
-        await conn.execute(
-            select(ch.c.body).where(ch.c.project_id == access.project_id).order_by(ch.c.revision.desc()).limit(1)
-        )
-    ).scalar_one_or_none() or {}
+    change = await store.change_of_project(conn, change_id, access.project_id)
+    if change is None or not plan_service.sees(access, change.label, sink):
+        raise NotFound(f"project {access.name} has no change #{change_id} of the Curator you may read")
+    rows = await store.replay_labels(conn, change_id)
+    shown = await replays(conn, [row.id for row in rows if plan_service.sees(access, row.label, sink)])
+    charter = await store.newest_charter_body(conn, access.project_id) or {}
     wanted = (charter.get("replay") or {}).get("tasks", replay.DEFAULT_TASKS)
     arms = replay.compare([{"result_a": item.a, "result_b": item.b} for item in shown])
     rows = [{"split": item.split, "state": item.state, "result_a": item.a, "result_b": item.b} for item in shown]
     found = replay.verdict(rows, change.head_sha)
     return ChangeReplay(project=access.name, change_id=change_id, tasks=wanted, replays=shown, arms=arms, verdict=found)
-
-
-@router.get("/{project}/curator/changes/{change_id}/replay", response_model=ChangeReplay, responses=REFUSALS)
-async def show_change_replay(
-    request: Request,
-    project: ProjectName,
-    change_id: Annotated[int, Path(ge=1, le=MAX_ID)],
-    user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
-) -> ChangeReplay:
-    """A change's replays: each task, what arm a (the default branch's harness) and arm b (the change's) found."""
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader_access(conn, user, project)
-        return await change_replay(conn, access, change_id, sink)
-
-
-# The MCP tool
-
-
-def _arm_text(item: dict | None) -> str:
-    if not item:
-        return "-"
-    cost = curator.money(item["cost_usd"]) if item.get("cost_usd") is not None else "cost -"
-    word = "passed" if item.get("passed") else "failed"
-    return f"{word}, {cost}, {item.get('turns') or 0} turns, {item.get('tool_errors') or 0} tool errors"
-
-
-async def mcp_answer(request: Request, project: str, user: Principal, arguments: dict, *, sink: str | None):
-    """(text, data) of the MCP tool curator_replay. The agent of a run (the Reviewer, a Builder) lists the select split
-    of the suite alone, and reads no change's replays, which are all of holdout tasks: the holdout split, which changes
-    are measured on, stays out of what shapes them."""
-    split = arguments.get("split")
-    if user.scope is not None:
-        if "change_id" in arguments:
-            raise HTTPException(403, AGENT_NO_CHANGE)
-        if split == "holdout":
-            raise HTTPException(403, "the agent of a run lists the select split of the replay suite alone")
-        split = "select"
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader_access(conn, user, project)
-        if "change_id" in arguments:
-            found = await change_replay(conn, access, arguments["change_id"], sink)
-        else:
-            tasks, counts, total = await tasks_of(
-                conn, access, split=split, limit=arguments.get("limit", 20), sink=sink
-            )
-    if "change_id" in arguments:
-        arms = found.arms
-        lines = [
-            f"Change #{found.change_id} of project {project}: {len(found.replays)} of {found.tasks} replays; arm a "
-            f"passed {arms['a']['passed']} of {arms['a']['replays']}, arm b {arms['b']['passed']} of "
-            f"{arms['b']['replays']}. Arm a has the harness of the default branch, arm b the change's.",
-            f"{'They won' if found.verdict['won'] else 'They did not win'}: {found.verdict['reason']}.",
-        ]
-        for item in found.replays:
-            lines.append(
-                f"#{item.id} {item.plan_id}#{item.step_key} ({item.state}): a {_arm_text(item.a)}; b {_arm_text(item.b)}"
-            )
-        data = {**found.model_dump(mode="json"), "summary": f"{len(found.replays)} replays"}
-        return "\n".join(lines), data
-    lines = [f"The replay suite of project {project}: {counts['select']} select, {counts['holdout']} holdout."]
-    lines += [
-        f"#{task.id} {task.split} {task.plan_id}#{task.step_key} in {task.repo}: {task.title or ''}" for task in tasks
-    ]
-    data = {"project": project, "tasks": [task.model_dump(mode="json") for task in tasks], "total": total}
-    return "\n".join(lines), {**data, "counts": counts, "summary": f"{total} tasks"}

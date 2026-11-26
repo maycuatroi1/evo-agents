@@ -28,7 +28,7 @@ from evo_agents.hub import review as review_model
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.facet_job import analyze_facets, fingerprint
 from evo_agents.hub.server.collect import compute_figures
-from evo_agents.hub.server.curator_shift import owner_access
+from evo_agents.hub.server.curator.service.shift import owner_access
 from evo_agents.hub.worker import queue
 from tests.hub.live import sql
 from tests.hub.test_curator import (

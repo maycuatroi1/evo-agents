@@ -24,8 +24,8 @@ included, through the outbox (``NOTIFIER.notify``). The brief holds:
   project whose Loop is off has none;
 - the KG optimize run of the project that ended in the 24 hours before the brief, in a line (``kg_optimize``).
 - the proposals the project's agent answered for the owner in the 24 hours before the brief, with its note and its chat
-  run (``curator_threads``), when it answered any; and the pull requests of the Curator's changes it merged for the
-  owner, with its chat run, when it merged any.
+  run (``curator.service.threads``), when it answered any; and the pull requests of the Curator's changes it merged for
+  the owner, with its chat run, when it merged any.
 
 curator_briefs keeps one row a project and local day, with what the brief said and its notification; a second pass of
 the job, or a second hub worker, finds the row and sends nothing. ``curator.last_brief`` names the newest for GET
@@ -54,9 +54,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server import agent_placement, probe_report, today_digest
-from evo_agents.hub.server.curator import curator_state, night_figures
-from evo_agents.hub.server.curator_shift import due_schedules, owner_access
+from evo_agents.hub.server.curator.repository.shift import due_schedules
+from evo_agents.hub.server.curator.service.shift import owner_access
+from evo_agents.hub.server.curator.service.status import curator_state
 from evo_agents.hub.server.loop import notices as loop_notices
+from evo_agents.hub.server.night_cost import night_figures
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plans import service as plan_service
@@ -145,7 +147,7 @@ async def _merged(conn: AsyncConnection, run_ids: list[int]) -> list[dict]:
 
 async def _agent_answers(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
     """The answers the project's agent gave to proposals in the 24 hours before the brief, as their ledger lines say
-    (``curator_threads``): how many, and the first few, oldest first."""
+    (``curator.service.threads``): how many, and the first few, oldest first."""
     cl = tables.curator_ledger
     where = (
         cl.c.project_id == project_id,
@@ -170,7 +172,7 @@ async def _agent_answers(conn: AsyncConnection, project_id: int) -> tuple[int, l
 
 async def _agent_merges(conn: AsyncConnection, project_id: int) -> tuple[int, list[dict]]:
     """The pull requests of the Curator's changes the project's agent merged in the 24 hours before the brief, as their
-    ledger lines say (``curator_threads``): how many, and the first few, oldest first."""
+    ledger lines say (``curator.service.threads``): how many, and the first few, oldest first."""
     cl = tables.curator_ledger
     where = (
         cl.c.project_id == project_id,

@@ -28,7 +28,8 @@ use the indexes the runs, decisions and plans already have.
   plan, which no plan's label covers, and those of a plan the caller sees. A run with a decision still open is left
   out: open_decisions lists it through its decision;
 - projects: each with the caller's role and max level, its repos, its active plans the caller sees, the open
-  decisions of those plans, and where its Curator stands when it has a charter (``curator.curator_overview``).
+  decisions of those plans, and where its Curator stands when it has a charter
+  (``curator.service.status.curator_overview``).
 
 ``evo_agents.hub.server.today`` builds Today on the same checks (``scope``, ``parameters`` and the statements' helpers).
 """
@@ -61,8 +62,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server.curator import curator_overview
-from evo_agents.hub.server.curator_models import CuratorOverview
+from evo_agents.hub.server.curator.models.charter import CuratorOverview
+from evo_agents.hub.server.curator.service.status import curator_overview
 from evo_agents.hub.server.decisions.repository import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans.repository import step_counts

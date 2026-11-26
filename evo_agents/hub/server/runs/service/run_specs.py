@@ -255,7 +255,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
 
         return await release_prompt(conn, view)
-    from evo_agents.hub.server.replays import run_prompt
+    from evo_agents.hub.server.replays.service import run_prompt
 
     return await run_prompt(conn, view)
 

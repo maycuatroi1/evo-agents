@@ -20,7 +20,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_shift import queue_builder
 from evo_agents.hub.server.change_views import change_of_plan
-from evo_agents.hub.server.curator_shift import project_gate
+from evo_agents.hub.server.curator.service.shift import project_gate
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.plans import service as plan_service
