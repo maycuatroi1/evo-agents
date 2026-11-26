@@ -31,7 +31,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import principal
-from evo_agents.hub.server.signals import SignalIn
+from evo_agents.hub.server.signals.models import SignalIn
 
 log = logging.getLogger(__name__)
 

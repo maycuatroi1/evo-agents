@@ -49,7 +49,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_publishers import SIGNER
 from evo_agents.hub.server.projects import PRINTABLE
 from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal
-from evo_agents.hub.server.signals import SignalIn
+from evo_agents.hub.server.signals.models import SignalIn
 from evo_agents.plugins import license as lic
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
 from evo_agents.plugins.manifest import PLUGIN_ID

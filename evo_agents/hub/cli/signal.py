@@ -1,6 +1,6 @@
 """``evo-agents hub signal push|list``, ``hub signal keys list|add|archive`` and ``hub signal ingest
 create|list|revoke``: a project's signals, the registry of its keys and its ingest keys, through the hub's routes
-(``evo_agents.hub.server.signals``, ``evo_agents.hub.server.signal_keys``; ``docs/signals.md``).
+(``evo_agents.hub.server.signals``; ``docs/signals.md``).
 
 ``push`` sends one signal (``--key`` with ``--value`` for a number or ``--text`` for feedback) or a batch from
 ``--file``, JSON ``{"items": [...]}`` or the list alone, as the member signed in; it prints how many the hub stored and
