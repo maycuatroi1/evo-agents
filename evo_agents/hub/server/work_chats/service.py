@@ -6,7 +6,7 @@ thread of the Orchestrator about a run of the trace (``orchestrator``), or the w
 (``orchestrator_actions``). ``system_traces.work_chat_id`` names it; an advisory lock per trace, under which that
 column is read again, has concurrent hand-offs open one chat. Its creator is the person who opened the trace, with no
 notice; the coordinator (the system's entry agent) is put in it, and each agent the work goes to, as the hub's own
-flows put agents (``chat_members.put_agent``, sharing nothing). A trace with no hand-off has none.
+flows put agents (``chats.service.members.put_agent``, sharing nothing). A trace with no hand-off has none.
 
 A hand-off (``hand_over``) puts the question as a message of the asking agent in the work chat: in the thread of the
 agent asked when it has one there, so its session, worktree and branch go on, else on the main line, where it opens
@@ -36,12 +36,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, runs
 from evo_agents.hub.server import audit, system_traces
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access
-from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
-from evo_agents.hub.server.chat_runs import Hand, agent_access, hand_work, hub_reply
-from evo_agents.hub.server.chat_store import add_member, insert_message, member_event
-from evo_agents.hub.server.chat_views import person_author
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.models.views import person_author
+from evo_agents.hub.server.chats.repository.store import add_member, member_event
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.direct import direct_chat
+from evo_agents.hub.server.chats.service.members import label_now, put_agent, put_person
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import agent_access, hand_work, hub_reply
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.server.work_chats import repository

@@ -1,6 +1,6 @@
 """Sinks of kind channel (criterion a1 of the plan chat-bridges): a project's knowledge.yaml declares, per kind of
 channel of a plugin (``telegram`` say), the clearance of what of its chats may go out to a group of that channel; the
-hub stores it at register (``tests.hub.test_projects``) and ``chat_access.channel_allows`` reads it. Without such a
+hub stores it at register (``tests.hub.test_projects``) and ``chats.models.access.channel_allows`` reads it. Without such a
 sink for a kind, that channel gets nothing of the project's chats: it fails closed. The rule that a 1:1 private channel
 gets minimal messages (``telegram.restricted``) reads the hub sink alone, as before.
 
@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("fastapi", reason="the hub extras are not installed")
 pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub.server.chat_access import LabelProject, channel_allows, with_override
+from evo_agents.hub.server.chats.models.access import LabelProject, channel_allows, with_override
 from tests.hub import pg
 
 LEVELS = ["public", "internal", "customer", "secret"]
@@ -95,7 +95,7 @@ if pg.DSN:
     from sqlalchemy import select
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server.chat_access import channel_cleared
+    from evo_agents.hub.server.chats.service.access import channel_cleared
     from tests.hub.live import sql
     from tests.hub.test_chats import (  # noqa: F401 (fixtures)
         OPEN_SINKS,
@@ -167,7 +167,7 @@ if pg.DSN:
     from evo_agents.hub import chat_bridge_events
     from evo_agents.hub.blobs import BlobStore
     from evo_agents.hub.server import core_plugin_api as api
-    from evo_agents.hub.server.chat_store import status_reaction
+    from evo_agents.hub.server.chats.repository.store import status_reaction
     from tests.hub.test_curator import night  # noqa: F401 (a fixture, on this module's web_client)
     from tests.hub.test_runs import OTHER, OWNER, audit_rows
     from tests.plugins import test_core_plugin_api as core
@@ -475,10 +475,10 @@ def test_a_guest_of_a_bridged_group_comes_in_as_data_and_hands_no_one_work(bridg
     from sqlalchemy import func
 
     from evo_agents.hub import chat_runs as rules
-    from evo_agents.hub.server import chat_bridges
-    from evo_agents.hub.server.chat_prompts import chat_prompt
-    from evo_agents.hub.server.chat_runs import hub_access
-    from evo_agents.hub.server.chat_store import insert_message
+    from evo_agents.hub.server.chats.repository import bridges as chat_bridges
+    from evo_agents.hub.server.chats.service.posting import insert_message
+    from evo_agents.hub.server.chats.service.prompts import chat_prompt
+    from evo_agents.hub.server.chats.service.runs import hub_access
     from tests.hub.test_chat_runs import chat_worker
 
     client, db, fake, chat, headers = bridged.client, bridged.db, bridged.fake, bridged.chat, bridged.headers

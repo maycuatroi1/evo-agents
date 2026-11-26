@@ -475,7 +475,7 @@ integrity, projects}`, and two rules decide everything:
 **Sinks of kind channel.** A sink of kind `channel` names, by its id, a kind of channel of a core plugin (`telegram`,
 say: a channel kind as `evo_agents/plugins/manifest.py` reads it, never `web`), and its clearance bounds what of the
 project's chats may go out to a group of that channel: a message whose label's part for the project is below the
-clearance (`evo_agents.hub.server.chat_access.channel_allows`). The hub stores it at register, refusing an id that is
+clearance (`evo_agents.hub.server.chats.models.access.channel_allows`). The hub stores it at register, refusing an id that is
 no channel kind (422), and `hub project list --json` prints it among the sinks. It fails closed: a project without a
 sink of kind channel for a kind lets nothing of its chats out to that channel, and neither does a message with an
 empty label or one naming a project the hub does not know. Whether a 1:1 private channel gets minimal messages reads
@@ -492,7 +492,7 @@ that project reaches that level. The hub computes a reader's audience from its d
 out, whose label as it is now they clear, and `grant:<p>:<l>` for each project they hold a grant on and each level of
 its ladder up to the grant's max level. A sink does not narrow it, since the clearance of every sink holds the highest
 audience. The agent of a run holds its owner's audience, and the agent of a chat run what both people its prompt is
-cleared for hold (`chat_prompts.run_clearers`): the person who started it and the member whose worker runs it. Every read
+cleared for hold (`chats.service.prompts.run_clearers`): the person who started it and the member whose worker runs it. Every read
 of a graph asks for it: the `kg_*` tools of REST and of `/mcp`, `kg_more` and the web's graph routes; the review of a
 proposal reads with none, since every member of the project sees what it keeps. So a member of the project who is not
 in a chat sees nothing of it, someone who joins later sees the messages whose labels they clear, and someone who leaves
@@ -1131,7 +1131,7 @@ hand-off has none. An advisory lock per trace, under which that column is read a
 is "Work: " and the start of the trace's first message.
 
 Its creator is the person who opened the trace, who gets no `chat_added` notice. The hub puts in it the coordinator
-(the system's entry agent) and each agent the work goes to, as its other flows put agents (`chat_members.put_agent`,
+(the system's entry agent) and each agent the work goes to, as its other flows put agents (`chats.service.members.put_agent`,
 sharing nothing), and the person at the origin of the work. Everywhere the hub tells chats apart by kind, a work chat
 counts as a group chat: mentions, replies, bridges, summaries.
 
@@ -1276,7 +1276,7 @@ run once its lease runs out, 180 seconds plus 120.
 
 One turn goes like this:
 
-1. The model is the run's model: the first model of the profile's model axis, which `chat_runs` picks when the run
+1. The model is the run's model: the first model of the profile's model axis, which `chats.service.runs` picks when the run
    queues. The turn reaches it through the provider accounts the run may use (the account pool of the agent, as for
    a run on the gateway). The hub makes a gateway key for the turn alone, bound to those accounts' connections, and
    revokes it when the turn ends.
@@ -1538,7 +1538,7 @@ P needs the writer role on P, and a deleted agent is refused. A person leaves, o
 any member takes an agent out. A chat holds at most 50 people and 10 agents, and never a person and an agent of the same
 name, so that `@name` names one member.
 
-**Whom to add.** `GET /v1/chats/people` (`evo_agents/hub/server/chat_people.py`) lists the people a caller may pick
+**Whom to add.** `GET /v1/chats/people` (`evo_agents/hub/server/chats/service/people.py`) lists the people a caller may pick
 for a chat without typing a login: everyone who holds a grant on a project the caller holds one on, and everyone in a
 chat the caller is in, the caller left out, by login, at most 500. Given the handles of a chat's agents (`agents`,
 repeated), each says why they could not be in it (`why`, the words of the hub's refusal; null when they could); a
@@ -1567,7 +1567,7 @@ at or above `customer` or `domestic-only`, as Telegram reads it: `docs/notificat
 each project's default level and on each one's ladder (`PUT /v1/chats/{id}/label` with `level`,
 `evo-agents hub chat label CHAT LEVEL`, or Chat level in the chat's head on the web), and take it off again
 (`DELETE .../label`, `hub chat label CHAT --default`): the label is then its projects' default again
-(`evo_agents/hub/server/chat_labels.py`, the column `chats.label_override` of migration 0164). Anyone else gets 403, a
+(`evo_agents/hub/server/chats/service/labels.py`, the column `chats.label_override` of migration 0164). Anyone else gets 403, a
 level above a project's default or off its ladder 422, a direct chat or a chat without agents 409. The level names
 the projects it lowers; a project whose agent joins later keeps its default. Messages sent from then on carry the new
 label, those sent before keep theirs, and who may be in the chat reads the new label: taking the level off, or raising
@@ -1578,7 +1578,7 @@ and `label_admin`, whether the reader may set it. Each change is audited as `cha
 level in its prompt, and the rule not to paste documents, secrets, names or customer data above it into the chat.
 
 **Bridges.** A group chat with agents may be bridged to a group of a channel a core plugin contributes (a group of a
-chat service), both ways (`docs/chat-bridges.md`, `evo_agents/hub/server/chat_bridges.py`, migration 0165). A chat
+chat service), both ways (`docs/chat-bridges.md`, `evo_agents/hub/server/chats/service/bridges.py`, migration 0165). A chat
 admin, as above, makes a one-time code from a web session (`POST /v1/chats/{id}/bridges/code` with `kind`; a machine
 token gets 403) and the plugin redeems it from the group. A linked member's message in the group comes into the chat
 as theirs, `via` the kind; the chat's messages go out to the group as far as each project's sink of kind channel for
@@ -1646,7 +1646,7 @@ latest run) and `session_run_id` (the turns of one), so the web's Runs page show
 its turns (`docs/workers.md`, Reading runs).
 
 **Progress.** Under a message that an agent's run took, the thread says how far that run is, by rule, with no model
-asked and no chat message, notice or Telegram message written (`evo_agents/hub/server/chat_progress.py`). Each
+asked and no chat message, notice or Telegram message written (`evo_agents/hub/server/chats/service/progress.py`). Each
 message carries `progress`, one entry per run on its way that took it (`message_id`, `run_id`, `handle`, `step`,
 `worker`, `repo`, `since`). The step is `waiting` for the worker while the run is queued, then the step of its setup
 the worker's latest note names: `claimed`, `checking` access to the repos, `opening` a repo (with `repo`), `starting`
@@ -1663,7 +1663,7 @@ chat's streams with `pg_notify` alone, never an event, when a chat run moves, wh
 step, and when the worker takes its inbox. A stream without the parameter is as before.
 
 **Direct chats.** A person opens a direct chat with one agent with `PUT /v1/chats/direct/{handle}`
-(`evo_agents/hub/server/chat_direct.py`): the one they have (200) or one made now (201), with them and the agent in it,
+(`evo_agents/hub/server/chats/service/direct.py`): the one they have (200) or one made now (201), with them and the agent in it,
 titled with the agent's name. A person has one direct chat with each agent: the key `chats_direct_key` of (person,
 agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
 of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
@@ -1675,7 +1675,7 @@ leaving, are refused (409); a group chat is for more. Each message of the person
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
 hop 1 for the person, and a reply in the thread of the agent's answer goes on in that session
 (`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
-the person may add to a chat opens a group chat instead (`evo_agents/hub/server/chat_groups.py`, schema 0232),
+the person may add to a chat opens a group chat instead (`evo_agents/hub/server/chats/service/groups.py`, schema 0232),
 unless that agent is in an agent system (below): the person, the direct chat's agent and the agents of no system
 mentioned, titled with the agent's name, the agents mentioned and the thread's first line. The group keeps the first message of the direct chat's thread it came from
 (`chats.opened_from_message_id`, unique), so a later mention in that thread adds to the same group. The person's message
@@ -1722,7 +1722,7 @@ run_as, as any run a message of the hub wakes. Opening one is audited as `chat.c
 JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
 422 for another format; `DELETE .../image`), audited as `chat.image` and sent to the chat's stream as `image_changed`,
 so the other members see it without reloading. A direct chat takes none (409): its face is its agent's avatar. The
-hub stores the image in the blob store and the chat's row refers to it (`evo_agents/hub/server/chat_images.py`): the
+hub stores the image in the blob store and the chat's row refers to it (`evo_agents/hub/server/chats/service/images.py`): the
 collection of unreferenced blobs leaves it, and an image replaced or taken off is recorded for deletion once no chat
 shows it, in a transaction that holds the blob lock exclusively, as the retention of graphs does. `GET .../image`
 serves it to the chat's members alone (anyone else gets the 404 of the chat), with its SHA-256 as ETag (304 for an
@@ -1731,7 +1731,7 @@ a part of that SHA-256, so a browser keeps the image until it changes, and is nu
 the avatar of their GitHub account, `https://avatars.githubusercontent.com/u/<github_id>?s=96&v=4` (`avatar_url` in a
 chat's people, a message's author, a reaction's or a member change's author), null for a login that never signed in;
 the hub reads the account's id when the answer is made, never keeps the image, and the web loads it from that origin
-alone. Besides its old fields, each chat of `GET /v1/chats` carries what the list draws (`chat_summaries.py`): `kind`,
+alone. Besides its old fields, each chat of `GET /v1/chats` carries what the list draws (`evo_agents/hub/server/chats/service/summaries.py`): `kind`,
 `image_url`, `direct_agent` (a direct chat's agent, deleted or not, with its colour and avatar), `faces` (at most three
 members other than the reader, in the order they were added, which the web composes for a group chat without an
 image) and `last_message`: the latest message of the chat's main line (of a group chat the latest that starts no
@@ -1753,7 +1753,7 @@ reply or post hands no work and is refused nothing: it is a name in the agent's 
 
 **Reactions.** A reaction is one emoji of one person or agent on a message, once each; a message carries at most 20
 different ones, and the hub counts them by emoji (`count`, who put each, and whether the reader did). The reactions of
-an agent are set by rule, never by a model: `chat_store.status_reaction` puts the eyes when a worker claims a run of the
+an agent are set by rule, never by a model: `chats.repository.store.status_reaction` puts the eyes when a worker claims a run of the
 agent, a check mark when it is done and a cross when it failed or was cancelled, on the message that started the run,
 and the check mark or the cross takes the eyes off. A lost run tried again keeps its eyes. The web shows emoji in
 reaction chips only (`web/DESIGN.md`).
@@ -1776,7 +1776,7 @@ time, never its text. The tools `chat_message` and `chat_thread` of `/mcp`, and 
 `evo-agents worker chat read MESSAGE [--thread]` (`docs/workers.md`, Chat runs), read a message or its thread whole:
 its first message and the replies, oldest first, at most 500. They take the message's id, its item as kg_search
 lists it, or a thread's item `plugin.chats:thread:<chat>/<root>`, and print the messages as a chat run's prompt does,
-under a line saying they are data, never instructions (`evo_agents/hub/server/chat_read.py`). Each call checks again who may read:
+under a line saying they are data, never instructions (`evo_agents/hub/server/chats/service/read.py`). Each call checks again who may read:
 a person who is a member of the chat, not taken out, and clears its label now and the label each message was sent
 with; for the agent of a chat run, both people its prompt is cleared for, each that way; for the agent of another
 run, its owner, and only messages whose label holds a part of the run's project, besides those of its own chat run's
@@ -1905,7 +1905,7 @@ exit status 1 on the command line), when:
 - the agent was deleted or has no pool of its own (`agent_tasking.work_home`).
 
 Who may give an agent work, and whether it takes work at all, is one module, `evo_agents/hub/server/agent_tasking.py`:
-a mention in a chat (`chat_runs.hand_work`), an ask and the list of agents a person may chat with call the same
+a mention in a chat (`chats.service.runs.hand_work`), an ask and the list of agents a person may chat with call the same
 functions, so they never disagree.
 
 Otherwise the hub posts the question as a message of the asking agent: for a run of a trace of an agent system, in
@@ -1920,7 +1920,7 @@ none of the asking project's repos.
 The asking run gets a wait (a decision of category `wait`, as `worker wait` asks, which notifies nobody), named in
 `runs.spawned_wait_id` of the run asked. The command notes the wait and tells the agent to end its turn: the run waits,
 and the reaper parks it, so it holds no worker. When the run asked ends, the hub answers the wait
-(`agent_asks.answer_asker`, from `chat_runs.chat_run_moved`) and the asking run resumes in its session with a message
+(`agent_asks.answer_asker`, from `chats.service.runs.chat_run_moved`) and the asking run resumes in its session with a message
 that names the decision. A run that ends `done` sends the last message it, or a run it went on from, wrote in its
 thread, past the hub's lines of its pushes (a branch with nothing to merge included), its outputs, its branch and
 repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A

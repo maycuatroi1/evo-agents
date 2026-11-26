@@ -4,7 +4,7 @@ took the project's events.
 
 Redelivery. A chat or task run that failed because of its machine, not its work (``CAUSES``: its checkout, its worker
 stopped, its lease lost, the network, a 5xx of the hub, its account's login), is handed again once, as a person did
-by hand before: a chat run's mention is said again, by the hub, in its thread (``chat_runs.hand_mentions``); a task
+by hand before: a chat run's mention is said again, by the hub, in its thread (``chats.service.runs.hand_mentions``); a task
 run gets its next attempt for its plugin (``task_dispatch.hand_again``), the same task. It is handed when its worker
 is healthy again, a heartbeat after the failure saying enough free disk (``ops_events.disk_band``) and the login of
 its runtime ok, or when another online worker of the same member and pool that serves the project is. Its item
@@ -34,10 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import aliased
 
 from evo_agents.hub import hub_events, ops_events, ops_queue, runs, tables, triage_rules
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_runs import Hand, chat_run, hand_mentions
-from evo_agents.hub.server.chat_store import insert_mentions, insert_message
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.repository.store import insert_mentions
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import chat_run, hand_mentions
 from evo_agents.hub.server.orchestrator import origin_of
 from evo_agents.hub.server.profile_store import by_id
 

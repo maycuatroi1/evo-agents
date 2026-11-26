@@ -6,7 +6,7 @@ trace (``system_traces.join``). That trace's work chat (``work_chats.open_work``
 main line, and the entry agent hands the work on from there; the agents named are not woken. The mention of each
 keeps the entry agent's run, or why it made none.
 
-An agent of no system, or of a system with no entry agent, still opens the group of the thread (``chat_groups``),
+An agent of no system, or of a system with no entry agent, still opens the group of the thread (``chats.service.groups``),
 and a group a thread opened before is left as it is: only the agents of no system go to it.
 """
 
@@ -21,10 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, tables
 from evo_agents.hub.server import system_traces
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access
-from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chat_runs import Hand, hand_work
-from evo_agents.hub.server.chat_store import insert_message
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.direct import direct_chat
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import hand_work
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.work_chats import service as work_chats

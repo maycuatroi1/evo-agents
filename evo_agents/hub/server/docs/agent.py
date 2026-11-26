@@ -2,7 +2,7 @@
 
 The hub lists it in a session whose project has the feature on, and checks its arguments against the manifest's
 schema first. It reads for a person: the agent of a chat run for the person who mentioned the agent (the origin of the
-chain, ``chat_runs.ChatRun.dispatcher_id``), the agent of any other run for the member who dispatched it, anyone else
+chain, ``chats.models.runs.ChatRun.dispatcher_id``), the agent of any other run for the member who dispatched it, anyone else
 for themselves. A document is read when that person sees it through the session's sink and, when the run's worker is
 another member's, when that member does too: what the tool answers reaches the machine the agent runs on. A refusal is
 the tool's error text.
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.docs import repository, service
 from evo_agents.hub.server.docs.models import DocsError, DocumentRow
 from evo_agents.hub.server.projects import ProjectAccess, project_access

@@ -36,7 +36,7 @@ from fastapi import APIRouter, Query, Request, Response
 from evo_agents.hub import outputs
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Uploads
-from evo_agents.hub.server.chat_members import ChatId
+from evo_agents.hub.server.chats.models.members import ChatId
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.outputs.models import (
     CONTENT,

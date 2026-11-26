@@ -49,7 +49,7 @@ DELIVERY_KINDS = (*DELIVERY_KINDS_0164, BRIDGE_EVENT)  # evo_agents.hub.plugin_e
 DELIVERY_STATES = ("pending", "delivered", "failed")
 NAME_PATTERN = "^[a-z][a-z0-9_-]{0,62}$"  # a kind of channel, as a manifest names it
 MAX_ERROR_CHARS = 2000
-MAX_EXTERNAL_CHARS = 200  # chat_bridges.MAX_EXTERNAL_CHARS
+MAX_EXTERNAL_CHARS = 200  # chats.models.bridges.MAX_EXTERNAL_CHARS
 UNLINKED_VIA = ("web", "cli", "bot", "admin")
 DIRECTIONS = ("in", "out")
 

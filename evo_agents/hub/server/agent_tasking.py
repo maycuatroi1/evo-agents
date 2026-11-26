@@ -1,5 +1,5 @@
 """Whether an agent takes work, and whether a person may give it some: the rules a mention in a chat
-(``chat_runs.hand_work``), an agent asking another agent (``agent_asks``, ``evo-agents worker agent ask``) and the list
+(``chats.service.runs.hand_work``), an agent asking another agent (``agent_asks``, ``evo-agents worker agent ask``) and the list
 of the agents a person may chat with share, so that they never disagree.
 
 ``work_home`` is the first: an agent takes work while it is not deleted and has a pool of its own

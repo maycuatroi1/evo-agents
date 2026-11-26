@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.server.attachments import repository
 from evo_agents.hub.server.attachments.service.uploads import no_file
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.chat_access import chat_access, label_reader
-from evo_agents.hub.server.chat_read import readable, run_readers
-from evo_agents.hub.server.chat_views import message_select
+from evo_agents.hub.server.chats.repository.views import message_select
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
+from evo_agents.hub.server.chats.service.read import readable, run_readers
 from evo_agents.hub.server.outputs.service.serving import serve
 from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.runs.service.views import readable_run

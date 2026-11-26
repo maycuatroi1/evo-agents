@@ -1074,7 +1074,7 @@ class FakeHub:
         return web.json_response(answer, status=200 if route in ("chat/reactions", "chat/read") else 201)
 
     def _open_repo(self, run_id: int, run: dict, body: dict) -> web.Response:
-        """A repo a chat run's daemon opened for its agent, answered as ``chat_agents.open_repo`` does: added to the run's
+        """A repo a chat run's daemon opened for its agent, answered as ``chats.routes.agents.open_repo`` does: added to the run's
         repos on its branch, so the leases and the run that goes on in the session take it; 404 for a run that is not a
         chat run, 422 for a repo the project does not list (``project_repos``), 409 for one the worker's last heartbeat
         names no checkout of, unless its daemon clones what it lacks and ``clone_origins`` names one for it."""

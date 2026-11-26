@@ -1,6 +1,6 @@
 """Wake-ups between the hub's processes: the one notifier every write that wakes someone goes through, a run queued for
 the claims waiting (``run_state.RUNS_CHANNEL``), an event of a run for its streams (``run_state.EVENTS_CHANNEL``), a
-chat's change for its streams (``chat_store.CHANNEL``) and a span of a system's trace for its trace streams
+chat's change for its streams (``chats.repository.store.CHANNEL``) and a span of a system's trace for its trace streams
 (``system_traces.CHANNEL``). A wake-up is a channel and a payload, the id of what changed; it only tells whoever waits
 to look again, so one too many costs a query and one lost costs the few seconds until they look on their own.
 

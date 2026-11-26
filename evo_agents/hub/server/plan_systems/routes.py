@@ -1,13 +1,13 @@
 """Run a plan in an agent system: POST /v1/projects/{p}/plans/{plan_id}/system-dispatch (writer), body
 ``{"system": slug}``, hands the plan to the system's entry agent as the caller would by hand.
 
-The hub writes the caller's own message in their direct chat with the entry agent (``chat_direct.direct_chat``, made
+The hub writes the caller's own message in their direct chat with the entry agent (``chats.service.direct.direct_chat``, made
 when there is none): it names the plan, its revision, its page on the web and its pending steps, and says how to run it.
 Read the plan with plan_show; take the pending steps in the order their depends_on allows; hand each step to the
 system's agents along its interacts edges with a brief (goal, repo, criteria, verify, done when), marking it in_progress
 as it goes out, so the plan's page shows it moving; mark a step done with its evidence once its verify passes, and one
 that comes back unfinished pending again; ask the person about any decision it may not take; and report which steps are
-done and which are left. The message goes through ``chats.deliver_message`` as a typed one does, so it wakes the entry
+done and which are left. The message goes through ``chats.service.messages.deliver_message`` as a typed one does, so it wakes the entry
 agent and ``system_traces.join`` opens a trace at the system's revision now; the names the text mentions are not read as
 mentions (``skip``), so the message hands work to the entry agent alone and opens no group. The trace then takes the
 plan's id and revision (system_traces.plan_id and plan_revision, 0237), and the dispatch is audited once

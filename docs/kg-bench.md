@@ -451,7 +451,7 @@ locate does, still leaves 3 of them failing.
 ## Memory sets: LongMemEval and MemoryAgentBench (step 8)
 
 Two more sets score how well `kg_search` finds the chats a question needs. Each case is a haystack of chat sessions,
-built into a graph of its own the way the hub puts its chats into the graph (`evo_agents/hub/server/chat_graph.py`):
+built into a graph of its own the way the hub puts its chats into the graph (`evo_agents/hub/server/chats/service/graph.py`):
 
 - A session becomes a Chat item.
 - The Chat has one ChatThread item, rooted at its first turn.

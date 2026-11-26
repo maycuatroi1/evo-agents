@@ -21,7 +21,7 @@ from evo_agents.hub.server.attachments import repository
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.chat_access import chat_access
+from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.runs.models.attachment_parts import Attachment
 from evo_agents.hub.server.runs.service.controls import owned_run
 from evo_agents.hub.server.security import Principal

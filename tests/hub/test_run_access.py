@@ -53,7 +53,6 @@ from evo_agents.hub.server import (
     autonomy_policies,
     autonomy_stops,
     autonomy_store,
-    chat_events,
     core_plugin_api,
     invites,
     post_merge,
@@ -68,6 +67,7 @@ from evo_agents.hub.server import (
 from evo_agents.hub.server import org as org_routes
 from evo_agents.hub.server.canvas import routes as canvas_routes
 from evo_agents.hub.server.canvas.models import content as canvas_content
+from evo_agents.hub.server.chats.routes import events as chat_events
 from evo_agents.hub.server.goals import service as goals
 from evo_agents.hub.server.loop import breaker as loop_breaker
 from evo_agents.hub.server.opportunities import service as opportunities

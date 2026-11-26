@@ -1,8 +1,8 @@
 """What happens in a group chat as its members follow it, and ``evo-agents hub chat``: the events of a chat
-(``evo_agents.hub.server.chat_events``) and its live stream, as criterion a6 of the plan agent-profiles-group-chat
-names them: messages and reactions reach the open tabs as server-sent events within two seconds, on the api process's
-one LISTEN connection; a stream resumed with Last-Event-ID misses nothing and repeats nothing; a member who leaves gets
-an ``end`` event. Then the five commands ``hub chat create|list|show|send|react``.
+(``evo_agents.hub.server.chats.routes.events``) and its live stream, as criterion a6 of the plan
+agent-profiles-group-chat names them: messages and reactions reach the open tabs as server-sent events within two
+seconds, on the api process's one LISTEN connection; a stream resumed with Last-Event-ID misses nothing and repeats
+nothing; a member who leaves gets an ``end`` event. Then the five commands ``hub chat create|list|show|send|react``.
 
 The hub runs under uvicorn in a thread of this process, as in ``tests.hub.test_run_stream``: the stream needs a server
 that sends a response while it is still being written."""
@@ -22,8 +22,9 @@ import httpx
 from sqlalchemy import column, func, select, table
 
 from evo_agents.hub.contract import commands
-from evo_agents.hub.server import chat_events, listen
+from evo_agents.hub.server import listen
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.chats.routes import events as chat_events
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql

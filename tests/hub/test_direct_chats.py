@@ -1,9 +1,10 @@
-"""Direct chats on the hub (``evo_agents.hub.server.chat_direct``), as criterion a1 of the plan agent-direct-chats names
-them: PUT /v1/chats/direct/{handle} opens the caller's direct chat with an agent, the one there is (200) or one made now
-(201), one per (person, agent) even when requests come at once; it refuses an agent the caller may not add to a chat,
-and a deleted one while there is no chat, but a direct chat there is still reads; a direct chat is of kind direct in the
-database, never read from its members, so a new chat of one person and one agent is a group; its members never change;
-Chat and ChatSummary say the kind; each one made is audited. Migration 0050 makes every chat there is a group.
+"""Direct chats on the hub (``evo_agents.hub.server.chats.service.direct``), as criterion a1 of the plan
+agent-direct-chats names them: PUT /v1/chats/direct/{handle} opens the caller's direct chat with an agent, the one there
+is (200) or one made now (201), one per (person, agent) even when requests come at once; it refuses an agent the caller
+may not add to a chat, and a deleted one while there is no chat, but a direct chat there is still reads; a direct chat
+is of kind direct in the database, never read from its members, so a new chat of one person and one agent is a group;
+its members never change; Chat and ChatSummary say the kind; each one made is audited. Migration 0050 makes every chat
+there is a group.
 
 What a message of a direct chat hands its agent is in ``tests.hub.test_direct_chat_runs``."""
 
@@ -26,7 +27,7 @@ from sqlalchemy import func, insert, select
 
 from evo_agents.hub import tables
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server.chat_direct import direct_chat
+from evo_agents.hub.server.chats.service.direct import direct_chat
 from evo_agents.hub.server.security import Principal
 from tests.hub import live
 from tests.hub import test_chats as group_chats

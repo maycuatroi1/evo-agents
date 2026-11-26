@@ -365,10 +365,11 @@ class WorkerHub:
         return await self.call("POST", self.run(run_id, "chat"), {"text": text})
 
     async def in_chats(self, run_id: int, route: str, body: dict) -> dict:
-        """What the agent of run ``run_id`` does in group chats (``evo_agents.hub.server.chat_agents``): ``route``
-        is chat/messages, chat/reactions, chat/mentions, chats, chat/pulls for the daemon's push of a chat run, or
-        chat/repos for a repo the daemon opens in a chat run for its agent, or agent/asks for a chat run's agent asking an
-        agent of another project (``agent_asks``), or agent/reads for its reads of another project (``agent_reads``)."""
+        """What the agent of run ``run_id`` does in group chats (``evo_agents.hub.server.chats.service.agents``):
+        ``route`` is chat/messages, chat/reactions, chat/mentions, chats, chat/pulls for the daemon's push of a chat run,
+        or chat/repos for a repo the daemon opens in a chat run for its agent, or agent/asks for a chat run's agent asking
+        an agent of another project (``agent_asks``), or agent/reads for its reads of another project
+        (``agent_reads``)."""
         return await self.call("POST", self.run(run_id, *route.split("/")), body)
 
     async def release_branch(self, run_id: int, body: dict) -> dict:

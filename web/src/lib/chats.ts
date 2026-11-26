@@ -22,10 +22,10 @@ export type ChatMention = Schemas["ChatMention"];
 export type ChatReaction = Schemas["ChatReaction"];
 export type ChatEvent = Schemas["ChatEvent"];
 export type ChatEvents = Schemas["ChatEvents"];
-/** How far an agent's run that took a message is (`chat_progress` of the API): its step, worker and repo. */
+/** How far an agent's run that took a message is (`chats.service.progress` of the API): its step, worker and repo. */
 export type ChatProgress = Schemas["ChatProgress"];
 export type ChatCreate = Schemas["ChatCreate"];
-/** A person the visitor may add to a chat (`chat_people` of the API), with why they could not be in it with its agents. */
+/** A person the visitor may add to a chat (`chats.service.people` of the API), with why they could not be in it with its agents. */
 export type ChatCandidate = Schemas["ChatCandidate"];
 /** A change of a group chat's image (an image_changed event): its URL now, null once taken off, and who changed it. */
 export type ChatImageChange = Schemas["ChatImageChange"];
@@ -39,7 +39,7 @@ export const MAX_PEOPLE = 50;
 export const MAX_AGENTS = 10;
 export const MAX_EMOJI_KINDS = 20;
 export const MAX_RUNS_PER_MESSAGE = 3;
-/** `chat_members.LOGIN_PATTERN`: a GitHub login. */
+/** `chats.models.members.LOGIN_PATTERN`: a GitHub login. */
 export const LOGIN = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 /** `runs.models.LINE`: one line of text, no control characters. */
 export const ONE_LINE = /^[^\u0000-\u001f\u007f]+$/;

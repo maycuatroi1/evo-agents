@@ -888,7 +888,7 @@ feature from the worker's last heartbeat twice: when it queues the first run of 
 daemon claims a run (its prompt).
 
 The agent of a chat run, and of a step, plan or author run, talks in chats and reads them with the worker's token
-(`evo_agents.hub.server.chat_agents`, `evo_agents.hub.server.chat_read`), its profile being of the run's project (409
+(`evo_agents.hub.server.chats.service.agents`, `evo_agents.hub.server.chats.service.read`), its profile being of the run's project (409
 otherwise):
 
 | Command | Route | What |
@@ -1020,7 +1020,7 @@ with `command -v`, and runs the run again with `evo-agents worker triage rerun`,
 For this cause a plan run is rerun too, and for `hub_5xx`, the hub's own 5xx; any other failed plan run is its owner's to
 dispatch again.
 
-Everyone in the project's chat clears its label, the project's default label (`evo_agents.hub.server.chat_access`). A
+Everyone in the project's chat clears its label, the project's default label (`evo_agents.hub.server.chats.service.access`). A
 plan whose label is not at or below it (a higher level or location), or that is no longer on the hub, keeps a chat of
 its own, "Triage: PLAN", as every plan had before: a member of the project's chat whose grant stops below the plan's
 label never reads its failures. A run whose owner the project's chat cannot take (an agent of another project invited

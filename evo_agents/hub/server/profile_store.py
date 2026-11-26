@@ -116,6 +116,13 @@ def profile_of(row) -> Profile:
     return Profile(**row._mapping)
 
 
+def icon_url(profile: Profile) -> str | None:
+    """GET of the profile's avatar on this hub, with a part of its SHA-256 so a browser may keep it; None: none."""
+    if profile.avatar_sha256 is None:
+        return None
+    return f"/v1/projects/{profile.project}/agents/{profile.handle}/avatar?v={profile.avatar_sha256[:16]}"
+
+
 async def by_handle(conn: AsyncConnection, handle: str, *, lock: bool = False) -> Profile | None:
     """The profile ``handle`` names, in any project, deleted or not; with ``lock`` its row is locked."""
     query = profile_select().where(tables.agent_profiles.c.handle == handle)

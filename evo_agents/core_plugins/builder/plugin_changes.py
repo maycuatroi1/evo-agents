@@ -39,10 +39,11 @@ from evo_agents.core_plugins.builder.kinds import PLUGIN, PLUGIN_INSTALL, PLUGIN
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.self_managed import ProjectScope, own_signer
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
-from evo_agents.hub.server.chat_store import insert_mentions
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.repository.store import insert_mentions
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
 from evo_agents.hub.server.market_install import GitHubInstallIn, MarketInstalled
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal

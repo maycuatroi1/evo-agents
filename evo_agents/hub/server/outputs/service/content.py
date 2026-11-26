@@ -25,7 +25,7 @@ from evo_agents.hub.blobs import GET_TTL
 from evo_agents.hub.server.base.errors import NotFound
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.chat_access import chat_access, label_reader
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
 from evo_agents.hub.server.decisions.service.reads import readable_decision
 from evo_agents.hub.server.outputs.models import OutputLink
 from evo_agents.hub.server.outputs.repository import views as repository

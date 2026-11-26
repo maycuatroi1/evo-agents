@@ -52,13 +52,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import chats, runs, system_context, tables, triage_rules
 from evo_agents.hub.server import audit, system_traces
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access
-from evo_agents.hub.server.chat_agents import AgentRun
-from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
-from evo_agents.hub.server.chat_runs import Hand, chat_run, hand_mentions, hub_reply
-from evo_agents.hub.server.chat_store import add_member, insert_mentions, insert_message, member_event
-from evo_agents.hub.server.chat_views import person_author
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.models.views import person_author
+from evo_agents.hub.server.chats.repository.store import add_member, insert_mentions, member_event
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.agents import AgentRun
+from evo_agents.hub.server.chats.service.members import label_now, put_agent, put_person
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import chat_run, hand_mentions, hub_reply
 from evo_agents.hub.server.profile_store import Profile, by_handle
 from evo_agents.hub.server.run_state import RunStep
 from evo_agents.hub.server.security import MACHINE, Principal

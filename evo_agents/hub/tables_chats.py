@@ -21,24 +21,25 @@ Revision 0050 gives chats ``kind`` (``chats.CHAT_KINDS``: group, or direct) and,
 gives a group chat its image: the SHA-256 and the size of a blob of the blob store (``image_sha256``, ``image_size``),
 which the chat's row refers to, as ``blob_gc`` counts it, so that the collection of unreferenced blobs leaves it.
 Revision 0072 drops ``budget_usd``, the cost a chat's runs could reach in 24 hours, which 0032 gave chats.
-Revision 0164 gives chats ``label_override``, the level a project admin set for its label (``chat_labels``).
+Revision 0164 gives chats ``label_override``, the level a project admin set for its label (``chats.service.labels``).
 
-Revision 0165 bridges a group chat to groups of a core plugin's channel (``evo_agents.hub.server.chat_bridges``):
-chat_bridges holds each link (the plugin, the kind of channel, the group's id there, the config and state the plugin
-keeps, who linked it and who unlinked it, from where), chat_bridge_codes the one-time codes a chat admin links one
-with, chat_bridge_messages the group's id of each message a bridge carried in or out; chat_messages takes ``via``, the
-kind of channel a message came in by. ``bridge_tables`` adds them.
+Revision 0165 bridges a group chat to groups of a core plugin's channel
+(``evo_agents.hub.server.chats.service.bridges``): chat_bridges holds each link (the plugin, the kind of channel, the
+group's id there, the config and state the plugin keeps, who linked it and who unlinked it, from where),
+chat_bridge_codes the one-time codes a chat admin links one with, chat_bridge_messages the group's id of each message a
+bridge carried in or out; chat_messages takes ``via``, the kind of channel a message came in by. ``bridge_tables`` adds
+them.
 
 Revision 0213 gives chat_messages ``from_output_id``, the interactive answer (an output of a run) a person sent the
-message from, which the message keeps as its source and the hub's rate limit counts (``chat_answers``).
+message from, which the message keeps as its source and the hub's rate limit counts (``chats.service.answers``).
 
 Revision 0229 adds chat_label_shares: a person of a chat who clears a project's part of its label because a writer on
-that project shared it with them there (``shared_by``), not by a grant of their own (``chat_access``). ``share_table``
+that project shared it with them there (``shared_by``), not by a grant of their own (``chats.service.access``). ``share_table``
 adds it.
 
 Revision 0232 gives chats ``opened_from_message_id``: for a group chat a direct chat opened (a mention of an agent the
-direct chat does not have, ``evo_agents.hub.server.chat_groups``), the first message of the direct chat's thread it came
-from, one group per thread (chats_opened_from_key).
+direct chat does not have, ``evo_agents.hub.server.chats.service.groups``), the first message of the direct chat's
+thread it came from, one group per thread (chats_opened_from_key).
 
 Revision 0234 lets chats ``kind`` be work (``chats.WORK``, a group chat the hub opens for a trace of an agent system)
 and gives chat_messages ``copied_from_id``: the message of another chat a message copies, between a work chat and the

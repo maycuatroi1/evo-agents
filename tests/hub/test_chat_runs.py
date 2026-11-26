@@ -1,5 +1,5 @@
-"""Chat runs on the hub (``evo_agents.hub.chat_runs``, ``evo_agents.hub.server.chat_runs`` and ``chat_agents``), as
-criteria a8 and a9 of the plan agent-profiles-group-chat name them.
+"""Chat runs on the hub (``evo_agents.hub.chat_runs``, ``evo_agents.hub.server.chats.service.runs`` and
+``chats.routes.agents``), as criteria a8 and a9 of the plan agent-profiles-group-chat name them.
 
 a8: a mention of an agent makes one run of kind chat of its profile, on its project, dispatched by the person who
 mentioned it, pinned to a worker of that person the profile allows (online, a free slot, a daemon that runs chat runs,

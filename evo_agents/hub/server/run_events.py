@@ -14,7 +14,7 @@ it. A NUL character in a body is stored as U+FFFD (``runs.without_nul``), since 
 is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
 pass it stores nothing and gets 413 with the ack in its detail; the hub's state events are written past it. A note
 that names a step of a chat run's setup (``chat_runs.SETUP_FIELD``) wakes its chat's streams, as the worker taking the
-run's inbox does, since the thread shows that step (``chat_progress``).
+run's inbox does, since the thread shows that step (``chats.service.progress``).
 
 Readers of the project read a run's events (GET .../runs/{id}/events?after=SEQ) and stream them (GET
 .../runs/{id}/stream), for the runs of plans they may read (``runs.readable_run``). The stream is server-sent events
@@ -66,7 +66,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_account_mask import masked, run_values
 from evo_agents.hub.server.attachments.service import messages as attachment_store
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
-from evo_agents.hub.server.chat_store import wake_run_chat
+from evo_agents.hub.server.chats.repository.store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.plans import models as plan_models
@@ -284,7 +284,7 @@ class Wakeup:
 
 class RunStreams:
     """The streams open in this api process, by run, woken by EVENTS_CHANNEL on the process's one LISTEN; on another
-    ``channel``, the streams of what that channel's notifications name by id (``chat_events.ChatStreams``)."""
+    ``channel``, the streams of what that channel's notifications name by id (``chats.service.events.ChatStreams``)."""
 
     def __init__(self, listener: Listener, channel: str = EVENTS_CHANNEL):
         self._listener = listener

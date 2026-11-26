@@ -1,4 +1,4 @@
-"""The draft pull requests the hub opens for the branch of a chat run (``chat_agents.pushed``) or a task run
+"""The draft pull requests the hub opens for the branch of a chat run (``chats.routes.agents.pushed``) or a task run
 (``task_dispatch.pushed``), from the push that opens one to the end that closes it. Nothing here merges.
 
 Opening (``open_for``, with one token of the workers' App, ``pulls.SERVER_PERMISSIONS["open"]``). The base is the one

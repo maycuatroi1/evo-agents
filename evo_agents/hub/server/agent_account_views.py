@@ -49,7 +49,7 @@ class ListedAgentAccount(AgentAccount):
 
 
 def _icon_url(project: str, handle: str, avatar_sha256: str | None) -> str | None:
-    """As ``agent_profiles.icon_url`` writes it."""
+    """As ``profile_store.icon_url`` writes it."""
     if avatar_sha256 is None:
         return None
     return f"/v1/projects/{project}/agents/{handle}/avatar?v={avatar_sha256[:16]}"

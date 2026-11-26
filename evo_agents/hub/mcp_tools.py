@@ -11,8 +11,8 @@ the replays of the Curator's changes, and the project's whole history (HISTORY_R
 words of its transcripts, run logs and group chats, the lines of a transcript, the clusters of its facets, what
 earlier review nights found and the Curator's playbook). Those about a project take an optional ``project``; without
 it the session's project counts (X-Evo-Project, which the proxy sends). The two of CHAT_TOOLS read group chat messages
-whole (``evo_agents.hub.server.chat_read``), which kg_search finds but never prints. Their arguments are checked
-against these schemas before anything is read.
+whole (``evo_agents.hub.server.chats.service.read``), which kg_search finds but never prints. Their arguments are
+checked against these schemas before anything is read.
 
 ``offered`` says which of them ``tools/list`` shows the agent of a run: a judge run JUDGE_TOOLS alone, a replay run
 none (REPLAY_TOOLS), any other run all but ask_member, which only a local session can call. A session that has the

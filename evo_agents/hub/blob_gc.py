@@ -6,14 +6,14 @@ output of a run (``run_outputs.sha256``), a file attached to a message (``attach
 versions of a browser identity's profile it keeps (``browser_identities.sha256`` and ``previous_sha256``), or an image
 of a project's documents (``docs_images.sha256``, never dropped). Whoever drops
 references (the retention of built graphs, ``evo_agents.hub.kg_prune``; the deletion of transcripts,
-``evo_agents.hub.server.transcripts``; a chat's image replaced or taken off, ``evo_agents.hub.server.chat_images``; an
-output deleted, or dropped with its run's events, ``evo_agents.hub.output_prune``; an attachment deleted, gone stale
-or dropped with its run's events, ``evo_agents.hub.attachment_prune``; a profile saved over or deleted,
-``evo_agents.hub.server.browser_profiles``) does it in a transaction holding the blob lock
-exclusively, and in that same transaction ``forget`` records in ``blob_deletions`` each blob it left without any
-reference. ``delete_pending`` then deletes their objects in a second transaction holding the lock exclusively, and
-marks the rows deleted. A deletion that fails rolls back: the
-rows stay pending and the next run tries again, which deleting an object that is already gone does not mind.
+``evo_agents.hub.server.transcripts``; a chat's image replaced or taken off,
+``evo_agents.hub.server.chats.service.images``; an output deleted, or dropped with its run's events,
+``evo_agents.hub.output_prune``; an attachment deleted, gone stale or dropped with its run's events,
+``evo_agents.hub.attachment_prune``; a profile saved over or deleted, ``evo_agents.hub.server.browser_profiles``) does
+it in a transaction holding the blob lock exclusively, and in that same transaction ``forget`` records in
+``blob_deletions`` each blob it left without any reference. ``delete_pending`` then deletes their objects in a second
+transaction holding the lock exclusively, and marks the rows deleted. A deletion that fails rolls back: the rows stay
+pending and the next run tries again, which deleting an object that is already gone does not mind.
 
 Writing a reference to a blob whose object the writer did not just put in the bucket races with that deletion: a
 commit of an upload the hub already holds skips the copy, and a build may find its artifact's key taken. Such a

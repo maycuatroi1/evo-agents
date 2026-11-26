@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request, Response
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.attachments.models import BODY, DROP_REFUSALS, REFUSALS, AttachmentId, FileName
 from evo_agents.hub.server.attachments.service import content, uploads
-from evo_agents.hub.server.chat_members import ChatId
+from evo_agents.hub.server.chats.models.members import ChatId
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.outputs.models import CONTENT, Download, IfNoneMatch, RangeHeader, Sink
 from evo_agents.hub.server.runs.models import RunId

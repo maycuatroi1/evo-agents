@@ -1,5 +1,5 @@
 """@ba, the agent type ba of the core plugin srs, on the hub (``evo_agents.hub.server.srs.agent``,
-``auto_review``, ``evo_agents.hub.server.chat_route``), as criterion a7 of the plan srs-tasks-plugins names it.
+``auto_review``, ``evo_agents.hub.server.chats.service.route``), as criterion a7 of the plan srs-tasks-plugins names it.
 
 An admin of a project that enabled srs enables the type under a member (``run_as``): the profile @ba with the pack
 srs/ba, with its own pool agent-ba and an account pool. The plugin's tools are on the hub's /mcp only where the project

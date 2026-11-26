@@ -1,9 +1,9 @@
-"""The image of a group chat (``evo_agents.hub.server.chat_images``), as criterion a3 of the plan agent-direct-chats
-names it: any member of a group chat sets its image or takes it off, a PNG, JPEG or WebP image of at most 512 KiB
-checked by its first bytes; only members read it (404 for anyone else, as for the chat), with an ETag and a URL that
-changes with it in Chat and ChatSummary (``image_url``, null without one); a direct chat takes none; the chat's row
-holds the blob, so the collection of unreferenced blobs leaves it, and the old image is released when it is replaced or
-taken off; each change is audited and is an event of the chat. Migration 0051 adds the columns and the event kind."""
+"""The image of a group chat (``evo_agents.hub.server.chats.service.images``), as criterion a3 of the plan
+agent-direct-chats names it: any member of a group chat sets its image or takes it off, a PNG, JPEG or WebP image of at
+most 512 KiB checked by its first bytes; only members read it (404 for anyone else, as for the chat), with an ETag and a
+URL that changes with it in Chat and ChatSummary (``image_url``, null without one); a direct chat takes none; the chat's
+row holds the blob, so the collection of unreferenced blobs leaves it, and the old image is released when it is replaced
+or taken off; each change is audited and is an event of the chat. Migration 0051 adds the columns and the event kind."""
 
 from __future__ import annotations
 

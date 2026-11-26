@@ -5,7 +5,7 @@ Revises: 0228
 Create Date: 2026-11-09
 
 A writer on project P who adds an agent of P to a group chat, or adds a person to a chat with an agent of P, shares
-P's part of the chat's label with the people there who hold no grant that clears it (``chat_access``): one row per
+P's part of the chat's label with the people there who hold no grant that clears it (``chats.service.access``): one row per
 chat, project and person, with who shared it. A person cleared that way reads what the chat holds of P while they stay
 in it and the writer who shared it still holds the writer role and clears the part.
 

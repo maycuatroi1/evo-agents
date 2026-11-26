@@ -139,7 +139,7 @@ async def _asking(conn: AsyncConnection, reading: Reading, crowd: People, waitin
             )
         if work.reason == "author_question" and not open_on.get(run.id):
             title = f"Author run #{run.id} of work item #{work.id} asks its owner in its chat"
-            link = project_path(reading.project, "runs", str(run.id)) + "?tab=chat"  # author_chat.chat_link
+            link = project_path(reading.project, "runs", str(run.id)) + "?tab=chat"  # chats.models.author.chat_link
             refs, deciders = _refs(work, run=run.id), crowd.logins([run.dispatched_by])
             found.append(
                 item("author_question", title, work.updated_at, RUN_OWNER, deciders, link, work_item=work.id, refs=refs)

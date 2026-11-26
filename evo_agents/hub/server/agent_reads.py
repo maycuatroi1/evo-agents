@@ -4,7 +4,7 @@ is the design.
 
 The route takes the worker token of the worker that holds a chat run (404 for a run it does not hold, 422 for a run of
 another kind or for the run's own project, which the evo-hub tools read). It reads as the person at the origin of the
-chain (``chat_agents.agent_run``) with that person's grant on the project read, through that project's hub sink, as
+chain (``chats.service.agents.agent_run``) with that person's grant on the project read, through that project's hub sink, as
 the hub holds it; 404 when that person holds no grant there, as for a project that is not registered.
 
 Then the one check of ``cross_labels``: what the hub sink of the run's project does not let in is left out, and the
@@ -28,7 +28,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 
 from evo_agents.hub.server import cross_labels, kg, run_audience
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.chat_agents import agent_run
+from evo_agents.hub.server.chats.service.agents import agent_run
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.mcp_text import memory_about, memory_line
 from evo_agents.hub.server.memories.service import core as memories

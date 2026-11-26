@@ -37,7 +37,7 @@ from evo_agents.hub import blob_gc, chats, outputs, runs
 from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, commit_uploads, issue_uploads, put_bytes
-from evo_agents.hub.server.chat_store import write_event as write_chat_event
+from evo_agents.hub.server.chats.repository.store import write_event as write_chat_event
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.outputs.models import OutputBatch, OutputIn, OutputUploadItem, RecordedOutputs, Target
 from evo_agents.hub.server.outputs.repository import store as repository

@@ -452,7 +452,9 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.include_router(worker_pools.router)
     app.include_router(worker_join.worker_router)
 
-    from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats
+    from evo_agents.hub.server import listen, run_events, runs, tool_stats
+    from evo_agents.hub.server.chats.routes import author as author_chat
+    from evo_agents.hub.server.chats.service.events import ChatStreams
 
     app.include_router(runs.router)
     app.include_router(runs.worker_router)
@@ -468,7 +470,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     # the event streams of runs, and of group chats
     app.state.run_streams, app.state.chat_streams = (
         run_events.RunStreams(app.state.listener),
-        chat_events.ChatStreams(app.state.listener),
+        ChatStreams(app.state.listener),
     )
     app.state.trace_streams = system_trace_views.TraceStreams(app.state.listener)  # the live traces of systems
     # the in-RAM graphs of the projects, swapped on each build's notice on kg_graph
@@ -616,17 +618,6 @@ def _include_member_routes(app: FastAPI) -> None:
         browser_leases,
         browser_local,
         browser_logins,
-        chat_agents,
-        chat_bridges,
-        chat_direct,
-        chat_events,
-        chat_home,
-        chat_images,
-        chat_labels,
-        chat_members,
-        chat_people,
-        chat_read,
-        chats,
         claude_sign_in,
         context_answer_reuse,
         credential_shares,
@@ -676,6 +667,17 @@ def _include_member_routes(app: FastAPI) -> None:
         work_cards,
         worker_autonomy,
     )
+    from evo_agents.hub.server.chats.routes import agents as chat_agents
+    from evo_agents.hub.server.chats.routes import bridges as chat_bridges
+    from evo_agents.hub.server.chats.routes import chats
+    from evo_agents.hub.server.chats.routes import direct as chat_direct
+    from evo_agents.hub.server.chats.routes import events as chat_events
+    from evo_agents.hub.server.chats.routes import home as chat_home
+    from evo_agents.hub.server.chats.routes import images as chat_images
+    from evo_agents.hub.server.chats.routes import labels as chat_labels
+    from evo_agents.hub.server.chats.routes import members as chat_members
+    from evo_agents.hub.server.chats.routes import people as chat_people
+    from evo_agents.hub.server.chats.routes import read as chat_read
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
@@ -724,7 +726,7 @@ def _include_member_routes(app: FastAPI) -> None:
         plugin_srs_api.router,  # srs:read
         plugin_chats_api.router,  # chats:write and chats:read, in the chats of the project's agents
         task_dispatch.worker_router,
-        chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
+        chat_people.router,  # before chats.routes.chats.router, whose GET /{chat_id} would take /people
         chats.router,
         chat_direct.router,
         plan_systems.router,  # a plan handed to a system's entry agent, in the caller's direct chat with it

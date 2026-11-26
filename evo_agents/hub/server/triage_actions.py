@@ -12,7 +12,7 @@ chat run does, and the hub checks the frame again on each call, so an agent that
   run act as them.
 - POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
   the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
-  own rule that decides (``chat_members.put_agent``): the owner needs the writer role there, and a label of the chat that
+  own rule that decides (``chats.service.members.put_agent``): the owner needs the writer role there, and a label of the chat that
   someone in it does not clear is the 409 of the hub. A refusal is said in the thread, in the agent's name, and invites
   no one; the call answers 409 with the same reason.
 - POST /v1/worker/runs/{id}/triage/cancel: in the thread of a stale run (cause ``triage.STALE_CAUSE``, opened by
@@ -44,10 +44,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
-from evo_agents.hub.server import audit, chat_agents, orchestrator
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_members import put_agent
-from evo_agents.hub.server.chat_runs import agent_access, chat_run, post_agent
+from evo_agents.hub.server import audit, orchestrator
+from evo_agents.hub.server.chats.service import agents as chat_agents
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.agents import AgentRun
+from evo_agents.hub.server.chats.service.members import put_agent
+from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.plans import REFUSALS as PLAN_REFUSALS
 from evo_agents.hub.server.plans import models as plan_models
@@ -173,7 +175,7 @@ class TriageActed(BaseModel):
 class Frame:
     """What a triage call acts on: the chat run, the thread, the failed run, its owner and the owner's access."""
 
-    agent: chat_agents.AgentRun
+    agent: AgentRun
     chat_run_id: int
     chat_id: int
     root_id: int

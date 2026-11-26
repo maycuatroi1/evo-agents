@@ -25,7 +25,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.chat_store import write_event as write_chat_event
+from evo_agents.hub.server.chats.repository.store import write_event as write_chat_event
 from evo_agents.hub.server.local_runs import owned_local_run
 from evo_agents.hub.server.outputs.models import (
     OutputSettings,

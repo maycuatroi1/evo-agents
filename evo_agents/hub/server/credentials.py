@@ -5,7 +5,7 @@ POST /v1/worker/runs/{id}/credentials, with the worker's token and the protocol 
 for the leases of a run the worker holds, in one of ``runs.HELD_STATES`` (``waiting`` of a plan run among them); any
 other run, another worker's or one that ended, is 404 as for a state report. The hub takes the run's repos (its repo
 for a run of one step, its repos for a plan run, and for a chat run those it started with and those its agent opened
-since, ``chat_agents.open_repo``) and their origins in project_repos (the run's project's, else another project's the
+since, ``chats.routes.agents.open_repo``) and their origins in project_repos (the run's project's, else another project's the
 owner holds a grant on: ``repo_origins``), compared in the form of ``credentials.normalize_origin``, and leases what the run's owner, the member who dispatched it, bound to the run's
 project, on any of their workers or on this one, and that has not expired, never one of kind forge (``LEASED_KINDS``):
 

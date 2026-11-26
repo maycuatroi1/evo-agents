@@ -4,14 +4,14 @@ database at every read, so a change of members or grants counts at the next read
 A person holds:
 
 - ``chat:<id>`` for each chat they are a member of, not removed, whose label as it is now they clear: the chats
-  ``chat_access`` lets them read (``chat_access.cleared_chats``);
+  ``chats.service.access`` lets them read (``chats.service.access.cleared_chats``);
 - ``grant:<project>:<level>`` for each project they hold a grant on and each level of that project's ladder up to the
   grant's max level: what ``LabelReader.why_not`` asks of a label naming that project at that level. A max level the
   ladder lacks gives none.
 
 The agent of a run (a principal with a ``RunScope``, on /mcp) holds the audience of the run's owner, the person the
 principal is. The agent of a chat run holds what both people its prompt is cleared for hold
-(``chat_prompts.run_clearers``): the person who started it and the member whose worker runs it, when another.
+(``chats.service.prompts.run_clearers``): the person who started it and the member whose worker runs it, when another.
 
 Every graph read of the hub asks this module: the kg_* tools of REST and /mcp (``kg.tool_result``), kg_more on /mcp,
 and the web's graph pages (``kg_web``); the retrieval eval of the night's measure and of the optimize loop reads with
@@ -25,8 +25,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.chat_access import cleared_chats
-from evo_agents.hub.server.chat_prompts import run_clearers
+from evo_agents.hub.server.chats.service.access import cleared_chats
+from evo_agents.hub.server.chats.service.prompts import run_clearers
 from evo_agents.hub.server.security import Principal
 
 CHAT_RUN = "chat"  # the kind of a chat run (``runs.kind``)

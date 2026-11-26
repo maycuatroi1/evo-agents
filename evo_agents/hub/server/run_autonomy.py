@@ -4,7 +4,7 @@ Principal: the person a run acts for, whose effective autonomy (``autonomy_level
 ``org.autonomy_sources`` lists) bounds it. ``stamp`` sets it, with the snapshot, on every run ``insert_run`` queues:
 
 - a step, plan, author or task run: the member who dispatched it (a task run's dispatcher is its agent type's run_as);
-- a chat run: the person who wrote the message that mentions the agent (``chat_runs``); for an agent type with a
+- a chat run: the person who wrote the message that mentions the agent (``chats.service.runs``); for an agent type with a
   run_as, also run_as, the run bounded by both (``For.also``), so an intern who mentions an agent run as their lead
   still has the intern's modes; for a message of an agent, the principal of that agent's run, within its snapshot
   (``For.within``); for a message of the hub (a triage thread), as for a run the hub makes;

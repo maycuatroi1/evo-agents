@@ -2,9 +2,9 @@
 name that its messages carry, oldest first, so the web's document panel shows what each version changed even when the
 messages of the older ones are not on the page it loaded.
 
-- GET /v1/chats/{id}/doc-versions?name=, to a member of the chat (``chat_access``): the files people attached to its
+- GET /v1/chats/{id}/doc-versions?name=, to a member of the chat (``chats.service.access``): the files people attached to its
   messages and the outputs its agents' messages carry, threads included, of the messages whose label the caller
-  clears (``chat_access.label_reader``), in the order of the messages, a message's attachments before its outputs;
+  clears (``chats.service.access.label_reader``), in the order of the messages, a message's attachments before its outputs;
 - GET /v1/projects/{p}/runs/{id}/doc-versions?name=, to the run's readers (``views.readable_run``, by sink): the files
   of the messages its inbox took and the outputs of the run, in the order they came.
 
@@ -29,9 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import outputs, tables
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.chat_access import chat_access, label_reader
-from evo_agents.hub.server.chat_members import ChatId
-from evo_agents.hub.server.chat_views import HUB_AUTHOR, ChatAuthor, agent_author, person_author, profiles_by_id
+from evo_agents.hub.server.chats.models.members import ChatId
+from evo_agents.hub.server.chats.models.views import HUB_AUTHOR, ChatAuthor, agent_author, person_author
+from evo_agents.hub.server.chats.repository.views import profiles_by_id
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.outputs.models import Sink, chat_url, run_url
 from evo_agents.hub.server.runs.models import RunId

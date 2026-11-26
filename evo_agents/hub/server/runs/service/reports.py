@@ -372,7 +372,7 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
             )
         await _spent(conn, run_id, columns)
         if body.state == "waiting" and kind == "author":
-            from evo_agents.hub.server import author_chat  # it reads runs through this package
+            from evo_agents.hub.server.chats.service import author as author_chat  # it reads runs through this package
             from evo_agents.hub.server.loop.author_mode import turn_ended
 
             if not await turn_ended(conn, run_id):  # an author run of the Loop that put its plan: the hub ends it

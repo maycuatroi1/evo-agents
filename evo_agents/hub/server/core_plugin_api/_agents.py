@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import task_runs
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import agent_types, task_dispatch
-from evo_agents.hub.server.chat_runs import hub_reply
+from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.core_plugin_api._reads import enabled_project
 from evo_agents.hub.server.core_plugin_api._types import (
     AgentTypeRef,

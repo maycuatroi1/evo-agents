@@ -15,7 +15,7 @@ export { chatComposeHref, chatKeys, chatQuery, chatsQuery, COMPOSE_PARAM, LIST_I
  * read once, and its stream (`chatStreamPath`) keeps it current after that.
  */
 
-/** Messages one page holds (`chats.PAGE`), and a thread at most (`chats.MAX_PAGE`). */
+/** Messages one page holds (`chats.models.messages.PAGE`), and a thread at most (`chats.models.messages.MAX_PAGE`). */
 export const PAGE_SIZE = 50;
 export const THREAD_SIZE = 200;
 
