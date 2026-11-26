@@ -10,6 +10,8 @@ hub as the agent of that run, with the worker's token and X-Evo-Run, as ``evo-ag
 binds the session to the run's project, so a run whose worktree names no project of this machine, or whose machine is
 not signed in, still reads its graph.
 
+``hub_status`` asks the hub for kg_status of a project, which ``kg status`` and the SessionStart hook print.
+
 ``local_projects`` and ``push`` are what ``hub kg push`` and ``kg sync --all`` send from: the project of ``--project``,
 or every project of projects.json (``evo_agents.hub.kg_push``). Standard library only.
 """
@@ -116,3 +118,39 @@ def open_session(backend: str, project: str | None, sink: str, timeout: float | 
     except HubError as exc:
         return Session(None, sink, error=f"the hub: {exc}")
     return RemoteSession(Hub(credentials.url, credentials.token), name, sink, timeout=timeout)
+
+
+# What the hub holds of a project
+
+
+def hub_name(project: str | None) -> str:
+    """The hub's name of ``project`` (a name, a harness path, or None for the project of the cwd); a bare name no harness
+    here knows is taken as the hub's. Raises ProjectError."""
+    from evo_agents.kg.project import ProjectError, resolve_project
+
+    try:
+        return resolve_project(project).name
+    except ProjectError:
+        if project and "/" not in project and project not in (".", ".."):
+            return project
+        raise
+
+
+def hub_status(project: str | None, sink: str | None = None, timeout: float | None = None) -> tuple[str, dict]:
+    """(text, status) of kg_status of ``project``'s graph as the hub answers it to ``sink`` (the agent session's by
+    default), for ``kg status`` and the SessionStart hook. Raises ProjectError, and HubError when the hub refuses or
+    does not answer within ``timeout``."""
+    from urllib.parse import quote
+
+    from evo_agents.hub import client  # looked up when asked, so a test's hub is the one used
+
+    name = hub_name(project)
+    credentials = client.load_credentials()
+    hub = client.Hub(credentials.url, credentials.token)
+    body = {"arguments": {}, **({"sink": sink} if sink else {})}
+    found = hub.call("POST", f"/v1/kg/{quote(name, safe='')}/tools/kg_status", body, timeout=timeout) or {}
+    if found.get("isError"):
+        text = " ".join(block.get("text", "") for block in found.get("content", []))
+        raise HubError(text.removeprefix("error: ") or "the hub refused kg_status")
+    text = "\n".join(block.get("text", "") for block in found.get("content", []) if block.get("type") == "text")
+    return text, found.get("structuredContent") or {"project": name}

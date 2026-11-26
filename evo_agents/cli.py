@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         def run() -> int:
             return post_search(argv[3:])
     elif argv[:2] == ["kg", "hook"]:
-        from evo_agents.kg.cli import run_hook  # the parsers of the other hooks only
+        from evo_agents.kg.cli.hook import run_hook  # the parsers of the other hooks only
 
         def run() -> int:
             return run_hook(argv[2:])

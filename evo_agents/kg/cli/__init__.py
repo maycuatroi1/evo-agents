@@ -2,468 +2,66 @@
 
 from __future__ import annotations
 
-import argparse
-import json
-import sys
-from pathlib import Path
-
-from evo_agents.kg.project import ProjectError, bind, read_bindings, resolve_project, unbind
+from evo_agents.clikit import Group
 
 
-def print_json(data) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+def tree() -> Group:
+    """The ``kg`` group, every command in the order ``evo-agents kg --help`` lists them. Its modules are imported
+    here, so ``kg hook`` (``evo_agents.kg.cli.hook``) loads none of them."""
+    from evo_agents.kg.cli.bench import BENCH
+    from evo_agents.kg.cli.bind import BIND
+    from evo_agents.kg.cli.build import BUILD
+    from evo_agents.kg.cli.claude_entities import CLAUDE_ENTITIES
+    from evo_agents.kg.cli.connector import CONNECTOR
+    from evo_agents.kg.cli.eval import EVAL
+    from evo_agents.kg.cli.eval_questions import EVAL_QUESTIONS
+    from evo_agents.kg.cli.hook import HOOK
+    from evo_agents.kg.cli.init import INIT
+    from evo_agents.kg.cli.links import LINKS
+    from evo_agents.kg.cli.profile import PROFILE
+    from evo_agents.kg.cli.prune import PRUNE
+    from evo_agents.kg.cli.query import QUERY
+    from evo_agents.kg.cli.rank import RANK
+    from evo_agents.kg.cli.schedule import SCHEDULE
+    from evo_agents.kg.cli.scrub import SCRUB
+    from evo_agents.kg.cli.semantic import SEMANTIC
+    from evo_agents.kg.cli.serve import SERVE
+    from evo_agents.kg.cli.settings import SETTINGS
+    from evo_agents.kg.cli.status import STATUS
+    from evo_agents.kg.cli.strategy import STRATEGY
+    from evo_agents.kg.cli.sync import SYNC
 
-
-def project_of(args):
-    try:
-        return resolve_project(getattr(args, "project", None))
-    except ProjectError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
-
-
-def _print_runs(results) -> None:
-    for r in results:
-        mark = "OK  " if r.ok else "FAIL"
-        if r.unchanged:
-            print(f"{mark} {r.source:<20} unchanged: the commit and config it read last, nothing read, {r.seconds}s")
-        else:
-            print(
-                f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
-                f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
-            )
-        if r.redactions:
-            redacted = sum(sum(kinds.values()) for kinds in r.redactions.values())
-            print(f"     redacted: {redacted} secret(s) in {len(r.redactions)} item(s), counted in audit.jsonl")
-        for h in r.held:
-            print(f"     held: {h['count']} removal(s) in {h['scope']}: {h['reason']}")
-            print("           review, then run: evo-agents kg sync --accept-removals --source " + r.source)
-        for issue in r.issues[:8]:
-            print(f"     {issue}")
-        for warning in r.warnings[:8]:
-            print(f"     warning: {warning}")
-        if r.exception:
-            print(f"     connector raised {r.exception}")
-        for line in r.stderr_tail[-5:]:
-            print(f"     stderr: {line}")
-
-
-def _print_due(outcome) -> None:
-    # Everything goes to stdout: under launchd both streams share schedule.log, and stdout is buffered.
-    if outcome.skipped:
-        print(f"project {outcome.project}: skipped, {outcome.skipped}")
-        return
-    if outcome.error:
-        print(f"FAIL project {outcome.project}: {outcome.error}")
-        return
-    if not outcome.due:
-        print(f"project {outcome.project}: nothing due")
-        return
-    print(f"project {outcome.project}: {len(outcome.due)} source(s) due")
-    _print_runs(outcome.runs)
-    if outcome.build is not None:
-        print(outcome.build.summary_line())
-        for warning in outcome.build.warnings:
-            print(f"warning: {warning}")
-
-
-def _hub_errors(command):
-    """``command``, with a hub that cannot be reached, refuses the caller, or is not signed in to, said on stderr and
-    exit 1."""
-    import functools
-
-    @functools.wraps(command)
-    def run(args) -> int:
-        from evo_agents.hub.client import HubError
-
-        try:
-            return command(args)
-        except HubError as exc:
-            print(f"error: the hub: {exc}", file=sys.stderr)
-            return 1
-
-    return run
-
-
-def syncer(project):
-    """The sync of ``project`` against the hub this machine is signed in to (``evo_agents.hub.kg_hub_sync``)."""
-    from evo_agents.hub.kg_hub_sync import hub_sync
-
-    return hub_sync(project, plans=_hub_plans())
-
-
-def _hub_plans():
-    """What the harness connector reads the plans of the hub through, in a harness whose harness.yaml names a hub
-    project (``ConnectorContext.plans``); on a machine not signed in to a hub it reads the copies in plans/."""
-    from evo_agents.hub.kg_plans import reader
-
-    return reader()
-
-
-def _sync_due_all(args) -> int:
-    """``kg sync --due --all``, the LaunchAgent's command: sync every project the hub takes a run of from this
-    machine. The hub prunes and scrubs what it holds (``kg prune``, ``kg scrub``); the machine keeps nothing to prune."""
-    from evo_agents.hub.client import Hub, HubError, load_credentials
-    from evo_agents.hub.kg_hub_sync import sync_all_due
-    from evo_agents.hub.kg_remote import local_projects
-    from evo_agents.kg.ids import utc_now
-
-    if args.project or args.accept_removals:
-        print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
-        return 2
-    failed = None
-    try:
-        credentials = load_credentials()
-        hub = Hub(credentials.url, credentials.token)
-        outcomes = sync_all_due(hub, local_projects(None, True), build=args.build, plans=_hub_plans())
-    except HubError as exc:
-        outcomes, failed = [], f"the hub: {exc}"
-    ok = failed is None and all(o.ok for o in outcomes)
-    if args.json:
-        body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
-        if failed is not None:
-            body["error"] = failed
-        print_json(body)
-    else:
-        print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
-        if failed is not None:
-            print(f"FAIL sync: {failed}")
-        for outcome in outcomes:
-            _print_due(outcome)
-    return 0 if ok else 1
-
-
-def _cmd_sync_due(args) -> int:
-    from evo_agents.hub.kg_hub_sync import sync_due
-
-    if args.source:
-        print("error: --due picks the sources itself; drop --source", file=sys.stderr)
-        return 2
-    if args.all:
-        return _sync_due_all(args)
-
-    project = project_of(args)
-    try:
-        outcome = sync_due(syncer(project), build=args.build, accept=args.accept_removals)
-    except ProjectError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        print_json(outcome.to_json())
-    else:
-        _print_due(outcome)
-    return 0 if outcome.ok else 1
-
-
-@_hub_errors
-def cmd_sync(args) -> int:
-    """``kg sync``: run the connectors of a project's sources and push each run to the hub, with no corpus here
-    (``evo_agents.hub.kg_hub_sync``); --push is what every sync does now."""
-    from evo_agents.hub.kg_hub_sync import cleared_sources, sync_project
-
-    if args.all and not args.due:
-        print("error: --all needs --due; a full sync of every project is not offered", file=sys.stderr)
-        return 2
-    if args.due:
-        return _cmd_sync_due(args)
-    project = project_of(args)
-    results, build = sync_project(syncer(project), args.source or None, accept=args.accept_removals, build=args.build)
-    ok = all(r.ok and not r.held for r in results) and (build is None or build.ok)
-    left = [] if args.source else cleared_sources(project)[1]
-    if args.json:
-        body = {"project": project.name, "runs": [r.to_json() for r in results], "left_out": left}
-        if build is not None:
-            body["build"] = build.to_json()
-        print_json(body)
-    else:
-        _print_runs(results)
-        for source_id in left:
-            print(f"SKIP {source_id}: the hub sink does not clear its label, so the hub takes none of its runs")
-        if build is not None:
-            print(build.summary_line())
-    return 0 if ok else 1
-
-
-def cmd_status(args) -> int:
-    """``kg status``: the project's sources and graph as the hub holds them (its kg_status)."""
-    from evo_agents.hub.client import HubError
-    from evo_agents.kg.cli_graph import hub_status
-    from evo_agents.kg.status import render_brief
-
-    try:
-        text, status = hub_status(args.project, args.sink)
-    except ProjectError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    except HubError as exc:
-        print(f"error: the hub: {exc}", file=sys.stderr)
-        return 1
-    if args.json:
-        print_json(status)
-    else:
-        print(render_brief(status) if args.brief else text)
-    return 0 if status.get("ok") else 1
-
-
-def cmd_bind(args) -> int:
-    """Bind a directory to one project explicitly, list the bindings, or remove one. Bindings live in
-    bound.json beside the projects.json index and win over the harness and the index."""
-    if args.list or args.remove:
-        if args.project or args.directory or (args.list and args.remove):
-            print("error: --list and --remove DIR take no other arguments", file=sys.stderr)
-            return 2
-    if args.list:
-        bindings = read_bindings()
-        if args.json:
-            print_json(bindings)
-        elif not bindings:
-            print("no bindings")
-        else:
-            for directory, entry in sorted(bindings.items()):
-                print(f"{directory}  ->  {entry.get('project')}  ({entry.get('harness_root')})")
-        return 0
-    if args.remove:
-        removed = unbind(args.remove)
-        if removed is None:
-            print(f"error: {args.remove} has no binding (see evo-agents kg bind --list)", file=sys.stderr)
-            return 1
-        if args.json:
-            print_json({"removed": removed})
-        else:
-            print(f"unbound {removed}")
-        return 0
-    directory = Path(args.directory or Path.cwd()).expanduser().resolve()
-    try:
-        project = bind(directory, args.project)
-    except ProjectError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        print_json({"directory": str(directory), "project": project.name, "harness_root": str(project.harness.root)})
-    else:
-        print(f"bound {directory}  ->  {project.name}  ({project.harness.root})")
-    return 0
-
-
-def cmd_schedule(args) -> int:
-    from evo_agents.kg import schedule
-
-    if args.action == "print":
-        sys.stdout.write(schedule.render(schedule.build_plist()))
-        return 0
-    try:
-        if args.action == "install":
-            path = schedule.install()
-            plist = schedule.build_plist()
-            print(f"installed {schedule.LABEL} from {path}")
-            print(f"runs every {schedule.INTERVAL // 60} min: {' '.join(plist['ProgramArguments'])}")
-            print(f"log: {plist['StandardOutPath']}")
-        else:
-            existed = schedule.uninstall()
-            print(f"uninstalled {schedule.LABEL}" if existed else f"{schedule.LABEL} was not installed")
-    except schedule.ScheduleError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    return 0
-
-
-def _hook_payload() -> dict:
-    """The JSON object Claude Code writes to a hook's stdin, or {} when there is none."""
-    try:
-        if sys.stdin is None or sys.stdin.isatty():
-            return {}
-        payload = json.loads(sys.stdin.read() or "{}")
-    except (OSError, ValueError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def cmd_hook_session_start(args) -> int:
-    """SessionStart hook for Claude Code: a short note on the bound project, and the session label when the
-    session already read from the graph (a resumed session). Only names and counts the pipeline derived;
-    never source text, which would reach the model with system-reminder authority. When to call the graph is
-    said once, in the instructions of the server that serves the kg_* tools, not here again."""
-    from evo_agents.hub.client import HubError
-    from evo_agents.hub.kg_remote import PROBE_TIMEOUT
-    from evo_agents.kg.cli_graph import hub_status
-    from evo_agents.kg.sessions import current_session_id, describe, read_session
-    from evo_agents.kg.status import render_brief
-
-    try:
-        _, status = hub_status(None, timeout=PROBE_TIMEOUT)
-    except (ProjectError, HubError):
-        return 0  # not inside a project, not signed in, or the hub does not answer in time: say nothing
-    note = render_brief(status)
-    session = read_session(current_session_id(_hook_payload()))
-    if session is not None:
-        note += "\n" + describe(session)
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": note}}))
-    return 0
-
-
-def cmd_hook_post_tool(args) -> int:
-    """PostToolUse hook for the evo-kg tools: join the labels of the result into the session label. Prints
-    nothing to stdout and never blocks: any error becomes a note on stderr and exit code 0."""
-    from evo_agents.kg.sessions import post_tool
-
-    try:
-        post_tool(json.loads(sys.stdin.read()))
-    except Exception as exc:  # a hook must never break the session
-        print(f"evo-kg post-tool hook skipped: {type(exc).__name__}: {str(exc)[:200]}", file=sys.stderr)
-    return 0
-
-
-def cmd_hook_post_search(args) -> int:
-    """PostToolUse hook for Grep and rg or grep in Bash: what the graph links to the matched lines, as
-    additionalContext, as the hub answers it (``evo_agents.kg.post_search``)."""
-    from evo_agents.hub.kg_grep_hook import run
-
-    return run(args)
-
-
-def add_hooks(hsub) -> None:
-    """The ``kg hook`` subcommands, which Claude Code runs."""
-    hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
-    hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
-    from evo_agents.kg.post_search import add_arguments
-
-    post_search = hsub.add_parser("post-search", help="PostToolUse: what the graph links to a Grep, rg or grep match")
-    add_arguments(post_search).set_defaults(func=cmd_hook_post_search)
-
-
-def run_hook(argv: list[str]) -> int:
-    """``evo-agents kg hook ...`` without the rest of the command tree. Claude Code runs a hook on every matching
-    tool call, and building every command group's parser costs about 0.2 s, more than the hook itself."""
-    parser = argparse.ArgumentParser(prog="evo-agents kg hook", description="Claude Code hook entry points")
-    add_hooks(parser.add_subparsers(dest="hook_name", required=True))
-    args = parser.parse_args(argv)
-    return int(args.func(args) or 0)
-
-
-def cmd_connector_test(args) -> int:
-    from evo_agents.kg.protocol.conformance import run_conformance
-    from evo_agents.kg.protocol.runner import ConnectorError, credential_env
-
-    harness = None
-    env: dict = {}
-    if args.command:
-        command = args.command[1:] if args.command[0] == "--" else args.command
-        source = {
-            "id": args.id,
-            "connector": "exec",
-            "command": command,
-            "config": json.loads(args.config) if args.config else {},
-        }
-    elif args.builtin:
-        source = {"id": args.id, "connector": args.builtin, **(json.loads(args.config) if args.config else {})}
-    elif args.source:
-        project = project_of(args)
-        harness = project.harness
-        source = project.source(args.source)
-        try:
-            env = credential_env(source)
-        except ConnectorError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 2
-    else:
-        print("error: give a command after --, --builtin NAME, or --source ID", file=sys.stderr)
-        return 2
-    if args.label:
-        source["label"] = {"level": args.label}
-    report = run_conformance(
-        source,
-        harness=harness,
-        env=env,
-        golden=Path(args.golden) if args.golden else None,
-        update_golden=args.update_golden,
+    return Group(
+        "kg",
+        "multi-source knowledge graph",
+        [
+            SYNC,
+            SCHEDULE,
+            STATUS,
+            BIND,
+            CONNECTOR,
+            HOOK,
+            BUILD,
+            PROFILE,
+            QUERY,
+            SERVE,
+            EVAL,
+            EVAL_QUESTIONS,
+            SEMANTIC,
+            SETTINGS,
+            INIT,
+            STRATEGY,
+            SCRUB,
+            PRUNE,
+            BENCH,
+            RANK,
+            LINKS,
+            CLAUDE_ENTITIES,
+        ],
+        dest="command_name",
     )
-    if args.json:
-        print_json(report.to_json())
-    else:
-        for check in report.checks:
-            print(f"{'PASS' if check.ok else 'FAIL'} {check.name}")
-            for line in check.details:
-                print(f"     {line}")
-    return 0 if report.ok else 1
 
 
 def register(sub) -> None:
-    kg = sub.add_parser("kg", help="multi-source knowledge graph")
-    ksub = kg.add_subparsers(dest="command_name", required=True)
-
-    def with_project(p):
-        p.add_argument("--project", help="project name or harness path (default: from the cwd)")
-        p.add_argument("--json", action="store_true", help="machine-readable output")
-        return p
-
-    sync = with_project(ksub.add_parser("sync", help="run connectors and push their runs to the hub"))
-    sync.add_argument("--source", action="append", help="only this source (repeatable)")
-    sync.add_argument("--accept-removals", action="store_true", help="apply deletions a guard held back")
-    sync.add_argument(
-        "--build",
-        action="store_true",
-        help="then ask the hub for a build of the graph and wait for it (with --due: only if a source ran)",
-    )
-    sync.add_argument(
-        "--due", action="store_true", help="only sources whose refresh interval has passed since their last ok run"
-    )
-    sync.add_argument(
-        "--all", action="store_true", help="with --due: every project in projects.json whose harness still exists"
-    )
-    sync.add_argument(
-        "--push",
-        action="store_true",
-        help="kept for older schedules: every sync pushes its runs to the hub",
-    )
-    sync.set_defaults(func=cmd_sync)
-
-    schedule = ksub.add_parser(
-        "schedule", help="hourly LaunchAgent running kg sync --due --all: it syncs, and the hub builds (macOS)"
-    )
-    schedule.add_argument(
-        "action", choices=["print", "install", "uninstall"], help="print the plist, or load or unload it"
-    )
-    schedule.set_defaults(func=cmd_schedule)
-
-    status = with_project(
-        ksub.add_parser("status", help="coverage, freshness and held deletions per source, as the hub holds them")
-    )
-    status.add_argument("--brief", action="store_true", help="a few lines, for session hooks")
-    status.add_argument("--sink", help="sink whose clearance applies (default: the agent session's)")
-    status.set_defaults(func=cmd_status)
-
-    binding = ksub.add_parser("bind", help="bind a directory and everything below it to one project")
-    binding.add_argument("directory", nargs="?", help="directory to bind (default: the cwd)")
-    binding.add_argument(
-        "--project", help="project name or harness path (default: the project the directory resolves to now)"
-    )
-    binding.add_argument("--list", action="store_true", help="print every binding")
-    binding.add_argument("--remove", metavar="DIR", help="delete the binding of DIR")
-    binding.add_argument("--json", action="store_true", help="machine-readable output")
-    binding.set_defaults(func=cmd_bind)
-
-    connector = ksub.add_parser("connector", help="connector tooling")
-    csub = connector.add_subparsers(dest="connector_command", required=True)
-    test = with_project(csub.add_parser("test", help="conformance test for a connector"))
-    test.add_argument("--id", default="test", help="source id for an ad hoc connector (default: test)")
-    test.add_argument("--builtin", help="test a builtin connector, e.g. git")
-    test.add_argument("--source", help="test a source declared in the project's knowledge.yaml")
-    test.add_argument("--config", help="JSON config for an ad hoc connector")
-    test.add_argument("--label", help="declared label level, to check the connector never lowers it")
-    test.add_argument("--golden", help="golden summary file to compare against")
-    test.add_argument("--update-golden", action="store_true", help="rewrite the golden file")
-    test.add_argument("command", nargs=argparse.REMAINDER, help="-- COMMAND [ARGS...]")
-    test.set_defaults(func=cmd_connector_test)
-
-    hook = ksub.add_parser("hook", help="Claude Code hook entry points")
-    add_hooks(hook.add_subparsers(dest="hook_name", required=True))
-
-    from evo_agents.kg import claude_code, cli_bench, cli_graph, cli_links, cli_prune, cli_rank, cli_scrub
-
-    cli_graph.register(ksub, with_project)
-    cli_scrub.register(ksub)
-    cli_prune.register(ksub)
-    cli_bench.register(ksub)
-    cli_rank.register(ksub)
-    cli_links.register(ksub)
-    claude_code.register(ksub)
+    """``evo-agents kg`` on the subparsers of ``evo-agents``."""
+    tree().attach(sub)
