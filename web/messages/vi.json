@@ -6097,7 +6097,9 @@
         "finished": "{count, plural, other {# sub-agent đã xong}}",
         "hideFinished": "Ẩn sub-agent đã xong",
         "tokens": "{tokens} token",
-        "calls": "{count, plural, other {# lần gọi công cụ}}"
+        "calls": "{count, plural, other {# lần gọi công cụ}}",
+        "stepDone": "Bước {step} đã báo xong",
+        "legendStep": "Bước báo xong"
       },
       "usage": {
         "title": "Mức dùng",
@@ -6396,7 +6398,9 @@
         "interactive": "Run tương tác.",
         "labelMain": "Nhắn cho agent chính",
         "placeholderMain": "Nhắn cho agent chính. {name} không đọc tin nhắn này.",
-        "toMain": "Bạn đang xem {name}: tin nhắn gửi tới agent chính, không tới sub-agent này."
+        "toMain": "Bạn đang xem {name}: tin nhắn gửi tới agent chính, không tới sub-agent này.",
+        "toMainAgent": "Tin nhắn tới agent chính.",
+        "placeholderToMain": "Nhắn cho agent chính. Nó đọc ở lượt kế tiếp."
       },
       "facts": {
         "title": "Chi tiết",
@@ -6879,6 +6883,57 @@
         "noResultYet": "Chưa có báo cáo: sub-agent vẫn đang làm việc.",
         "noResult": "Sub-agent kết thúc mà không có báo cáo.",
         "askedFor": "Nhiệm vụ yêu cầu báo cáo"
+      },
+      "views": {
+        "label": "Các view của run này",
+        "live": "Trực tiếp",
+        "progress": "Tiến độ",
+        "diff": "Diff"
+      },
+      "progress": {
+        "title": "Tiến độ",
+        "steps": "Các bước của run, mới nhất ở trên",
+        "loading": "Đang đọc plan.",
+        "noPlan": "Không đọc được plan của run này nên không có bước nào để hiện.",
+        "so": {
+          "title": "Run đến giờ",
+          "steps": "Đã xong {done} trên {total} bước.",
+          "now": "Bước {step}, {title}, đang chạy.",
+          "nowBare": "Bước {step} đang chạy.",
+          "allDone": "Mọi bước đã xong.",
+          "agents": "{count, plural, other {# sub-agent đã làm việc}}{running, plural, =0 {} other {, # đang chạy}}.",
+          "agentsFailed": "{count, plural, other {# sub-agent kết thúc thất bại.}}",
+          "commits": "{count, plural, other {# commit}} đến giờ.",
+          "empty": "Chưa có gì để tóm tắt: plan chưa có bước nào run này báo và chưa sub-agent nào chạy.",
+          "from": "Dựng từ plan, evidence của nó và event của run. Không có model nào viết."
+        },
+        "pending": {
+          "title": "Chưa làm",
+          "more": "{count, plural, other {và # bước nữa}}"
+        },
+        "card": {
+          "step": "Bước {step}",
+          "untitled": "Bước chưa đặt tên",
+          "running": "Đang chạy",
+          "took": "Mất",
+          "for": "{time} đến giờ",
+          "finished": "Xong lúc {time}",
+          "agents": "Các agent đã tham gia",
+          "main": "Agent chính",
+          "openAgent": "Mở hồ sơ của {name}",
+          "commits": "Commit",
+          "verify": "Verify",
+          "verifyPassed": "Verify đạt",
+          "verifyFailed": "Verify không đạt",
+          "noEvidence": "Plan không ghi commit hay verify nào cho bước này.",
+          "reached": "Done when, đã đạt",
+          "toReach": "Done when, chưa đạt",
+          "criteria": "Đạt {met} trên {total} tiêu chí",
+          "trace": "Trace của bước này",
+          "diff": "Diff",
+          "openStep": "Trang của bước",
+          "openLive": "Mở trong Trực tiếp"
+        }
       }
     },
     "diff": {

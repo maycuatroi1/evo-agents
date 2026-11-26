@@ -70,15 +70,30 @@ function Track({ lane, from, to }: { lane: Lane; from: number; to: number }) {
       {lane.segments.map((segment, i) => (
         <Bar key={i} segment={segment} lane={lane} from={from} to={to} />
       ))}
-      {lane.marks.map((mark, i) => (
-        <span
-          key={i}
-          className={cn("absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45", mark.kind === "handoff" ? "bg-brand" : "border-2 border-brand bg-card")}
-          style={{ left: pct(mark.at, from, to) }}
-          title={mark.kind === "handoff" ? t("handoff", { agent: mark.agent }) : t("returned", { agent: mark.agent })}
-          data-testid={mark.kind === "handoff" ? "lane-handoff" : "lane-return"}
-        />
-      ))}
+      {lane.marks.map((mark, i) =>
+        mark.kind === "step" ? (
+          <span
+            key={i}
+            className="absolute inset-y-0 w-0.5 bg-foreground"
+            style={{ left: pct(mark.at, from, to) }}
+            title={t("stepDone", { step: mark.agent })}
+            data-testid="lane-step"
+            data-step={mark.agent}
+          >
+            <span className="absolute top-0 right-1 rounded-xs bg-card px-1 text-xs leading-4 font-medium text-foreground tabular-nums" aria-hidden="true">
+              {mark.agent}
+            </span>
+          </span>
+        ) : (
+          <span
+            key={i}
+            className={cn("absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45", mark.kind === "handoff" ? "bg-brand" : "border-2 border-brand bg-card")}
+            style={{ left: pct(mark.at, from, to) }}
+            title={mark.kind === "handoff" ? t("handoff", { agent: mark.agent }) : t("returned", { agent: mark.agent })}
+            data-testid={mark.kind === "handoff" ? "lane-handoff" : "lane-return"}
+          />
+        ),
+      )}
     </span>
   );
 }
@@ -166,7 +181,7 @@ function RangeButton({ pressed, onClick, children, id }: { pressed: boolean; onC
   );
 }
 
-function Legend() {
+function Legend({ steps }: { steps: boolean }) {
   const t = useTranslations("runs.detail.agents");
   return (
     <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs leading-4 text-muted-foreground max-md:order-last max-md:w-full max-md:justify-start" aria-label={t("legend")}>
@@ -186,6 +201,12 @@ function Legend() {
         <span className="size-2 rotate-45 border-2 border-brand bg-card" aria-hidden="true" />
         {t("legendReturn")}
       </li>
+      {steps ? (
+        <li className="flex items-center gap-1.5">
+          <span className="h-3 w-0.5 bg-foreground" aria-hidden="true" />
+          {t("legendStep")}
+        </li>
+      ) : null}
     </ul>
   );
 }
@@ -205,6 +226,7 @@ export function AgentLanes({
   onShow,
   onOpen,
   onOpenMain,
+  whole,
 }: {
   events: readonly RunEvent[];
   tasks: readonly RunTask[];
@@ -212,16 +234,19 @@ export function AgentLanes({
   onShow: (call: string) => void;
   onOpen: (task: string) => void;
   onOpenMain: () => void;
+  /** The Progress view: the lanes always span the whole run, with a tick on the main agent's lane where each step ended. */
+  whole?: { steps: readonly { key: string; at: number }[] };
 }) {
   const t = useTranslations("runs.detail.agents");
   const format = useFormatter();
   const ids = useId();
-  const [scope, setScope] = useState<LaneScope>("step");
+  const [picked, setScope] = useState<LaneScope>("step");
+  const scope: LaneScope = whole ? "run" : picked;
   const [open, setOpen] = useState(true);
   const [finishedOpen, setFinishedOpen] = useState(false);
   const live = working && tasks.some((task) => task.status === "running");
   const now = useNow(working && open);
-  const board = useMemo(() => buildLanes(events, tasks, working, now, scope), [events, tasks, working, now, scope]);
+  const board = useMemo(() => buildLanes(events, tasks, working, now, scope, { steps: whole?.steps }), [events, tasks, working, now, scope, whole?.steps]);
   if (!board) return null;
   const { lanes, from, to } = board;
   const finished = lanes.filter((lane) => lane.kind === "agent" && lane.done);
@@ -250,6 +275,11 @@ export function AgentLanes({
             {t("title")}
           </h2>
         </button>
+        {whole ? (
+          <span className="ml-auto shrink-0 rounded-lg bg-muted/60 px-2.5 py-1 text-xs leading-5 font-medium text-muted-foreground" data-testid="agent-lanes-whole">
+            {t("wholeRun")}
+          </span>
+        ) : (
         <div role="group" aria-label={t("range")} className="ml-auto flex shrink-0 gap-0.5 rounded-lg bg-muted/60 p-0.5">
           <RangeButton id="agent-lanes-step" pressed={scope === "step"} onClick={() => setScope("step")}>
             {t("thisStep")}
@@ -258,6 +288,7 @@ export function AgentLanes({
             {t("wholeRun")}
           </RangeButton>
         </div>
+        )}
       </div>
       {open ? (
         <div id={`${ids}-list`} className="border-t">
@@ -279,7 +310,7 @@ export function AgentLanes({
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-1.5 text-xs leading-4 text-fg-subtle tabular-nums" data-testid="agent-lanes-axis">
             <time dateTime={new Date(from).toISOString()}>{time(from)}</time>
-            <Legend />
+            <Legend steps={Boolean(whole)} />
             <time dateTime={new Date(to).toISOString()}>{working ? t("now") : time(to)}</time>
           </div>
         </div>

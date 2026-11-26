@@ -71,7 +71,20 @@ function Item({ run, item, onOpenAgent }: { run: Run; item: SoFarItem; onOpenAge
  * call; each item says which, and the line under the title names the sources and when they last changed. With none of
  * them it says so rather than make something up. The columns stack on a phone.
  */
-export function StepSoFar({ run, events, tasks, onOpenAgent }: { run: Run; events: readonly RunEvent[]; tasks: readonly RunTask[]; onOpenAgent: (id: string) => void }) {
+export function StepSoFar({
+  run,
+  events,
+  tasks,
+  onOpenAgent,
+  bare = false,
+}: {
+  run: Run;
+  events: readonly RunEvent[];
+  tasks: readonly RunTask[];
+  onOpenAgent: (id: string) => void;
+  /** Inside a card of its own (the Progress view's running step), so it draws no border and shadow of its own. */
+  bare?: boolean;
+}) {
   const t = useTranslations("runs.detail.soFar");
   const format = useFormatter();
   const ids = useId();
@@ -87,7 +100,7 @@ export function StepSoFar({ run, events, tasks, onOpenAgent }: { run: Run; event
     ? null
     : t("line", { sources: format.list(sources, { type: "conjunction" }), time: so.at ? format.dateTime(new Date(so.at), { hour: "2-digit", minute: "2-digit" }) : "" });
   return (
-    <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={`${ids}-title`} data-testid="step-so-far">
+    <section className={cn("flex min-w-0 flex-col", bare ? "border-t" : "rounded-md border bg-card shadow-raised")} aria-labelledby={`${ids}-title`} data-testid="step-so-far">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-4 py-3">
         <h2 id={`${ids}-title`} className="flex items-center gap-2 text-[15px] leading-[22px] font-semibold">
           <ListChecks className="size-4 text-muted-foreground" aria-hidden="true" />

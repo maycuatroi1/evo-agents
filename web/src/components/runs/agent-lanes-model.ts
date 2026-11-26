@@ -9,8 +9,11 @@ export type LaneScope = "step" | "run";
 /** A stretch of a lane's time in epoch ms: work, or the main agent waiting on a sub-agent it handed work to. */
 export type Segment = { from: number; to: number; kind: "work" | "wait"; running: boolean };
 
-/** A point on the main agent's lane: it handed work over (`handoff`) or a sub-agent gave its report back (`return`). */
-export type Mark = { at: number; kind: "handoff" | "return"; agent: string };
+/**
+ * A point on the main agent's lane: it handed work over (`handoff`), a sub-agent gave its report back (`return`), or it
+ * reported a plan step done (`step`, `agent` holding the step's key).
+ */
+export type Mark = { at: number; kind: "handoff" | "return" | "step"; agent: string };
 
 export type LaneStatus = "working" | "waiting" | "running" | "completed" | "failed" | "stopped" | "idle";
 
@@ -106,12 +109,21 @@ function mainWork(events: readonly RunEvent[]): string | null {
  * The lanes of a run on one time axis, from its events and its tasks (run-tasks.ts): the main agent (its time split into
  * work and waiting on the sub-agents it handed work to and did not send to the background; a mark where it handed work
  * over and where a report came back), each sub-agent, and one lane for the background commands. Empty when the run has
- * neither a sub-agent nor a background command. `active` is whether the run still runs; `now` ends the open stretches.
+ * neither a sub-agent nor a background command, unless `steps` (where the steps the run reported ended) gives the main
+ * lane a mark to carry. `active` is whether the run still runs; `now` ends the open stretches.
  */
-export function buildLanes(events: readonly RunEvent[], tasks: readonly RunTask[], active: boolean, now: number | null, scope: LaneScope): Lanes | null {
+export function buildLanes(
+  events: readonly RunEvent[],
+  tasks: readonly RunTask[],
+  active: boolean,
+  now: number | null,
+  scope: LaneScope,
+  { steps = [] }: { steps?: readonly { key: string; at: number }[] } = {},
+): Lanes | null {
   const agents = tasks.filter((task) => task.kind === "agent");
   const commands = tasks.filter((task) => task.kind === "command" && task.background);
-  if (!agents.length && !commands.length) return null;
+  // The Progress view draws the main agent's lane for the steps it reported, even when it had nobody to hand work to.
+  if (!agents.length && !commands.length && !(steps.length && events.length)) return null;
   const [firstEvent, lastEvent] = span(events);
   const runFrom = Number.isNaN(firstEvent) ? Math.min(...tasks.map((task) => ms(task.startedAt))) : firstEvent;
   const last = Number.isNaN(lastEvent) ? runFrom : lastEvent;
@@ -147,6 +159,7 @@ export function buildLanes(events: readonly RunEvent[], tasks: readonly RunTask[
     const end = ms(task.endedAt);
     if (!running(task) && task.status !== "running" && end >= from && end <= to) marks.push({ at: end, kind: "return", agent: task.name });
   }
+  for (const step of steps) if (step.at >= from && step.at <= to) marks.push({ at: step.at, kind: "step", agent: step.key });
   lanes.push({
     id: "main",
     kind: "main",

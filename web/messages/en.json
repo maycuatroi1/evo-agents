@@ -6097,7 +6097,9 @@
         "finished": "{count, plural, one {# finished sub-agent} other {# finished sub-agents}}",
         "hideFinished": "Hide finished sub-agents",
         "tokens": "{tokens} tokens",
-        "calls": "{count, plural, one {# tool call} other {# tool calls}}"
+        "calls": "{count, plural, one {# tool call} other {# tool calls}}",
+        "stepDone": "Step {step} reported done",
+        "legendStep": "A step reported done"
       },
       "usage": {
         "title": "Usage",
@@ -6396,7 +6398,9 @@
         "interactive": "Interactive run.",
         "labelMain": "Message the main agent",
         "placeholderMain": "Message the main agent. {name} does not read this.",
-        "toMain": "You are viewing {name}: a message goes to the main agent, not to it."
+        "toMain": "You are viewing {name}: a message goes to the main agent, not to it.",
+        "toMainAgent": "A message goes to the main agent.",
+        "placeholderToMain": "Message the main agent. It reads this on its next turn."
       },
       "facts": {
         "title": "Details",
@@ -6879,6 +6883,57 @@
         "noResultYet": "No report yet: the sub-agent is still working.",
         "noResult": "The sub-agent ended without a report.",
         "askedFor": "The brief asks it to report"
+      },
+      "views": {
+        "label": "Views of this run",
+        "live": "Live",
+        "progress": "Progress",
+        "diff": "Diff"
+      },
+      "progress": {
+        "title": "Progress",
+        "steps": "Steps of the run, newest first",
+        "loading": "Reading the plan.",
+        "noPlan": "The plan of this run could not be read, so there are no steps to show.",
+        "so": {
+          "title": "Run so far",
+          "steps": "{done} of {total} steps are done.",
+          "now": "Step {step}, {title}, is in progress.",
+          "nowBare": "Step {step} is in progress.",
+          "allDone": "Every step is done.",
+          "agents": "{count, plural, one {# sub-agent has} other {# sub-agents have}} worked on it{running, plural, =0 {} other {, # still running}}.",
+          "agentsFailed": "{count, plural, one {# sub-agent ended in failure.} other {# sub-agents ended in failure.}}",
+          "commits": "{count, plural, one {# commit} other {# commits}} so far.",
+          "empty": "Nothing to summarise yet: the plan has no steps this run reported and no sub-agent has started.",
+          "from": "Built from the plan, its evidence and the run's events. No model wrote it."
+        },
+        "pending": {
+          "title": "Not started",
+          "more": "{count, plural, one {and # more step} other {and # more steps}}"
+        },
+        "card": {
+          "step": "Step {step}",
+          "untitled": "Untitled step",
+          "running": "Running",
+          "took": "Took",
+          "for": "{time} so far",
+          "finished": "Finished {time}",
+          "agents": "Agents that took part",
+          "main": "Main agent",
+          "openAgent": "Open the profile of {name}",
+          "commits": "Commits",
+          "verify": "Verify",
+          "verifyPassed": "Verify passed",
+          "verifyFailed": "Verify failed",
+          "noEvidence": "The plan records no commit or verify for this step.",
+          "reached": "Done when, reached",
+          "toReach": "Done when, not yet reached",
+          "criteria": "{met} of {total} criteria met",
+          "trace": "Trace of this step",
+          "diff": "Diff",
+          "openStep": "Step page",
+          "openLive": "Open in Live"
+        }
       }
     },
     "diff": {

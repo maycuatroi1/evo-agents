@@ -35,7 +35,16 @@ const COUNT_FROM = 0.75;
  * of the hub shows there too, and the files stay attached. While a subagent's profile is open (`to`, its name), the
  * box says the message goes to the main agent: a subagent takes no message of its own.
  */
-export function RunComposer({ run, to = null }: { run: Pick<Run, "project" | "id"> & Partial<Pick<Run, "mode" | "worker" | "state">>; to?: string | null }) {
+export function RunComposer({
+  run,
+  to = null,
+  toMainAgent = false,
+}: {
+  run: Pick<Run, "project" | "id"> & Partial<Pick<Run, "mode" | "worker" | "state">>;
+  to?: string | null;
+  /** The box says in words that a message goes to the main agent (the Progress view, which shows no one else's profile). */
+  toMainAgent?: boolean;
+}) {
   const t = useTranslations("runs.detail.composer");
   const format = useFormatter();
   const interactive = run.state === "interactive" || run.mode === "interactive";
@@ -49,9 +58,9 @@ export function RunComposer({ run, to = null }: { run: Pick<Run, "project" | "id
         className="pt-2"
         testIds={{ form: "run-composer", text: "run-composer-text", send: "run-composer-send", sent: "run-composer-sent", problem: "run-composer-problem", hint: "run-composer-hint" }}
         texts={{
-          label: to ? t("labelMain") : t("label"),
-          placeholder: to ? t("placeholderMain", { name: to }) : t("placeholder"),
-          hint: to ? `${t("toMain", { name: to })} ${where}` : where,
+          label: to || toMainAgent ? t("labelMain") : t("label"),
+          placeholder: to ? t("placeholderMain", { name: to }) : toMainAgent ? t("placeholderToMain") : t("placeholder"),
+          hint: to ? `${t("toMain", { name: to })} ${where}` : toMainAgent ? `${t("toMainAgent")} ${where}` : where,
           send: t("send"),
           sending: t("sending"),
           sent: t("sent"),

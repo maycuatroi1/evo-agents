@@ -1699,6 +1699,27 @@ Shared pieces built on them:
   are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
   group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
   caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
+- Live, Progress and Diff (`run-view-tabs.tsx`, `progress-view.tsx`, `progress-step-card.tsx`, `progress-model.ts`): a
+  plan run, or a run of a plan step, has three tabs under its head, a `muted/60` pill row of 36 px tabs (44 px and
+  equal widths on a phone, `aria-current="page"` on the one shown). Live is the page as described below (Step N so far,
+  the Agents section, the session); Progress is `?view=progress`; Diff is a link to the run's diff route, shown once the
+  worker uploaded one. Live stays mounted, hidden, while Progress shows, so the terminal and the trace keep their
+  state; opening an agent or a call in the trace from Progress goes to Live first. Progress shows the whole run step by
+  step with no model call and no request of its own, from the plan the page holds and the run's events, in one column
+  from the top: "Run so far", a `card` with a paragraph built from figures (steps done of the total, the step the run
+  works on, sub-agents and how many still run, commits), 15/24 px in the reading measure, and a 12 px line naming the
+  sources; the Agents section in Whole run mode (no range switch, a "Whole run" label), where each step's end is a
+  vertical tick with its key on the main agent's lane (the main agent has a lane even when no sub-agent started);
+  then one card per step, newest first, the running step on top. Step boundaries are read from the main agent's
+  `evo-agents worker step <id> done` calls and the plan's `doneAt`: a step began where the one before ended. A card
+  has the step's state icon, number and title (a link to its page), its status and how long it took, the agents that
+  took part (the main agent and each sub-agent that started in its span, each opening its profile), the commits and the
+  verify its evidence names (a commit links to the forge), what it reached (its `done_when` with a check, and "2 of 3
+  criteria met"), and three actions: Trace (the call that ended the step, in Live), Diff and Open step. The running
+  step's card holds Step N so far (Done, Now and Next, without its own frame) and "Open in Live". Steps not started
+  fold into one dashed box of at most three lines and "and N more". On a phone every part is one column with no
+  sideways scroll, every action and sub-agent chip is 44 px, and the message box is pinned to the bottom of the window
+  (`sticky bottom-2`, over the safe area), saying "A message goes to the main agent."
 - Step N so far (`step-so-far-card.tsx`, `step-so-far.ts`): a card under the head of a plan run, over the session and
   under the decision, for the step the run works on ("Step 2 so far"). Three columns, Done, Now and Next (stacked on a
   phone, hairlines between), built with no model call from three sources in order of preference: the main
