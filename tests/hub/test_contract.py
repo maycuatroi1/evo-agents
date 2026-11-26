@@ -271,7 +271,7 @@ def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_print
     """Criterion a2 of chat-bridges: ``hub chat label CHAT LEVEL``, ``--default`` to unset; ``hub chat show --json``
     has chat.label, as the Chat it prints."""
     pytest.importorskip("fastapi")
-    from evo_agents.hub import cli_chats
+    from evo_agents.hub.cli import chat as chat_cli
     from evo_agents.hub.openapi import document
 
     printed = commands()
@@ -283,7 +283,7 @@ def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_print
     schemas = document()["components"]["schemas"]
     assert schemas["ChatPage"]["properties"]["chat"]["$ref"].endswith("/Chat")
     assert {"label", "label_level"} <= set(schemas["Chat"]["properties"])
-    assert "label" in cli_chats.CHAT_KEYS
+    assert "label" in chat_cli.CHAT_KEYS
 
 
 def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():

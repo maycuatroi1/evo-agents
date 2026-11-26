@@ -8,11 +8,11 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
+attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli.chat``, ``plugin`` by
 ``cli.plugin``, ``srs`` by ``cli.srs``, ``docs`` by ``cli.docs``, ``task`` by ``cli.task``, ``canvas`` by ``cli.canvas``,
-``signal`` by ``cli.signal``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
+``signal`` by ``cli.signal``, ``sessions`` by ``cli.sessions``, ``email`` by ``cli.email``, ``release`` by
 ``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli.intake``, ``merge`` by
-``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
+``cli.merge``, ``loop`` by ``cli.loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
 package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
 document; ``hub contract check`` does not. The commands of plugins (``pm``, ``crm`` and ``marketing`` of the core
 plugins installed with the CLI among them) come from their manifests, registered last by ``cli.extensions``.
@@ -60,13 +60,13 @@ def _register_workspace_commands(hsub) -> None:
 
     CURATOR.attach(hsub)
 
-    from evo_agents.hub.cli_memory import register_memory
+    from evo_agents.hub.cli.memory import MEMORY
 
-    register_memory(hsub)
+    MEMORY.attach(hsub)
 
-    from evo_agents.hub.cli_skills import register_skills
+    from evo_agents.hub.cli.skills import SKILLS
 
-    register_skills(hsub)
+    SKILLS.attach(hsub)
 
     from evo_agents.hub.cli.account import ACCOUNT
     from evo_agents.hub.cli.model_catalog import MODEL_CATALOG
@@ -109,9 +109,9 @@ def _register_team_commands(hsub) -> None:
 
     register_cron(hsub)
 
-    from evo_agents.hub.cli_chats import register_chats
+    from evo_agents.hub.cli.chat import CHAT
 
-    register_chats(hsub)
+    CHAT.attach(hsub)
 
     from evo_agents.hub.cli.plugin import PLUGIN
 
@@ -145,9 +145,9 @@ def _register_team_commands(hsub) -> None:
 
     register_context(hsub)
 
-    from evo_agents.hub.cli_sessions import register_sessions
+    from evo_agents.hub.cli.sessions import SESSIONS
 
-    register_sessions(hsub)
+    SESSIONS.attach(hsub)
 
     from evo_agents.hub.cli.email import EMAIL
 
@@ -180,13 +180,13 @@ def _register_steering_commands(hsub) -> None:
 
     INTAKE.attach(hsub)
 
-    from evo_agents.hub.cli_merge import register_merge
+    from evo_agents.hub.cli.merge import MERGE
 
-    register_merge(hsub)
+    MERGE.attach(hsub)
 
-    from evo_agents.hub.cli_loop import register_loop
+    from evo_agents.hub.cli.loop import LOOP
 
-    register_loop(hsub)
+    LOOP.attach(hsub)
 
     from evo_agents.hub.cli.autonomy import AUTONOMY
     from evo_agents.hub.cli.org import ORG
