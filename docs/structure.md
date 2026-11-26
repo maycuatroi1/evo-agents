@@ -156,9 +156,10 @@ client and its accounts (`hub login`, `logout`, `whoami`, `token`, `admin`, `pro
 `policy`, `autonomy`, `secret`, `account`, `account-pool`, `provider-account`, `model-catalog`, `hub agent account`)
 and of plugins (`hub plugin`, `hub market`, and the commands plugins add, `cli/extensions.py`) so far, each in
 `evo_agents/hub/cli/` at the path of its command (`hub run` is the package `cli/run/`, `hub run-cause` the module
-`cli/run_cause.py`); `hub release` lives with the Curator's commands in `cli/curator/`. The helpers the function
-commands not moved yet share (`client_command`, `print_json`, `table`, `when`, `call_object`, `signed_in`) live in
-`cli/base.py`, the one copy of each. What a command calls but is
+`cli/run_cause.py`); `hub release` lives with the Curator's commands in `cli/curator/`. `cli/extensions.py` builds
+one `Group` per plugin of the hub's list, each command a `PluginCommand` over the plugin's route. The helpers the
+function commands not moved yet share (`client_command`, `print_json`, `table`, `signed_in`) live in `cli/base.py`,
+the one copy of each, beside `when` and `call_object`, which class commands use too. What a command calls but is
 not a command stays out of it: `hub kg`'s gateways are in `evo_agents/hub/kg_routes.py` and `cli/kg/resources.py`,
 and the remote graph session `evo-agents kg` shares with it in `evo_agents/hub/kg_remote.py`.
 

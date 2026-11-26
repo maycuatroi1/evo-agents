@@ -359,9 +359,9 @@ def _register_workspace_commands(hsub) -> None:
 
     register_skills(hsub)
 
+    from evo_agents.hub.cli.account import ACCOUNT
     from evo_agents.hub.cli.model_catalog import MODEL_CATALOG
     from evo_agents.hub.cli.provider_account import PROVIDER_ACCOUNT
-    from evo_agents.hub.cli.account import ACCOUNT
     from evo_agents.hub.cli.secret import SECRET
 
     SECRET.attach(hsub)
