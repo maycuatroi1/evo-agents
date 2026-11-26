@@ -165,7 +165,7 @@ async def ops_chat(
 ) -> ChatAccess:
     """The ops chat of ``system`` as ``person`` sees it: made the first time, the system's creator its creator (else
     ``person``); the Orchestrator ``lead`` and ``person`` put in it, as the group chat's rules let them."""
-    from evo_agents.hub.server.triage import as_member  # triage opens these threads through this module
+    from evo_agents.hub.server.triage.service.threads import as_member  # triage opens these threads through this module
 
     s = tables.agent_systems
     await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"ops:{system.id}", 0))))
@@ -401,7 +401,7 @@ async def on_run(conn: AsyncConnection, found: RunStep, lines: list[str], *, sta
     """The thread of run ``found`` of ``triage.KINDS``, failed or ``stale``, of an agent an Orchestrator orchestrates,
     with ``lines`` (what the triage thread says of it) and its ``run_triage`` row, so the frame of ``triage_actions``
     holds in it; None for any other run, whose triage opens its thread as before."""
-    from evo_agents.hub.server.triage import STALE_CAUSE  # triage calls this module
+    from evo_agents.hub.server.triage.service.threads import STALE_CAUSE  # triage calls this module
 
     rule = triage_rules.STALE if stale else triage_rules.FAILED
 

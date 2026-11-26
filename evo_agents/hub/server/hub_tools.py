@@ -49,7 +49,6 @@ from evo_agents.hub.memory_places import HARNESS
 from evo_agents.hub.server import (
     agent_asks,
     kg,
-    ops_actions,
     orchestrator,
     orchestrator_actions,
     work_cards,
@@ -62,6 +61,7 @@ from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.models import Written
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
+from evo_agents.hub.server.ops.service import actions as ops_actions
 from evo_agents.hub.server.outputs.models import OutputIn
 from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.runs.service.plan_runs import held_row

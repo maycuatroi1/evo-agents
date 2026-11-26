@@ -62,7 +62,7 @@ from evo_agents.hub.server.runs.service.candidates import candidates_of
 from evo_agents.hub.server.runs.service.controls import rerun_in, rerun_plan_in
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, refuse_curator_plan
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
-from evo_agents.hub.server.triage import STALE_CAUSE, chain_of
+from evo_agents.hub.server.triage.service.threads import STALE_CAUSE, chain_of
 
 log = logging.getLogger(__name__)
 

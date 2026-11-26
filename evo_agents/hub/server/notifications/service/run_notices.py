@@ -14,10 +14,10 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs
-from evo_agents.hub.server import triage
 from evo_agents.hub.server.notifications.repository import plans
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import RunStep, reported_steps
+from evo_agents.hub.server.triage.service import threads as triage
 
 
 async def run_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> int | None:

@@ -29,11 +29,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, release_ci, releases, runs, tables
-from evo_agents.hub.server import audit, triage
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
+from evo_agents.hub.server.triage.service import threads as triage
 
 log = logging.getLogger(__name__)
 

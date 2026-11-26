@@ -634,7 +634,6 @@ def _include_member_routes(app: FastAPI) -> None:
         merge_view,
         model_catalog,
         opportunity_evidence,
-        ops_actions,
         orchestrator_actions,
         plugin_chats_api,
         plugin_command_list,
@@ -662,7 +661,6 @@ def _include_member_routes(app: FastAPI) -> None:
         seller_api,
         system_ops,
         task_dispatch,
-        triage_actions,
         work_cards,
         worker_autonomy,
     )
@@ -681,10 +679,12 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.ops.service import actions as ops_actions
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.signals import routes as signals
+    from evo_agents.hub.server.triage.service import actions as triage_actions
 
     for routes in (
         secrets.router,

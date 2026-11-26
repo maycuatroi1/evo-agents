@@ -39,11 +39,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, findings, merge_infra, runs, tables
-from evo_agents.hub.server import triage
 from evo_agents.hub.server.chats.service import agents as chat_agents
 from evo_agents.hub.server.chats.service.agents import AgentRun
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.triage.service import threads as triage
 
 log = logging.getLogger(__name__)
 

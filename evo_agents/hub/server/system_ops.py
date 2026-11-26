@@ -28,10 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_queue, system_spec, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, ops_threads, ops_views, route_autonomy, system_store
+from evo_agents.hub.server import audit, route_autonomy, system_store
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_systems import Slug, admin_only, not_found, reader_only
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.ops.repository import views as ops_views
+from evo_agents.hub.server.ops.service import threads as ops_threads
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 

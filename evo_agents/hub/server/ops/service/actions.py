@@ -39,10 +39,11 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import hub_events, review, runs, tables, triage_rules
-from evo_agents.hub.server import audit, ops_rules, orchestrator, orchestrator_actions, run_waits
+from evo_agents.hub.server import audit, orchestrator, orchestrator_actions, run_waits
 from evo_agents.hub.server.chats.models.agents import REFUSALS
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.ops.service import rules as ops_rules
 from evo_agents.hub.server.orchestrator_actions import Frame, Reason
 from evo_agents.hub.server.plan_systems.service import dispatch_to_system
 from evo_agents.hub.server.runs.models import RunId

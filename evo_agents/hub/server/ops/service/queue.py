@@ -17,7 +17,8 @@ from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import ops_queue, ops_stalls, tables
-from evo_agents.hub.server import ops_rules, ops_threads
+from evo_agents.hub.server.ops.service import rules as ops_rules
+from evo_agents.hub.server.ops.service import threads as ops_threads
 
 log = logging.getLogger(__name__)
 

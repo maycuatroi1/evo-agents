@@ -8,8 +8,8 @@ from sqlalchemy import and_, exists, false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import ops_views
 from evo_agents.hub.server.notifications.models import Notification, notifications_of
+from evo_agents.hub.server.ops.repository import views as ops_views
 
 
 def report_notice(stored=None):

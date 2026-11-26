@@ -29,8 +29,8 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import triage
 from evo_agents.hub.server.run_state import run_step, write_event
+from evo_agents.hub.server.triage.service import threads as triage
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker, thread
 from tests.hub.test_runs import (  # noqa: F401

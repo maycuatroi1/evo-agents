@@ -138,7 +138,9 @@ async def open_work(conn: AsyncConnection, trace: Trace, person: Principal) -> i
 async def put_in(conn: AsyncConnection, chat_id: int, profile: Profile) -> tuple[ChatAccess | None, str | None]:
     """(work chat ``chat_id`` as its creator sees it, None) once agent ``profile`` is in it, or (None, why it may not
     be), in a savepoint."""
-    from evo_agents.hub.server.triage import as_member  # triage hands work through chat_runs, as this module does
+    from evo_agents.hub.server.triage.service.threads import (
+        as_member,  # triage hands work through chat_runs, as this module does
+    )
 
     nested = await conn.begin_nested()
     try:
@@ -238,7 +240,9 @@ async def _in_work(
 async def _to_root(conn: AsyncConnection, chat: ChatAccess, trace: Trace, asker: Asker, target: Profile, text: str):
     """The question to the coordinator: on the main line of work chat ``chat``, and its copy in the coordinator's
     session, the thread of the trace's first message, which takes the work."""
-    from evo_agents.hub.server.triage import as_member  # triage hands work through chat_runs, as this module does
+    from evo_agents.hub.server.triage.service.threads import (
+        as_member,  # triage hands work through chat_runs, as this module does
+    )
 
     assert trace.chat_id is not None and trace.root_id is not None  # the caller asks the coordinator there only
     main_id, _ = await insert_message(

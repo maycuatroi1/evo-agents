@@ -17,7 +17,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import hub_events, runs, tables, triage_rules
-from evo_agents.hub.server.ops_rules import ORCHESTRATOR, REDELIVER, healthy
+from evo_agents.hub.server.ops.service.rules import ORCHESTRATOR, REDELIVER, healthy
 from tests.hub.account_pool_setup import TOKEN_VAR
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)

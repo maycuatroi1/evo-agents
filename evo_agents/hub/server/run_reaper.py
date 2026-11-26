@@ -268,7 +268,7 @@ async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> Non
     (``orchestrator.close_recovered``), and the draft pull requests of run branches whose work went in elsewhere or that an
     ended trace left (``draft_pulls.settle_pass``, with ``github_app``), the Orchestrator asked of those it cannot
     settle."""
-    from evo_agents.hub.server import triage  # it reads runs through this module
+    from evo_agents.hub.server.triage.service import threads as triage  # it reads runs through this module
 
     await triage.open_stale(engine)
     from evo_agents.hub.server import draft_pulls, orchestrator  # it opens threads through triage
@@ -362,7 +362,8 @@ async def recover_runs(
     from evo_agents.hub.server import browser_install  # it reads queued runs through queue_fit
 
     await browser_install.ask_for_queued(engine)  # a queued browser run whose owner's worker lacks only Chromium
-    from evo_agents.hub.server import ops_queue, system_seed  # plan hub-steward
+    from evo_agents.hub.server import system_seed  # plan hub-steward
+    from evo_agents.hub.server.ops.service import queue as ops_queue
 
     await system_seed.seed_pass(engine)  # a project with no system gets its default orchestrator system, once
     await ops_queue.ops_pass(engine)  # the operations events of each project with ops on, gathered by cause

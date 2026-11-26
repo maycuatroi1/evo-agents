@@ -37,8 +37,9 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, ops_queue, runs, system_spec, tables, triage_rules
-from evo_agents.hub.server import ops_rules, orchestrator, system_store, system_traces
+from evo_agents.hub.server import orchestrator, system_store, system_traces
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
+from evo_agents.hub.server.ops.service import rules as ops_rules
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.runs.service import priority
 
