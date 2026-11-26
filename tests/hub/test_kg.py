@@ -1886,7 +1886,8 @@ def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tm
     from evo_agents.hub import kg_plans
     from evo_agents.hub.mirror import render
 
-    body = {"id": "rollout", "goal": "Ship it.", "steps": [{"id": 1, "title": "One", "what": "do one"}]}
+    steps = [{"id": 1, "title": "One", "what": "do one"}, {"id": 2, "title": "Two", "what": "do two"}]
+    body = {"id": "rollout", "goal": "Ship it.", "steps": steps}
     first = put_plan(hub, body)
     root = tmp_path / "alpha-harness"
     (root / "plans/active").mkdir(parents=True)
@@ -1896,8 +1897,10 @@ def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tm
     (root / "knowledge.yaml").write_text(HUB_HARNESS_KNOWLEDGE)
     copy = root / "plans/active/rollout.yaml"
     copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # the copy of revision 1
-    done = {**body, "steps": [{**body["steps"][0], "status": "done", "evidence": "shipped"}]}
+    # step 2 stays open, so the plan stays active: a write that closes the last step completes the plan
+    done = {**body, "steps": [{**steps[0], "status": "done", "evidence": "shipped"}, steps[1]]}
     second = put_plan(hub, done, first["revision"])  # the hub moves on; nobody exports
+    assert second["area"] == "active"
     home = tmp_path / "kg-home"
     project = load_project_at(root, home)
 
