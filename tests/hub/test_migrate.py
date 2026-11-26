@@ -6617,3 +6617,41 @@ def test_0266_gives_chat_messages_a_guest_author_and_going_back_keeps_their_word
     bodies = select(m.c.id, m.c.body, m.c.author_user_id.is_(None)).where(m.c.chat_id == chat_id).order_by(m.c.id)
     assert query(hub_db, bodies) == [(before, "mine", False), (short, "Ana (guest): hello", True), (long, full, True)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0266") :]
+
+
+def test_0270_gives_traces_an_outcome_and_a_handled_mark_and_messages_what_they_repeat(hub_db):
+    """0270 adds system_traces.outcome (met or not_met), outcome_left, handled_by and handled_at, and
+    chat_messages.repeats_id, every one NULL on the rows before it and when the person or the message is deleted;
+    going back drops them."""
+    t = hub_tables
+    s, m = t.system_traces, t.chat_messages
+    move_to(hub_db, "0269")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        trace = insert(s).values(project_id=ids["project"], system_slug="review", system_revision=1)
+        trace_id = one(conn, trace.returning(s.c.id))
+        chat_id = one(conn, insert(t.chats).values(title="Work", created_by=ids["user"]).returning(t.chats.c.id))
+        said = insert(m).values(chat_id=chat_id, seq=1, body="the question", label=[], author_user_id=ids["user"])
+        question = one(conn, said.returning(m.c.id))
+    move_to(hub_db, "0270")
+    marks = select(s.c.outcome, s.c.outcome_left, s.c.handled_by, s.c.handled_at).where(s.c.id == trace_id)
+    assert query(hub_db, marks) == [(None, None, None, None)]
+    assert query(hub_db, select(m.c.repeats_id).where(m.c.id == question)) == [(None,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(s).where(s.c.id == trace_id).values(outcome="maybe"))
+    with live.connect(hub_db) as conn:
+        other = one(conn, insert(t.users).values(login="lumen-ana", github_id=2).returning(t.users.c.id))
+        mark = {"outcome": "not_met", "outcome_left": "merge the fix", "handled_by": other, "handled_at": func.now()}
+        conn.execute(update(s).where(s.c.id == trace_id).values(mark))
+        line = insert(m).values(chat_id=chat_id, seq=2, body="asked", label=[], repeats_id=question)
+        repeat = one(conn, line.returning(m.c.id))
+        conn.execute(delete(t.users).where(t.users.c.id == other))
+        conn.execute(delete(m).where(m.c.id == question))
+    assert query(hub_db, select(s.c.outcome, s.c.outcome_left, s.c.handled_by).where(s.c.id == trace_id)) == [
+        ("not_met", "merge the fix", None)
+    ]
+    assert query(hub_db, select(m.c.repeats_id).where(m.c.id == repeat)) == [(None,)]
+    move_to(hub_db, "0269", down=True)
+    assert not {"outcome", "outcome_left", "handled_by", "handled_at"} & columns(hub_db, "system_traces")
+    assert "repeats_id" not in columns(hub_db, "chat_messages")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0270") :]

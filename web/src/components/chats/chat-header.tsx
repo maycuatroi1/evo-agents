@@ -3,7 +3,7 @@
 import { ArrowLeft, Bot, FolderKanban, Info, Users } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 
 import { AgentAvatar } from "@/components/data/agent-avatar";
 import { NAME_LINK, Tag } from "@/components/data/identifier";
@@ -33,8 +33,22 @@ function levelsOf(chat: Pick<Chat, "label">): string[] {
   return [...new Set(levels)];
 }
 
+/**
+ * Where a chat's back control leads when a page frames the chat beside a list of its own: Home's rail, which the
+ * control shows again under 768 px (where the rail and the chat take turns), in place of the link to Chats.
+ */
+export const ChatBackContext = createContext<{ label: string; onBack: () => void } | null>(null);
+
 function BackLink() {
   const t = useTranslations("chats.header");
+  const framed = useContext(ChatBackContext);
+  if (framed) {
+    return (
+      <Button type="button" variant="ghost" size="icon-sm" className="-ml-1 max-md:size-11 md:hidden" aria-label={framed.label} onClick={framed.onBack} data-testid="home-back">
+        <ArrowLeft aria-hidden="true" />
+      </Button>
+    );
+  }
   return (
     <Button asChild variant="ghost" size="icon-sm" className="-ml-1 lg:hidden">
       <Link href={chatsHref()} aria-label={t("back")} data-testid="chat-back">

@@ -114,7 +114,7 @@ function WaitingText({ card }: { card: WorkCard }) {
   );
 }
 
-function Figures({ card }: { card: WorkCard }) {
+export function Figures({ card }: { card: WorkCard }) {
   const t = useTranslations("chats.work.card");
   const money = useMoney();
   const time = useWorkTime();
@@ -201,7 +201,7 @@ function SubTasks({ asks, chatId }: { asks: WorkAsk[]; chatId: number }) {
   );
 }
 
-function Decisions({ decisions, me, answer }: { decisions: WorkDecision[]; me: string | null; answer?: (decision: WorkDecision) => ReactNode }) {
+export function Decisions({ decisions, me, answer }: { decisions: WorkDecision[]; me: string | null; answer?: (decision: WorkDecision) => ReactNode }) {
   const t = useTranslations("chats.work.card");
   if (decisions.length === 0) return null;
   return (

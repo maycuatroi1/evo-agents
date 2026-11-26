@@ -5322,6 +5322,7 @@
           "bridged_to",
           "from_answer",
           "forwarded_by",
+          "repeats",
           "work"
         ],
         "schema": "GroupMessage"
@@ -5400,6 +5401,7 @@
           "bridged_to",
           "from_answer",
           "forwarded_by",
+          "repeats",
           "work"
         ],
         "schema": "GroupMessage"
@@ -30678,7 +30680,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.73.6"
+      "version": "0.73.7"
     },
     "paths": {
       "/v1/health": {
@@ -99036,6 +99038,81 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/work/handled": {
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Mark Handled Route",
+          "description": "Mark the work of the trace whose work chat this is handled (Mark as handled).",
+          "operationId": "mark_handled_route_v1_chats__chat_id__work_handled_post",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkCard"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/events": {
         "get": {
           "tags": [
@@ -101691,7 +101768,7 @@
             "worker protocol"
           ],
           "summary": "Set Work Route",
-          "description": "Set the title, goal and done-when of the work of this run's trace, as its coordinator.",
+          "description": "Set the title, goal and done-when of the work of this run's trace, and record its outcome, as its\ncoordinator.",
           "operationId": "set_work_route_v1_worker_runs__run_id__work_post",
           "parameters": [
             {
@@ -141970,6 +142047,18 @@
               "title": "Forwarded By",
               "description": "the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it"
             },
+            "repeats": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repeats",
+              "description": "the message of the same work chat that this line of the hub repeats (the question of an asked line, the answer of an answered line); null on every other message"
+            },
             "work": {
               "anyOf": [
                 {
@@ -163557,6 +163646,18 @@
               ],
               "title": "Forwarded By",
               "description": "the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it"
+            },
+            "repeats": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repeats",
+              "description": "the message of the same work chat that this line of the hub repeats (the question of an asked line, the answer of an answered line); null on every other message"
             },
             "work": {
               "anyOf": [
@@ -199857,6 +199958,34 @@
               ],
               "title": "Coordinator",
               "description": "the handle of the system's entry agent, which coordinates the work"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "met",
+                    "not_met"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "what the entry agent recorded of the work against its done-when (work set --outcome); null when it recorded none, and for a not_met a member marked handled"
+            },
+            "left": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Left",
+              "description": "what the entry agent named as still to do (work set --left); null for nothing"
             }
           },
           "type": "object",
@@ -199929,6 +200058,34 @@
               ],
               "title": "Coordinator",
               "description": "the handle of the system's entry agent, which coordinates the work"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "met",
+                    "not_met"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "what the entry agent recorded of the work against its done-when (work set --outcome); null when it recorded none, and for a not_met a member marked handled"
+            },
+            "left": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Left",
+              "description": "what the entry agent named as still to do (work set --left); null for nothing"
             },
             "chat_id": {
               "anyOf": [
@@ -200066,6 +200223,31 @@
               "type": "number",
               "title": "Seconds",
               "description": "from its start to its end, or to now"
+            },
+            "handled_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handled By",
+              "description": "the login of the member who marked the work handled; null until one did"
+            },
+            "handled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handled At",
+              "description": "when the work was marked handled"
             }
           },
           "type": "object",
@@ -200248,6 +200430,36 @@
                 }
               ],
               "title": "Done When"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "met",
+                    "not_met"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "met or not_met: whether the work reached its done-when, recorded before the final answer"
+            },
+            "left": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Left",
+              "description": "what is still to do when the done-when is not met"
             }
           },
           "type": "object",

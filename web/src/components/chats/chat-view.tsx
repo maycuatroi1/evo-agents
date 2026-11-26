@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { FileDropFrame } from "@/components/data/attachments";
 import { OpenDocContext } from "@/components/data/doc-buttons";
@@ -16,7 +16,6 @@ import { useLiveSignal } from "@/components/live/live-context";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
@@ -29,11 +28,12 @@ import { AgentActionsContext, type AgentTab, type AgentTarget } from "./agent-me
 import type { AgentPanels } from "./agent-sheet";
 import { ChatComposer } from "./composer";
 import { type ChatHeadSlots, ChatHeader } from "./chat-header";
+import { CARD, ChatLoading } from "./chat-loading";
 import { ChatDocPanel } from "./doc-panel";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
 import { preview, type Quote } from "./line-model";
-import { type MessageSlot, READING_COLUMN } from "./message-item";
+import { type MessageActions, type MessageSlot, READING_COLUMN } from "./message-item";
 import { MessageList } from "./message-list";
 import { OpenThreadContext } from "./open-thread";
 import { useAuthorLabel } from "./message-parts";
@@ -46,7 +46,6 @@ const MembersSheet = dynamic(() => import("./members-sheet").then((module) => mo
 /** The agent sheet too, which an agent's menu opens. */
 const AgentSheet = dynamic(() => import("./agent-sheet").then((module) => module.AgentSheet), { ssr: false });
 
-const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-raised";
 /** Tailwind's xl (80rem, 1280 px): from there the thread is a column beside the chat, below it a sheet. */
 const THREAD_COLUMN_QUERY = "(min-width: 80rem)";
 /** Tailwind's lg (64rem): from there a document is a column beside the chat, below it a sheet. */
@@ -58,8 +57,22 @@ const DOC_COLUMN_QUERY = "(min-width: 64rem)";
  */
 export type UseUnder = (feed: Feed, ended: boolean) => MessageSlot | undefined;
 const useNothingUnder: UseUnder = () => undefined;
-/** What a work chat's page adds: its work card pinned under the head, and the composer's own words. */
-export type ChatSlots = { pinned?: ReactNode; placeholder?: string };
+/** What a page that draws a chat's line its own way gets: the chat, its live feed and what its messages do. */
+export type ChatLineProps = Pick<MessageActions, "onReact" | "onThread" | "reacting" | "under"> & {
+  chat: Chat;
+  me: string | null;
+  feed: Feed;
+  highlight: number | null;
+  loadOlder: () => Promise<void>;
+  loadThread: (root: number) => Promise<void>;
+  /** Opens the chat's details (its members' sheet). */
+  onDetails: () => void;
+};
+/**
+ * What a work chat's page adds: its work card pinned under the head, and the composer's own words. `line` draws the
+ * head and the messages in place of the chat's own (`ChatHeader`, `pinned`, `MessageList`): Home's task view.
+ */
+export type ChatSlots = { pinned?: ReactNode; placeholder?: string; line?: ComponentType<ChatLineProps> };
 
 /**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
@@ -230,6 +243,7 @@ function Conversation({ page, useUnder, agentPanels, headSlots, slots }: { page:
   const onReact = (message: GroupMessage, emoji: string, on: boolean) => react.mutate({ message, emoji, on });
 
   const ended = live.ended !== null;
+  const Line = slots?.line;
   const under = useUnder(live.feed, ended);
   const direct = chat.kind === "direct";
   const agentName = chat.agents[0]?.name ?? chat.title;
@@ -270,21 +284,28 @@ function Conversation({ page, useUnder, agentPanels, headSlots, slots }: { page:
     <div ref={frame} className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`} hidden={threadColumn && thread !== null && threadFull}>
         <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
-          <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} slots={headSlots} />
-          {slots?.pinned}
-          <MessageList
-            chat={chat}
-            me={me}
-            feed={live.feed}
-            highlight={thread === null ? highlight : null}
-            loadOlder={live.loadOlder}
-            onReact={onReact}
-            onThread={openThread}
-            onReply={replyTo}
-            onQuote={showQuote}
-            reacting={reacting}
-            under={under}
-          />
+          {Line ? (
+            <Line chat={chat} me={me} feed={live.feed} highlight={thread === null ? highlight : null} loadOlder={live.loadOlder} loadThread={live.loadThread}
+              onReact={onReact} onThread={openThread} reacting={reacting} under={under} onDetails={() => setMembers(true)} />
+          ) : (
+            <>
+              <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} slots={headSlots} />
+              {slots?.pinned}
+              <MessageList
+                chat={chat}
+                me={me}
+                feed={live.feed}
+                highlight={thread === null ? highlight : null}
+                loadOlder={live.loadOlder}
+                onReact={onReact}
+                onThread={openThread}
+                onReply={replyTo}
+                onQuote={showQuote}
+                reacting={reacting}
+                under={under}
+              />
+            </>
+          )}
           {ended ? (
             <div role="alert" className="flex flex-wrap items-start gap-3 border-t bg-surface-sunken px-4 py-3 text-sm" data-testid="chat-ended">
               <CircleSlash className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -368,30 +389,5 @@ function Conversation({ page, useUnder, agentPanels, headSlots, slots }: { page:
     </OpenThreadContext.Provider>
     </AgentActionsContext.Provider>
     </OpenDocContext.Provider>
-  );
-}
-
-function ChatLoading() {
-  return (
-    <div className={`${CARD} h-full w-full`} data-testid="chat-loading">
-      <div className="flex items-center gap-3 border-b px-4 py-2">
-        <Skeleton className="size-8 shrink-0 rounded-full" />
-        <Skeleton className="h-5 w-48 rounded-xs" />
-      </div>
-      <div className="flex flex-1 flex-col gap-5 p-4">
-        {[0, 1, 2].map((row) => (
-          <div key={row} className="flex gap-3">
-            <Skeleton className="size-8 shrink-0 rounded-full" />
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Skeleton className="h-3.5 w-40 rounded-xs" />
-              <Skeleton className="h-4 w-3/4 rounded-xs" />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="px-3 pt-1 pb-3">
-        <Skeleton className={`h-12 rounded-lg ${READING_COLUMN}`} />
-      </div>
-    </div>
   );
 }

@@ -175,4 +175,3 @@ class Group:
         below = parser.add_subparsers(dest=self.dest, required=True)
         for child in self.children:
             child.attach(below)
-

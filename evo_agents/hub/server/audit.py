@@ -154,6 +154,7 @@ OPS_FINDING = "ops.finding"  # ... or wrote a finding for the Curator
 OPS_PRIORITY = "ops.priority"  # ... or gave a queued run of the project another priority
 OPS_PLAN_DISPATCH = "ops.plan_dispatch"  # ... or handed a stalled plan again to the default system's entry agent
 WORK_SET = "work.set"  # the entry agent of a system set the title, goal or done-when of a trace's work (work_cards)
+WORK_HANDLED = "work.handled"  # a member of a trace's work chat marked its work handled (work_cards, Mark as handled)
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 # The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the

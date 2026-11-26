@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import type { Route } from "next";
 
 import { call } from "@/lib/api/client";
+import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
@@ -127,4 +128,14 @@ export function askAnswer(ask: Pick<WorkAsk, "agent" | "thread">, messages: Iter
 /** The card's link to a sub-task's thread: in this chat, the thread opens beside it; in another, its page with the thread. */
 export function threadHref(thread: NonNullable<WorkAsk["thread"]>): Route {
   return `/chats/${thread.chat_id}?thread=${thread.root_id}` as Route;
+}
+
+/**
+ * Mark as handled (POST /v1/chats/{id}/work/handled): a member says the rest of a work done short of its done-when is
+ * taken on; the hub answers with the card, its outcome then null and who marked it and when set.
+ */
+export async function markHandled(api: ApiSource, chatId: number): Promise<WorkCard> {
+  const client = api();
+  const headers = await csrfHeaders(client);
+  return call(client.POST("/v1/chats/{chat_id}/work/handled", { params: { path: { chat_id: chatId } }, headers }));
 }

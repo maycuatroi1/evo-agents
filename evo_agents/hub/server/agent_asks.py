@@ -298,7 +298,7 @@ async def ask_agent(
         from evo_agents.hub.server import orchestrator  # it hands work through chat_runs, as this module does
 
         await orchestrator.check_loop(conn, child)  # a question a session took in its inbox joined no trace again
-    await work_chats.say(conn, run_id, (chat.chat_id, chat.root_id), shown, place)
+    await work_chats.say(conn, run_id, (chat.chat_id, chat.root_id), shown, place, repeats=message_id)
     log.info("agent asked", extra={"run_id": run_id, "handle": body.handle, "made": child, "refused": bool(refusal)})
     return AgentAsked(run_id=child, decision_id=decision_id, refusal=refusal)
 
@@ -365,10 +365,11 @@ async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
 @dataclass(frozen=True)
 class Answer:
     """What the asking run gets (``agent``), the message that wakes its agent, and what its thread shows
-    (``thread``)."""
+    (``thread``), with the message of the agent asked that it repeats (``repeats``), its answer; None for none."""
 
     agent: str
     thread: str
+    repeats: int | None = None
 
 
 async def withheld_answer(conn: AsyncConnection, run_id: int, wait_id: int) -> str | None:
@@ -424,7 +425,8 @@ async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_
     thread = f"@{handle} answered (run #{run_id}):\n\n{body}"
     # the agent gets the answer whole, a chat message of at most 16 KiB; the thread shows its start
     mark = runs.TRUNCATION_MARK if reply is None else THREAD_CUT_MARK.replace("{message}", str(reply[0]))
-    return Answer(runs.clip(agent, runs.MAX_INBOX_BYTES), runs.clip(thread, ANSWER_IN_THREAD, mark))
+    repeats = None if reply is None else reply[0]
+    return Answer(runs.clip(agent, runs.MAX_INBOX_BYTES), runs.clip(thread, ANSWER_IN_THREAD, mark), repeats)
 
 
 def _waits(run_id: int):
@@ -460,7 +462,9 @@ async def answer_asker(conn: AsyncConnection, run_id: int, state: str, handle: s
             continue
         found = await chat_run(conn, asker)
         if found is not None and asker not in woke:  # one line an asker, however often it asked
-            await work_chats.say(conn, asker, (found.chat_id, found.root_id), answer.thread, there)
+            await work_chats.say(
+                conn, asker, (found.chat_id, found.root_id), answer.thread, there, repeats=answer.repeats
+            )
         log.info("asked agent answered", extra={"run_id": run_id, "decision_id": wait.id, "asker": asker})
         woke.append(asker)
     return woke[0] if woke else None

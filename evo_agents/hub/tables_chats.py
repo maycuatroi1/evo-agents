@@ -47,6 +47,10 @@ root thread of its trace (``evo_agents.hub.server.work_chats``), which hands no 
 Revision 0266 gives chat_messages ``guest_name``: the name of its author when that is a guest, a sender of a bridged
 group who linked no account of the hub (``core_plugin_api.bridge_guest``). At most one of ``author_user_id``,
 ``author_profile_id`` and ``guest_name`` is set; none is the hub.
+
+Revision 0270 gives chat_messages ``repeats_id``: for a line of the hub in a work chat that repeats a question or an
+answer an agent wrote there ("asked ... (run #N)", "answered (run #N)"), the message it repeats
+(``evo_agents.hub.server.work_chats.say``).
 """
 
 from __future__ import annotations
@@ -156,6 +160,7 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         Column("from_output_id", BigInteger),  # 0213: the interactive answer a person sent it from
         Column("copied_from_id", BigInteger),  # 0234: the message of another chat it copies, which hands no work again
         Column("guest_name", Text),  # 0266: its author, a bridged group's sender who linked no account of the hub
+        Column("repeats_id", BigInteger),  # 0270: the message of its work chat a line of the hub repeats
         _fk("chat_messages", "chat_id", "chats.id", ondelete="CASCADE"),
         _fk("chat_messages", "thread_root_id", "chat_messages.id", ondelete="CASCADE"),
         _fk("chat_messages", "author_user_id", "users.id", ondelete="RESTRICT"),
@@ -163,6 +168,7 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         _fk("chat_messages", "run_id", "runs.id", ondelete="SET NULL"),
         _fk("chat_messages", "from_output_id", "run_outputs.id", ondelete="SET NULL", use_alter=True),  # 0213
         _fk("chat_messages", "copied_from_id", "chat_messages.id", ondelete="SET NULL"),  # 0234
+        _fk("chat_messages", "repeats_id", "chat_messages.id", ondelete="SET NULL"),  # 0270
         PrimaryKeyConstraint("id", name="chat_messages_pkey"),
         UniqueConstraint("chat_id", "seq", name="chat_messages_seq_key"),
     )
