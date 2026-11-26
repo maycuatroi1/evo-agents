@@ -10,7 +10,8 @@ import json
 
 import pytest
 
-from evo_agents.plugins import cli as plugin_cli
+from evo_agents.plugins import releases
+from evo_agents.plugins.cli import register as register_plugin
 from evo_agents.plugins.market import (
     SCHEMA_FILE,
     MarketError,
@@ -131,7 +132,7 @@ def test_market_check_command(tmp_path, capsys, monkeypatch):
     path = tmp_path / "market.json"
     path.write_text(json.dumps(market_index()), encoding="utf-8")
     parser = argparse.ArgumentParser()
-    plugin_cli.register(parser.add_subparsers(dest="top"))
+    register_plugin(parser.add_subparsers(dest="top"))
     args = parser.parse_args(["plugin", "market-check", str(path)])
     assert args.func(args) == 0
     assert "market northwind-market, 3 plugin(s)" in capsys.readouterr().out
@@ -144,9 +145,9 @@ def test_market_check_command(tmp_path, capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out)["problems"] == ["plugins[0].industries: needs at least 1 item(s)"]
 
     path.write_text(json.dumps(market_index()), encoding="utf-8")
-    releases = FakeReleases({LUMEN_REPO: [lumen_release(tmp_path / "r")]})
-    monkeypatch.setattr(plugin_cli, "_GitHubReleases", lambda api, token: releases)
-    monkeypatch.setattr(plugin_cli, "check_releases", _check)
+    fake = FakeReleases({LUMEN_REPO: [lumen_release(tmp_path / "r")]})
+    monkeypatch.setattr(releases, "GitHubReleases", lambda api, token: fake)
+    monkeypatch.setattr(releases, "check_releases", _check)
     args = parser.parse_args(["plugin", "market-check", str(path), "--releases"])
     assert args.func(args) == 0
     out = capsys.readouterr().out
@@ -154,7 +155,7 @@ def test_market_check_command(tmp_path, capsys, monkeypatch):
     assert "SKIP northwind-ledger" in out and "SKIP crm" in out
 
 
-_REAL_CHECK = plugin_cli.check_releases
+_REAL_CHECK = releases.check_releases
 
 
 def _check(market, releases):
@@ -163,6 +164,6 @@ def _check(market, releases):
 
 def test_market_check_releases_reports_a_bad_release(tmp_path):
     other = lumen_release(tmp_path, identity="https://github.com/northwind/fork/.github/workflows/ci.yml@refs/x")
-    found = plugin_cli.check_releases(market_index(), FakeReleases({LUMEN_REPO: [other]}), FakeSigstore())
+    found = releases.check_releases(market_index(), FakeReleases({LUMEN_REPO: [other]}), FakeSigstore())
     assert found[0]["id"] == "lumen-notes" and not found[0]["ok"]
     assert "does not verify" in found[0]["problem"] or "signed" in found[0]["problem"]

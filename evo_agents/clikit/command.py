@@ -144,15 +144,36 @@ class ListCommand(Command[C]):
 
 
 class Group:
-    """A command word holding commands and groups (Composite); ``dest`` names the word chosen under it."""
+    """A command word holding commands and groups (Composite); ``dest`` names the word chosen under it, ``arguments``
+    are options of the word itself (``evo-agents --version``). :meth:`parser` makes it the program's own parser."""
 
-    def __init__(self, name: str, help: str, children: Iterable[Node], *, dest: str | None = None, **options: Any):
+    def __init__(
+        self,
+        name: str,
+        help: str,
+        children: Iterable[Node],
+        *,
+        dest: str | None = None,
+        arguments: Iterable[Arg] = (),
+        **options: Any,
+    ):
         self.name, self.help, self.children = name, help, tuple(children)
         self.dest = dest or f"{name.replace('-', '_')}_command"
+        self.arguments = tuple(arguments)
         self.options = options
 
     def attach(self, subparsers: argparse._SubParsersAction) -> None:
-        parser = subparsers.add_parser(self.name, help=self.help, **self.options)
+        self.fill(subparsers.add_parser(self.name, help=self.help, **self.options))
+
+    def parser(self) -> argparse.ArgumentParser:
+        """The parser of a program whose name is ``name`` and whose description is ``help``."""
+        parser = argparse.ArgumentParser(prog=self.name, description=self.help, **self.options)
+        self.fill(parser)
+        return parser
+
+    def fill(self, parser: argparse.ArgumentParser) -> None:
+        for arg in self.arguments:
+            arg.add_to(parser)
         below = parser.add_subparsers(dest=self.dest, required=True)
         for child in self.children:
             child.attach(below)
