@@ -1,5 +1,5 @@
 """The intake of a project (plan problem-intake, criterion a2): one reading of context that is vague, by a member's
-session. The model; the server is ``evo_agents.hub.server.intake``, the command line ``evo_agents.hub.cli_intake``.
+session. The model; the server is ``evo_agents.hub.server.intake``, the command line ``evo_agents.hub.cli.intake``.
 
 An intake has a code ``I-<number>``, given in order within the project, the member who asked for it, the list of
 sources the session read (each a kind, a label and a short name, never raw content), and a status: ``open`` until the

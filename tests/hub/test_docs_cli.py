@@ -1,4 +1,4 @@
-"""``evo-agents hub docs list|show|history|put`` (``evo_agents.hub.cli_docs``), as members run them against a hub that
+"""``evo-agents hub docs list|show|history|put`` (``evo_agents.hub.cli.docs``), as members run them against a hub that
 serves the feature docs: the commands and their ``--json`` keys are in the contract (seam hub-cli-v1); ``put`` uploads
 the images a Markdown file shows from beside it, once each, names a path the hub refuses under ``images/``, stops on a
 missing image before sending anything, takes the title from the first heading, and saves the next version, none when
@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub.cli_docs import prepare
+from evo_agents.hub.cli.docs import prepare
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys

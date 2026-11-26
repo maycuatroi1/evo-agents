@@ -28,7 +28,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.cli import build_parser
-from evo_agents.hub import cli_intake, plugin_calls, plugin_events, tables
+from evo_agents.hub import plugin_calls, plugin_events, tables
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.client import HubError
 from evo_agents.hub.server.app import create_app
 from evo_agents.plugins import core
@@ -923,7 +924,7 @@ class MemberHub:
 
 def intake_cli(monkeypatch, member: MemberHub, *argv: str) -> int:
     """``evo-agents hub intake ARGV --project PROJECT`` as ``member``; its exit status."""
-    monkeypatch.setattr(cli_intake, "signed_in", lambda: (member, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (member, None))
     args = build_parser().parse_args(["hub", "intake", *argv, "--project", PROJECT])
     return args.func(args)
 
