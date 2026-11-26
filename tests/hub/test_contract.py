@@ -24,6 +24,7 @@ from evo_agents.hub import (
 from evo_agents.hub.cli import inbox as inbox_command
 from evo_agents.hub.cli import kg as kg_cli
 from evo_agents.hub.cli import market as cli_market
+from evo_agents.hub.cli.contract import CONTRACT_PRINT
 from evo_agents.hub.cli.kg import entities as kg_entities_cli
 from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
 from evo_agents.hub.cli.kg import profile as kg_profile_cli
@@ -151,7 +152,7 @@ def test_print_without_the_server_extra_names_the_pip_command(monkeypatch, capsy
         raise ModuleNotFoundError("No module named 'fastapi'", name="fastapi")
 
     monkeypatch.setattr(contract, "build", missing)
-    assert contract.cmd_print(argparse.Namespace(hub_command="contract")) == 2
+    assert CONTRACT_PRINT(argparse.Namespace(hub_command="contract")) == 2
     assert capsys.readouterr().out == ""
 
 

@@ -1,5 +1,5 @@
 """The evidence of an opportunity (plan opportunity-intake, criterion a2; ``evo_agents.hub.opportunities``,
-``evo_agents.hub.server.opportunity_evidence`` and ``evo_agents.hub.cli_opportunities``): a line is a problem's, with the
+``evo_agents.hub.server.opportunity_evidence`` and ``evo_agents.hub.cli.opportunity``): a line is a problem's, with the
 8 signals of a problem and 7 more (wish, external_demand, window, reusable_asset, pull, intro, idle_capacity); the hub
 answers 422 for a personal label and for an excerpt over 300 characters; a writer adds and confirms, a reader reads, an
 outsider gets 404; ``opportunity show`` counts the lines and the independent sources; a problem's evidence keeps its 8

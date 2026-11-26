@@ -72,9 +72,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -609,7 +608,7 @@ def hook_run(hook: str, payload: dict) -> list[str]:
         return []  # the session goes on; what waits stays in its file
 
 
-def _context(notes: list[str]) -> str:
+def answers_context(notes: list[str]) -> str:
     """What the agent is told at the person's next message about answers the member gave on the hub."""
     lines = "\n".join(f"- {note}" for note in notes)
     text = (
@@ -627,33 +626,3 @@ def on_stop(payload: dict) -> None:
 def on_session_end(payload: dict) -> None:
     """The SessionEnd hook's share: ``ended``."""
     hook_run("session-end", payload)
-
-
-def _command(hook: str) -> Callable:
-    def command(args) -> int:
-        try:
-            with hooks.budget(BUDGET[hook]):
-                payload = local_outputs.read_payload() if hook == "tool" else hooks.read_payload()
-                notes = hook_run(hook, payload)
-                if notes:
-                    out = {
-                        "hookSpecificOutput": {
-                            "hookEventName": "UserPromptSubmit",
-                            "additionalContext": _context(notes),
-                        }
-                    }
-                    sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
-                    sys.stdout.flush()
-        except hooks.OutOfTime:
-            pass
-        except BaseException as exc:  # a hook never fails the session
-            with contextlib.suppress(OSError, ValueError):  # a closed stderr must not fail the hook either
-                print(f"evo-hub: local session not synced: unexpected {type(exc).__name__}", file=sys.stderr)
-        return 0
-
-    return command
-
-
-cmd_hook_user_prompt = _command("user-prompt")
-cmd_hook_local_tool = _command("tool")
-cmd_hook_local_ask = _command("ask")

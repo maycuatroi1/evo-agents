@@ -1,5 +1,5 @@
 """The problems of a project (``evo_agents.hub.problems``, ``evo_agents.hub.server.problems`` and
-``evo_agents.hub.cli_problems``), as criterion a1 of plan problem-oriented-hub names it: a problem has a statement, who
+``evo_agents.hub.cli.problem``), as criterion a1 of plan problem-oriented-hub names it: a problem has a statement, who
 is hurt, when it happens, how they cope today, a metric with no target, a rank, an owner and a status (open, solved or
 dropped, the last two with a reason); its code P-<number> is unique in the project and never given again; a writer of
 the project writes it whole as its next revision, every revision is kept and audited; a reader reads it, and a member

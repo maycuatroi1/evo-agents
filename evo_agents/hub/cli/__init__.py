@@ -1,21 +1,20 @@
-"""``evo-agents hub`` subcommands.
+"""``evo-agents hub`` subcommands: every command a class of ``evo_agents.clikit``, the whole tree one :class:`Group`.
 
-``hub serve``, ``hub worker``, ``hub migrate`` and ``hub storage`` need the hub-server extra. This module imports none
-of it when loaded, so ``evo-agents`` keeps starting on a core install; each command imports the extra when it runs and
-names the pip command when it is missing. These commands log JSON lines to stderr from their first line on: a
-configuration error is a log line naming the variable, and an unexpected exception is a log line with its
-traceback, secrets removed, rather than a bare traceback from the interpreter.
+:func:`tree` builds it: the server's commands, the client's, ``hub openapi`` and ``hub contract``, then the plugins'.
+Each module of the client is imported only when the parser is built, from the class modules of this package
+(``cli.session`` attaches login, logout, whoami, token, admin, project and registry; ``cli.agent.profiles`` agent and
+account-pool; every other group the module named for its word, such as ``cli.plan``, ``cli.canvas`` or ``cli.hook``).
+The client commands need nothing beyond the core package, so they work on a core install. The commands of plugins
+(``pm``, ``crm`` and ``marketing`` of the core plugins installed with the CLI among them) come from their manifests,
+attached last by ``cli.extensions``.
 
-The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
-``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli.agent.profiles``, ``chat`` by ``cli.chat``, ``plugin`` by
-``cli.plugin``, ``srs`` by ``cli.srs``, ``docs`` by ``cli.docs``, ``task`` by ``cli.task``, ``canvas`` by ``cli.canvas``,
-``signal`` by ``cli.signal``, ``sessions`` by ``cli.sessions``, ``email`` by ``cli.email``, ``release`` by
-``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli.intake``, ``merge`` by
-``cli.merge``, ``loop`` by ``cli.loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
-package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
-document; ``hub contract check`` does not. The commands of plugins (``pm``, ``crm`` and ``marketing`` of the core
-plugins installed with the CLI among them) come from their manifests, registered last by ``cli.extensions``.
+``hub serve``, ``hub worker``, ``hub deliver``, ``hub migrate``, ``hub plugin-host`` and ``hub storage``, written
+here, need the hub-server extra, as do ``hub openapi`` and ``hub contract print`` for the API document
+(:class:`ServerCommand`). This module imports none of it when loaded, so ``evo-agents`` keeps starting on a core
+install; each command imports the extra when it runs and names the pip command when it is missing. These commands
+log JSON lines to stderr from their first line on: a configuration error is a log line naming the variable, and an
+unexpected exception is a log line with its traceback, secrets removed, rather than a bare traceback from the
+interpreter.
 """
 
 from __future__ import annotations
@@ -453,201 +452,147 @@ SERVER = (SERVE, WORKER, DELIVER, MIGRATE, PLUGIN_HOST, STORAGE)
 OWN_COMMANDS: set[str] = set()  # the hub commands of the CLI itself, the plugins' left out (cli_plugin_commands)
 
 
-def _register_client_commands(hsub) -> None:
-    """The command groups of the client, each registered by its own module, imported only when the parser is built."""
-    _register_workspace_commands(hsub)
-    _register_steering_commands(hsub)
+class OwnCommands:
+    """A node of the tree that attaches nothing: it records the command words attached before it, the CLI's own, so
+    the plugins' commands attached after it (``cli.extensions``) leave out an id the CLI already takes."""
+
+    def attach(self, subparsers: argparse._SubParsersAction) -> None:
+        OWN_COMMANDS.clear()
+        OWN_COMMANDS.update(subparsers.choices)
 
 
-def _register_workspace_commands(hsub) -> None:
+def _workspace() -> tuple:
     """The client's groups from hub login to hub kg."""
-    from evo_agents.hub.cli.session import SESSION
-
-    SESSION.attach(hsub)  # login, logout, whoami, token, admin, project, registry
-    from evo_agents.hub.cli.plan import PLAN
-
-    PLAN.attach(hsub)
-
-    from evo_agents.hub.cli.run import RUN
-
-    RUN.attach(hsub)
-
-    from evo_agents.hub.cli.decision import DECISION
-    from evo_agents.hub.cli.notifications import NOTIFICATIONS
-
-    DECISION.attach(hsub)
-    NOTIFICATIONS.attach(hsub)
-
+    from evo_agents.hub.cli.account import ACCOUNT
     from evo_agents.hub.cli.curator import CURATOR
-
-    CURATOR.attach(hsub)
-
+    from evo_agents.hub.cli.decision import DECISION
+    from evo_agents.hub.cli.kg import KG
     from evo_agents.hub.cli.memory import MEMORY
-
-    MEMORY.attach(hsub)
-
+    from evo_agents.hub.cli.model_catalog import MODEL_CATALOG
+    from evo_agents.hub.cli.notifications import NOTIFICATIONS
+    from evo_agents.hub.cli.plan import PLAN
+    from evo_agents.hub.cli.provider_account import PROVIDER_ACCOUNT
+    from evo_agents.hub.cli.run import RUN
+    from evo_agents.hub.cli.secret import SECRET
+    from evo_agents.hub.cli.session import SESSION
     from evo_agents.hub.cli.skills import SKILLS
 
-    SKILLS.attach(hsub)
+    return (
+        SESSION,  # login, logout, whoami, token, admin, project, registry
+        PLAN,
+        RUN,
+        DECISION,
+        NOTIFICATIONS,
+        CURATOR,
+        MEMORY,
+        SKILLS,
+        SECRET,
+        ACCOUNT,
+        MODEL_CATALOG,  # the providers an account is added for
+        PROVIDER_ACCOUNT,
+        KG,
+    )
 
-    from evo_agents.hub.cli.account import ACCOUNT
-    from evo_agents.hub.cli.model_catalog import MODEL_CATALOG
-    from evo_agents.hub.cli.provider_account import PROVIDER_ACCOUNT
-    from evo_agents.hub.cli.secret import SECRET
 
-    SECRET.attach(hsub)
-    ACCOUNT.attach(hsub)
-    MODEL_CATALOG.attach(hsub)  # the providers an account is added for
-    PROVIDER_ACCOUNT.attach(hsub)
-
-    from evo_agents.hub.cli.kg import KG
-
-    KG.attach(hsub)
-    _register_team_commands(hsub)
-
-
-def _register_team_commands(hsub) -> None:
-    """The client's groups from hub mcp to hub emails."""
-    from evo_agents.hub.mcp_proxy import register_mcp
-
-    register_mcp(hsub)
-
-    # the commands of the evo-hub plugin: its hooks, and `hub send`, which the hooks start in the background
-    from evo_agents.hub.cli.send import register_send
-    from evo_agents.hub.hooks import register_hooks
-
-    register_hooks(hsub)
-    register_send(hsub)
-
+def _team() -> tuple:
+    """The client's groups from hub mcp to hub email."""
     from evo_agents.hub.cli.agent.profiles import AGENT
-
-    AGENT.attach(hsub)  # agent, then account-pool
-
-    from evo_agents.hub.cli.system import SYSTEM
-
-    SYSTEM.attach(hsub)
-
-    from evo_agents.hub.cli.cron import CRON
-
-    CRON.attach(hsub)
-
+    from evo_agents.hub.cli.canvas import CANVAS
     from evo_agents.hub.cli.chat import CHAT
-
-    CHAT.attach(hsub)
-
-    from evo_agents.hub.cli.plugin import PLUGIN
-
-    PLUGIN.attach(hsub)
-
-    from evo_agents.hub.cli.market import MARKET
-
-    MARKET.attach(hsub)
-
-    from evo_agents.hub.cli.srs import SRS
-
-    SRS.attach(hsub)
-
+    from evo_agents.hub.cli.context import CONTEXT
+    from evo_agents.hub.cli.cron import CRON
     from evo_agents.hub.cli.docs import DOCS
-
-    DOCS.attach(hsub)
-
+    from evo_agents.hub.cli.email import EMAIL
+    from evo_agents.hub.cli.hook import HOOK
+    from evo_agents.hub.cli.market import MARKET
+    from evo_agents.hub.cli.mcp import MCP
+    from evo_agents.hub.cli.plugin import PLUGIN
+    from evo_agents.hub.cli.send import SEND
+    from evo_agents.hub.cli.sessions import SESSIONS
+    from evo_agents.hub.cli.signal import SIGNAL
+    from evo_agents.hub.cli.srs import SRS
+    from evo_agents.hub.cli.system import SYSTEM
     from evo_agents.hub.cli.task import TASK
 
-    TASK.attach(hsub)
-
-    from evo_agents.hub.cli.canvas import CANVAS
-
-    CANVAS.attach(hsub)
-
-    from evo_agents.hub.cli.signal import SIGNAL
-
-    SIGNAL.attach(hsub)
-
-    from evo_agents.hub.cli.context import CONTEXT
-
-    CONTEXT.attach(hsub)
-
-    from evo_agents.hub.cli.sessions import SESSIONS
-
-    SESSIONS.attach(hsub)
-
-    from evo_agents.hub.cli.email import EMAIL
-
-    EMAIL.attach(hsub)
+    return (
+        MCP,
+        HOOK,  # the commands of the evo-hub plugin: its hooks, and `hub send`, which the hooks start in the background
+        SEND,
+        AGENT,  # agent, then account-pool
+        SYSTEM,
+        CRON,
+        CHAT,
+        PLUGIN,
+        MARKET,
+        SRS,
+        DOCS,
+        TASK,
+        CANVAS,
+        SIGNAL,
+        CONTEXT,
+        SESSIONS,
+        EMAIL,
+    )
 
 
-def _register_steering_commands(hsub) -> None:
+def _steering() -> tuple:
     """The client's groups from hub release to hub inbox."""
-    from evo_agents.hub.cli.curator.release import RELEASE
-
-    RELEASE.attach(hsub)
-
-    from evo_agents.hub.cli.policy import POLICY
-
-    POLICY.attach(hsub)
-
-    from evo_agents.hub.cli.goal import GOAL
-
-    GOAL.attach(hsub)
-
-    from evo_agents.hub.cli_problems import register_problems
-
-    register_problems(hsub)
-
-    from evo_agents.hub.cli_opportunities import register_opportunities
-
-    register_opportunities(hsub)
-
-    from evo_agents.hub.cli.intake import INTAKE
-
-    INTAKE.attach(hsub)
-
-    from evo_agents.hub.cli.merge import MERGE
-
-    MERGE.attach(hsub)
-
-    from evo_agents.hub.cli.loop import LOOP
-
-    LOOP.attach(hsub)
-
     from evo_agents.hub.cli.autonomy import AUTONOMY
-    from evo_agents.hub.cli.org import ORG
-
-    ORG.attach(hsub)
-    AUTONOMY.attach(hsub)
-
     from evo_agents.hub.cli.browser import BROWSER
-
-    BROWSER.attach(hsub)
+    from evo_agents.hub.cli.curator.release import RELEASE
+    from evo_agents.hub.cli.goal import GOAL
+    from evo_agents.hub.cli.inbox import INBOX
+    from evo_agents.hub.cli.intake import INTAKE
+    from evo_agents.hub.cli.loop import LOOP
+    from evo_agents.hub.cli.merge import MERGE
+    from evo_agents.hub.cli.opportunity import OPPORTUNITY
+    from evo_agents.hub.cli.org import ORG
+    from evo_agents.hub.cli.policy import POLICY
+    from evo_agents.hub.cli.problem import PROBLEM
+    from evo_agents.hub.cli.run_cause import RUN_CAUSE
     from evo_agents.hub.cli.stop import STOP
 
-    STOP.attach(hsub)
-    from evo_agents.hub.cli.run_cause import RUN_CAUSE
+    return (
+        RELEASE,
+        POLICY,
+        GOAL,
+        PROBLEM,
+        OPPORTUNITY,
+        INTAKE,
+        MERGE,
+        LOOP,
+        ORG,
+        AUTONOMY,
+        BROWSER,
+        STOP,
+        RUN_CAUSE,
+        INBOX,
+    )
 
-    RUN_CAUSE.attach(hsub)
-    from evo_agents.hub.cli.inbox import INBOX
 
-    INBOX.attach(hsub)
+def tree() -> Group:
+    """The whole ``hub`` command: the server's commands, the client's, then the plugins'. Each module of a group is
+    imported here, when the parser is built, so ``evo-agents`` imports none of them to start."""
+    from evo_agents.hub.cli.contract import CONTRACT
+    from evo_agents.hub.cli.extensions import EXTENSIONS
+    from evo_agents.hub.cli.openapi import OPENAPI
+
+    return Group(
+        "hub",
+        "team hub for memories, plans, skills and knowledge graphs",
+        (
+            *SERVER,
+            *_workspace(),
+            *_team(),
+            *_steering(),
+            OPENAPI,
+            CONTRACT,
+            OwnCommands(),
+            EXTENSIONS,  # last: a plugin whose id is a command of the CLI's own is left out
+        ),
+        dest="hub_command",
+    )
 
 
 def register(sub) -> None:
-    hub = sub.add_parser("hub", help="team hub for memories, plans, skills and knowledge graphs")
-    hsub = hub.add_subparsers(dest="hub_command", required=True)
-    for node in SERVER:
-        node.attach(hsub)
-
-    _register_client_commands(hsub)
-
-    from evo_agents.hub.openapi import register as register_openapi
-
-    register_openapi(hsub)
-
-    from evo_agents.hub.contract import register as register_contract
-
-    register_contract(hsub)
-    OWN_COMMANDS.clear()
-    OWN_COMMANDS.update(hsub.choices)
-
-    from evo_agents.hub.cli.extensions import EXTENSIONS
-
-    EXTENSIONS.attach(hsub)  # last: a plugin whose id is a command of the CLI's own is left out
+    tree().attach(sub)

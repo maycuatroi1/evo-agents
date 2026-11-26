@@ -1,5 +1,5 @@
 """The evidence of a problem (plan problem-intake, criterion a1; ``evo_agents.hub.problems``,
-``evo_agents.hub.server.problem_evidence`` and ``evo_agents.hub.cli_problems``): a line has the kind and address of its
+``evo_agents.hub.server.problem_evidence`` and ``evo_agents.hub.cli.problem``): a line has the kind and address of its
 source, a place in it, a speaker, an excerpt of at most 300 characters, a signal, a label (public or internal), who
 added it and who confirmed it; the hub answers 422 for a personal label and for a longer excerpt; a writer adds and
 confirms, a reader reads, an outsider gets 404; ``problem show`` counts the lines and the independent sources. @builder's

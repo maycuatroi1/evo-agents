@@ -1,4 +1,5 @@
-"""``evo-agents hub mcp``: MCP over stdio for any runtime, carried to the hub's /mcp over HTTPS.
+"""``evo-agents hub mcp`` (the command is ``evo_agents.hub.cli.mcp``): MCP over stdio for any runtime, carried to the
+hub's /mcp over HTTPS.
 
 Every runtime attaches the hub the same way, by starting this command, and the token stays in ~/.evo/hub/token: no
 configuration file of a runtime holds an Authorization header. Each line on stdin is one JSON-RPC message. It goes to
@@ -487,27 +488,3 @@ class Proxy:
         elif was is not None:
             print(f"evo-agents hub mcp: the hub at {url} answers again", file=self.err)
         self.err.flush()
-
-
-def cmd_mcp(args) -> int:
-    project = hub_project(args.project)
-    if project is None and current_run() is None:  # a run's agent gets the run's project from the hub
-        print(
-            "evo-agents hub mcp: no project for this directory: the kg_* tools need --project, the other tools "
-            "a project argument",
-            file=sys.stderr,
-        )
-    from evo_agents.hub import claude_plugins
-
-    kg = not claude_plugins.session_has(KG_PLUGIN)
-    return Proxy(project, args.sink, kg=kg).run(sys.stdin.buffer, sys.stdout.buffer)
-
-
-def register_mcp(hsub) -> None:
-    mcp = hsub.add_parser(
-        "mcp",
-        help="MCP server over stdio for any runtime, answered by the hub's /mcp with this machine's token",
-    )
-    mcp.add_argument("--project", help="project name or harness path (default: the project of the working directory)")
-    mcp.add_argument("--sink", default=AGENT_SINK, help=f"sink whose clearance applies (default: {AGENT_SINK})")
-    mcp.set_defaults(func=cmd_mcp)
