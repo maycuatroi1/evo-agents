@@ -50,7 +50,7 @@ group who linked no account of the hub (``core_plugin_api.bridge_guest``). At mo
 
 Revision 0270 gives chat_messages ``repeats_id``: for a line of the hub in a work chat that repeats a question or an
 answer an agent wrote there ("asked ... (run #N)", "answered (run #N)"), the message it repeats
-(``evo_agents.hub.server.work_chats.say``).
+(``evo_agents.hub.server.work_chats.service.say``).
 """
 
 from __future__ import annotations

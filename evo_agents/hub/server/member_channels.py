@@ -36,8 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import access, tables, telegram
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server import audit, output_notices
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.notifications import SENDING, SESSION_ENDED, Outgoing
+from evo_agents.hub.server.outputs.service import notices as output_notices
 from evo_agents.hub.server.security import WEB
 
 MAX_CONFIG_BYTES = 16 * 1024  # a channel's config, or its state, as JSON

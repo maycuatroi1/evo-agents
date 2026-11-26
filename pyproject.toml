@@ -553,6 +553,57 @@ __init__ holds the manifest alone. Other modules import the service and the mode
 of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-attachments-layers"
+name = "The files people attach to messages go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.attachments"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.attachments a route handler (routes) only passes the request's parts to a public function of \
+the service, which checks who may upload, take back or read a file and decides (uploads, content, and messages, which \
+takes the uploads a message names); the repository holds every query on attachments and run_inbox_attachments; the \
+models (route parameters, refusals, limits) import none of them. Move the code that reaches up into the layer that \
+needs it: a check or a message into the service, a query into the repository, a shape or a limit into the models. The \
+package's __init__ holds its docstring alone. Other modules import the service, the repository's reads and the \
+models, never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, \
+section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-outputs-layers"
+name = "The outputs of runs go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.outputs"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.outputs a route handler (routes) only passes the request's parts to a public function of \
+the service, which checks who may do what and decides (store records and ties outputs, views reads them, content and \
+serving answer their bytes, run_outputs lists and deletes them, notices tells a run's owner of its files and holds a \
+member's notification settings); the repository holds every query on run_outputs, run_output_links and the \
+notifications of a run's files; the models (bodies, answers, route parameters, URLs) import none of them. Move the \
+code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
+repository, a shape or a limit into the models. The package's __init__ holds its docstring alone. Other modules \
+import the service, the repository's reads and the models, never the routes. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-work-chats-layers"
+name = "The work chats of traces go from their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.work_chats"]
+layers = ["service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.work_chats the service opens a trace's work chat, hands work over in it and writes the hub's \
+lines and the copies; the repository holds every query on system_traces, chats and chat_messages the package makes; \
+the models (the trace, a hand-off, the limits) import neither. It has no routes: the chats and \
+the agents' asks reach it. Move the code that reaches up into the layer that needs it: a check or a message into the \
+service, a query into the repository, a shape or a limit into the models. The package's __init__ holds its docstring \
+alone. Other modules import the service and the models. A new module of the package goes into one of the three \
+layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

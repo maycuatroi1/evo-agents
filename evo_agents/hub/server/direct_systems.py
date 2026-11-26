@@ -20,13 +20,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, tables
-from evo_agents.hub.server import system_traces, work_chats
+from evo_agents.hub.server import system_traces
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access
 from evo_agents.hub.server.chat_direct import direct_chat
 from evo_agents.hub.server.chat_runs import Hand, hand_work
 from evo_agents.hub.server.chat_store import insert_message
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.work_chats import service as work_chats
 
 log = logging.getLogger(__name__)
 

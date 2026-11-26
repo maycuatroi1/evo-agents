@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import author, autonomy_card, curator, model_router, proofs, run_prompts, runs, tables
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import attachment_store, pool_accounts, principals, token_strategy
+from evo_agents.hub.server import pool_accounts, principals, token_strategy
 from evo_agents.hub.server.agent_packs import tickets
+from evo_agents.hub.server.attachments import repository as attachment_store
 from evo_agents.hub.server.loop.runs_of import item_of_run
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.runs.models import (

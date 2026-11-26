@@ -479,7 +479,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.state.join_limit = cache.Window(app.state.cache, "join", app.state.join_refusals)  # ...or shared on Redis
 
     from evo_agents.hub.server import (
-        attachments,
         curator,
         dlp_policy,
         doc_versions,
@@ -488,8 +487,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         member_tasks,
         notification_list,
         notifications,
-        output_content,
-        output_notices,
         overview,
         project_webhooks,
         proposal_reads,
@@ -497,10 +494,11 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         push,
         release_claims,
         releases,
-        run_outputs,
         today,
     )
+    from evo_agents.hub.server.attachments import routes as attachments
     from evo_agents.hub.server.decisions import routes as decisions
+    from evo_agents.hub.server.outputs import routes as outputs
 
     for routes in (
         kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
@@ -510,7 +508,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         local_runs.batch_router,
         notification_list.router,  # a member reads their notifications
         notifications.worker_router,
-        output_notices.router,  # the notices a member turned off
+        outputs.notice_router,  # the notices a member turned off
         push.router,  # a member's push devices (evo_agents.hub.server.push_store)
         push.config_router,  # what a client needs to subscribe, without a sign-in
         overview.router,
@@ -521,10 +519,10 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         proposal_reads.router,  # reading findings and proposals, and answering one
         releases.router,  # the daily release of a project (evo_agents.hub.releases)
         release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
-        run_outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
-        run_outputs.worker_router,
-        output_content.router,  # their bytes
-        output_content.chat_router,
+        outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
+        outputs.worker_router,
+        outputs.content_router,  # their bytes
+        outputs.chat_router,
         attachments.router,  # the files people attach to messages (evo_agents.hub.attachments)
         attachments.chat_router,
         attachments.worker_router,

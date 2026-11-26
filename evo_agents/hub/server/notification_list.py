@@ -20,10 +20,11 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import and_, exists, false, func, or_, select, update
 
 from evo_agents.hub import cache, runs, tables
-from evo_agents.hub.server import audit, ops_views, output_views
+from evo_agents.hub.server import audit, ops_views
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import Notification, notification_rows, notifications_of, shown
+from evo_agents.hub.server.outputs.service import views as output_views
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser
 

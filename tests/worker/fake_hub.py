@@ -1173,7 +1173,7 @@ class FakeHub:
         self._run(request)
         return web.json_response({"uploads": []})
 
-    # The outputs of a run, as evo_agents.hub.server.run_outputs answers them
+    # The outputs of a run, as evo_agents.hub.server.outputs answers them
 
     def run_outputs(self, run_id: int) -> list[dict]:
         return self.outputs.get(run_id, [])

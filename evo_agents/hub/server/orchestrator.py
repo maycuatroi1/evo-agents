@@ -320,7 +320,9 @@ async def open_ops(
 async def _thread_chat(conn: AsyncConnection, ask: Ask, person: Principal, lead: Profile) -> ChatAccess:
     """The chat a thread of ``ask`` opens in: the work chat of its trace (``work_chats``), else the ops chat of its
     system, which a line in the work chat names when the Orchestrator may not be in it."""
-    from evo_agents.hub.server import work_chats  # it hands work through chat_runs, as this module does
+    from evo_agents.hub.server.work_chats import (
+        service as work_chats,  # it hands work through chat_runs, as this module does
+    )
 
     trace = None
     if ask.found.trace_id is not None and ask.found.run_id is not None:
@@ -752,7 +754,9 @@ async def escalate(conn: AsyncConnection, sealer, run: AgentRun, body: EscalateI
         )
     else:
         shown = f"escalation: {refusal}"
-    from evo_agents.hub.server import work_chats  # it hands work through chat_runs, as this module does
+    from evo_agents.hub.server.work_chats import (
+        service as work_chats,  # it hands work through chat_runs, as this module does
+    )
 
     await work_chats.say(conn, run.run_id, (chat.chat_id, chat.root_id), runs.clip(shown, 4000))
     log.info(

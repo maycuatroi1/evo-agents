@@ -106,7 +106,7 @@ from evo_agents.hub.plugin_calls import core_registry, load
 from evo_agents.hub.server import audit, push_store, push_tiers
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.ops_views import OpsHolding
-from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.outputs.models import RunOutput
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, OBJECT_NAME, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run

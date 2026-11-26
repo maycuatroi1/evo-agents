@@ -61,9 +61,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.blobs import GET_TTL
-from evo_agents.hub.server import attachment_store, audit, tool_stats
+from evo_agents.hub.server import audit, tool_stats
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_account_mask import masked, run_values
+from evo_agents.hub.server.attachments.service import messages as attachment_store
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
 from evo_agents.hub.server.chat_store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response

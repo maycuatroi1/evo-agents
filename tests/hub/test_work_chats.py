@@ -26,8 +26,8 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import chats, tables
-from evo_agents.hub.server import work_chats
 from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.work_chats import service as work_chats
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_agent_delegation import KB, KB_AGENT, kb_node, kb_project
