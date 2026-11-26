@@ -1405,6 +1405,81 @@ test("the Trace groups each tool call with its result by what it did, opens a fa
   await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}$`));
 });
 
+test("plan first: the side column opens on the decision, then the plan with its current step open, and Hub access comes after Usage", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const id = "first-plan";
+  await seedPlanRunPlan(me, project);
+  const body = planRunBody(id);
+  const api = bearerClient(await machineToken(me));
+  await call(
+    api.PUT("/v1/projects/{project}/plans/{plan_id}", {
+      params: { path: { project, plan_id: id } },
+      body: {
+        body: {
+          ...body,
+          acceptance: [
+            { id: "a1", criterion: "The dialog opens", status: "met" },
+            { id: "a2", criterion: "The dialog starts the run", status: "pending" },
+          ],
+          steps: body.steps.map((step) =>
+            step.id === 2
+              ? { ...step, done_when: "A person starts a plan run from the dialog", acceptance: ["a1", "a2"] }
+              : step,
+          ),
+        },
+        area: "active",
+      },
+    }),
+  );
+  const { live, run, decision } = await planRunUnderway(me, project, uniqueName("first"), {
+    waiting: true,
+    dispatch: { plan_id: id, as_me: true },
+  });
+  await sendEvents(live, run.id, [
+    {
+      kind: "plan",
+      body: {
+        entries: [
+          { content: "Read the plan", status: "completed" },
+          { content: "Write the dialog", status: "in_progress" },
+          { content: "Run the tests", status: "pending" },
+        ],
+      },
+    },
+    { kind: "usage_update", body: { input_tokens: 41200, output_tokens: 6800 } },
+  ]);
+
+  await open(page, runPath(project, run.id));
+  const soFar = main(page).getByTestId("step-so-far");
+  await expect(soFar).toContainText("Step 2 so far");
+  await expect(soFar.getByTestId("so-far-done")).toContainText("Read the plan");
+  await expect(soFar.getByTestId("so-far-now")).toContainText("Write the dialog");
+  await expect(soFar.getByTestId("so-far-next")).toContainText("Run the tests");
+  await expect(soFar.getByTestId("so-far-line")).toContainText("the agent's checklist");
+
+  await openRunDetails(page);
+  const aside = main(page).getByTestId("run-aside");
+  const order = await aside.evaluate((node) =>
+    ["run-decisions", "run-plan-steps", "run-usage", "run-access"].map((testId) => {
+      const found = node.querySelector(`[data-testid="${testId}"]`);
+      return found ? [...node.querySelectorAll("*")].indexOf(found) : -1;
+    }),
+  );
+  expect(order.every((index) => index >= 0), `a card is missing: ${order}`).toBe(true);
+  expect(order, "decision, plan, usage, Hub access").toEqual([...order].sort((a, b) => a - b));
+  expect(decision).not.toBeNull();
+
+  const plan = aside.getByTestId("run-plan-steps");
+  await expect(plan.getByTestId("run-step-done-when")).toContainText("A person starts a plan run from the dialog");
+  await expect(plan.getByTestId("run-step-criteria-count")).toHaveText("1 of 2 criteria met");
+  await expect(plan.getByTestId("run-step-criterion")).toHaveCount(2);
+  await expect(plan.getByTestId("run-step-criterion").first()).toHaveAttribute("data-met", "true");
+});
+
 test("a plan run's trace says what the agent asked, and Answer leads to the decision's card", async ({
   page,
   member,
@@ -2000,4 +2075,201 @@ test("a local session's run page shows its machine, account, plan, step, log and
   await expect(view.getByTestId("run-local-note")).toContainText(
     "The hub only shows it",
   );
+});
+
+// The Progress view: the run step by step, from the plan and the events the page holds.
+
+const PROGRESS_START = Math.floor((Date.now() - 40 * 60_000) / 60_000) * 60_000;
+
+const progressAt = (minute: number) =>
+  new Date(PROGRESS_START + minute * 60_000).toISOString();
+
+/** A tool call or a system task event, at a minute of the run. */
+function progressEvents() {
+  const toolCall = (id: string, title: string, rawInput: Record<string, unknown>) => ({
+    kind: "tool_call",
+    body: { toolCallId: id, title, kind: "other", status: "pending", rawInput },
+  });
+  const started = (body: Record<string, unknown>) => ({
+    kind: "output",
+    body: {
+      raw: {
+        type: "system",
+        subtype: "task_started",
+        session_id: "3f2a9c1e-0000-4000-8000-000000000001",
+        ...body,
+      },
+    },
+  });
+  const at = (minute: number, event: { kind: string; body: Record<string, unknown> }) => ({
+    ...event,
+    at: progressAt(minute),
+  });
+  return [
+    at(0, say("Starting.")),
+    at(3, toolCall("toolu_agent1", "Agent", { description: "Model the run", subagent_type: "plan-step", prompt: "step: 1" })),
+    at(
+      3,
+      started({
+        task_id: "a1",
+        task_type: "local_agent",
+        description: "Model the run",
+        subagent_type: "plan-step",
+        tool_use_id: "toolu_agent1",
+        is_backgrounded: false,
+        spawn_depth: 1,
+      }),
+    ),
+    at(12, toolCall("toolu_done1", "Bash", { command: "evo-agents worker step 1 done --evidence x" })),
+    at(15, say("Working on the dialog.")),
+  ];
+}
+
+/** A plan run on step 2, whose step 1 is done and names a commit and a verify, with a diff uploaded. */
+async function progressRun(me: Member) {
+  const project = me.projects[0];
+  const id = "progress-plan";
+  await seedPlanRunPlan(me, project);
+  const body = planRunBody(id);
+  const api = bearerClient(await machineToken(me));
+  await call(
+    api.PUT("/v1/projects/{project}/plans/{plan_id}", {
+      params: { path: { project, plan_id: id } },
+      body: {
+        body: {
+          ...body,
+          steps: body.steps.map((step) =>
+            step.id === 1
+              ? {
+                  ...step,
+                  done_when: "The run model stores its steps",
+                  evidence: "api@abc1234: model added\nverify: pnpm test, exit 0, 40 passed",
+                }
+              : step,
+          ),
+        },
+        area: "active",
+      },
+    }),
+  );
+  const { live, run } = await planRunUnderway(me, project, uniqueName("progress"), {
+    dispatch: { plan_id: id, as_me: true },
+  });
+  await sendEvents(live, run.id, progressEvents());
+  await uploadDiff(live, run.id, DIFF);
+  return { project, run };
+}
+
+test("progress view: the run step by step, newest first, with its figures, evidence, trace and diff links, and the steps not started folded", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, run } = await progressRun(me);
+
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await open(page, `${runPath(project, run.id)}?view=progress`);
+  const tabs = main(page).getByTestId("run-views");
+  await expect(tabs.getByTestId("run-view-progress")).toHaveAttribute("aria-current", "page");
+  await expect(tabs.getByTestId("run-view-diff-tab")).toBeVisible();
+
+  const progress = main(page).getByTestId("progress-view");
+  await expect(progress.getByTestId("run-so-far-text")).toContainText("1 of 4 steps are done");
+  await expect(progress.getByTestId("run-so-far-text")).toContainText("Step 2");
+  await expect(progress.getByTestId("run-so-far-text")).toContainText("1 commit");
+
+  // Every step is marked on the main agent's lane over the whole run.
+  await expect(progress.getByTestId("agent-lanes-whole")).toBeVisible();
+  await expect(progress.getByTestId("lane-step").first()).toHaveAttribute("data-step", "1");
+
+  // The running step first, then the done one; the rest are folded.
+  const cards = progress.getByTestId("progress-step");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toHaveAttribute("data-step", "2");
+  await expect(cards.nth(0)).toHaveAttribute("data-status", "running");
+  await expect(cards.nth(0).getByTestId("progress-live")).toBeVisible();
+  await expect(cards.nth(0).getByTestId("step-so-far")).toBeVisible();
+
+  const done = cards.nth(1);
+  await expect(done).toHaveAttribute("data-step", "1");
+  await expect(done).toHaveAttribute("data-status", "done");
+  await expect(done.getByTestId("progress-step-time")).toBeVisible();
+  await expect(done.getByTestId("progress-agent")).toHaveText("Model the run");
+  await expect(done.getByTestId("progress-commit")).toContainText("abc1234");
+  await expect(done.getByTestId("progress-verify")).toContainText("pnpm test, exit 0, 40 passed");
+  await expect(done.getByTestId("progress-done-when")).toContainText("The run model stores its steps");
+  await expect(done.getByTestId("progress-done-when")).toHaveAttribute("data-reached", "true");
+  await expect(done.getByTestId("progress-diff")).toHaveAttribute("href", /diff/);
+  await expect(done.getByTestId("progress-trace")).toBeVisible();
+
+  const pending = progress.getByTestId("progress-pending");
+  await expect(pending.getByTestId("progress-pending-step")).toHaveCount(2);
+  await expect(pending).toContainText(PLAN_RUN_TITLES["3"]);
+
+  // The trace link leads to Live and the call that ended the step; the page keeps the URL of Live.
+  await done.getByTestId("progress-trace").click();
+  await expect(tabs.getByTestId("run-view-live")).toHaveAttribute("aria-current", "page");
+  await expect(main(page).getByTestId("progress-view")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/view=progress/);
+
+  // The running card's link goes to Live as well, and Progress comes back through its tab.
+  await tabs.getByTestId("run-view-progress").click();
+  await expect(page).toHaveURL(/view=progress/);
+  await progress.getByTestId("progress-step").first().getByTestId("progress-live").click();
+  await expect(tabs.getByTestId("run-view-live")).toHaveAttribute("aria-current", "page");
+});
+
+test("progress view on a phone: one column, no sideways scroll, 44 px targets and a message box pinned at the bottom saying who it goes to", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, run } = await progressRun(me);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await open(page, `${runPath(project, run.id)}?view=progress`);
+  const progress = main(page).getByTestId("progress-view");
+  await expect(progress.getByTestId("progress-step")).toHaveCount(2);
+
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(0);
+
+  // One column: every card is as wide as the first and none sits beside another.
+  const boxes = await progress.getByTestId("progress-step").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { left, width } = node.getBoundingClientRect();
+      return { left: Math.round(left), width: Math.round(width) };
+    }),
+  );
+  expect(new Set(boxes.map((box) => box.left)).size).toBe(1);
+  expect(new Set(boxes.map((box) => box.width)).size).toBe(1);
+
+  // Tabs and actions are 44 px.
+  for (const target of [
+    main(page).getByTestId("run-view-live"),
+    main(page).getByTestId("run-view-progress"),
+    main(page).getByTestId("run-view-diff-tab"),
+    progress.getByTestId("progress-live"),
+    progress.getByTestId("progress-trace"),
+    progress.getByTestId("progress-diff"),
+    progress.getByTestId("progress-agent").first(),
+  ]) {
+    await target.scrollIntoViewIfNeeded();
+    expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  // The box is pinned to the bottom of the window and says who the message goes to, wherever the page is scrolled.
+  const composer = progress.getByTestId("progress-composer");
+  for (const where of ["top", "bottom"] as const) {
+    await page.evaluate((to) => window.scrollTo(0, to === "top" ? 0 : document.body.scrollHeight), where);
+    await expect(composer).toBeInViewport({ ratio: 1 });
+  }
+  await expect(composer).toContainText("main agent");
+  const box = (await composer.boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(812 - 60);
 });

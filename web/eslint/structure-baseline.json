@@ -220,9 +220,6 @@
     "src/components/plans/step-detail.tsx": [
       "src/components/runs/step-runs.tsx"
     ],
-    "src/components/runs/agent-trace.tsx": [
-      "src/components/memories/markdown.tsx"
-    ],
     "src/components/runs/author-run-dialog.tsx": [
       "src/components/workers/model.ts",
       "src/components/workers/queries.ts"

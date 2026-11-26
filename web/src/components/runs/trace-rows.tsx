@@ -42,6 +42,8 @@ export type TraceContext = {
   active: boolean;
   /** The web page of the run's repo on a branch, which a step report's branch and commits link to. */
   webOfBranch?: (branch: string | null) => RepoWeb | null;
+  /** Opens a subagent's profile (agent-profile.tsx), at one of its tabs; without it a delegation has no Open button. */
+  openAgent?: (task: string) => void;
 };
 
 /** The files the hub's line at `seq` recorded that no tool call of the trace shows. */
