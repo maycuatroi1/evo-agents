@@ -85,6 +85,7 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build_queue import (  # noqa: F401 (where its callers import them, as before)
     HALTED_NOTICE,
     JOB_STATUS,
+    ORPHANED,
     REPLACED,
     STOPPED,
     QueueBusy,
