@@ -102,12 +102,12 @@ from evo_agents.hub.server import (
     runtime_figures,
     system_curation,
 )
-from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server import (
     kg_entity_map_run as entity_map_runs,
 )
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.goals import service as project_goals
+from evo_agents.hub.server.history.service import runs as history_figures
 from evo_agents.hub.server.night_duty import Duty
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -786,9 +786,10 @@ async def queue_optimize_review(conn: AsyncConnection, due, gate: Gate, optimize
 
 async def _remembered(conn: AsyncConnection, row, run_id: int, lenses: list[str]) -> tuple[dict, list]:
     """Earlier nights' findings through ``lenses`` and the playbook's lines (``run_id`` logs which), as its owner reads."""
-    from evo_agents.hub.server import earlier, history, playbook  # they read the proposals and runs of these routes
+    from evo_agents.hub.server import earlier, playbook  # they read the proposals and runs of these routes
+    from evo_agents.hub.server.history.service import readers  # it reads the proposals and runs of these routes
 
-    access = await history.owner_access(conn, row.dispatched_by, row.project_id)
+    access = await readers.owner_access(conn, row.dispatched_by, row.project_id)
     if access is None:
         return {}, []
     return await earlier.for_prompt(conn, access, lenses), await playbook.for_prompt(conn, access, lenses, run_id)
@@ -797,10 +798,11 @@ async def _remembered(conn: AsyncConnection, row, run_id: int, lenses: list[str]
 async def _assigned(conn: AsyncConnection, owner_id: int, project_id: int, night: date | None) -> list[dict]:
     """What the weekly probe report asks of the review run of ``night`` (``probe_fixes.assignments``), as its owner
     reads the probes."""
-    from evo_agents.hub.server import history, probe_fixes  # they read the proposals and runs of these routes
+    from evo_agents.hub.server import probe_fixes  # it reads the proposals and runs of these routes
+    from evo_agents.hub.server.history.service import readers  # it reads the proposals and runs of these routes
     from evo_agents.hub.server.security import MACHINE, Principal
 
-    access = await history.owner_access(conn, owner_id, project_id)
+    access = await readers.owner_access(conn, owner_id, project_id)
     if access is None:
         return []
     login = (await conn.execute(select(tables.users.c.login).where(tables.users.c.id == owner_id))).scalar_one()

@@ -73,7 +73,6 @@ from evo_agents.hub.server import (
     decision_reads,
     digests,
     evolve,
-    history_mcp,
     hub_settings,
     intake,
     kg,
@@ -94,6 +93,7 @@ from evo_agents.hub.server import (
     skills,
     tool_stats,
 )
+from evo_agents.hub.server.history import mcp as history_mcp
 from evo_agents.hub.server.mcp_gate import MAX_BODY, SESSION, McpGate, http_detail, transport_security
 from evo_agents.hub.server.mcp_run import MOUNT
 from evo_agents.hub.server.mcp_text import (

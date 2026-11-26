@@ -1,6 +1,6 @@
 """The answers of the hub's MCP tools about a project's whole history (``mcp_tools.HISTORY_READ_TOOLS``), as text a model
 reads, the numbers before the words, and as data: history_sessions, history_search and transcript_lines
-(``history_search``), history_clusters (``history``), curator_findings (``earlier``) and curator_playbook
+(``service.search``), history_clusters (``service.runs``), curator_findings (``earlier``) and curator_playbook
 (``playbook``). ``evo_agents.hub.server.mcp`` hands each call here once the caller may read the project, and puts the
 text through the envelope of ``kg serve``. What the routes refuse comes back as their HTTPException.
 """
@@ -9,12 +9,15 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from evo_agents.hub import history as history_model
 from evo_agents.hub import playbook as playbook_model
 from evo_agents.hub.mcp_tools import HISTORY_READ_NAMES
-from evo_agents.hub.server import earlier, history, history_search, playbook
+from evo_agents.hub.server import earlier, playbook
+from evo_agents.hub.server.base.errors import Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.history.service import readers, runs, search
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
 
@@ -29,7 +32,7 @@ def _day(arguments: dict, key: str) -> date | None:
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise HTTPException(422, f"{key} {value!r} is not a day: give it as YYYY-MM-DD") from None
+        raise Unprocessable(f"{key} {value!r} is not a day: give it as YYYY-MM-DD") from None
 
 
 def _when(value) -> str:
@@ -61,9 +64,9 @@ def item_line(item) -> str:
 
 
 async def _sessions(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(request.app.state.engine) as conn:
         access = await project_access(conn, user, project)
-        found = await history_search.list_history(
+        found = await search.list_history(
             conn,
             user,
             access,
@@ -102,9 +105,9 @@ def hit_line(hit) -> str:
 
 
 async def _search(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(request.app.state.engine) as conn:
         access = await project_access(conn, user, project)
-        found = await history_search.search_history(
+        found = await search.search_history(
             conn,
             user,
             access,
@@ -129,17 +132,19 @@ async def _search(request: Request, project: str, user: Principal, arguments: di
 
 
 async def _lines(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
-    found = await history_search.transcript_lines(
-        request,
-        user,
-        project,
-        arguments["session_id"],
-        line=arguments["line"],
-        file=arguments.get("file", "main"),
-        before=arguments.get("before", 10),
-        after=arguments.get("after", 10),
-        sink=sink,
-    )
+    async with UnitOfWork(request.app.state.engine) as conn:
+        found = await search.transcript_lines(
+            conn,
+            await readers.READERS.check(conn, user, project),
+            getattr(request.app.state, "blobs", None),
+            project,
+            arguments["session_id"],
+            line=arguments["line"],
+            file=arguments.get("file", "main"),
+            before=arguments.get("before", 10),
+            after=arguments.get("after", 10),
+            sink=sink,
+        )
     head = (
         f"Lines {found.first} to {found.last} of {found.lines} of transcript {found.file} of session "
         f"{found.session_id} ({found.runtime}, {found.login}), line {found.asked} marked >; {DATA_NOTE}:"
@@ -154,15 +159,15 @@ async def _lines(request: Request, project: str, user: Principal, arguments: dic
 
 async def _clusters(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
     limit = arguments.get("limit", 20)
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(request.app.state.engine) as conn:
         if arguments.get("key"):
             access = await project_access(conn, user, project)
-            found = await history_search.list_history(conn, user, access, sink, cluster=arguments["key"], limit=limit)
+            found = await search.list_history(conn, user, access, sink, cluster=arguments["key"], limit=limit)
             head = f"{len(found.items)} of {found.total} sessions and runs of cluster {arguments['key']}, the latest first:"
             data = {**found.model_dump(mode="json"), "summary": f"cluster {arguments['key']}"}
             return "\n".join([head, *(item_line(item) for item in found.items)]), data
-        access = await history.reader_access(conn, user, project, sink)  # as GET .../curator/history/clusters reads
-        kept, hidden, counted = await history.clusters_of(conn, access.project_id)
+        access = await readers.history_access(conn, user, project, sink)  # as GET .../curator/history/clusters reads
+        kept, hidden, counted = await runs.clusters_of(conn, access.project_id)
     lines = [
         f"{len(kept)} clusters of {history_model.MIN_CLUSTER_SESSIONS} sessions or more in project {project}, the "
         f"most sessions first (counted {_when(counted)}; {hidden} smaller left out):"
@@ -188,7 +193,7 @@ def finding_line(item) -> str:
 
 
 async def _findings(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(request.app.state.engine) as conn:
         found = await earlier.earlier_view(
             conn,
             user,
@@ -211,7 +216,7 @@ async def _findings(request: Request, project: str, user: Principal, arguments: 
 
 
 async def _playbook(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(request.app.state.engine) as conn:
         found = await playbook.playbook_view(
             conn, user, project, sink, lens=arguments.get("lens"), retired=arguments.get("retired", False)
         )

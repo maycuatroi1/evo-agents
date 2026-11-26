@@ -17,7 +17,7 @@ for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). 
 put its agent's reaction on the message that started it (``chat_runs.chat_run_moved``). A judge run writes no step
 either: its end moves its change of the Curator on, and a failure sends the notice ``run_failed``
 (``change_shift.judge_ended``); a replay run writes none either: its end moves its replay on, and a failure sends the
-notice ``run_failed`` (``replays.replay_ended``), as does a history run's (``history.history_ended``); a release run
+notice ``run_failed`` (``replays.replay_ended``), as does a history run's (``history.service.runs.history_ended``); a release run
 writes none either: one that fails stops its release cycle, and one done with its branch waits for the hub to land it
 (``release_claims.release_run_moved``); and a plan run of a plan the Curator made moves its change on as it ends
 (``change_shift.builder_ended``). Its moves write no step, except that a plan run that ends ``failed`` or
@@ -605,7 +605,9 @@ async def record_move(
         await evolve_runs.evolve_ended(conn, found, new, reason=reason)
         return None
     if found.kind == "history":  # it writes no step: its facets reach the hub through its own routes
-        from evo_agents.hub.server import history  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.history.service import (
+            runs as history,
+        )  # it reads runs through the routes that import this module
 
         await history.history_ended(conn, found, new, reason=reason)
         return None

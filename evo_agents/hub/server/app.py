@@ -549,8 +549,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         digests,
         earlier,
         evolve,
-        history,
-        history_search,
         kg_health,
         ledger,
         merged_work,
@@ -566,6 +564,7 @@ def _include_curator_routes(app: FastAPI) -> None:
         worker_doctor,
         worker_shares,
     )
+    from evo_agents.hub.server.history import routes as history_routes
 
     for routes in (
         change_routes.router,
@@ -579,9 +578,9 @@ def _include_curator_routes(app: FastAPI) -> None:
         kg_health.router,
         replays.router,
         replays.worker_router,
-        history.router,
-        history.worker_router,
-        history_search.router,
+        history_routes.router,
+        history_routes.worker_router,
+        history_routes.search_router,
         earlier.router,
         playbook.router,
         playbook.worker_router,
