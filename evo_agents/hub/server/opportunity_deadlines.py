@@ -160,8 +160,8 @@ async def remind(engine: AsyncEngine, *, today: date | None = None) -> dict:
 
 
 def closing_filter(query, days: int):
-    """``query`` (an opportunity at its revision, ``server.opportunities._select``) narrowed to the open ones whose
-    window ends within ``days`` days of today, ordered nearest end first."""
+    """``query`` (an opportunity at its revision, ``server.opportunities.repository._select``) narrowed to the open
+    ones whose window ends within ``days`` days of today, ordered nearest end first."""
     r = tables.opportunity_revisions
     until = today_utc() + timedelta(days=days)
     return query.where(r.c.status == opportunities.OPEN, r.c.window_until.is_not(None), r.c.window_until <= until)

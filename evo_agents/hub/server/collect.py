@@ -102,12 +102,12 @@ from evo_agents.hub.server import (
     runtime_figures,
     system_curation,
 )
-from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server import (
     kg_entity_map_run as entity_map_runs,
 )
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
+from evo_agents.hub.server.goals import service as project_goals
 from evo_agents.hub.server.night_duty import Duty
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event

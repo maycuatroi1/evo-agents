@@ -10,9 +10,9 @@ it rests on simulated users (``synthetic``) and its provenance. A writer accepts
 writer's own (kind ``proposal``; the proposal names the claim and the rev), or rejects it, with why; a writer rejects
 open proposals of a canvas together too, with one reason for all (``reject_many``). Once its claim changes, an open
 proposal goes stale (``writes.write_rev``) and is accepted no more; so do the open proposals the Loop's brainstorm of a
-goal made once that goal's statement or metric changes (``stale_for_goal``, from ``server.goals.write``): they were
-brainstormed for a goal that is no more. The caller holds the transaction and the lock of the canvas and has checked
-the role; a refusal raises CanvasError and the transaction writes nothing.
+goal made once that goal's statement or metric changes (``stale_for_goal``, from ``server.goals.service.write``): they
+were brainstormed for a goal that is no more. The caller holds the transaction and the lock of the canvas and has
+checked the role; a refusal raises CanvasError and the transaction writes nothing.
 """
 
 from __future__ import annotations

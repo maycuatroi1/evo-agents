@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import opportunities as model
 from evo_agents.hub import problems
-from evo_agents.hub.server import opportunities, opportunity_evidence
+from evo_agents.hub.server import opportunity_evidence
 from evo_agents.hub.server.mcp_text import EXCERPT, one_line
+from evo_agents.hub.server.opportunities import service as opportunities
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 

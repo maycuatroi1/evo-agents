@@ -87,7 +87,6 @@ from evo_agents.hub.server import (
     plugin_tools,
     probe_report,
     problem_evidence,
-    problems,
     projects,
     proposals,
     replays,
@@ -113,6 +112,7 @@ from evo_agents.hub.server.mcp_text import (
     problem_line,
     problem_lines,
 )
+from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
     LOGIN_HINT,

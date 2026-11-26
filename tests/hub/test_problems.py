@@ -105,7 +105,7 @@ def test_problem_set_names_what_a_new_problem_lacks_before_asking_the_hub(monkey
 if pg.DSN:
     from sqlalchemy import func, select
 
-    from evo_agents.hub.server import problems as problem_routes
+    from evo_agents.hub.server.problems import service as problem_routes
     from evo_agents.hub.server.projects import ProjectAccess
     from evo_agents.hub.server.security import Principal, RunScope
     from tests.hub.test_autonomy_policy import GRANTS, _registered, hub  # noqa: F401 (hub is a fixture)

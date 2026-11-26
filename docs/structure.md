@@ -52,6 +52,9 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
 | `hub-server-not-cli` | `evo_agents.hub.server` does not import `evo_agents.hub.cli`, directly or through another module: a command imports what it shares with the server from a module outside the CLI | none |
 | `hub-runs-layers` | in `evo_agents.hub.server.runs`, `routes` imports `service` and `models`, `service` imports `models`, never the reverse; every module of the package is in one of the three | none |
+| `hub-goals-layers` | in `evo_agents.hub.server.goals`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-problems-layers` | in `evo_agents.hub.server.problems`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
+| `hub-opportunities-layers` | in `evo_agents.hub.server.opportunities`, `routes` imports `service`, `service` imports `repository`, and each imports the layers below it, never the reverse; every module of the package is in one of the four | none |
 
 Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `plugins`, `schema`. import-linter reads imports inside
 functions too, so a lazy import does not get around a contract. To fix a broken one, move the shared code down into
@@ -223,3 +226,21 @@ with `/v1/` anywhere else but `evo_agents/core_plugins`.
 A new route of the hub gets its path here: a resource class for a collection a module asks, or a constant of
 `paths.py` for a route several modules ask once.
 
+
+## Hub server base
+
+`evo_agents.hub.server.base` holds what each package of the hub's routes builds on. A package such as `goals`,
+`problems` or `opportunities` keeps four layers: `routes` (the FastAPI handlers, which only call the service),
+`service` (the rules and the messages), `repository` (the queries) and `models` (the bodies), each importing only the
+layers below it.
+
+| Class | Pattern | What it does |
+| --- | --- | --- |
+| `ProjectScope` (`base/scope.py`) | Dependency | A route's `Depends`: checks the caller has the role (`reader`, `writer` or `admin`) on the project, 403 otherwise, and yields a `Scope` (connection, caller, access, `auditor`) inside one `UnitOfWork`. `check` does the same for a caller that holds its own connection. |
+| `UnitOfWork` (`base/unit_of_work.py`) | Unit of Work | One transaction of the engine: it commits when the block ends and rolls back on a refusal. |
+| `Auditor` (`base/auditor.py`) | | Writes an audit row for the project and the caller: `record(action, target)`. |
+| `DomainError`, `NotFound`, `Conflict`, `Forbidden`, `Unprocessable` (`base/errors.py`) | | A refusal of a domain with its status; the handler of `errors.py` answers it as an `ErrorBody` with the same message. They subclass `HTTPException`, so a caller that catches that still catches them. |
+| `StrictModel` (`base/models.py`) | | A body that refuses a field it does not name (`extra="forbid"`). |
+| `RevisionedStore` (`base/revisions.py`) | Template Method | A record kept as revisions: `revise` locks the project's records, answers 409 for a stale `if_revision`, takes the number of a new record, writes nothing when the values are those held, and otherwise writes the next revision. A subclass names its tables and codes and reads its records (`GoalStore`, `ProblemStore`, `OpportunityStore`). |
+
+A new package of routes takes the same four layers, with a layers contract in `pyproject.toml`.

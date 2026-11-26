@@ -36,9 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import opportunities, problems, tables
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import opportunities as project_opportunities
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.opportunities import service as project_opportunities
 from evo_agents.hub.server.problem_evidence import ProblemEvidenceWrite
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -266,7 +266,7 @@ async def add_evidence(
     more than 300 characters, 409 for a line the opportunity has already."""
     async with request.app.state.engine.begin() as conn:
         access = await project_opportunities.writer(conn, user, project)
-        await project_opportunities._lock(conn, access.project_id)
+        await project_opportunities.lock(conn, access.project_id)
         held = await project_opportunities.one(conn, access, ref)
         try:
             (code,) = await add_lines(conn, user, access, held.id, [body])
@@ -293,7 +293,7 @@ async def confirm_evidence(
     number = int(code[2:])
     async with request.app.state.engine.begin() as conn:
         access = await project_opportunities.writer(conn, user, project)
-        await project_opportunities._lock(conn, access.project_id)
+        await project_opportunities.lock(conn, access.project_id)
         held = await project_opportunities.one(conn, access, ref)
         row = (await conn.execute(_select().where(e.c.opportunity_id == held.id, e.c.number == number))).first()
         if row is None:
