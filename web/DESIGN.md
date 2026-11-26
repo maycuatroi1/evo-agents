@@ -1713,22 +1713,29 @@ Shared pieces built on them:
   Details, Usage and Hub access. The step in progress is open under its row on its `done_when` and the criteria its
   `acceptance` names (looked up in the plan's `acceptance`), "1 of 3 criteria met", each with a check or an empty circle
   and an sr-only "Met" or "Not yet".
-- Running now (`run-tasks-panel.tsx`, `run-tasks.ts`, `run-task-board.ts`): over the Trace, and on a phone between
-  the decision and the trace's preview, a box on `card` lists what the run has going besides its main thread, read
-  from the task events Claude Code sends and the worker logs as `output` events (`task_started`, `task_progress`,
-  `task_updated`, `task_notification`), in two lists apart. Sub-agents: each subagent with its type in mono, "in the
-  background" when it is, what it does now (its last call, `Bash: Wait for verify run`) and its tool calls and tokens
-  so far, the commands it runs indented under it; its row opens its profile. Background commands: the main agent's
-  commands in the background, each named by rule G1 (the command itself in mono, its setup `cd x &&` and wrappers
-  off, a command that is only setup kept whole) with its description under it; its row shows the call that started it
-  in the Trace (Show in trace, `ListTree` under the pointer). Each row has its 16 px icon (`Bot`, `SquareTerminal`)
-  in `running` and its time so far on the right in `running` mono; the head carries the live dot, "Running now" and
-  how many sub-agents and commands run. The ones that ended fold under "5 finished", in the same two lists, each with
-  its end (`CircleCheck` `success`, `CircleX` `danger`, `CircleSlash` muted), the first line of what it reported and
-  its duration, eight shown before "Show all". A command the main agent runs in the foreground is left out (the Trace
-  shows it running), and so is a subagent's command once it ended. The box shows only while something runs on a
-  running run; Codex and opencode send no task events, so their runs never show it. Past 40 % of the window its list
-  scrolls.
+- Agents (`agent-lanes.tsx`, `agent-lanes-model.ts`; `run-tasks.ts` reads the tasks): over the Trace, and on a phone
+  between the decision and the trace's preview, a box on `card` with one lane per agent on one shared time axis, built
+  from the events and task events the page already has (no API of its own): the main agent, each sub-agent (newest
+  first) and one lane for the background commands. The head is the 14 px "Agents" title that folds the box and a
+  two-button range switch, "This step" and "Whole run" (`aria-pressed`, `foreground` fill when on, 44 px on a phone):
+  "This step" starts after the last `worker step <id> done` the main agent ran, "Whole run" at the run's first event;
+  the axis ends at now while the run works, and its two times sit under the lanes. A lane has the avatar on the left
+  (a 32 px `muted` circle with a 16 px `Brain`, `Bot` or `SquareTerminal`), the name (14 px, `foreground`, a
+  sub-agent's type in mono and "in the background" after it), its status (12 px `muted-foreground`, with the figures
+  of a sub-agent: tool calls and tokens; `CircleCheck`, `CircleX` and `CircleSlash` mark the ones that ended, never
+  color alone) and what it does now (12 px `fg-subtle`; mono for a running sub-agent's last call and a command, which
+  is named by rule G1). On the right the track is a 24 px bar on `muted`: a stretch of work is a solid segment
+  (`running` while it goes on, `fg-subtle` or `muted-foreground` once it ended, `danger` when it failed), and the main
+  agent's time waiting on a sub-agent it did not send to the background is a dashed, empty segment (so it differs by
+  shape, not color); a filled `brand` diamond marks where the main agent handed work over and a hollow one where the
+  sub-agent's report came back (a title each, and the track's `aria-label` sums the work and the wait). A key between the two times of the
+  axis names the four. Picking a lane opens its agent: the main agent's, its trace; a sub-agent's, its profile on the
+  Trace tab (below); the commands', the call of the newest one in the trace (Show in trace). The box shows whenever the
+  run has a sub-agent or a background command, running or not; a run with many sub-agents does not grow the page: past
+  three that ended they fold under one line ("6 finished sub-agents", `aria-expanded`), and the list scrolls past 30 %
+  of the window. The one moving thing on the page stays the StatusBadge dot: the lanes have no pulse, a running stretch
+  is drawn in `running` and its end moves with the clock. Under 768 px a lane is a 64 px row, the track under its text
+  at 20 px. Codex and opencode send no task events and start no sub-agent, so their runs never show it.
 - The main agent's trace holds only the main agent's work: an event whose body carries `_meta.parentToolCallId` is a
   subagent's and shows in that subagent's profile; an event without it stays as before. Where the main agent hands
   work to subagents (`Agent`, `Task` before, calls one after the other), the trace shows one delegation card
