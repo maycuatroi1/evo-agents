@@ -41,19 +41,22 @@ from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, select, update
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import evolve, kg_named_graphs, profiles, review, system_context, system_spec, tables
+from evo_agents.hub import evolve, kg_named_graphs, profiles, review, system_context, system_spec
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.kg_decisions import MAX_REASON_CHARS, MAX_REF_CHARS
 from evo_agents.hub.runs import clip
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.agent_profiles import AgentAxis, new_version
+from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.repository import curation as rows
 from evo_agents.hub.server.systems.repository import store as system_store
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.kg.schema import known_relations
@@ -69,8 +72,8 @@ WHERE = "the system change"
 Ref = str
 
 
-def _refused(why: str) -> HTTPException:
-    return HTTPException(422, f"{WHERE}: {why}")
+def _refused(why: str) -> Unprocessable:
+    return Unprocessable(f"{WHERE}: {why}")
 
 
 class DecisionIn(BaseModel):
@@ -131,9 +134,7 @@ class SystemChangeIn(BaseModel):
 
 async def span_system(conn: AsyncConnection, project_id: int, span_id: int) -> str | None:
     """The slug of the system whose trace holds span ``span_id``, when that trace is of project ``project_id``."""
-    s, t = tables.system_spans, tables.system_traces
-    query = select(t.c.system_slug).join_from(s, t, t.c.id == s.c.trace_id)
-    return await conn.scalar(query.where(s.c.id == span_id, t.c.project_id == project_id))
+    return await rows.span_system(conn, project_id, span_id)
 
 
 # Recording
@@ -225,17 +226,15 @@ async def _apply_agent(conn: AsyncConnection, access: ProjectAccess, user: Princ
     handle = change["profile"]
     profile = await by_handle(conn, handle, lock=True)
     if profile is None or profile.project_id != access.project_id or profile.deleted_at is not None:
-        raise HTTPException(409, f"@{handle} is no live agent of project {access.name} now: nothing was written")
+        raise Conflict(f"@{handle} is no live agent of project {access.name} now: nothing was written")
     if profile.version != change["base_version"]:
-        raise HTTPException(
-            409,
+        raise Conflict(
             f"@{handle} is at version {profile.version}, not {change['base_version']} as when the proposal was made: "
             "nothing was written",
         )
     held = await system_store.one(conn, access.project_id, change["system"], lock=True)
     if held is None or _optimized(held.spec, change["node"]) is None:
-        raise HTTPException(
-            409,
+        raise Conflict(
             f"no optimizes edge of system {change['system']} reaches node {change['node']} now: nothing was written",
         )
     changes: dict = {}
@@ -245,7 +244,7 @@ async def _apply_agent(conn: AsyncConnection, access: ProjectAccess, user: Princ
     if permissions != profile.permissions:
         changes["permissions"] = permissions
     if not changes:
-        raise HTTPException(409, f"@{handle} has what the proposal asks already: nothing was written")
+        raise Conflict(f"@{handle} has what the proposal asks already: nothing was written")
     version = await new_version(conn, profile, changes, user.user_id)
     target = f"{access.name}/@{handle} v{version} fields={','.join(sorted(changes))}"
     await _audit(conn, access, user, audit.AGENT_UPDATE, target)
@@ -262,37 +261,20 @@ async def _apply_agent(conn: AsyncConnection, access: ProjectAccess, user: Princ
 
 async def _decide(conn: AsyncConnection, access: ProjectAccess, user: Principal, decision: dict, run_id: int) -> int:
     """Take ``decision`` on the project's graph, active at once, as the review run ``run_id`` asked; its number."""
-    d, e, p = tables.kg_decisions, tables.kg_decision_events, tables.projects
-    await conn.execute(select(p.c.id).where(p.c.id == access.project_id).with_for_update())
+    await rows.lock_project(conn, access.project_id)
     if decision["kind"] == "link":
-        ontology = await conn.scalar(
-            select(tables.kg_configs.c.ontology).where(tables.kg_configs.c.project_id == access.project_id)
-        )
+        ontology = await rows.ontology(conn, access.project_id)
         if decision["rel"] not in known_relations(ontology):
-            raise HTTPException(409, f"the ontology of project {access.name} has no relation {decision['rel']}")
+            raise Conflict(f"the ontology of project {access.name} has no relation {decision['rel']}")
     subject = {key: decision.get(key) for key in ("kind", "src", "rel", "dst")}
-    same = [d.c[key].is_not_distinct_from(value) for key, value in subject.items()]
-    taken = await conn.scalar(
-        select(d.c.number).where(d.c.project_id == access.project_id, d.c.state.in_(("proposed", "active")), *same)
-    )
+    taken = await rows.same_decision(conn, access.project_id, subject)
     if taken is not None:
-        raise HTTPException(409, f"decision {taken} of project {access.name} already says that: nothing was written")
-    rev = (
-        await conn.execute(select(func.coalesce(func.max(e.c.rev), 0)).where(e.c.project_id == access.project_id))
-    ).scalar_one()
-    number = (
-        await conn.execute(
-            select(func.coalesce(func.max(d.c.number), 0) + 1).where(d.c.project_id == access.project_id)
-        )
-    ).scalar_one()
-    values = {"project_id": access.project_id, "number": number, "state": "active", **subject}
-    decision_id = (await conn.execute(d.insert().values(**values).returning(d.c.id))).scalar_one()
-    event = {"project_id": access.project_id, "rev": rev + 1, "decision_id": decision_id, "action": "decide"}
+        raise Conflict(f"decision {taken} of project {access.name} already says that: nothing was written")
     reason = decision["reason"][:MAX_REASON_CHARS]
-    await conn.execute(e.insert().values(**event, actor_id=user.user_id, reason=reason, origin=ORIGIN, run_id=run_id))
+    number = await rows.add_decision(conn, access.project_id, subject, user.user_id, reason, ORIGIN, run_id)
     target = f"{access.name} decision={number} action=decide origin={ORIGIN} run={run_id}"
     await _audit(conn, access, user, audit.KG_DECISION, target)
-    return int(number)
+    return number
 
 
 async def _apply_kg(conn: AsyncConnection, access: ProjectAccess, user: Principal, change: dict, run_id: int) -> dict:
@@ -308,7 +290,7 @@ async def _apply_kg(conn: AsyncConnection, access: ProjectAccess, user: Principa
                 user_id=user.user_id,
             )
         except (kg_named_graphs.NoSuchGraph, kg_named_graphs.GraphError) as exc:
-            raise HTTPException(409, f"graph {change['graph']}: {exc}; nothing was written") from None
+            raise Conflict(f"graph {change['graph']}: {exc}; nothing was written") from None
         target = f"{access.name} graph={graph.name} kind=update sources={len(graph.sources)}"
         await _audit(conn, access, user, audit.KG_GRAPH, target)
         made["sources"] = graph.sources
@@ -328,20 +310,12 @@ async def apply(
     else:
         made = await _apply_kg(conn, access, user, change, run_id)
     stored = {**change, "applied": made}
-    p = tables.proposals
-    await conn.execute(update(p).values(system_change=stored).where(p.c.id == proposal_id))
+    await rows.keep_change(conn, proposal_id, stored)
     return stored
 
 
 async def _audit(conn: AsyncConnection, access: ProjectAccess, user: Principal, action: str, target: str) -> None:
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=action,
-        target=target,
-        project_id=access.project_id,
-    )
+    await Auditor.of(conn, user, access).record(action, target)
 
 
 # The evolution of an agent's configuration (evo_agents.hub.server.evolve)
@@ -351,8 +325,7 @@ async def evolve_target(conn: AsyncConnection, project_id: int, system_id: int, 
     """(the target, the profile) of an evolution of ``agent`` (a node's id or its profile's handle) of agent system
     ``system_id``: the system's slug, the node and the profile's handle; 422 when an optimizes edge of the system
     reaches no such agent, or its profile is no live agent of the project but its default."""
-    s = tables.agent_systems
-    slug = await conn.scalar(select(s.c.slug).where(s.c.id == system_id, s.c.project_id == project_id))
+    slug = await rows.system_slug(conn, project_id, system_id)
     held = None if slug is None else await system_store.one(conn, project_id, slug)
     if held is None:
         raise _refused(f"the project has no agent system #{system_id}")
@@ -405,7 +378,7 @@ def _evolved_change(target: dict, profile, held, components: dict) -> dict:
         try:
             axis = AgentAxis.model_validate(json.loads(components["skill"]))
         except ValueError as exc:
-            raise HTTPException(409, f"the best candidate's skill axis is not one: {exc}") from None
+            raise Conflict(f"the best candidate's skill axis is not one: {exc}") from None
         change["skill"] = axis.model_dump(exclude_defaults=False)
     node = _optimized(held.spec, target["node"]) or {}
     change["pinned"] = node.get("version")
@@ -452,11 +425,7 @@ async def new_traces(conn: AsyncConnection, project_id: int, since: datetime) ->
     slugs = [held.slug for held in await _optimizing(conn, project_id)]
     if not slugs:
         return 0
-    t = tables.system_traces
-    query = select(func.count()).where(
-        t.c.project_id == project_id, t.c.system_slug.in_(slugs), t.c.started_at >= since
-    )
-    return int(await conn.scalar(query) or 0)
+    return await rows.traces_since(conn, project_id, slugs, since)
 
 
 async def _optimizing(conn: AsyncConnection, project_id: int) -> list[system_store.System]:
@@ -477,12 +446,8 @@ async def with_lens(
     slugs = [held.slug for held in await _optimizing(conn, project_id)]
     if not slugs:
         return list(lenses)
-    t = tables.system_traces
     since, _ = _window(charter, figures)
-    traced = await conn.scalar(
-        select(t.c.id).where(t.c.project_id == project_id, t.c.system_slug.in_(slugs), t.c.last_at >= since).limit(1)
-    )
-    return [*lenses, LENS] if traced is not None else list(lenses)
+    return [*lenses, LENS] if await rows.traced(conn, project_id, slugs, since) else list(lenses)
 
 
 def _ids(ids: list[int]) -> str:
@@ -519,15 +484,7 @@ def _kg_line(node: dict, spans: list) -> str:
 async def _system_lines(
     conn: AsyncConnection, project_id: int, held: system_store.System, since, window: str
 ) -> list[str]:
-    s, t = tables.system_spans, tables.system_traces
-    query = (
-        select(s.c.id, s.c.name, s.c.tool, s.c.node, s.c.from_node, s.c.to_node, s.c.status, s.c.off_design)
-        .add_columns(s.c.attributes, s.c.run_id)
-        .join_from(s, t, t.c.id == s.c.trace_id)
-        .where(t.c.project_id == project_id, t.c.system_slug == held.slug, s.c.started_at >= since)
-        .order_by(s.c.id.desc())
-    )
-    spans = list(await conn.execute(query))
+    spans = await rows.spans(conn, project_id, held.slug, since)
     by_node: dict[str, list] = defaultdict(list)
     for span in spans:
         by_node[span.node or ""].append(span)

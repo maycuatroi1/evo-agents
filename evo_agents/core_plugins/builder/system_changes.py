@@ -34,7 +34,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.agent_profiles import AgentCreate, create_profile
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.systems.repository import store as system_store
-from evo_agents.hub.server.systems.routes import systems as agent_systems
+from evo_agents.hub.server.systems.service import systems as agent_systems
 
 SET_KEYS = ("spec", "agents", "graphs")
 AGENT_KEYS = ("handle", "name", "description", "instructions", "runs_on")

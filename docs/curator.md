@@ -522,7 +522,7 @@ The Loop's own numbers (work items by state and by goal) join the figure once th
 
 ### The lens agent_system
 
-The lens `agent_system` (plan multi-agent-systems, criterion a8; `evo_agents/hub/server/system_curation.py`, migration
+The lens `agent_system` (plan multi-agent-systems, criterion a8; `evo_agents/hub/server/systems/service/curation.py`, migration
 0220) tunes what the curator node of an agent system optimizes (`docs/hub.md`, "Agent systems"). It takes no turn on
 a night: it is on demand (`review.ON_DEMAND_LENSES`), and the night's review run adds it when a system of the project
 has an `optimizes` edge and a trace in the window of the night's figures (`review.days` of the charter, or since

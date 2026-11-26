@@ -91,7 +91,7 @@ if pg.DSN:
 
     from evo_agents.hub import system_spec, tables
     from evo_agents.hub.cli.system import SystemMetrics
-    from evo_agents.hub.server.systems.routes import traces as system_trace_views
+    from evo_agents.hub.server.systems.models import traces as trace_models
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401
         OTHER,
@@ -236,7 +236,7 @@ if pg.DSN:
         assert theirs["summary"]["traces"] == 1
 
         # a window that holds more traces than are read keeps the newest
-        monkeypatch.setattr(system_trace_views, "MAX_WINDOW_TRACES", 1)
+        monkeypatch.setattr(trace_models, "MAX_WINDOW_TRACES", 1)
         cut = spread(client, hub["owner"])
         assert cut["truncated"] is True and [trace["id"] for trace in cut["traces"]] == [second]
         monkeypatch.undo()

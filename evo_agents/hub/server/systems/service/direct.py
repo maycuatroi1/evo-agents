@@ -16,10 +16,9 @@ import logging
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
+from evo_agents.hub import chats
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import Hand
 from evo_agents.hub.server.chats.service.access import chat_access
@@ -28,6 +27,7 @@ from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import hand_work
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.repository import direct as rows
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 
@@ -75,8 +75,7 @@ async def _system_of(conn: AsyncConnection, profile_id: int) -> tuple[system_tra
     held = await system_traces.system_for(conn, profile.project_id, profile.id, profile.handle, None)
     if held is None or held.id is None:
         return None
-    s = tables.agent_systems
-    entry_id = (await conn.execute(select(s.c.entry_profile_id).where(s.c.id == held.id))).scalar_one()
+    entry_id = await rows.entry_profile(conn, held.id)
     entry = None if entry_id is None else await by_id(conn, entry_id)
     if entry is None or entry.deleted_at is not None:
         return None
@@ -88,9 +87,7 @@ async def _place(
 ) -> tuple[ChatAccess, int, int]:
     """(the chat, message and thread root the entry agent takes the work in): the message itself when the direct chat
     is the entry agent's, else the person's words in their direct chat with it, outside a thread."""
-    c = tables.chats
-    query = select(c.c.direct_profile_id).where(c.c.id == message.chat.chat_id)
-    if (await conn.execute(query)).scalar_one() == entry.id:
+    if await rows.direct_profile(conn, message.chat.chat_id) == entry.id:
         return message.chat, message.message_id, message.root_id
     chat_id, _ = await direct_chat(conn, user, entry.handle)
     place = await chat_access(conn, user, chat_id)
@@ -116,8 +113,7 @@ async def _to_entry(
             await insert_message(
                 conn, board, message.body, thread_root_id=None, author_user_id=user.user_id, copied_from_id=at
             )
-            c = tables.chats
-            title = (await conn.execute(select(c.c.title).where(c.c.id == work))).scalar_one()
+            title = await rows.chat_title(conn, work)
     except HTTPException as exc:
         run_id, why = None, str(exc.detail)
     if run_id is None:

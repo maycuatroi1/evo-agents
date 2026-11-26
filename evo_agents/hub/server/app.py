@@ -678,7 +678,7 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
-    from evo_agents.hub.server.orchestrator.service import actions as orchestrator_actions
+    from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
@@ -744,7 +744,7 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_reads.worker_router,  # and reads another project's knowledge graph and memories
         chat_read.worker_router,
         triage_actions.worker_router,
-        orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
+        orchestrator_routes.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
         ops_actions.worker_router,  # and the Orchestrator of a default system in its ops threads
         work_cards.worker_router,  # the entry agent of a system sets the work of its trace
         curator_thread_routes.worker_router,  # the agent of a proposal's thread answers it

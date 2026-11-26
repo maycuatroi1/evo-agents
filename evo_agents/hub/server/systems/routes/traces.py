@@ -14,57 +14,44 @@
 - GET .../systems/{slug}/traces/stream: server-sent ``trace`` events (a ``TraceSummary``) each time a trace of the
   system moves, built on the process's one LISTEN (``system_traces.CHANNEL``); a ``: ping`` keeps it open.
 
-A trace follows its chat's audience: a member of the system's project reads a trace whose chat they are in (and whose
-label they clear), or one with no chat left. A span of a run in another project shows its content (its reason, its
-message and the attributes the hub adds) only to a member with a grant on that project; the others see that it ran,
-on which node, and its numbers. Content stays where it is: a span names its message and run, which their own routes
-show.
+Each route opens the transaction and hands the request to ``service.views``, which says who reads which trace.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterable
-from datetime import datetime, timedelta
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import system_context, system_spec, tables
-from evo_agents.hub.server import (
-    agent_tasking,
-    route_autonomy,
-    work_observe,
-    work_status,
-)
+from evo_agents.hub.server import route_autonomy, work_observe
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
-from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.security import CurrentUser, Principal, still_live
-from evo_agents.hub.server.systems.repository import stats as system_trace_stats
+from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.systems.models.systems import Slug
+from evo_agents.hub.server.systems.models.traces import (
+    MAX_DAYS,
+    MAX_HOURS,
+    MAX_TRACES,
+    READ_REFUSALS,
+    Metrics,
+    TraceDistribution,
+    TraceId,
+    TraceSummary,
+)
 from evo_agents.hub.server.systems.service import traces as system_traces
-from evo_agents.hub.server.work_status_models import WorkBrief, WorkStatus, WorkWaiting
+from evo_agents.hub.server.systems.service import views as service
+from evo_agents.hub.server.systems.service.views import TraceOut
 
 log = logging.getLogger(__name__)
 
-MAX_TRACES = 200  # traces a list or the metrics read at most
-MAX_WINDOW_TRACES = 2000  # traces the spread of a window reads at most, the newest first
-MAX_DAYS = 365
-MAX_HOURS = 24 * 30
 STREAM_POLL_SECONDS = 5.0
-SHOWN_ATTRIBUTES = ("gen_ai.",)  # the attributes a reader without a grant on a span's project still sees
-
-Slug = Annotated[str, Path(min_length=1, max_length=63, pattern=system_spec.SLUG_PATTERN)]
-TraceId = Annotated[int, Path(ge=1, le=MAX_ID)]
-READ_REFUSALS: dict[int | str, dict[str, Any]] = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 router = APIRouter(
     prefix="/v1/projects", tags=["systems"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}
@@ -84,329 +71,7 @@ class TraceStreams(RunStreams):
         super().__init__(listener, system_traces.CHANNEL)
 
 
-class SpanOut(BaseModel):
-    id: int
-    parent_id: int | None = Field(description="the span it runs under; null for the first span of the trace")
-    name: str = Field(
-        description="invoke_agent (a turn of an agent) or execute_tool (an ask, a mention, a forward, a kg query)"
-    )
-    tool: str | None = Field(
-        description="the tool of an execute_tool span: agent_ask, chat_mention, agent_forward, kg_*"
-    )
-    agent: str = Field(description="the handle of the agent")
-    node: str | None = Field(description="its node in the spec; @handle for an external agent the spec lacks")
-    from_node: str | None = Field(description="the node it came from: the edge it crossed")
-    to_node: str | None = Field(description="the node an ask, a mention or a forward went to")
-    run_id: int | None
-    project: str | None = Field(description="the project of its run")
-    runtime: str | None
-    status: str = Field(description="running, ok, error or refused")
-    off_design: bool = Field(description="the edge it crossed is not an interacts edge of the spec")
-    reason: str | None = Field(description="why: the reason an off-edge ask gave, or why the hub refused")
-    message_id: int | None = Field(description="the chat message it rests on, which the chat's routes show")
-    attributes: dict = Field(description="OpenTelemetry GenAI attributes (gen_ai.*) and the hub's (evo.*)")
-    started_at: datetime
-    ended_at: datetime | None
-    seconds: float | None = Field(description="how long it ran; null while it runs")
-    input_tokens: int = 0
-    output_tokens: int = 0
-    usd: float = Field(0, description="what its run cost, reported else estimated; 0 for a tool span")
-    model: str | None = None
-    run_state: str | None = Field(
-        None, description="the state of its run now (running, waiting, parked, done, failed...); null for a tool span"
-    )
-    content_withheld: bool = Field(
-        False,
-        description="its run is of a project the reader holds no grant on: reason, message and evo.* are left out",
-    )
-
-
-class TraceSummary(BaseModel):
-    id: int
-    system: str = Field(description="the slug of the system")
-    revision: int = Field(description="the revision of its spec the trace ran under")
-    chat_id: int | None
-    message_id: int | None = Field(description="the person's message that opened it")
-    opened_by: str | None = Field(description="the login of who wrote that message")
-    started_at: datetime
-    last_at: datetime
-    runs: int = Field(description="its invoke_agent spans")
-    off_design: int = Field(description="its spans that crossed an edge the spec lacks")
-    errors: int
-    usd: float
-    work_chat_id: int | None = Field(None, description="the work chat its first hand-off opened; null before one")
-    title: str | None = Field(
-        None, description="what the entry agent set (work set), else the first line of its first message"
-    )
-    goal: str | None = Field(None, description="what the entry agent set; null when not set")
-    done_when: str | None = Field(None, description="what the entry agent set; null when not set")
-    status: WorkStatus | None = Field(None, description="the status of its work, derived from its runs and decisions")
-    agent: str | None = Field(None, description="the handle of the agent at work now; null when none is")
-    waiting: WorkWaiting | None = Field(None, description="what its work waits for; null for nothing")
-
-
-class Metrics(BaseModel):
-    nodes: list[dict] = Field(description="per node: count, errors, off_design, p50_seconds, last_seconds, tokens, usd")
-    edges: list[dict] = Field(description="per edge (from_node, to_node): the same numbers")
-
-
-class Spread(BaseModel):
-    p50: float | None
-    p95: float | None
-    max: float | None
-
-
-class EdgeRatio(BaseModel):
-    from_node: str | None
-    to_node: str | None
-    count: int = Field(description="attempts to cross it: turns handed over it, and asks and mentions refused on it")
-    off_design: int
-    off_design_ratio: float = Field(description="off_design / count")
-
-
-class TraceNumbers(BaseModel):
-    id: int
-    revision: int
-    started_at: datetime
-    last_at: datetime
-    open: bool = Field(description="a turn of it is still running")
-    usd: float = Field(
-        description="the final cost of its runs and the runs their tree spawned, as the budget counts it"
-    )
-    runs: int = Field(description="its runs and the runs their tree spawned, as the budget counts them")
-    max_hop: int | None = Field(description="the deepest hop of its runs; null when none has one")
-    trace_usd: float = Field(description="limits.trace_usd of the revision it ran under")
-    trace_runs: int = Field(description="limits.trace_runs of the revision it ran under; 0 for no limit")
-    over_usd: float | None = Field(description="usd minus trace_usd when positive, else null")
-    budget_refusals: int = Field(description="asks and mentions the budget refused")
-    loop_threads: int
-    idle_threads: int
-    rounds_threads: int
-    edges: list[EdgeRatio]
-
-
-class TraceSpread(BaseModel):
-    traces: int
-    usd: Spread
-    runs: Spread
-    max_hop: Spread
-    over_budget: int = Field(description="traces whose usd passed trace_usd")
-    max_over_usd: float | None
-    budget_refusals: int
-    loop_threads: int
-    idle_threads: int
-    rounds_threads: int
-    edges: list[EdgeRatio] = Field(description="per edge over every trace: attempts, off design and their ratio")
-
-
-class TraceDistribution(BaseModel):
-    system: str
-    days: int
-    since: datetime
-    withheld: int = Field(description="traces of the window the caller may not read, left out")
-    truncated: bool = Field(
-        description=f"the window held more than {MAX_WINDOW_TRACES} traces: the oldest are left out"
-    )
-    summary: TraceSpread
-    traces: list[TraceNumbers] = Field(description="the newest first")
-
-
-class TraceOut(TraceSummary):
-    spans: list[SpanOut]
-    metrics: Metrics
-    timeline: work_observe.TraceTimeline = Field(
-        default_factory=work_observe.TraceTimeline,
-        description="each run of it cut into queued, running, parked and waiting, and the decisions that ask a person",
-    )
-
-
 # Reading
-
-
-async def _system(conn: AsyncConnection, user: Principal, project: str, slug: str) -> tuple[ProjectAccess, int | None]:
-    access = await project_access(conn, user, project)
-    if access.role is None:
-        raise HTTPException(403, f"reading the traces of project {access.name} needs a grant on it")
-    s = tables.agent_systems
-    query = select(s.c.id).where(s.c.project_id == access.project_id, s.c.slug == slug)
-    system_id = (await conn.execute(query)).scalar_one_or_none()
-    t = tables.system_traces
-    if system_id is None:
-        held = select(t.c.id).where(t.c.project_id == access.project_id, t.c.system_slug == slug).limit(1)
-        if (await conn.execute(held)).first() is None:
-            raise HTTPException(404, f"project {access.name} has no agent system {slug} and no trace of one")
-    return access, system_id
-
-
-async def _reads(conn: AsyncConnection, user: Principal, chat_id: int) -> bool:
-    nested = await conn.begin_nested()
-    try:
-        await chat_access(conn, user, chat_id)
-    except HTTPException:
-        await nested.rollback()
-        return False
-    await nested.commit()
-    return True
-
-
-async def _readable(
-    conn: AsyncConnection, user: Principal, chat_id: int | None, work_chat_id: int | None = None
-) -> bool:
-    """Whether ``user`` reads a trace opened in chat ``chat_id`` (None: anyone who reads the system does) whose work
-    chat is ``work_chat_id``: they read either chat."""
-    if chat_id is None:
-        return True
-    if await _reads(conn, user, chat_id):
-        return True
-    return work_chat_id is not None and await _reads(conn, user, work_chat_id)
-
-
-def _trace_query(access: ProjectAccess, slug: str):
-    t, u = tables.system_traces, tables.users
-    return (
-        select(
-            t.c.id,
-            t.c.system_slug,
-            t.c.system_revision,
-            t.c.chat_id,
-            t.c.message_id,
-            u.c.login,
-            t.c.work_chat_id,
-            t.c.goal,
-            t.c.done_when,
-            t.c.started_at,
-            t.c.last_at,
-        )
-        .outerjoin(u, u.c.id == t.c.opened_by)
-        .where(t.c.project_id == access.project_id, t.c.system_slug == slug)
-    )
-
-
-async def _spans(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, list]:
-    s, p = tables.system_spans, tables.projects
-    query = (
-        select(s, p.c.name.label("project"))
-        .outerjoin(p, p.c.id == s.c.project_id)
-        .where(s.c.trace_id.in_(trace_ids))
-        .order_by(s.c.trace_id, s.c.id)
-    )
-    found: dict[int, list] = {trace_id: [] for trace_id in trace_ids}
-    for row in await conn.execute(query):
-        found[row.trace_id].append(row)
-    return found
-
-
-async def _granted(conn: AsyncConnection, user: Principal, project_ids: set[int]) -> set[int]:
-    return {
-        project_id
-        for project_id in project_ids
-        if await agent_tasking.project_role(conn, user.user_id, project_id) is not None
-    }
-
-
-def _span_out(row, numbers: dict, own_project: int, granted: set[int]) -> SpanOut:
-    withheld = row.project_id is not None and row.project_id != own_project and row.project_id not in granted
-    attributes = dict(row.attributes or {})
-    if withheld:
-        attributes = {key: value for key, value in attributes.items() if key.startswith(SHOWN_ATTRIBUTES)}
-    seconds = (row.ended_at - row.started_at).total_seconds() if row.ended_at is not None else None
-    run = numbers.get(row.run_id, {}) if row.name == system_context.INVOKE else {}
-    return SpanOut(
-        id=row.id,
-        parent_id=row.parent_id,
-        name=row.name,
-        tool=row.tool,
-        agent=row.agent,
-        node=row.node,
-        from_node=row.from_node,
-        to_node=row.to_node,
-        run_id=row.run_id,
-        project=row.project,
-        runtime=row.runtime,
-        status=row.status,
-        off_design=row.off_design,
-        reason=None if withheld else row.reason,
-        message_id=None if withheld else row.message_id,
-        attributes=attributes,
-        started_at=row.started_at,
-        ended_at=row.ended_at,
-        seconds=seconds,
-        input_tokens=run.get("input_tokens", 0),
-        output_tokens=run.get("output_tokens", 0),
-        usd=run.get("usd", 0.0),
-        model=run.get("model"),
-        run_state=run.get("state"),
-        content_withheld=withheld,
-    )
-
-
-def _metric_rows(spans: list[SpanOut]) -> list[dict]:
-    return [
-        {
-            "node": span.node,
-            "from_node": span.from_node,
-            "status": span.status,
-            "off_design": span.off_design,
-            "resume": system_traces.RESUME in span.attributes,
-            "seconds": span.seconds,
-            "started_at": span.started_at.isoformat(),
-            "input_tokens": span.input_tokens,
-            "output_tokens": span.output_tokens,
-            "usd": span.usd,
-        }
-        for span in spans
-        if span.name == system_context.INVOKE
-    ]
-
-
-def _summary(row, spans: list[SpanOut], work: WorkBrief | None) -> TraceSummary:
-    invoked = [span for span in spans if span.name == system_context.INVOKE]
-    return TraceSummary(
-        id=row.id,
-        system=row.system_slug,
-        revision=row.system_revision,
-        chat_id=row.chat_id,
-        message_id=row.message_id,
-        opened_by=row.login,
-        started_at=row.started_at,
-        last_at=row.last_at,
-        runs=len(invoked),
-        off_design=sum(1 for span in spans if span.off_design),
-        errors=sum(1 for span in spans if span.status == "error"),
-        usd=round(sum(span.usd for span in invoked), 6),
-        work_chat_id=row.work_chat_id,
-        title=None if work is None else work.title,
-        goal=row.goal,
-        done_when=row.done_when,
-        status=None if work is None else work.status,
-        agent=None if work is None else work.agent,
-        waiting=None if work is None else work.waiting,
-    )
-
-
-async def read_traces(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, slug: str, query, limit: int
-) -> list[tuple[TraceSummary, list[SpanOut]]]:
-    """The traces ``query`` selects (``_trace_query``), the newest first, at most ``limit`` the caller may read, each
-    with its spans as the caller may see them."""
-    t = tables.system_traces
-    rows = []
-    for row in await conn.execute(query.order_by(t.c.id.desc()).limit(MAX_TRACES)):
-        if await _readable(conn, user, row.chat_id, row.work_chat_id):
-            rows.append(row)
-        if len(rows) >= limit:
-            break
-    spans = await _spans(conn, [row.id for row in rows])
-    run_ids = sorted({span.run_id for found in spans.values() for span in found if span.run_id is not None})
-    numbers = await system_traces.run_numbers(conn, run_ids)
-    others = {span.project_id for found in spans.values() for span in found if span.project_id is not None}
-    granted = await _granted(conn, user, others - {access.project_id})
-    work = await work_status.briefs(conn, [row.id for row in rows])
-    out = []
-    for row in rows:
-        shown = [_span_out(span, numbers, access.project_id, granted) for span in spans[row.id]]
-        out.append((_summary(row, shown, work.get(row.id)), shown))
-    return out
 
 
 @router.get("/{project}/systems/{slug}/traces", response_model=list[TraceSummary], responses=READ_REFUSALS)
@@ -420,12 +85,7 @@ async def list_traces(
 ) -> list[TraceSummary]:
     """The traces of the system the caller may read, the newest first."""
     async with request.app.state.engine.begin() as conn:
-        access, _ = await _system(conn, user, project, slug)
-        query = _trace_query(access, slug)
-        if before is not None:
-            query = query.where(tables.system_traces.c.id < before)
-        found = await read_traces(conn, user, access, slug, query, limit)
-    return [summary for summary, _ in found]
+        return await service.listed(conn, user, project, slug, limit, before)
 
 
 @router.get("/{project}/systems/{slug}/metrics", response_model=Metrics, responses=READ_REFUSALS)
@@ -439,10 +99,7 @@ async def system_metrics(
     """The numbers of each node and edge of the system over its last traces: count, errors, off-design crossings,
     median and last seconds, tokens and cost."""
     async with request.app.state.engine.begin() as conn:
-        access, _ = await _system(conn, user, project, slug)
-        found = await read_traces(conn, user, access, slug, _trace_query(access, slug), limit)
-    rows = [row for _, spans in found for row in _metric_rows(spans)]
-    return Metrics(**system_context.metrics(rows))
+        return await service.metrics(conn, user, project, slug, limit)
 
 
 @router.get("/{project}/systems/{slug}/metrics/traces", response_model=TraceDistribution, responses=READ_REFUSALS)
@@ -456,56 +113,8 @@ async def trace_distribution(
     """The numbers of each trace of the system that started in the last ``days`` days and the caller may read, and
     their spread: p50 and p95 of the cost and the runs, the traces past limits.trace_usd, the budget refusals, the
     loop, idle and rounds threads, and the off-design ratio per edge. It reads only."""
-    t = tables.system_traces
     async with request.app.state.engine.begin() as conn:
-        access, _ = await _system(conn, user, project, slug)
-        since = (await conn.execute(select(func.now()))).scalar_one() - timedelta(days=days)
-        query = (
-            select(
-                t.c.id, t.c.system_id, t.c.system_revision, t.c.chat_id, t.c.work_chat_id, t.c.started_at, t.c.last_at
-            )
-            .where(t.c.project_id == access.project_id, t.c.system_slug == slug, t.c.started_at >= since)
-            .order_by(t.c.id.desc())
-            .limit(MAX_WINDOW_TRACES + 1)
-        )
-        rows = list(await conn.execute(query))
-        truncated = len(rows) > MAX_WINDOW_TRACES
-        rows = rows[:MAX_WINDOW_TRACES]
-        readable: dict[tuple[int | None, int | None], bool] = {}
-        kept = []
-        for row in rows:
-            chats_of = (row.chat_id, row.work_chat_id)
-            if chats_of not in readable:
-                readable[chats_of] = await _readable(conn, user, *chats_of)
-            if readable[chats_of]:
-                kept.append(row)
-        found = await system_trace_stats.numbers(conn, [(row.id, row.system_id, row.system_revision) for row in kept])
-        s = tables.system_spans
-        running = select(s.c.trace_id).where(
-            s.c.trace_id.in_([row.id for row in kept]), s.c.name == system_context.INVOKE, s.c.status == "running"
-        )
-        still = set((await conn.execute(running.distinct())).scalars())
-    traces = [
-        TraceNumbers(
-            id=row.id,
-            revision=row.system_revision,
-            started_at=row.started_at,
-            last_at=row.last_at,
-            open=row.id in still,
-            **found[row.id],
-        )
-        for row in kept
-    ]
-    summary = TraceSpread(**system_context.distribution([found[row.id] for row in kept]))
-    return TraceDistribution(
-        system=slug,
-        days=days,
-        since=since,
-        withheld=len(rows) - len(kept),
-        truncated=truncated,
-        summary=summary,
-        traces=traces,
-    )
+        return await service.distribution(conn, user, project, slug, days)
 
 
 @router.get("/{project}/systems/{slug}/traces/{trace_id}", response_model=TraceOut, responses=READ_REFUSALS)
@@ -513,15 +122,7 @@ async def show_trace(request: Request, project: ProjectName, slug: Slug, trace_i
     """One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its
     timeline by agent."""
     async with request.app.state.engine.begin() as conn:
-        access, _ = await _system(conn, user, project, slug)
-        query = _trace_query(access, slug).where(tables.system_traces.c.id == trace_id)
-        found = await read_traces(conn, user, access, slug, query, 1)
-        if not found:
-            raise HTTPException(404, f"system {slug} of project {project} has no trace {trace_id} you may read")
-        summary, spans = found[0]
-        timeline = await work_observe.timeline(conn, trace_id, spans)
-    metrics = Metrics(**system_context.metrics(_metric_rows(spans)))
-    return TraceOut(**summary.model_dump(), spans=spans, metrics=metrics, timeline=timeline)
+        return await service.shown(conn, user, project, slug, trace_id)
 
 
 @router.get("/{project}/systems/{slug}/work/summary", response_model=work_observe.WorkSummary, responses=READ_REFUSALS)
@@ -535,27 +136,8 @@ async def work_summary(
     """The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run
     still active: open, needing a person, failed and done, the median time from start to close of the work done in
     the window, and the cost. It reads only."""
-    t = tables.system_traces
     async with request.app.state.engine.begin() as conn:
-        access, _ = await _system(conn, user, project, slug)
-        since = (await conn.execute(select(func.now()))).scalar_one() - timedelta(hours=hours)
-        query = (
-            select(t.c.id, t.c.chat_id, t.c.work_chat_id, t.c.started_at, t.c.last_at)
-            .where(t.c.project_id == access.project_id, t.c.system_slug == slug)
-            .where((t.c.last_at >= since) | t.c.id.in_(work_observe.active_traces()))
-            .order_by(t.c.id.desc())
-            .limit(MAX_WINDOW_TRACES)
-        )
-        rows = list(await conn.execute(query))
-        readable: dict[tuple[int | None, int | None], bool] = {}
-        kept = []
-        for row in rows:
-            chats_of = (row.chat_id, row.work_chat_id)
-            if chats_of not in readable:
-                readable[chats_of] = await _readable(conn, user, *chats_of)
-            if readable[chats_of]:
-                kept.append(row)
-        return await work_observe.summary(conn, kept, hours, since, len(rows) - len(kept))
+        return await service.work_summary(conn, user, project, slug, hours)
 
 
 # The live stream
@@ -577,23 +159,18 @@ async def stream_traces(
     whose last_at passed, at once for those after ``after`` (none by default), then each time a span is written. An
     ``end`` event once the caller may no longer read the system's project."""
     async with request.app.state.engine.begin() as conn:
-        _, system_id = await _system(conn, user, project, slug)
+        _, system_id = await service.system(conn, user, project, slug)
     streams: TraceStreams = request.app.state.trace_streams
     streams.start()
-    t = tables.system_traces
     async with request.app.state.engine.begin() as conn:
-        now = (await conn.execute(select(func.now()))).scalar_one()
+        now = await service.now(conn)
     seen = after or now
     with streams.subscribe(system_id or 0) as wakeup:
         while True:
             refusal, moved = None, []
             async with request.app.state.engine.begin() as conn:
                 try:
-                    if not await still_live(conn, user):
-                        raise HTTPException(401, "the token that opened this stream no longer holds")
-                    access, _ = await _system(conn, user, project, slug)
-                    query = _trace_query(access, slug).where(t.c.last_at > seen)
-                    moved = await read_traces(conn, user, access, slug, query, MAX_TRACES)
+                    moved = await service.moved(conn, user, project, slug, seen)
                 except HTTPException as refused:
                     refusal = refused.detail
             if refusal is not None:
