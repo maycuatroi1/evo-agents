@@ -1,5 +1,6 @@
 import type { Page, Request } from "@playwright/test";
 
+import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, test } from "./support/fixtures";
 import {
   ACTIVE_DONE,
@@ -18,8 +19,8 @@ import {
 test.use({ uiLocale: "vi" }); // the assertions below read the Vietnamese copy of messages/vi.json
 
 /**
- * The plan pages against the real API (step 26 of the agent-hub plan): the list shows each plan's steps done of
- * total, a step shows its evidence verbatim, the diff between two revisions shows exactly the lines that changed,
+ * The plan pages against the real API (step 26 of the agent-hub plan): the list shows each plan's current step and
+ * its steps in order, a step shows its evidence verbatim, the diff between two revisions shows exactly the lines that changed,
  * and no page asks the API to change a plan: until a writer opens a dialog (Run plan, Run this step), every request
  * the pages make is a GET. e2e/plan-runs.spec.ts covers what those dialogs send.
  */
@@ -45,7 +46,7 @@ async function seeded(member: (grants?: { role: "reader" | "writer" | "admin"; m
 }
 
 test.describe("plans", () => {
-  test("the list shows active and completed plans with the steps done of each", async ({ page, member }) => {
+  test("one list of plans with their steps at a glance", async ({ page, member }) => {
     const writes = watchPlanWrites(page);
     const { project } = await seeded(member);
 
@@ -53,29 +54,73 @@ test.describe("plans", () => {
     await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Plans" }).click();
     await expect(page).toHaveURL(`/p/${project}/plans`);
     await expect(page.getByRole("heading", { level: 1, name: "Plans" })).toBeVisible();
-    await expect(page.getByTestId("plans-read-only")).toContainText("Plan được sửa từ CLI bằng evo harness step");
-    await expect(page.getByTestId("plans-read-only").getByRole("button", { name: "Sao chép lệnh evo harness step" })).toBeVisible();
+    await expect(page.getByTestId("plans-cli-note")).toHaveText("Sửa từ CLI");
+    await expect(page.getByTestId("plans-read-only")).toHaveCount(0);
 
-    const active = page.getByTestId("plans-table-active");
-    const activeRow = active.getByRole("row").filter({ has: page.getByRole("link", { name: ACTIVE_PLAN }) });
-    await expect(activeRow).toContainText(`${ACTIVE_DONE}/${ACTIVE_STEPS} bước xong`);
-    const completed = page.getByTestId("plans-table-completed");
-    const completedRow = completed.getByRole("row").filter({ has: page.getByRole("link", { name: COMPLETED_PLAN }) });
-    await expect(completedRow).toContainText(`${COMPLETED_STEPS}/${COMPLETED_STEPS} bước xong`);
-    await expect(completedRow).toContainText("100%");
-    await expect(page.getByTestId("plans-completed").getByRole("heading")).toContainText("2");
+    // Open by default: the active plan, named by its goal, with its slug, current step and one mark per step.
+    const list = page.getByTestId("plans-list");
+    await expect(list).toHaveAttribute("data-view", "open");
+    await expect(page.getByTestId("plans-view-open")).toHaveAttribute("aria-pressed", "true");
+    await expect(list.getByTestId("plan-row")).toHaveCount(1);
+    const active = list.locator(`[data-plan-id="${ACTIVE_PLAN}"]`);
+    await expect(active.getByTestId("plan-link")).toHaveText(/^Knowledge graph được dùng hằng ngày/);
+    await expect(active.getByTestId("plan-slug")).toHaveText(ACTIVE_PLAN);
+    await expect(active.getByTestId("plan-current-step")).toHaveText(new RegExp(`^Bước ${ACTIVE_DONE + 1} trên ${ACTIVE_STEPS}: `));
+    await expect(active.getByTestId("plan-current-step")).toHaveAttribute("data-status", "in_progress");
+    const marks = active.getByTestId("step-strip").locator("[data-status]");
+    await expect(marks).toHaveCount(ACTIVE_STEPS);
+    expect(await marks.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-status")))).toEqual([
+      ...Array<string>(ACTIVE_DONE).fill("done"),
+      "in_progress",
+      "blocked",
+      ...Array<string>(ACTIVE_STEPS - ACTIVE_DONE - 2).fill("pending"),
+    ]);
+    await expect(active.getByTestId("plan-steps-count")).toContainText(`${ACTIVE_DONE}/${ACTIVE_STEPS} bước xong`);
+    await expect(active).toHaveAttribute("data-finished", "false");
+    await expect(active.getByRole("button")).toHaveCount(0);
 
-    await page.getByTestId("plans-search").fill("prototype");
-    await expect(page.getByRole("link", { name: ACTIVE_PLAN })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: COMPLETED_PLAN })).toBeVisible();
-    await expect(page.getByText("Hiện 1 trên 3 plan")).toBeVisible();
+    // Completed: both completed plans, last changed first, faint since every step is done.
+    await page.getByTestId("plans-view-completed").click();
+    await expect(page).toHaveURL(new RegExp(`/plans\\?view=completed$`));
+    await expect(list.getByTestId("plan-row")).toHaveCount(2);
+    const completed = list.locator(`[data-plan-id="${COMPLETED_PLAN}"]`);
+    await expect(completed).toHaveAttribute("data-finished", "true");
+    await expect(completed.getByTestId("plan-current-step")).toHaveText(`Xong cả ${COMPLETED_STEPS} bước`);
+    await expect(completed.getByTestId("plan-steps-count")).toContainText(`${COMPLETED_STEPS}/${COMPLETED_STEPS} bước xong`);
+
+    // The search reads the id too, and `/` reaches it.
+    const search = page.locator("#main").getByTestId("plans-search");
+    await expect(search).toHaveAttribute("aria-keyshortcuts", "/");
+    await page.keyboard.press("/");
+    await expect(search).toBeFocused();
+    await page.keyboard.type("prototype");
+    await expect(list.getByTestId("plan-row")).toHaveCount(1);
+    await expect(completed).toBeVisible();
+    await expect(page.getByText("Hiện 1 trên 2 plan")).toBeVisible();
 
     // A plan page also counts the done steps of the fixture plan correctly.
-    await page.getByRole("link", { name: COMPLETED_PLAN }).click();
+    await completed.getByTestId("plan-link").click();
     await expect(page.getByTestId("plan-progress")).toContainText(`${COMPLETED_STEPS} trên ${COMPLETED_STEPS} bước đã xong`);
     await expect(page.getByTestId("count-done")).toHaveText(String(COMPLETED_STEPS));
     await expect(page.getByTestId("board-column-done").getByTestId("column-count")).toHaveText(String(COMPLETED_STEPS));
     expect(writes.map((r) => `${r.method()} ${r.url()}`)).toEqual([]);
+  });
+
+  test("the list passes axe at 1440 and 375 px in light and dark, and never scrolls sideways from 375 to 1440 px", async ({ page, member }) => {
+    test.setTimeout(90_000);
+    const { project } = await seeded(member);
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      for (const width of [375, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+        // Grouped by repo, so the group headings are scanned too.
+        await open(page, `/p/${project}/plans?group=repo`);
+        await expect(page.getByTestId("plans-list").getByTestId("plan-row").first()).toBeVisible();
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect.soft(overflow, `the plans list at ${width} px in ${scheme} scrolls sideways`).toBeLessThanOrEqual(0);
+        if (width === 375 || width === 1440) await expectNoSeriousViolations(page, `the plans list in ${scheme} at ${width} px`);
+      }
+    }
   });
 
   test("the board groups steps by status, and a step shows its evidence verbatim", async ({ page, member }) => {
@@ -227,12 +272,12 @@ test.describe("plans", () => {
     ]) {
       await open(page, path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await expect(page.getByTestId("plans-read-only")).toBeVisible();
-      await expect(page.getByTestId("plans-read-only")).toContainText("evo harness step");
+      // The list says in one line that plans are edited from the CLI; a plan's pages carry the read-only banner.
+      if (path === base) await expect(page.getByTestId("plans-cli-note")).toBeVisible();
+      else await expect(page.getByTestId("plans-read-only")).toContainText("evo harness step");
       // No control on the page edits, deletes or completes a plan; the writer's Chạy plan (Run plan) and Chạy bước này
-      // (Run this step) only open a dialog, and the banner's Sao chép (Copy) only copies the command. ("Sửa lần cuối",
-      // last changed, is a column header of the list.)
-      await expect(page.getByRole("button", { name: /^(Sửa(?! lần cuối)|Xoá|Lưu|Hoàn tất|Đánh dấu)/ })).toHaveCount(0);
+      // (Run this step) only open a dialog, and the banner's Sao chép (Copy) only copies the command.
+      await expect(page.getByRole("button", { name: /^(Sửa|Xoá|Lưu|Hoàn tất|Đánh dấu)/ })).toHaveCount(0);
     }
 
     // Client-side moves too: tabs, a step, back, the board's list view, a search.
@@ -242,7 +287,7 @@ test.describe("plans", () => {
     await page.getByTestId("plan-tab-revisions").click();
     await page.getByTestId("diff-mode-split").click();
     await page.getByRole("navigation", { name: "Vị trí hiện tại" }).getByRole("link", { name: "Plans", exact: true }).click();
-    await expect(page.getByTestId("plans-table-active")).toBeVisible();
+    await expect(page.getByTestId("plans-list")).toBeVisible();
 
     expect(writes.map((r) => `${r.method()} ${r.url()}`)).toEqual([]);
     expect([...methods.keys()].filter((method) => method !== "GET")).toEqual([]);

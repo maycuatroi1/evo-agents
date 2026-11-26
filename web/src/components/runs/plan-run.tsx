@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CircleDot, MessageCircleQuestionMark, Play, Server, Workflow } from "lucide-react";
+import { ArrowRight, CircleDot, MessageCircleQuestionMark, Pause, Play, Server, Workflow } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -48,19 +48,33 @@ import {
  */
 const PlanRunDialog = dynamic(() => import("./plan-run-dialog").then((module) => module.PlanRunDialog), { ssr: false });
 
-/** A plan's active plan run as a badge with an icon and a word, linked to the run. */
+const MARK = "inline-flex size-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-surface-hover";
+
+/** The mark of an active run on a row of the plans list: Play in `running` while it works, Pause in `attention` while it waits. */
+function PhaseMark({ phase, testId }: { phase: ReturnType<typeof planRunPhase>; testId: string }) {
+  const paused = phase === "waiting" || phase === "parked" || phase === "review";
+  const Icon = paused ? Pause : Play;
+  return (
+    <span className={cn("inline-flex", paused ? "text-attention" : "text-running")} data-testid={testId} data-phase={phase}>
+      <Icon className="size-3.5 fill-current" aria-hidden="true" />
+    </span>
+  );
+}
+
+/** A plan's active plan run as a mark linked to the run, named by the run and its state. */
 function PlanRunLink({ project, run }: { project: string; run: Run }) {
   const t = useTranslations("runs.planRun");
   const phase = planRunPhase(run.state);
   return (
     <Link
       href={runHref(project, run.id)}
-      className="shrink-0 rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+      className={MARK}
       aria-label={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
+      title={t("listLink", { id: run.id, state: t(`phase.${phase}Long`) })}
       data-testid="plan-run-link"
       data-run-id={run.id}
     >
-      <StatusBadge kind="run" status={phase} data-testid="plan-run-phase" />
+      <PhaseMark phase={phase} testId="plan-run-phase" />
     </Link>
   );
 }
@@ -73,20 +87,21 @@ function PlanTraceLink({ project, trace }: { project: string; trace: PlanTrace }
   return (
     <Link
       href={systemObserveHref(project, trace.system, trace.id)}
-      className="shrink-0 rounded-full transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+      className={MARK}
       aria-label={t("trace.listLink", { id: trace.id, system: trace.system, state: t(`phase.${phase}Long`) })}
+      title={t("trace.listLink", { id: trace.id, system: trace.system, state: t(`phase.${phase}Long`) })}
       data-testid="plan-trace-link"
       data-trace-id={trace.id}
       data-system={trace.system}
     >
-      <StatusBadge kind="run" status={phase} data-testid="plan-trace-phase" />
+      <PhaseMark phase={phase} testId="plan-trace-phase" />
     </Link>
   );
 }
 
 /**
- * A plan's active plan run among the project's `runs`, else the trace of a system that runs it, as a linked badge for
- * the plans list; null for neither, so a phone's row leaves its status out.
+ * A plan's active plan run among the project's `runs`, else the trace of a system that runs it, as a linked mark for
+ * a row of the plans list; null for neither.
  */
 export function planActivityLink(project: string, planId: string, trace: PlanTrace | null | undefined, runs: readonly Run[]) {
   const planRun = activePlanRun(runs, planId);

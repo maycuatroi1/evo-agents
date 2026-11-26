@@ -12,6 +12,7 @@ import { renderVi } from "@/test/render";
 import { DiffView } from "./plan-diff";
 import { PlanOverview } from "./plan-overview";
 import { PlansList } from "./plans-list";
+import { StepStrip } from "./progress";
 import { orderedEntries } from "./prose";
 import { StepStatusBadge } from "./status";
 import { StepDetail } from "./step-detail";
@@ -72,56 +73,126 @@ describe("StepStatusBadge", () => {
   });
 });
 
-describe("PlansList", () => {
-  const summaries: PlanSummary[] = [
-    { plan_id: "agent-hub", area: "active", revision: 4, digest: "d", title: "Hub cho agent", steps_total: 30, steps_done: 12, updated_at: "2026-10-04T02:00:00Z", updated_by: "alice" },
-    { plan_id: "kg-prototype", area: "completed", revision: 1, digest: "d", title: null, steps_total: 13, steps_done: 13, updated_at: "2026-10-03T02:00:00Z", updated_by: "bob" },
-  ];
-
-  it("lists active and completed plans with steps done of total, and says the page is read-only", () => {
-    withClient(<PlansList project="demo" initialError={null} />, (client) =>
-      client.setQueryData(planKeys.all("demo"), summaries),
-    );
-    const active = within(screen.getByTestId("plans-active"));
-    expect(active.getByRole("link", { name: "Hub cho agent" })).toHaveAttribute("href", "/p/demo/plans/agent-hub");
-    expect(active.getByText("12/30 bước xong")).toBeInTheDocument();
-    const completed = within(screen.getByTestId("plans-completed"));
-    expect(completed.getByRole("link", { name: "kg-prototype" })).toBeInTheDocument();
-    expect(completed.getByText("13/13 bước xong")).toBeInTheDocument();
-    const banner = screen.getByTestId("plans-read-only");
-    expect(banner).toHaveTextContent("Chỉ đọc. Plan được sửa từ CLI bằng evo harness step; mỗi lần sửa thêm một revision.");
-    expect(within(banner).getByRole("button", { name: "Sao chép lệnh evo harness step" })).toHaveTextContent("Sao chép");
-    // Besides the banner's Copy, the only buttons are the tables' sort buttons: nothing on the page changes a plan.
-    const buttons = screen
-      .getAllByRole("button")
-      .filter((button) => !banner.contains(button))
-      .map((button) => button.textContent ?? "");
-    expect(buttons.length).toBeGreaterThan(0);
-    for (const name of buttons) expect(name).toMatch(/^(Plan|Tiến độ|Revision|Sửa lần cuối)/);
+describe("StepStrip", () => {
+  it("step strip follows the plan's steps", () => {
+    const steps = [
+      { key: "1", status: "done" },
+      { key: "2", status: "descoped" },
+      { key: "3", status: "blocked" },
+      { key: "4", status: "in_progress" },
+      { key: "5", status: null },
+      { key: "6", status: "skipped" },
+    ];
+    renderVi(<StepStrip steps={steps} />);
+    const strip = screen.getByTestId("step-strip");
+    const marks = [...strip.children];
+    expect(marks.map((mark) => mark.getAttribute("data-step"))).toEqual(["1", "2", "3", "4", "5", "6"]);
+    expect(marks.map((mark) => mark.getAttribute("data-status"))).toEqual(["done", "descoped", "blocked", "in_progress", "pending", "other"]);
+    expect(strip).toHaveAccessibleName("Các bước: 1 xong, 1 đang làm, 1 bị chặn, 1 chưa làm, 1 bỏ khỏi phạm vi, 1 trạng thái khác");
   });
 
-  it("links a plan a system runs to its trace, since the trace's chat runs name no plan", () => {
+  it("draws nothing for a plan without steps", () => {
+    renderVi(<StepStrip steps={[]} />);
+    expect(screen.queryByTestId("step-strip")).not.toBeInTheDocument();
+  });
+});
+
+describe("PlansList", () => {
+  const steps = (statuses: string[]) => statuses.map((status, index) => ({ key: String(index + 1), status }));
+  const summaries: PlanSummary[] = [
+    {
+      plan_id: "agent-hub",
+      area: "active",
+      revision: 4,
+      digest: "d",
+      title: "Hub cho agent",
+      steps_total: 3,
+      steps_done: 1,
+      updated_at: "2026-10-04T02:00:00Z",
+      updated_by: "alice",
+      goal: "Một hub chung.",
+      steps: steps(["done", "blocked", "pending"]),
+      current_step: { key: "2", title: "Web: plans", status: "blocked" },
+      repos: ["lumen-api"],
+      problems: [],
+    },
+    {
+      plan_id: "kg-wiring",
+      area: "active",
+      revision: 2,
+      digest: "d",
+      title: null,
+      steps_total: 2,
+      steps_done: 2,
+      updated_at: "2026-10-05T02:00:00Z",
+      updated_by: "bob",
+      goal: "Nối graph vào hub. Rồi đo.",
+      steps: steps(["done", "descoped"]),
+      current_step: null,
+      repos: ["lumen-web"],
+      problems: [],
+    },
+    { plan_id: "kg-prototype", area: "completed", revision: 1, digest: "d", title: null, steps_total: 13, steps_done: 13, updated_at: "2026-10-03T02:00:00Z", updated_by: "bob" },
+  ];
+  const rows = () => screen.getAllByTestId("plan-row").map((row) => row.getAttribute("data-plan-id"));
+
+  beforeEach(() => window.history.replaceState(null, "", "/p/demo/plans"));
+
+  it("lists the open plans last changed first, each with its current step and steps, and no button", () => {
+    withClient(<PlansList project="demo" initialError={null} />, (client) => client.setQueryData(planKeys.all("demo"), summaries));
+    expect(screen.getByTestId("plans-cli-note")).toHaveTextContent("Sửa từ CLI");
+    expect(screen.queryByTestId("plans-read-only")).not.toBeInTheDocument();
+    expect(rows()).toEqual(["kg-wiring", "agent-hub"]);
+    const hub = within(screen.getAllByTestId("plan-row")[1]);
+    expect(hub.getByRole("link", { name: "Hub cho agent" })).toHaveAttribute("href", "/p/demo/plans/agent-hub");
+    expect(hub.getByTestId("plan-current-step")).toHaveTextContent("Bước 2 trên 3: Web: plans");
+    expect(hub.getByTestId("plan-current-step")).toHaveAttribute("data-status", "blocked");
+    expect(hub.getByTestId("plan-steps-count")).toHaveTextContent("1/3 bước xong");
+    // A plan without a title is named by its goal's first sentence; every step done or descoped writes it faint.
+    const wiring = screen.getAllByTestId("plan-row")[0];
+    expect(within(wiring).getByRole("link", { name: "Nối graph vào hub." })).toBeInTheDocument();
+    expect(within(wiring).getByTestId("plan-slug")).toHaveTextContent("kg-wiring");
+    expect(wiring).toHaveAttribute("data-finished", "true");
+    expect(within(wiring).getByTestId("plan-current-step")).toHaveTextContent("Xong cả 2 bước");
+    // The rows hold no button: the only buttons are the toolbar's.
+    for (const row of screen.getAllByTestId("plan-row")) expect(within(row).queryAllByRole("button")).toEqual([]);
+  });
+
+  it("switches to the completed plans and filters by repo, writing both to the address", async () => {
+    withClient(<PlansList project="demo" initialError={null} />, (client) => client.setQueryData(planKeys.all("demo"), summaries));
+    await userEvent.selectOptions(screen.getByTestId("plans-repo"), "lumen-api");
+    expect(rows()).toEqual(["agent-hub"]);
+    expect(window.location.search).toBe("?repo=lumen-api");
+    await userEvent.click(screen.getByTestId("plans-view-completed"));
+    expect(screen.getByTestId("plans-view-completed")).toHaveAttribute("aria-pressed", "true");
+    expect(window.location.search).toBe("?view=completed&repo=lumen-api");
+    expect(screen.getByText("Không có plan nào khớp")).toBeInTheDocument();
+  });
+
+  it("groups the plans by repo", async () => {
+    withClient(<PlansList project="demo" initialError={null} />, (client) => client.setQueryData(planKeys.all("demo"), summaries));
+    await userEvent.selectOptions(screen.getByTestId("plans-group"), "repo");
+    expect(screen.getAllByTestId("plans-group-section").map((group) => group.getAttribute("data-group"))).toEqual(["lumen-api", "lumen-web"]);
+  });
+
+  it("marks a plan a system runs with a link to its trace, since the trace's chat runs name no plan", () => {
     const traced = { ...summaries[0], trace: { id: 205, system: "dev", run_id: 10703, state: "running" as const } };
     withClient(<PlansList project="demo" initialError={null} />, (client) =>
       client.setQueryData(planKeys.all("demo"), [traced, summaries[1]]),
     );
-    const link = within(screen.getByTestId("plans-active")).getByTestId("plan-trace-link");
+    const link = screen.getByTestId("plan-trace-link");
     expect(link).toHaveAttribute("data-trace-id", "205");
     expect(link.getAttribute("href")).toMatch(/\/systems\/dev\?mode=observe&work=205$/);
     expect(link.getAttribute("aria-label")).toMatch(/^Đang chạy trong system dev, trace #205: /);
-    expect(within(screen.getByTestId("plans-completed")).queryByTestId("plan-trace-link")).not.toBeInTheDocument();
   });
 
-  it("filters plans by title or id", async () => {
-    withClient(<PlansList project="demo" initialError={null} />, (client) =>
-      client.setQueryData(planKeys.all("demo"), summaries),
-    );
-    await userEvent.type(screen.getByRole("searchbox", { name: "Tìm plan theo tên hoặc mã" }), "kg-");
+  it("finds plans by goal or id", async () => {
+    withClient(<PlansList project="demo" initialError={null} />, (client) => client.setQueryData(planKeys.all("demo"), summaries));
+    await userEvent.type(screen.getByRole("searchbox", { name: "Tìm plan theo tên, goal hoặc mã" }), "graph");
     // The query is committed after a 150 ms pause in typing.
     expect(await screen.findByText("Hiện 1 trên 2 plan")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Hub cho agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "kg-prototype" })).toBeInTheDocument();
-    expect(window.location.search).toBe("?q=kg-");
+    expect(rows()).toEqual(["kg-wiring"]);
+    expect(window.location.search).toBe("?q=graph");
   });
 
   it("shows the no-access state on a 403", () => {

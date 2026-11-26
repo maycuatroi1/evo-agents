@@ -212,8 +212,6 @@
     ],
     "src/components/plans/plans-list.tsx": [
       "src/components/runs/author-run.tsx",
-      "src/components/runs/hooks.ts",
-      "src/components/runs/model.ts",
       "src/components/runs/plan-run.tsx",
       "src/components/runs/queries.ts"
     ],

@@ -83,7 +83,8 @@ test("the runs list starts on the first screen, and its filters apply from a she
   await claimRun(live);
   await reportState(live, failing.id, { state: "failed", error: "verify failed: pnpm test exited 1" });
 
-  // The server already sends a phone the list (and a desktop the table), so nothing swaps once the scripts run.
+  // The server already sends a phone the list (and a desktop the table), so nothing swaps once the scripts run. The
+  // plans page is one list at every width.
   await seedPlans(me, project);
   for (const [agent, layout] of [
     [IPHONE_UA, "list"],
@@ -91,7 +92,6 @@ test("the runs list starts on the first screen, and its filters apply from a she
   ]) {
     for (const [path, testId] of [
       [`/p/${project}/runs?state=all`, "runs-table"],
-      [`/p/${project}/plans`, "plans-table-active"],
     ]) {
       const html = await (await page.request.get(path, { headers: { "user-agent": agent } })).text();
       const sent = new RegExp(`data-testid="${testId}"[^>]*data-layout="${layout}"`).test(html);
@@ -287,7 +287,7 @@ test("every list is a list of rows that open their page", async ({ page, member 
   await heartbeat(worker.id, { runtimes: RUNTIMES });
 
   const pages: { path: string; testId: string; row: string; lands: RegExp }[] = [
-    { path: `/p/${project}/plans`, testId: "plans-table-active", row: `[data-plan-id="${ACTIVE_PLAN}"]`, lands: new RegExp(`/plans/${ACTIVE_PLAN}$`) },
+    { path: `/p/${project}/plans`, testId: "plans-list", row: `[data-plan-id="${ACTIVE_PLAN}"]`, lands: new RegExp(`/plans/${ACTIVE_PLAN}$`) },
     { path: `/p/${project}/memories`, testId: "memories-table", row: '[data-memory-name="runbook.md"]', lands: new RegExp(`/memories/${memory.id}$`) },
     { path: `/p/${project}/skills`, testId: "skills-table", row: '[data-skill-name="team-notes"]', lands: /\/skills\/team-notes$/ },
     { path: "/workers", testId: "workers-table", row: `[data-worker-name="${worker.name}"]`, lands: new RegExp(`/workers/${worker.id}$`) },

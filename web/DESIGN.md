@@ -824,6 +824,29 @@ Shared pieces built on them:
   (the same words in both languages, as the CLI's terms are English) with the code in the tooltip and in `data-level`;
   a level a project named itself shows as written. `VisibilityTag` is "Visibility: Internal" beside a project's title.
   API fields, URL parameters, form values (the grant dialog's options) and test ids keep the codes.
+- Plans, the list (`plans/plans-list.tsx`, `plan-row.tsx`, `plans-toolbar.tsx`, the pure rules in `lib/plan-list.ts`):
+  one list of the project's plans, no table and no split by status. The head says "Edited from the CLI" under the title
+  in place of the read-only banner; the rows hold no button. The toolbar: Open or Completed (the kit's segmented
+  control, each with its count; Open is the default), the search over name, goal and id (`/` focuses it), then Owner
+  (the last editor), Problem and Repo, Group (none, problem, owner or repo) and Sort (last changed, the default; progress;
+  name), in the "Filters (n)" sheet under 768 px. Every choice is written to the address (`?view=completed&repo=api`)
+  with `history.replaceState`; a value the page does not know reads as the default. Grouped, each value is a section
+  under a `surface-sunken` heading with its count, problem codes in number order, the plans without one last; a plan
+  with two problems shows under both. A row, at least 56 px high, its name's link covering it:
+  - the name (the title, else the goal's first sentence, cut to 120 characters) in `body-strong`, the slug in mono
+    `fg-subtle` under it when they differ, and an icon-only mark of the plan's active run or system trace beside the
+    name (`Play` in `running`, `Pause` in `attention` while it waits), linked to the run and named in full;
+  - the current step, "Step 7 of 8: title" in `muted-foreground`, or in `danger` with a `Ban` icon and "Blocked:" for a
+    screen reader when that step is blocked; "All 8 steps done" when none is left;
+  - the step strip (`StepStrip` of `plans/progress.tsx`): one 8 px high mark per step in plan order, filling the column,
+    done `success-solid`, in progress `running`, blocked `danger-solid` (the red of the step text), to do a
+    `border-strong` outline on `card`, descoped hatched in `neutral-solid`; it is one `img` named by its counts ("Steps:
+    10 done, 1 in progress, 1 blocked, 8 to do"), with "10/20" after it;
+  - the problems, the last editor in mono and the last change: the time today, Yesterday, the weekday within the week,
+    then the date (its year when not this one), the full time in the tooltip; the server writes the date, so the first
+    render matches.
+  A plan whose steps are all done is drawn in `muted-foreground`. From 768 px the row is three columns (name and step,
+  strip, meta); on a phone they stack and the problem chips move to the end of the meta line.
 - `plans/plan-header.tsx`, `ReadOnlyNotice`: every plan page carries the kit's info banner on `surface-sunken`, a lock,
   the one sentence "Read-only. Plans change from the CLI with `evo harness step`; each change adds a revision." and a
   ghost Copy button that copies the command (`useClipboard` of `identifier.tsx`: it selects the command where the
@@ -1352,9 +1375,8 @@ Shared pieces built on them:
   matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
   grants); the API decides again on every dispatch.
 - `components/runs`, plan runs (`plan-run.tsx`, `plan-run-dialog.tsx`, shared fields in `dispatch-fields.tsx`): Run plan
-  sits in the plan page's header (`PlanHeader`'s `actions`) and in an action column on the rows of the plans list's
-  active area, only for a writer. It is shown but locked, with the reason in words beside it, while the plan has an
-  active run of any kind or no pending step (`planRunLock`; the list only knows steps done of the total). Its dialog
+  sits in the plan page's header (`PlanHeader`'s `actions`), only for a writer. It is shown but locked, with the reason
+  in words beside it, while the plan has an active run of any kind or no pending step (`planRunLock`). Its dialog
   first says what the run will do (`planRunScope`): the steps not done, by status; each repo with the branch the plan
   names, a repo on its default branch (main, master or the one registered for the repo) badged, a repo without a
   branch blocking; the checkpoint steps; and, in a warning box when a default branch is named, that the agent will push
@@ -1366,7 +1388,7 @@ Shared pieces built on them:
   Waiting for your decision or Parked (a badge with an icon and a word, and the banner's tone), the steps done of the
   total with a bar, the steps in progress, and links to the run and to the open decision (`/inbox?decision=ID`). The
   plan's active runs are read as the runs pages read theirs (every 5 seconds while one is active), and the plan itself
-  as often while its plan run is. The plans list badges a plan whose plan run is active, linked to the run. While a
+  as often while its plan run is. The plans list marks a plan whose plan run is active with an icon linked to the run. While a
   plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page names the plan and its step in
   progress in its head and, behind Details, lists the plan's steps grouped by status as Buildkite groups its jobs (the steps in
   progress or blocked first, one row each with a 16 px status icon, the one in progress `aria-current="step"`, then "6
@@ -2194,7 +2216,7 @@ Shared pieces built on them:
   one as solved or dropped with a reason; and reopens one. A 409 says another writer wrote it since, and the form then
   holds their revision. Readers see a note that they only read, and no control that writes. Elsewhere a problem is a
   chip of its code (`components/data/problem-chips.tsx`) that opens it, named by its statement for a screen reader and in
-  its tooltip: in a column of the plans list (codes in the meta line on a phone), beside a plan's revision, beside a
+  its tooltip: in the meta line of a plans list row, beside a plan's revision, beside a
   goal's code and in its details, and in a claim's links. A chain's rail starts from the problem its goal answers.
 - The core plugins crm, pm and marketing have no page of this web: each ships its pages as files of the UI kit under
   `evo_agents/core_plugins/<plugin>/ui/pages/` (plain ES2017 on `plugin-kit/1`, the kit's classes only, a shared

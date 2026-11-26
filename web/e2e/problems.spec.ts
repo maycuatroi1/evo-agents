@@ -152,7 +152,7 @@ test("a problem's page shows its metric, goals, claims by canvas, plans and Loop
 
   // The chips of the plans list, a plan, a goal and a claim each open the problem.
   await open(page, `/p/${project}/plans`);
-  const row = main(page).getByTestId("plans-table-active").locator("tbody tr").filter({ hasText: RELEASED_PLAN });
+  const row = main(page).getByTestId("plans-list").locator(`[data-plan-id="${RELEASED_PLAN}"]`);
   await expect(row.getByTestId("problem-chip")).toHaveAccessibleName(`Problem P-1: ${PROBLEM.statement}`);
   await row.getByTestId("problem-chip").click();
   await expect(page).toHaveURL(new RegExp(`${problemsPath(project, "P-1")}$`));

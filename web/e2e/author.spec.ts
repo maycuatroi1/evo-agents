@@ -228,7 +228,7 @@ test("a reader is offered neither New plan nor Revise with agent, and reads a wr
   await agentAsks(live, run.id, "Which docs come first?");
 
   await open(page, `/p/${project}/plans`);
-  await expect(main(page).getByTestId("plans-table-active")).toContainText(RUN_PLAN);
+  await expect(main(page).getByTestId("plans-list")).toContainText(RUN_PLAN);
   await expect(main(page).getByTestId("new-plan")).toHaveCount(0);
   await open(page, `/p/${project}/plans/${RUN_PLAN}`);
   await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
@@ -346,7 +346,7 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
       // On a phone the run's page shows the trace's latest rows; its Chat is on the session's screen.
       [runPath(project, run.id), width < 768 ? "run-trace-preview" : "run-chat-agent"],
       ["/today", "author-waiting-item"],
-      [`/p/${project}/plans`, "plans-table-active"],
+      [`/p/${project}/plans`, "plans-list"],
     ] as const) {
       await open(page, path);
       await expect(main(page).getByTestId(ready).first()).toBeVisible();

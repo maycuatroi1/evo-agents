@@ -1,250 +1,110 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Archive, ClipboardList, Rocket } from "lucide-react";
-import Link from "next/link";
+import { ClipboardList } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useFormatter, useTranslations } from "next-intl";
-import { type ComponentProps, useMemo, useState } from "react";
+import { useTimeZone, useTranslations } from "next-intl";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
-import { DataCard, DataToolbar } from "@/components/data/data-card";
-import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
-import { Identifier, NAME_LINK } from "@/components/data/identifier";
-import { ProblemChips } from "@/components/data/problem-chips";
-import { SearchField } from "@/components/data/search-field";
-import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
-import { activePlanRun } from "@/components/runs/model";
+import { DataCard } from "@/components/data/data-card";
 import { NewPlanButton } from "@/components/runs/author-run";
-import { planActivityLink, RunPlanButton } from "@/components/runs/plan-run";
+import { planActivityLink } from "@/components/runs/plan-run";
 import { IDLE_REFRESH_MS, LIVE_REFRESH_MS, type Run, runsSummaryQuery } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, NoResults, NotFoundState, TableSkeleton } from "@/components/states/states";
-import { Badge } from "@/components/ui/badge";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import {
+  calendarDay,
+  DEFAULT_FILTERS,
+  filterChoices,
+  filterPlans,
+  groupPlans,
+  type PlanGroup,
+  type PlanListFilters,
+  readFilters,
+  sortPlans,
+  writeFilters,
+} from "@/lib/plan-list";
 import { plansQuery } from "@/lib/plan-queries";
-import { type PlanArea, type PlanSummary, percent } from "@/lib/plans";
-import { cn } from "@/lib/utils";
+import type { PlanSummary } from "@/lib/plans";
 
-import { CompletePlanButton } from "./complete-plan";
-import { planHref } from "./links";
-import { ReadOnlyNotice } from "./plan-header";
-import { CompactProgress } from "./progress";
+import { PlanRow } from "./plan-row";
+import { PlansToolbar } from "./plans-toolbar";
 
-const NARROW_HIDDEN = { problems: "hidden lg:table-cell", revision: "hidden md:table-cell", updated: "hidden lg:table-cell" };
-
-/** The project's active runs, as the summary query reads them: which plans have a plan run, or runs of their steps. */
-type Activity = { runs: Run[]; loaded: boolean };
-
-function matches(plan: PlanSummary, needle: string): boolean {
-  if (!needle) return true;
-  return [plan.plan_id, plan.title ?? ""].some((value) => value.toLocaleLowerCase("vi").includes(needle));
+/**
+ * The filters, read from the address when the page opens and written back to it through the History API, so a reload
+ * or a shared link shows the same list. Only the toolbar changes them, so the page keeps them in its own state.
+ */
+function useFilters(): [PlanListFilters, (next: PlanListFilters) => void] {
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const [filters, setFilters] = useState(() => readFilters(new URLSearchParams(params.toString())));
+  const set = (next: PlanListFilters) => {
+    setFilters(next);
+    window.history.replaceState(null, "", `${pathname}${writeFilters(next)}`);
+  };
+  return [filters, set];
 }
 
-function PlansTable({
-  project,
-  plans,
-  area,
-  activity,
-  onDispatched,
-}: {
-  project: string;
-  plans: PlanSummary[];
-  area: PlanArea;
-  activity: Activity;
-  onDispatched: ComponentProps<typeof RunPlanButton>["onDispatched"];
-}) {
-  const t = useTranslations("plans.list");
-  const tProgress = useTranslations("plans.progress");
-  const format = useFormatter();
-  const canDispatch = useCanDispatch(project);
-  const withActions = area === "active" && canDispatch;
-  const columns = useMemo(() => {
-    const helper = dataTableColumns<PlanSummary>();
-    const actions = helper.display({
-      id: "actions",
-      header: () => <span className="sr-only">{t("columns.actions")}</span>,
-      meta: { actions: true },
-      cell: (info) => {
-        const plan = info.row.original;
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {activePlanRun(activity.runs, plan.plan_id) || plan.trace ? null : <CompletePlanButton project={project} plan={plan} />}
-            <RunPlanButton
-            project={project}
-            planId={plan.plan_id}
-            pending={plan.steps_total - plan.steps_done}
-            runs={activity.runs}
-            loaded={activity.loaded}
-            trace={plan.trace ?? null}
-            onDispatched={onDispatched}
-            size="sm"
-            variant="outline"
-            layout="row"
-            testId="plans-run-plan"
-            />
-          </div>
-        );
-      },
-    });
-    const all = helper.columns([
-      helper.accessor((row) => row.title ?? row.plan_id, {
-        id: "plan",
-        header: () => t("columns.plan"),
-        sortFn: "text",
-        meta: { primary: true },
-        cell: (info) => {
-          const plan = info.row.original;
-          const title = plan.title ?? plan.plan_id;
-          return (
-            <CellMain sub={plan.title ? <span className="font-mono">{plan.plan_id}</span> : null} subTitle={plan.plan_id}>
-              <Link
-                href={planHref(project, plan.plan_id)}
-                className={cn(NAME_LINK, "truncate")}
-                title={title}
-                data-testid="plan-link"
-              >
-                {title}
-              </Link>
-              {planActivityLink(project, plan.plan_id, plan.trace, activity.runs)}
-            </CellMain>
-          );
-        },
-      }),
-      helper.accessor((row) => (row.problems ?? []).join(" "), {
-        id: "problems",
-        header: () => t("columns.problems"),
-        enableSorting: false,
-        cell: (info) => {
-          const codes = info.row.original.problems ?? [];
-          return codes.length === 0 ? <span className="text-fg-subtle">-</span> : <ProblemChips project={project} codes={codes} />;
-        },
-      }),
-      helper.accessor((row) => percent(row.steps_done, row.steps_total), {
-        id: "progress",
-        header: () => t("columns.progress"),
-        sortFn: "basic",
-        cell: (info) => <CompactProgress done={info.row.original.steps_done} total={info.row.original.steps_total} />,
-      }),
-      helper.accessor("revision", {
-        header: () => t("columns.revision"),
-        sortFn: "basic",
-        meta: { numeric: true },
-        cell: (info) => <Identifier value={t("revisionValue", { revision: info.getValue() })} />,
-      }),
-      helper.accessor((row) => new Date(row.updated_at), {
-        id: "updated",
-        header: () => t("columns.updated"),
-        sortFn: "datetime",
-        meta: { numeric: true },
-        cell: (info) => (
-          <div className="flex flex-col items-end gap-px">
-            <time dateTime={info.row.original.updated_at} className="whitespace-nowrap">
-              {format.dateTime(info.getValue(), { dateStyle: "medium", timeStyle: "short" })}
-            </time>
-            <span className="font-mono text-xs leading-4 text-fg-subtle">{info.row.original.updated_by}</span>
-          </div>
-        ),
-      }),
-    ]);
-    return withActions ? [...all, actions] : all;
-  }, [t, format, project, activity, onDispatched, withActions]);
-
-  return (
-    <DataTable
-      data={plans}
-      columns={columns}
-      caption={t(area === "active" ? "activeCaption" : "completedCaption")}
-      getRowId={(row) => row.plan_id}
-      initialSorting={[{ id: "updated", desc: true }]}
-      columnClassNames={NARROW_HIDDEN}
-      testId={`plans-table-${area}`}
-      empty={t("noMatch")}
-      // On a phone: the plan, its active plan run or system trace, and its id with the steps done. Run plan is on the
-      // plan's page.
-      mobile={(plan) => {
-        const steps = tProgress("doneOfTotal", { done: plan.steps_done, total: plan.steps_total });
-        const progress = plan.problems?.length ? t("mobileProblems", { progress: steps, problems: plan.problems.join(", ") }) : steps;
-        return {
-          title: plan.title ?? plan.plan_id,
-          titleText: plan.title ?? plan.plan_id,
-          href: planHref(project, plan.plan_id),
-          status: planActivityLink(project, plan.plan_id, plan.trace, activity.runs),
-          meta: plan.title
-            ? t.rich("mobileMeta", { plan: plan.plan_id, progress, id: (chunks) => <span className="font-mono">{chunks}</span> })
-            : progress,
-          metaText: plan.title ? t("mobileMetaText", { plan: plan.plan_id, progress }) : progress,
-          data: { "plan-id": plan.plan_id },
-        };
-      }}
-    />
-  );
-}
-
-/** One area of the plans card: its heading with the number of plans, then its table. */
-function AreaSection({
-  project,
-  area,
-  plans,
-  filtered,
-  activity,
-  onDispatched,
-}: {
-  project: string;
-  area: PlanArea;
-  plans: PlanSummary[];
-  filtered: PlanSummary[];
-  activity: Activity;
-  onDispatched: ComponentProps<typeof RunPlanButton>["onDispatched"];
-}) {
-  const t = useTranslations("plans.list");
-  const Icon = area === "active" ? Rocket : Archive;
-  const id = `plans-${area}-title`;
-  return (
-    <section aria-labelledby={id} className="border-b last:border-b-0" data-testid={`plans-${area}`}>
-      <h2 id={id} className="flex min-h-12 items-center gap-2 border-b px-4 py-2 text-[15px] leading-[22px] font-semibold">
-        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        {t(area === "active" ? "active" : "completed")}
-        <Badge variant="secondary" className="tabular-nums">
-          {plans.length}
-        </Badge>
-      </h2>
-      {plans.length === 0 ? (
-        <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
-          {t(area === "active" ? "noActive" : "noCompleted")}
-        </p>
-      ) : (
-        <PlansTable project={project} plans={filtered} area={area} activity={activity} onDispatched={onDispatched} />
-      )}
-    </section>
-  );
+function everyMinute(notify: () => void) {
+  const timer = setInterval(notify, 60_000);
+  return () => clearInterval(timer);
 }
 
 /**
- * The search, read from the URL (`?q=`) when the page opens and written back to it through the History API, so a
- * reload or a shared link shows the same plans. Only this field changes it, so the page keeps it in its own state.
+ * Today in the page's time zone, read again each minute; the rows change only when the day does. Null on the server
+ * and during hydration, so both renders write the same dates.
  */
-function useSearch(): [string, (q: string) => void] {
-  const params = useSearchParams();
-  const pathname = usePathname();
-  const [q, setQ] = useState(() => (params.get("q") ?? "").trim().slice(0, 200));
-  const set = (next: string) => {
-    setQ(next);
-    window.history.replaceState(null, "", `${pathname}${next ? `?${new URLSearchParams({ q: next })}` : ""}`);
-  };
-  return [q, set];
+function useToday(timeZone: string): string | null {
+  return useSyncExternalStore(everyMinute, () => calendarDay(Date.now(), timeZone), () => null);
+}
+
+/** The rows of one group, each with the mark of its active plan run or system trace. */
+function Rows({ project, plans, runs, labelledBy }: { project: string; plans: PlanSummary[]; runs: Run[]; labelledBy?: string }) {
+  const timeZone = useTimeZone() ?? "UTC";
+  const today = useToday(timeZone);
+  return (
+    <ul className="divide-y" aria-labelledby={labelledBy}>
+      {plans.map((plan) => (
+        <PlanRow
+          key={plan.plan_id}
+          project={project}
+          plan={plan}
+          activity={planActivityLink(project, plan.plan_id, plan.trace, runs)}
+          today={today}
+          timeZone={timeZone}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function GroupSection({ project, group, by, runs, index }: { project: string; group: PlanGroup; by: PlanListFilters["group"]; runs: Run[]; index: number }) {
+  const t = useTranslations("plans.list");
+  const id = `plans-group-${index}`;
+  const title = group.key ?? t(`groupNone.${by === "none" ? "problem" : by}`);
+  return (
+    <section className="border-b last:border-b-0" data-testid="plans-group-section" data-group={group.key ?? ""}>
+      <h3 id={id} className="flex min-h-9 items-center gap-2 border-b bg-surface-sunken px-4 py-1.5 text-[13px] leading-[18px] font-semibold">
+        <span className={group.key ? "font-mono" : undefined}>{title}</span>
+        <span className="font-normal text-fg-subtle tabular-nums">{group.plans.length}</span>
+      </h3>
+      <Rows project={project} plans={group.plans} runs={runs} labelledBy={id} />
+    </section>
+  );
 }
 
 function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
   const t = useTranslations("plans.list");
   const tStates = useTranslations("states.noResults");
-  const [query, setQuery] = useSearch();
+  const [filters, setFilters] = useFilters();
   const summary = useQuery(runsSummaryQuery(browserApi, project));
-  const runs = summary.data?.runs;
-  const activity = useMemo<Activity>(() => ({ runs: runs ?? [], loaded: !summary.isPending }), [runs, summary.isPending]);
-  const onDispatched = usePlanRunToast();
-  const needle = query.toLocaleLowerCase("vi");
+  const runs = useMemo(() => summary.data?.runs ?? [], [summary.data?.runs]);
+  const inView = useMemo(() => filterPlans(plans, { ...DEFAULT_FILTERS, view: filters.view }), [plans, filters.view]);
+  const shown = useMemo(() => sortPlans(filterPlans(plans, filters), filters.sort), [plans, filters]);
+  const groups = useMemo(() => groupPlans(shown, filters.group), [shown, filters.group]);
   if (plans.length === 0) {
     return (
       <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyDescription")}>
@@ -252,53 +112,61 @@ function Plans({ project, plans }: { project: string; plans: PlanSummary[] }) {
       </EmptyState>
     );
   }
-  const byArea = (area: PlanArea) => plans.filter((plan) => plan.area === area);
-  const shown = plans.filter((plan) => matches(plan, needle));
+  const counts = {
+    open: plans.filter((plan) => plan.area === "active").length,
+    completed: plans.filter((plan) => plan.area === "completed").length,
+  };
+  const narrowed = shown.length !== inView.length;
   const toolbar = (
-    <DataToolbar
-      label={t("title")}
-      count={needle ? t("shown", { shown: shown.length, total: plans.length }) : t("total", { count: plans.length })}
-    >
-      <SearchField
-        value={query}
-        onCommit={setQuery}
-        label={t("search")}
-        placeholder={t("searchPlaceholder")}
-        clearLabel={t("clearSearch")}
-        debounce={150}
-        maxLength={200}
-        className="sm:w-64 max-md:flex-1"
-        testId="plans-search"
-      />
-    </DataToolbar>
+    <PlansToolbar
+      filters={filters}
+      counts={counts}
+      choices={filterChoices(inView)}
+      shown={narrowed ? t("shown", { shown: shown.length, total: inView.length }) : t("total", { count: inView.length })}
+      onChange={setFilters}
+    />
   );
+  const used = [
+    filters.q ? { label: tStates("search"), value: filters.q } : null,
+    filters.owner ? { label: t("owner"), value: filters.owner } : null,
+    filters.problem ? { label: t("problem"), value: filters.problem } : null,
+    filters.repo ? { label: t("repo"), value: filters.repo } : null,
+  ].filter((filter) => filter !== null);
+  let body;
+  if (inView.length === 0) {
+    body = (
+      <p className="px-4 py-6 text-center text-[13px] text-muted-foreground" data-testid="plans-none">
+        {t(filters.view === "open" ? "noOpen" : "noCompleted")}
+      </p>
+    );
+  } else if (shown.length === 0) {
+    body = (
+      <NoResults
+        title={t("noMatchTitle")}
+        filters={used}
+        onClear={() => setFilters({ ...filters, q: "", owner: null, problem: null, repo: null })}
+      />
+    );
+  } else if (filters.group === "none") {
+    body = <Rows project={project} plans={shown} runs={runs} />;
+  } else {
+    body = groups.map((group, index) => (
+      <GroupSection key={group.key ?? ""} project={project} group={group} by={filters.group} runs={runs} index={index} />
+    ));
+  }
   return (
-    <>
-      <DataCard toolbar={toolbar}>
-        {shown.length === 0 ? (
-          <NoResults
-            title={t("noMatchTitle")}
-            filters={[{ label: tStates("search"), value: query }]}
-            onClear={() => setQuery("")}
-          />
-        ) : (
-          (["active", "completed"] as const).map((area) => (
-            <AreaSection
-              key={area}
-              project={project}
-              area={area}
-              plans={byArea(area)}
-              filtered={shown.filter((plan) => plan.area === area)}
-              activity={activity}
-              onDispatched={onDispatched}
-            />
-          ))
-        )}
-      </DataCard>
-    </>
+    <DataCard toolbar={toolbar}>
+      <div data-testid="plans-list" data-layout="list" data-view={filters.view} aria-label={t(filters.view === "open" ? "openCaption" : "completedCaption")} role="region">
+        {body}
+      </div>
+    </DataCard>
   );
 }
 
+/**
+ * A project's plans as one list (web/DESIGN.md, Plans): open plans by default, last changed first, each with its
+ * current step and step strip. The page changes no plan; the line under the head says plans are edited from the CLI.
+ */
 export function PlansList({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("plans");
   const tStates = useTranslations("states");
@@ -310,14 +178,6 @@ export function PlansList({ project, initialError }: { project: string; initialE
     },
     initialError,
   );
-  const counts =
-    state.status === "success"
-      ? {
-          active: state.data.filter((plan) => plan.area === "active").length,
-          completed: state.data.filter((plan) => plan.area === "completed").length,
-        }
-      : null;
-
   if (state.status === "error" && state.error.status === 404) {
     return (
       <NotFoundState
@@ -326,27 +186,14 @@ export function PlansList({ project, initialError }: { project: string; initialE
       />
     );
   }
+  const none = state.status === "success" && state.data.length === 0;
   return (
     <>
       <PageHeader
         title={t("list.title")}
-        actions={<NewPlanButton project={project} variant={counts && counts.active + counts.completed === 0 ? "outline" : "default"} />}
-        tags={
-          counts ? (
-            <>
-              <Badge variant="secondary" data-testid="plans-active-count">
-                <Rocket aria-hidden="true" />
-                {t("list.activeCount", { count: counts.active })}
-              </Badge>
-              <Badge variant="secondary" data-testid="plans-completed-count">
-                <Archive aria-hidden="true" />
-                {t("list.completedCount", { count: counts.completed })}
-              </Badge>
-            </>
-          ) : null
-        }
+        actions={<NewPlanButton project={project} variant={none ? "outline" : "default"} />}
+        sub={<span data-testid="plans-cli-note">{t("list.cliNote")}</span>}
       />
-      <ReadOnlyNotice />
       <QueryView state={state} loading={<TableSkeleton rows={4} toolbar />}>
         {(plans) => <Plans project={project} plans={plans} />}
       </QueryView>

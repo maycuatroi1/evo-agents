@@ -3,6 +3,7 @@
 import { useFormatter, useTranslations } from "next-intl";
 
 import { TONE_TEXT } from "@/components/status/status-badge";
+import { STRIP_STATUSES, type StripStatus, stripStatus } from "@/lib/plan-list";
 import { percent, STEP_GROUPS, type StepCounts, type StepGroup } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,16 @@ const SEGMENT: Record<StepGroup, string> = {
   in_progress: "bg-running",
   blocked: "bg-attention-solid",
   pending: "bg-transparent",
+  other: "bg-neutral-solid",
+};
+
+/** The marks of the step strip; descoped is hatched in `neutral-solid`, so it reads apart from to do without colour. */
+const STRIP: Record<StripStatus, string> = {
+  done: "bg-success-solid",
+  in_progress: "bg-running",
+  blocked: "bg-danger-solid",
+  pending: "border border-border-strong bg-card",
+  descoped: "border border-neutral-solid bg-[repeating-linear-gradient(135deg,var(--neutral-solid)_0_1px,transparent_1px_3px)]",
   other: "bg-neutral-solid",
 };
 
@@ -43,17 +54,41 @@ export function StepBar({ counts, className }: { counts: StepCounts; className?:
   );
 }
 
-/** Done of total as words and a bar, for one row of the plans list. */
-export function CompactProgress({ done, total }: { done: number; total: number }) {
-  const t = useTranslations("plans.progress");
-  const counts: StepCounts = { done, pending: total - done, in_progress: 0, blocked: 0, other: 0, total };
+/**
+ * The step strip of a row of the plans list: one mark per step, in the plan's order, so the eye reads where the plan
+ * stands and where it is stuck. Green done, cobalt in progress, red blocked, an empty box to do, hatched descoped and
+ * neutral a status the schema lacks. The marks share the width; the strip is an image named by its counts.
+ */
+export function StepStrip({
+  steps,
+  className,
+}: {
+  steps: readonly { key: string; status: string | null }[];
+  className?: string;
+}) {
+  const t = useTranslations("plans.strip");
+  if (steps.length === 0) return null;
+  const marks = steps.map((step) => ({ key: step.key, status: stripStatus(step.status) }));
+  const counts = STRIP_STATUSES.map((status) => [status, marks.filter((mark) => mark.status === status).length] as const);
+  const label = counts
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => t(status, { count }))
+    .join(", ");
   return (
-    <div className="flex min-w-36 flex-col gap-1.5">
-      <span className="text-sm tabular-nums">
-        <span className="font-medium">{t("doneOfTotal", { done, total })}</span>
-        <span className="text-muted-foreground"> ({t("percent", { percent: percent(done, total) })})</span>
-      </span>
-      <StepBar counts={counts} className="max-w-48" />
+    <div
+      role="img"
+      aria-label={t("label", { counts: label })}
+      className={cn("flex h-2 w-full min-w-0 gap-px", className)}
+      data-testid="step-strip"
+    >
+      {marks.map((mark, index) => (
+        <span
+          key={`${mark.key}-${index}`}
+          className={cn("h-full min-w-px flex-1 rounded-[1px]", STRIP[mark.status])}
+          data-status={mark.status}
+          data-step={mark.key}
+        />
+      ))}
     </div>
   );
 }

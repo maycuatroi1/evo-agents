@@ -20,7 +20,7 @@ test.describe("plan screenshots", () => {
       const project = me.projects[0];
       await seedPlans(me, project);
       const shots: [string, string, () => Promise<void>][] = [
-        ["plans-list", `/p/${project}/plans`, () => expect(page.getByTestId("plans-table-active")).toBeVisible()],
+        ["plans-list", `/p/${project}/plans`, () => expect(page.getByTestId("plans-list")).toBeVisible()],
         ["plan-board", `/p/${project}/plans/${ACTIVE_PLAN}`, () => expect(page.getByTestId("step-board")).toBeVisible()],
         [
           "plan-step",

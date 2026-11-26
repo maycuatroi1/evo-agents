@@ -101,7 +101,7 @@ async function seedProject(me: Member): Promise<Visit[]> {
   const bundle = await packSkill(LONG, "Notes.", `Use when ${LONG}`);
   await publishSkill(api, bundle, LONG, project, { repo: `example-org/${LONG}`, commit: "0123abcdef0123abcdef" });
   return [
-    { path: `/p/${project}/plans`, ready: shown("plans-table-active") },
+    { path: `/p/${project}/plans`, ready: shown("plans-list") },
     {
       path: `/p/${project}/plans/${ACTIVE_PLAN}`,
       ready: async (page) => {
