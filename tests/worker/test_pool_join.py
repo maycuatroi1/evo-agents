@@ -19,7 +19,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 from evo_agents.hub import runs
 from evo_agents.hub.skill_sync import MARKER
 from evo_agents.hub.skills import pack
-from evo_agents.worker.pool_cli import JOIN_TOKEN_ENV
+from evo_agents.worker.pool_boot import JOIN_TOKEN_ENV
 from tests.hub import live
 from tests.hub.test_skills_api import publish, write_skill
 from tests.worker.test_daemon import PROJECT, make_stack, wait_until  # noqa: F401 - the fixture of the daemon tests

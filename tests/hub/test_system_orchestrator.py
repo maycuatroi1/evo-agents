@@ -15,7 +15,8 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import system_context, tables_orchestrator, triage_rules
-from evo_agents.worker import escalate_cli, triage_cli
+from evo_agents.worker.cli import escalate
+from evo_agents.worker.cli.triage import TRIAGE, TriageAnswer, TriageAskOwner, TriageReassign
 
 ORCHESTRATED = {
     "nodes": [
@@ -91,15 +92,15 @@ def test_reassign_refuses_an_agent_whose_run_waits_on_the_asker():
 def worker_args(*argv: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="evo-agents worker")
     sub = parser.add_subparsers(dest="command")
-    escalate_cli.register_escalate(sub)
-    triage_cli.register_triage(sub)
+    escalate.ESCALATE.attach(sub)
+    TRIAGE.attach(sub)
     return parser.parse_args(list(argv))
 
 
 def test_escalate_takes_a_question_and_sends_only_the_brief_fields_given():
     args = worker_args("escalate", "--question", "which retry policy wins?", "--goal", "one policy", "--ref", "run:4")
-    assert args.func is escalate_cli.cmd_escalate
-    assert escalate_cli.payload(args, args.question) == {
+    assert args.func is escalate.ESCALATE
+    assert escalate.payload(args, args.question) == {
         "question": "which retry policy wins?",
         "goal": "one policy",
         "refs": ["run:4"],
@@ -108,13 +109,13 @@ def test_escalate_takes_a_question_and_sends_only_the_brief_fields_given():
 
 def test_the_orchestrator_commands_parse():
     answer = worker_args("triage", "answer", "--text", "use backoff", "--reason", "the spec says so")
-    assert answer.func is triage_cli.cmd_answer
+    assert isinstance(answer.func, TriageAnswer)
     reassign = worker_args("triage", "reassign", "@fixer", "--note", "fix it", "--reason", "fixer owns it")
-    assert (reassign.func, reassign.handle) == (triage_cli.cmd_reassign, "@fixer")
+    assert isinstance(reassign.func, TriageReassign) and reassign.handle == "@fixer"
     ask = worker_args(
         "triage", "ask-owner", "--question", "ship?", "--option", "y=Yes", "--option", "n=No", "--reason", "r"
     )
-    assert (ask.func, ask.option) == (triage_cli.cmd_ask_owner, ["y=Yes", "n=No"])
+    assert isinstance(ask.func, TriageAskOwner) and ask.option == ["y=Yes", "n=No"]
 
 
 def test_the_hub_runtime_has_the_escalate_and_orchestrator_tools():

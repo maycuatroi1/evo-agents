@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from evo_agents.hub import chat_runs, chats, outputs
 from evo_agents.hub.server.app import create_app
 from evo_agents.worker.home import WorkerStateError
-from evo_agents.worker.output_cli import checked_files
+from evo_agents.worker.output_files import checked_files
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.test_chat_runs import (
     OTHER,

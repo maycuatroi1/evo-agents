@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import argparse
 
-from evo_agents.worker import agent_ask_cli
+from evo_agents.worker.cli import agent
 
 
 def parsed(*argv: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="evo-agents worker")
-    agent_ask_cli.register_agent(parser.add_subparsers(dest="command"))
+    agent.AGENT.attach(parser.add_subparsers(dest="command"))
     return parser.parse_args(["agent", *argv])
 
 
@@ -34,7 +34,7 @@ def test_the_ask_takes_a_brief_and_a_reason_and_sends_only_what_was_given():
         "--reason",
         "the fixer owns the loop",
     )
-    assert agent_ask_cli.ask_payload(args, "fixer", "fix the retry loop") == {
+    assert agent.ask_payload(args, "fixer", "fix the retry loop") == {
         "handle": "fixer",
         "body": "fix the retry loop",
         "goal": "a green wait test",
@@ -43,7 +43,7 @@ def test_the_ask_takes_a_brief_and_a_reason_and_sends_only_what_was_given():
         "reason": "the fixer owns the loop",
     }
     bare = parsed("ask", "fixer", "fix the retry loop")
-    assert agent_ask_cli.ask_payload(bare, "fixer", "fix the retry loop") == {
+    assert agent.ask_payload(bare, "fixer", "fix the retry loop") == {
         "handle": "fixer",
         "body": "fix the retry loop",
     }, "with no flag the ask is as before"
@@ -51,7 +51,7 @@ def test_the_ask_takes_a_brief_and_a_reason_and_sends_only_what_was_given():
 
 def test_forward_takes_the_run_whose_answer_it_posts():
     args = parsed("forward", "--run", "42")
-    assert args.run == 42 and args.func is agent_ask_cli.cmd_agent_forward
+    assert args.run == 42 and args.func is agent.AGENT_FORWARD
 
 
 # On the hub

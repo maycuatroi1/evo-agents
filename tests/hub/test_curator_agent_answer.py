@@ -36,7 +36,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.server import autonomy_gates
 from evo_agents.hub.server.collect import reopen_deferred
 from evo_agents.hub.server.curator_threads import SKILL
-from evo_agents.worker import curator_cli
+from evo_agents.worker.cli.base import AgentRunContext
+from evo_agents.worker.cli.curator import CuratorAnswer, CuratorMerge
 from tests.hub.live import sql
 from tests.hub.test_brief import BRIEF, body_of, briefed, briefs_of
 from tests.hub.test_chat_runs import chat_worker, thread
@@ -268,6 +269,13 @@ def test_the_morning_brief_lists_the_answers_of_the_agent(world):  # noqa: F811
     assert f"- proposal #{made['id']} rejected by @" in note["body"]
 
 
+def in_run(monkeypatch, run_id: int, kind: str, call) -> None:
+    """The commands of a run's agent act for run ``run_id`` of ``kind``, their calls to the hub going to ``call``."""
+    monkeypatch.setattr(AgentRunContext, "run_id", run_id)
+    monkeypatch.setattr(AgentRunContext, "record", {"kind": kind})
+    monkeypatch.setattr(AgentRunContext, "in_chats", lambda ctx, route, body: call(ctx, route, body))
+
+
 def test_worker_curator_answer_sends_the_answer_and_prints_one_line(monkeypatch, capsys):
     sent = []
 
@@ -275,10 +283,9 @@ def test_worker_curator_answer_sends_the_answer_and_prints_one_line(monkeypatch,
         sent.append((route, body))
         return {"message_id": 9, "proposal": {"id": 5, "state": "deferred", "change": None}}
 
-    monkeypatch.setattr(curator_cli, "agent_run", lambda command: SimpleNamespace(run_id=7))
-    monkeypatch.setattr(curator_cli, "call", call)
+    in_run(monkeypatch, 7, "chat", call)
     args = SimpleNamespace(proposal=5, action="defer", note="wait for the kg eval", days=3)
-    assert curator_cli.cmd_answer(args) == 0
+    assert CuratorAnswer()(args) == 0
     assert sent == [
         ("curator/answer", {"proposal_id": 5, "action": "defer", "note": "wait for the kg eval", "defer_days": 3})
     ]
@@ -481,9 +488,8 @@ def test_worker_curator_merge_sends_the_change_and_prints_one_line(monkeypatch, 
         change = {"id": 4, "state": "merged", "pr_url": "https://github.com/northwind/api/pull/9", "merge_sha": "abc"}
         return {"message_id": 12, "change": change}
 
-    monkeypatch.setattr(curator_cli, "agent_run", lambda command: SimpleNamespace(run_id=7))
-    monkeypatch.setattr(curator_cli, "call", call)
-    assert curator_cli.cmd_merge(SimpleNamespace(change=4)) == 0
+    in_run(monkeypatch, 7, "chat", call)
+    assert CuratorMerge()(SimpleNamespace(change=4)) == 0
     assert sent == [("curator/merge", {"change_id": 4})]
     assert capsys.readouterr().out.strip() == (
         "Change #4 is merged: pull request https://github.com/northwind/api/pull/9 merged as abc; the Decision line is "

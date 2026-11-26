@@ -1,5 +1,5 @@
 """The worker extra (``evo-ak[worker]``): whether this Python has it, and the line that says how to install it, for the
-commands that need it (``cli_support``, ``service``) and the ones that load it themselves. Standard library only."""
+commands that need it (``cli.base``, ``service``) and the ones that load it themselves. Standard library only."""
 
 from __future__ import annotations
 

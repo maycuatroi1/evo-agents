@@ -12,8 +12,9 @@ import subprocess
 import pytest
 
 from evo_agents.hub import approval_heads
-from evo_agents.worker import agent_cli as cli
 from evo_agents.worker import pull_heads
+from evo_agents.worker import run_decisions as cli
+from evo_agents.worker.cli.ask import ASK
 from evo_agents.worker.home import WorkerStateError
 from tests.worker.test_autonomy_level_hook import Recorder, check, gate
 
@@ -87,7 +88,7 @@ def test_approval_head_worker_ask_pull_binds_the_decision_to_the_head_and_scope(
 def test_approval_head_worker_ask_takes_pull():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers()
-    cli._register_ask(sub)
+    ASK.attach(sub)
     args = parser.parse_args(["ask", "--category", "merge", "--question", "Merge #12?", "--pull", "12"])
     assert args.pull == "12"
 

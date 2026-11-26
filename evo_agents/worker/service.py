@@ -40,14 +40,13 @@ biggest process (``OOMPolicy=continue`` keeps the daemon), and never swap. A 4-v
 their runs while the agents still worked (#1620, #1629); the rest of the machine, sshd and the user's own services
 among them, keeps what the slice leaves. A user's manager gets the memory controller alone on most distributions
 (``Delegate=pids memory``), so the slice sets no CPU weight, which it would ignore. Uninstalling one node leaves the
-slice, which the other nodes may still run in. Standard library only.
+slice, which the other nodes may still run in. The commands are ``evo_agents.worker.cli.service``. Standard library
+only.
 """
 
 from __future__ import annotations
 
-import functools
 import getpass
-import json
 import os
 import plistlib
 import re
@@ -62,8 +61,8 @@ from pathlib import Path
 
 from evo_agents.hub.client import write_atomic
 from evo_agents.kg.schedule import executable
-from evo_agents.worker.extra import EXTRA_HINT, missing_extra
-from evo_agents.worker.home import EXIT_REVOKED, HOME_VARIABLE, REVOKED_EXIT_VARIABLE, WorkerHome, WorkerStateError
+from evo_agents.worker.extra import missing_extra as missing_extra  # install asks it here, where tests replace it
+from evo_agents.worker.home import EXIT_REVOKED, HOME_VARIABLE, REVOKED_EXIT_VARIABLE, WorkerHome
 
 LABEL = "io.github.maycuatroi1.evo-agents.worker"
 UNIT = "evo-agents-worker.service"
@@ -83,8 +82,6 @@ CALL_TIMEOUT = 30
 RUNTIME_COMMANDS = ("claude", "opencode", "codex", "tmux", "git")
 SYSTEM_PATH = ("/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
 FILE_MODE = 0o644
-EXIT_FAILED = 1
-EXIT_USAGE = 2
 SYSTEMD_PROPERTIES = ("LoadState", "ActiveState", "SubState", "MainPID", "ExecMainStatus", "NRestarts")
 KEPT_PREFIX = "EVO_WORKER_"  # the variables of the installed service that installing again keeps
 WRITTEN = (
@@ -620,21 +617,7 @@ def manager(platform: str | None = None, run=None, sleep=None, agent: str | None
     )
 
 
-# The commands
-
-
-def _command(func):
-    """Turn the failures of ``func`` into an ``error:`` line and exit status 1."""
-
-    @functools.wraps(func)
-    def run(args) -> int:
-        try:
-            return func(args)
-        except (ServiceError, WorkerStateError) as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
-
-    return run
+# What the commands of ``evo_agents.worker.cli.service`` call
 
 
 def doctor_warnings(spec: Spec) -> list[str]:
@@ -654,7 +637,7 @@ def self_update_warning() -> str | None:
     return f"warning: the daemon will not update itself to nightly: {reason}" if reason else None
 
 
-def _refuse_foreign_daemon(home: WorkerHome, service: Manager) -> None:
+def refuse_foreign_daemon(home: WorkerHome, service: Manager) -> None:
     pid = home.read_pid()
     if pid is None:
         return
@@ -667,7 +650,8 @@ def _refuse_foreign_daemon(home: WorkerHome, service: Manager) -> None:
     )
 
 
-def _describe(status: Status) -> str:
+def describe(status: Status) -> str:
+    """How the daemon of the service is, in words: running, not loaded, not running (and why)."""
     if status.running:
         return f"running, pid {status.pid}" if status.pid else "running"
     if not status.loaded:
@@ -678,139 +662,9 @@ def _describe(status: Status) -> str:
     return f"not running ({', '.join(details)})" if details else "not running"
 
 
-def _logs(service: Manager, home: Path) -> str:
+def logs_of(service: Manager, home: Path) -> str:
+    """Where the daemon of ``service`` logs, and where what it prints before its log is open goes."""
     log = home / "worker.log"
     if isinstance(service, Systemd):
         return f"{log}; before it opens: journalctl --user -u {service.service}"
     return f"{log}; before it opens: {home / 'service.log'}"
-
-
-def _manager_of(args) -> Manager:
-    """The manager of the node ``--agent`` names (default: ``$EVO_WORKER_AGENT``, else the one node of the machine)."""
-    return manager(agent=getattr(args, "agent", None))
-
-
-@_command
-def cmd_install(args) -> int:
-    home = WorkerHome()
-    service = _manager_of(args)
-    if service.agent and not os.environ.get(HOME_VARIABLE):
-        raise ServiceError(
-            f"the node of agent {service.agent} needs a state directory of its own: set {HOME_VARIABLE} (for "
-            f"example ~/.evo/worker-{service.agent}) for `worker join` and for this command, so it does not share "
-            "the directory of another node"
-        )
-    home.load_config()  # a machine that is not a worker yet: the daemon would only fail and be started again
-    home.load_token()
-    missing = missing_extra()
-    if missing:
-        print(
-            f"error: evo-agents worker service install needs the worker extra (missing module {missing}): {EXTRA_HINT}",
-            file=sys.stderr,
-        )
-        return EXIT_USAGE
-    _refuse_foreign_daemon(home, service)
-    spec = build_spec(home, kept=service.installed_environment(), agent=service.agent)
-    home.ensure()
-    status = service.install(spec)
-    found = runtimes_on(spec.path)
-    print(f"Installed {service.service} ({service.name}): {service.file()}")
-    print(
-        f"  runs: {shlex.join(spec.program)}, now and at each login, and again {RESTART_SECONDS} s after it exits "
-        "with an error"
-    )
-    on_path = ", ".join(f"{name} {path}" for name, path in found.items() if path) or "none"
-    print(f"  on the PATH it keeps: {on_path}")
-    absent = [name for name, path in found.items() if not path]
-    if absent:
-        print(f"  not on that PATH: {', '.join(absent)}; install again once they are, so the daemon finds them")
-    if spec.kept:
-        print(f"  kept from the service installed before: {', '.join(spec.kept)}")
-    print(f"  state: {spec.home}")
-    print(f"  log: {_logs(service, spec.home)}")
-    if isinstance(service, Systemd) and not Systemd.lingering():
-        print(
-            "  systemd stops user services when you log out; to keep the worker running without a session: "
-            "loginctl enable-linger"
-        )
-    try:
-        warned = doctor_warnings(spec)
-    except Exception as exc:  # the doctor only warns: nothing it meets stops the install
-        warned = [f"warning: `evo-agents worker doctor` did not finish ({type(exc).__name__}: {exc})"]
-    try:
-        stays = self_update_warning()
-    except Exception as exc:  # it only warns, like the doctor
-        stays = f"warning: could not read whether the daemon can update itself ({type(exc).__name__}: {exc})"
-    for line in [*warned, *([stays] if stays else [])]:
-        print(line, file=sys.stderr)
-    if not status.running:
-        print(
-            f"error: the service is installed, but the daemon is {_describe(status)}: see {_logs(service, spec.home)}",
-            file=sys.stderr,
-        )
-        return EXIT_FAILED
-    print(f"  daemon: {_describe(status)}")
-    return 0
-
-
-@_command
-def cmd_uninstall(args) -> int:
-    service = _manager_of(args)
-    if service.stop():
-        print(f"Uninstalled {service.service} ({service.name}): the daemon is stopped and {service.file()} deleted.")
-    else:
-        print(f"{service.service} ({service.name}) is not installed.")
-    return 0
-
-
-@_command
-def cmd_status(args) -> int:
-    service = _manager_of(args)
-    status = service.status()
-    home = service.installed_home() or Path(os.path.abspath(WorkerHome().root))
-    if args.json:
-        report = {**status.to_json(), "program": service.program(), "home": str(home), "log": str(home / "worker.log")}
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-        return 0
-    if not status.installed and not status.loaded:
-        print(f"{service.service} ({service.name}) is not installed: `evo-agents worker service install` starts it.")
-        return 0
-    print(f"{service.service} ({service.name}): {_describe(status)}")
-    print(f"  file: {status.file}{'' if status.installed else ' (missing; uninstall, then install again)'}")
-    program = service.program()
-    if program:
-        print(f"  runs: {program}")
-    if status.restarts:
-        print(f"  started again {status.restarts} time(s) since it was loaded")
-    if status.running and status.last_exit not in (None, "0"):
-        print(f"  last exit: {status.last_exit}")
-    print(f"  state: {home}")
-    print(f"  log: {_logs(service, home)}")
-    return 0
-
-
-def register(wsub) -> None:
-    """``evo-agents worker service install|uninstall|status`` under the parser group of ``evo-agents worker``."""
-    service = wsub.add_parser(
-        "service",
-        help="keep the daemon running in the background: a LaunchAgent on macOS, a systemd user unit on Linux",
-    )
-    ssub = service.add_subparsers(dest="service_command", required=True)
-    agent_help = (
-        "the node of this agent (handle): a service of its own, next to the nodes of other agents; needs "
-        f"{HOME_VARIABLE} for its state directory. Default: ${AGENT_VARIABLE}, else the one node of the machine"
-    )
-    install = ssub.add_parser(
-        "install",
-        help="run the daemon now and at each login, again after it exits with an error, with PATH as it is now; "
-        "installing again keeps the EVO_WORKER_* variables the installed service sets",
-    )
-    install.add_argument("--agent", metavar="HANDLE", help=agent_help)
-    install.set_defaults(func=cmd_install)
-    uninstall = ssub.add_parser("uninstall", help="stop the daemon and remove the service")
-    uninstall.add_argument("--agent", metavar="HANDLE", help=agent_help)
-    uninstall.set_defaults(func=cmd_uninstall)
-    status = ssub.add_parser("status", help="whether the service is installed and the daemon runs")
-    status.add_argument("--json", action="store_true", help="machine-readable output")
-    status.add_argument("--agent", metavar="HANDLE", help=agent_help)
-    status.set_defaults(func=cmd_status)

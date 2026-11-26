@@ -43,7 +43,7 @@ def results(found) -> list[str]:
 
 
 def test_entity_code_is_off_by_default_and_a_query_key_every_surface_takes(tmp_path):
-    from evo_agents.kg import cli_bench
+    from evo_agents.kg.bench import selection
 
     assert kg_settings.DEFAULT.entity_code is False and "entity_code" in kg_settings.KEYS
     assert "entity_code" not in kg_settings.BUILD_KEYS
@@ -57,7 +57,7 @@ def test_entity_code_is_off_by_default_and_a_query_key_every_surface_takes(tmp_p
         kg_settings.of({"entity_code": 3})
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"settings": {"entity_code": True}}))
-    assert cli_bench._tuning_file(str(path)) == {"entity_code": True}  # kg bench run --settings
+    assert selection.tuning_file(str(path)) == {"entity_code": True}  # kg bench run --settings
 
 
 def test_kg_settings_sets_entity_code(tmp_path, kg_env, capsys, monkeypatch):

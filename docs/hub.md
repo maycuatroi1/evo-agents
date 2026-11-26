@@ -1880,7 +1880,7 @@ protected path and the rest of the hub's merge allows it, K5 of the chat run's p
 ## Agents across projects
 
 The agent of a chat run asks an agent of another project for work or knowledge of that project with
-`evo-agents worker agent ask HANDLE TEXT` (`evo_agents/worker/agent_ask_cli.py`), which calls
+`evo-agents worker agent ask HANDLE TEXT` (`evo_agents/worker/cli/agent.py`), which calls
 `POST /v1/worker/runs/{id}/agent/asks` with the worker's token (`evo_agents/hub/server/agent_asks.py`). Only a chat run
 asks: a run of another kind gets 422. `worker chat mention` stays as it was, for an agent of the same chat.
 
@@ -1934,7 +1934,7 @@ and set to null when what they name is deleted; the run API returns `spawned_by_
 ### Reading another project, and what may enter a run
 
 The agent of a chat run reads the knowledge graph and the memories of another project with
-`evo-agents worker agent read PROJECT TOOL [TEXT]` (`evo_agents/worker/agent_read_cli.py`), TOOL being `kg-search`,
+`evo-agents worker agent read PROJECT TOOL [TEXT]` (`evo_agents/worker/cli/agent.py`), TOOL being `kg-search`,
 `kg-context`, `memory-search` or `memory-get`, which calls `POST /v1/worker/runs/{id}/agent/reads` with the worker's
 token (`evo_agents/hub/server/agent_reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
 token reaches no other project, and widening it would widen every tool. Only a chat run reads this way (422 for
@@ -2301,7 +2301,7 @@ evo-agents worker pool user-data vps --max-nodes 1 > user-data.sh  # a token and
 evo-agents worker pool show vps                               # its nodes, each ready or why not
 ```
 
-`worker pool` (`evo_agents/worker/pool_cli.py`) reads and writes `/v1/worker-pools` with the machine token of `hub
+`worker pool` (`evo_agents/worker/cli/pool.py`) reads and writes `/v1/worker-pools` with the machine token of `hub
 login`: `create NAME --project P [--slots N] [--label L ...] [--taint T ...] [--accept-finding CODE ...]
 [--reap-after-days D]`, `list`, `show NAME`, `set NAME` with the same flags (a list given replaces the whole list;
 `--no-labels`, `--no-taints` and `--no-accepted-findings` empty one), `token create NAME [--hours H] [--max-uses N]`,

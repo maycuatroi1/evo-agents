@@ -213,11 +213,7 @@ forbidden_modules = ["evo_agents.hub", "evo_agents.worker"]
 ignore_imports = [
     # The CLI of the knowledge graph: `kg` commands that push to the hub, read its graphs, ask it for a build, or have it
     # prune or scrub a project.
-    "evo_agents.kg.cli -> evo_agents.hub.**",
-    "evo_agents.kg.cli_graph -> evo_agents.hub.**",
-    "evo_agents.kg.cli_links -> evo_agents.hub.**",
-    "evo_agents.kg.cli_prune -> evo_agents.hub.**",
-    "evo_agents.kg.cli_scrub -> evo_agents.hub.**",
+    "evo_agents.kg.cli.** -> evo_agents.hub.**",
 ]
 broken_contract_guidance = """\
 The knowledge graph builds and serves on a core install, without the hub or the worker. Keep the hub's side in \
@@ -405,11 +401,7 @@ ancestors = ["evo_agents"]
 depth = 0
 ignore_imports = [
     # The CLI of the knowledge graph reaches the hub (contract kg-not-hub-or-worker).
-    "evo_agents.kg.cli -> evo_agents.hub.**",
-    "evo_agents.kg.cli_graph -> evo_agents.hub.**",
-    "evo_agents.kg.cli_links -> evo_agents.hub.**",
-    "evo_agents.kg.cli_prune -> evo_agents.hub.**",
-    "evo_agents.kg.cli_scrub -> evo_agents.hub.**",
+    "evo_agents.kg.cli.** -> evo_agents.hub.**",
     # The MCP proxy finds a worker's home to serve the agent of a run.
     "evo_agents.hub.mcp_proxy -> evo_agents.worker.home",
     # The curator session commands read the agent's input files and the worker's state error, inside their functions.
@@ -455,8 +447,8 @@ source_modules = [
 forbidden_modules = [
     "evo_agents.kg.evaluate",
     "evo_agents.kg.bench",
-    "evo_agents.kg.cli_bench",
-    "evo_agents.kg.cli_rank",
+    "evo_agents.kg.cli.bench",
+    "evo_agents.kg.cli.rank",
     "evo_agents.hub.kg_health_eval",
     "evo_agents.hub.server.kg_eval_sets",
 ]
