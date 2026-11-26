@@ -1,7 +1,7 @@
 """Seats that end, in chats (plan org-chart, criterion a5): a person whose primary seat ended is at A0, and the @ of an
 agent in their message hands no work: the hub answers in the thread why, naming the unit and the day; their message
 is still stored and read, and a person whose seat is live gets their run as before
-(``evo_agents.hub.server.chat_runs.hand_work``)."""
+(``evo_agents.hub.server.chats.service.runs.hand_work``)."""
 
 from __future__ import annotations
 

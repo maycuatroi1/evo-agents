@@ -1,17 +1,17 @@
 """The hub runtime: the turns of a chat run of an agent whose profile runs on the hub (``runs_on: hub``), each taken by
 the job ``hub.hub_turn`` (``evo_agents.hub.worker``) with no worker and no pool. docs/hub.md, section Hub runtime.
 
-A run of runtime ``hub`` queues as any chat run (``chat_runs._start``); ``run_state.notify_queued`` defers its job in
+A run of runtime ``hub`` queues as any chat run (``chats.service.runs._start``); ``run_state.notify_queued`` defers its job in
 the same transaction. ``take_turn`` holds the run (queued, leased and running as the actor worker, leased for
 TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then:
 
 1. Without a model gateway the agent replies that the hub runtime is not configured, and the run ends done.
 2. A system whose hub agents spent its ``limits.daily_usd`` today (``daily_problem``) takes no turn: the agent says so
    and the system's owner gets the notice ``system_daily_cap`` once a day.
-3. The model is the run's (the profile's model axis, as ``chat_runs._start`` picked it), through the provider accounts
+3. The model is the run's (the profile's model axis, as ``chats.service.runs._start`` picked it), through the provider accounts
    the run may use (``gateway_accounts.usable_accounts``), with a key of the gateway made for the turn alone and
    revoked at its end.
-4. The prompt is the worker's (``chat_prompts.chat_prompt``, the same rules), the profile's instructions and ON_HUB, and
+4. The prompt is the worker's (``chats.service.prompts.chat_prompt``, the same rules), the profile's instructions and ON_HUB, and
    the messages of the run's inbox, which the turn takes. The model calls the tools of ``hub_tools`` for at most
    MAX_ROUNDS rounds and TURN_SECONDS; messages that reach the inbox meanwhile join before the next round. A round
    whose tools asked an agent or escalated ends the turn, as the worker's agent ends its turn after the command: the
@@ -22,11 +22,11 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
    go redacted, counting nothing, so one message is counted once and blocks its own turn alone.
    Each round writes the model's text, the tool calls with their results and its tokens to the run's log, of the ACP
    kinds a worker's run writes (``hub_run_events``), so the run's stream shows the turn as it goes.
-5. Its last answer, masked as the worker's reply is, is the agent's reply in the thread (``chat_runs.agent_reply``).
+5. Its last answer, masked as the worker's reply is, is the agent's reply in the thread (``chats.service.runs.agent_reply``).
    The turn's tokens and the key's cost go to run_spend, runs.usage and the attributes of the run's invoke_agent span.
 6. A run that asked an agent and waits for the answer parks (waiting, then parked), and the answer wakes it in a new
    run (``run_waits.wake``); any other ends done, and messages left in its inbox go on in a new run
-   (``chat_runs.chat_run_moved``). A turn that raises fails the run with the error's kind.
+   (``chats.service.runs.chat_run_moved``). A turn that raises fails the run with the error's kind.
 """
 
 from __future__ import annotations
@@ -53,8 +53,8 @@ from evo_agents.hub.server import (
     system_traces,
 )
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chat_prompts import chat_prompt
-from evo_agents.hub.server.chat_runs import agent_reply, chat_run
+from evo_agents.hub.server.chats.service.prompts import chat_prompt
+from evo_agents.hub.server.chats.service.runs import agent_reply, chat_run
 from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
 from evo_agents.hub.server.gateway_leases import used_with
 from evo_agents.hub.server.notifications import notify

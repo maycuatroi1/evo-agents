@@ -621,7 +621,7 @@ async def approvers(
 
 
 async def store(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, run) -> int:
-    """Keep ``change`` as a pending proposal of chat run ``run`` (``chat_runs.ChatRun``), or of the Curator's review
+    """Keep ``change`` as a pending proposal of chat run ``run`` (``chats.models.runs.ChatRun``), or of the Curator's review
     run (``server.ReviewRun``, no chat and no thread); its id."""
     b = tables.builder_proposals
     values = {

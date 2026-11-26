@@ -3,7 +3,7 @@ audience of the chats it read (criterion a6 of plan chat-history-in-kg).
 
 The hub notes in ``runs.seen_audience`` the principals of everything it returns to the agent of a run that has an
 audience: the label of each kg_* result (``kg.tool_result``), the messages chat_message and chat_thread read on /mcp and
-`evo-agents worker chat read` reads (``chat_read``), and the memories memory_search and memory_get return
+`evo-agents worker chat read` reads (``chats.service.read``), and the memories memory_search and memory_get return
 (``memories``). A note only adds principals, in one UPDATE that merges them into the row as it is then, so two calls of
 the same run at once lose none; nothing removes one while the run lives.
 

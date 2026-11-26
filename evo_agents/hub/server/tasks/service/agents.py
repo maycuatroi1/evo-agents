@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
 from evo_agents.hub.server.tasks.models.values import (

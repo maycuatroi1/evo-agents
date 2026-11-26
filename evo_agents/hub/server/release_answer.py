@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import releases, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server.chat_runs import hub_reply
+from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.release_check import cancel_queued
 from evo_agents.hub.server.release_cycles import cycle_of, go_on, held_by

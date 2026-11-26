@@ -5,7 +5,7 @@ what lists them, so the hub's pages show images and video under their Content-Se
 - GET /v1/projects/{p}/decisions/{id}/outputs/{oid}/content, to the decision's readers (``decisions.service.reads.readable_decision``),
   for an output the decision carries;
 - GET /v1/chats/{id}/outputs/{oid}/content, to a member of the chat who reads a message of it that carries the output
-  (its label cleared, ``chat_access.label_reader``);
+  (its label cleared, ``chats.service.access.label_reader``);
 - GET /v1/projects/{p}/runs/{id}/outputs/{oid}/link, to the run's readers: a presigned GET of the bytes in the blob
   store, an attachment of the output's ASCII name, working until ``expires_at``, for ``evo-agents hub run outputs
   --download``.
@@ -39,8 +39,8 @@ from evo_agents.hub import outputs, tables
 from evo_agents.hub.blobs import GET_TTL, BlobStoreUnavailable
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.chat_access import chat_access, label_reader
-from evo_agents.hub.server.chat_members import ChatId
+from evo_agents.hub.server.chats.models.members import ChatId
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
 from evo_agents.hub.server.decisions.service.reads import readable_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.output_views import columns

@@ -12,7 +12,7 @@ named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* to
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project whose audience the caller still holds
 (``kg_audience``), with or without a graph. chat_message and chat_thread read the messages of group chats whole, as
-``chat_read`` rules who may, from the chats and grants as they are at each call. The others call the
+``chats.service.read`` rules who may, from the chats and grants as they are at each call. The others call the
 hub's routes for memories, plans and their handoffs, problems, skills, projects, the tool figures of runs, and what the
 Curator's review run reads (the night's figures, session digests, the events of a run, decisions, replays, the probes'
 weekly report, and the project's whole history, ``history_mcp``) in this process, so they read and write under the
@@ -69,7 +69,6 @@ from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_writes import ATTEMPTS, check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import (
-    chat_read,
     digests,
     evolve,
     hub_settings,
@@ -88,6 +87,7 @@ from evo_agents.hub.server import (
     skills,
     tool_stats,
 )
+from evo_agents.hub.server.chats import mcp as chat_read
 from evo_agents.hub.server.decisions.service import reads as decision_reads
 from evo_agents.hub.server.history import mcp as history_mcp
 from evo_agents.hub.server.intake import service as intake

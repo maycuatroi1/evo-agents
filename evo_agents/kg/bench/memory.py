@@ -8,13 +8,13 @@ MemoryAgentBench with the questions asked on it. ``fetch`` downloads the files a
      "questions": [{"id", "question", "type", "answers": [session index, ...] | null, "unmatched"}]}
 
 Graph. Each session becomes a chat of the hub's graph, the way the hub's chats go into it
-(``evo_agents.hub.server.chat_graph``, which this package does not import): a Chat item, one ChatThread item rooted
-at its first turn, and a ChatMessage item per turn, named ``#<id> <author> <time>``, its text the turn's content and
-its props ``chat``, ``thread``, ``seq``, ``author_kind`` (person for the user, agent for the assistant), ``author`` and
-``sent_at``. A context of MemoryAgentBench that is not a list of sessions (documents, a novel, a list of facts) is one
-chat whose messages are its chunks of at most CHUNK_CHARS, cut at a blank line, else a line end. The items reach the
-build through an in-process connector (``connector``) reading the case's items file, labelled public as the code
-graphs are, without an audience.
+(``evo_agents.hub.server.chats.service.graph``, which this package does not import): a Chat item, one ChatThread item
+rooted at its first turn, and a ChatMessage item per turn, named ``#<id> <author> <time>``, its text the turn's content
+and its props ``chat``, ``thread``, ``seq``, ``author_kind`` (person for the user, agent for the assistant), ``author``
+and ``sent_at``. A context of MemoryAgentBench that is not a list of sessions (documents, a novel, a list of facts) is
+one chat whose messages are its chunks of at most CHUNK_CHARS, cut at a blank line, else a line end. The items reach the
+build through an in-process connector (``connector``) reading the case's items file, labelled public as the code graphs
+are, without an audience.
 
 Scoring, as LongMemEval's ``print_retrieval_metrics.py`` does: a question whose id has ``_abs`` (abstention) is left
 out; kg_search is asked the question verbatim with its largest limit (LIMIT), each result counted for the session

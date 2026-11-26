@@ -1,11 +1,11 @@
 """The messages of the hub's group chats as the items of a project's knowledge graph: what a source of the chats
 answers a build of the graph (``evo_agents.hub.kg_sources``), the core plugin chats' through the API of core plugins
-(``core_plugin_api.chat_history_items``). The label rule of chats stays here, beside ``chat_access``, so a plugin
-hands the hub's items on and never decides who reads a message.
+(``core_plugin_api.chat_history_items``). The label rule of chats stays here, beside ``chats.service.access``, so a
+plugin hands the hub's items on and never decides who reads a message.
 
 The hub keeps each message's label as its chat had it when it was sent: a part per project with an agent in the chat
-then, by names (``evo_agents.hub.server.chat_access``). In the graph of project P, each message whose label holds a
-part of P is:
+then, by names (``evo_agents.hub.server.chats.models.access``). In the graph of project P, each message whose label
+holds a part of P is:
 
 - the item ``<source>:message:<id>`` of kind ``message``, a ChatMessage node (``plugin.chats:message:<id>`` for the
   plugin chats), named by the hub ``#<id> <login or @handle> <UTC time>``: the id chat_message and ``chat show`` call
@@ -34,47 +34,18 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import effective_grant, enabled_in
-from evo_agents.hub.server.chat_access import LabelProject, projects_named
+from evo_agents.hub.server.chats.models.access import LabelProject
+from evo_agents.hub.server.chats.repository.access import projects_named
+from evo_agents.hub.server.chats.repository.graph import messages_of
 from evo_agents.kg.ids import utc_text
 
 READS = "chats:read"  # what a source of the chats needs the project to grant its plugin
 CHAT, THREAD, MESSAGE = "chat", "thread", "message"  # the kinds of the items, and the kinds in their ids
 NAME_TIME = "%Y-%m-%dT%H:%M:%SZ"  # the time in a message's name
-
-
-def _messages(project: str):
-    """Every message whose label holds a part of ``project``, with its chat's title and its author, in order."""
-    cm, c, u, ap = tables.chat_messages, tables.chats, tables.users, tables.agent_profiles
-    joined = (
-        cm.join(c, c.c.id == cm.c.chat_id)
-        .outerjoin(u, u.c.id == cm.c.author_user_id)
-        .outerjoin(ap, ap.c.id == cm.c.author_profile_id)
-    )
-    return (
-        select(
-            cm.c.id,
-            cm.c.chat_id,
-            cm.c.seq,
-            cm.c.thread_root_id,
-            cm.c.run_id,
-            cm.c.body,
-            cm.c.label,
-            cm.c.created_at,
-            c.c.title,
-            u.c.login,
-            ap.c.handle,
-            cm.c.guest_name,
-        )
-        .select_from(joined)
-        .where(cm.c.label.contains([{"projects": [project]}]))
-        .order_by(cm.c.id)
-    )
 
 
 def _project_of(part) -> str | None:
@@ -128,7 +99,7 @@ def _author(row) -> tuple[str, str]:
 
 
 def message_item(source: str, row, label: dict) -> dict:
-    """The kg/1 item of the message of ``row`` (of ``_messages``), labelled ``label`` (see the module)."""
+    """The kg/1 item of the message of ``row`` (of ``messages_of``), labelled ``label`` (see the module)."""
     kind, author = _author(row)
     root = row.thread_root_id or row.id
     props = {
@@ -175,7 +146,7 @@ async def read(conn: AsyncConnection, plugin: str, source: str, project_id: int,
     enabled = await enabled_in(conn, plugin, project_id)
     if enabled is None or READS not in effective_grant(enabled):
         return empty
-    rows = list(await conn.execute(_messages(project)))
+    rows = await messages_of(conn, project)
     names = {_project_of(part) for row in rows if isinstance(row.label, list) for part in row.label}
     ladders = await projects_named(conn, {name for name in names if name is not None} | {project})
     if project not in ladders:

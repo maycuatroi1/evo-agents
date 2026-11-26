@@ -37,8 +37,8 @@ reads one source of its own the same way, the problems of a project that has any
 graph (``kg_decisions``, id ``plugin.hub_decisions``, plan kg-map-and-review).
 
 A project's graph holds its group chats while it enables a core plugin whose source it grants ``chats:read`` (the
-core plugin chats; ``reads_chats``): a message then queues a build (``evo_agents.hub.server.chat_store``), and the
-totals of its builds, which count items most members may not read, are not shown (``evo_agents.hub.server.kg``).
+core plugin chats; ``reads_chats``): a message then queues a build (``evo_agents.hub.server.chats.service.posting``),
+and the totals of its builds, which count items most members may not read, are not shown (``evo_agents.hub.server.kg``).
 """
 
 from __future__ import annotations

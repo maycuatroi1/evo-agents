@@ -60,7 +60,7 @@ Each needs a grant on the project and reads what the caller may read, as the hub
 transcript and a facet of a session by their label through the sink X-Evo-Sink names (else the project's hub sink); a
 run as ``runs.service.views.readable_run`` reads it (a local run its member's alone, a run on no plan through the
 project's default label, a run of a plan the caller may read); a chat's message when the caller is in the chat now,
-clears its label now (``chat_access``) and cleared the message's (``LabelReader``), and the message names the project
+clears its label now (``chats.service.access``) and cleared the message's (``LabelReader``), and the message names the project
 with a part of its label visible through that sink.
 
 The agent of a run (the caller of the hub's MCP tools with a ``RunScope``) reads less than its owner, since what it

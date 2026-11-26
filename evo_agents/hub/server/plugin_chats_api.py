@@ -4,7 +4,7 @@ chats on (404 otherwise):
 
 - POST /v1/plugin-api/projects/{p}/chats/{chat}/messages, granted ``chats:write``: a message to the chat, in the
   thread of ``reply_to`` when given, through the code of a member's POST /v1/chats/{id}/messages
-  (``chats.deliver_message``): its mentions, the runs they hand agents (and the trace a run of an agent system's entry
+  (``chats.service.messages.deliver_message``): its mentions, the runs they hand agents (and the trace a run of an agent system's entry
   agent opens), the hub's answers to what they refuse, the notices and the audit row chat.message, whose target ends
   with plugin:<id>. The message comes ``via`` plugin (``chats.PLUGIN_VIA``). The answer is the message as its author
   reads it, with ``thread``, the first message of its thread.
@@ -31,11 +31,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, features, plugin_calls, tables
 from evo_agents.hub.server import hub_settings
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access, label_reader
-from evo_agents.hub.server.chat_members import ChatId
-from evo_agents.hub.server.chat_progress import by_message, chat_progress
-from evo_agents.hub.server.chat_views import GroupMessage, message_rows, message_select, messages_view
-from evo_agents.hub.server.chats import MAX_PAGE, PAGE, ChatMessageIn, deliver_message, visible_message
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.members import ChatId
+from evo_agents.hub.server.chats.models.messages import MAX_PAGE, PAGE, ChatMessageIn
+from evo_agents.hub.server.chats.models.views import GroupMessage
+from evo_agents.hub.server.chats.repository.views import message_rows, message_select
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
+from evo_agents.hub.server.chats.service.messages import deliver_message, visible_message
+from evo_agents.hub.server.chats.service.progress import by_message, chat_progress
+from evo_agents.hub.server.chats.service.views import messages_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_api_access import Acting, acting, granted
 from evo_agents.hub.server.runs.models import MAX_ID

@@ -1,7 +1,7 @@
 """Who a tool of the plugin canvas acts for (``acting``), and what it writes as (``Acting.writer``).
 
 The agent of a chat run acts for the person who mentioned @strategist, the origin of the chain
-(``chat_runs.ChatRun.dispatcher_id``), also when the run went to the worker of the type's run_as; the agent of any
+(``chats.models.runs.ChatRun.dispatcher_id``), also when the run went to the worker of the type's run_as; the agent of any
 other run, a task run included, for the member who dispatched it (a task run the hub handed the type: its run_as; the
 Curator's review run: the night shift's owner);
 anyone else, a member's own session, for themselves. A canvas is read when that person sees it through the session's
@@ -25,7 +25,7 @@ from evo_agents.hub.server.canvas.models.rows import CanvasRow
 from evo_agents.hub.server.canvas.models.writing import Author, Writer
 from evo_agents.hub.server.canvas.repository import people
 from evo_agents.hub.server.canvas.service import reads, writes
-from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal

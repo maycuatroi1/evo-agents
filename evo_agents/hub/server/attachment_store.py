@@ -4,7 +4,7 @@ uploads a message names, tying them to the message, and listing the files of mes
 ``take`` checks, with each row locked, that every id a message names is an upload of its sender, for that very run
 or chat, that no message holds yet; ``hold_in_inbox`` and ``hold_in_chat`` then set the message that holds them, in
 the transaction that writes the message. ``link_inbox`` ties files to a run_inbox row: the owner's own files, and
-those of a chat message that a chat run takes in its inbox (``chat_runs._to_inbox``).
+those of a chat message that a chat run takes in its inbox (``chats.service.runs._to_inbox``).
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """The prompt of a chat run (``evo_agents.hub.chat_runs`` holds its rules): the thread the agent answers, as the people
 it is cleared for read it, the repos of its project and the members of its chat. Split from
-``evo_agents.hub.server.chat_runs``, which hands work to agents and posts what they write.
+``chats.service.runs``, which hands work to agents and posts what they write.
 
 ``run_clearers`` names the people what a chat run reads must be cleared for: the person who started it and the member
 whose worker runs it, when another. ``chat_prompt`` builds the prompt the worker gives the agent, and the hub's own
@@ -11,14 +11,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, runs, tables
+from evo_agents.hub import chats, runs
 from evo_agents.hub.server import attachment_store, system_traces
-from evo_agents.hub.server.chat_access import LabelProject, agent_projects, label_reader
-from evo_agents.hub.server.chat_runs import ChatRun, chat_run, project_harness, project_repos, run_profile
+from evo_agents.hub.server.chats.models.access import LabelProject
+from evo_agents.hub.server.chats.models.runs import ChatRun
+from evo_agents.hub.server.chats.repository import prompts as store
+from evo_agents.hub.server.chats.repository.runs import project_harness, project_repos
+from evo_agents.hub.server.chats.repository.views import member_names, profiles_by_id
+from evo_agents.hub.server.chats.service.access import agent_projects, label_reader
+from evo_agents.hub.server.chats.service.runs import chat_run, run_profile
 from evo_agents.hub.server.profile_store import Profile
 
 
@@ -42,9 +46,7 @@ async def _listing(
     """(every repo of the project of chat run ``run_id`` as its prompt lists them, ``rules.ranked_repos``: the run's
     ``repos`` open, those ``texts`` name, and whether the run's worker has a checkout of each; the project's
     harness)."""
-    r, w = tables.runs, tables.workers
-    held_by = select(w.c.checkouts).join_from(r, w, w.c.id == r.c.worker_id).where(r.c.id == run_id)
-    checkouts = (await conn.execute(held_by)).scalar_one_or_none() or {}
+    checkouts = await store.worker_checkouts(conn, run_id)
     names = await project_repos(conn, profile.project_id)
     opened = [entry["repo"] for entry in repos if isinstance(entry, dict) and isinstance(entry.get("repo"), str)]
     held = {name for name in [*names, *opened] if f"{profile.project}/{name}" in checkouts}
@@ -74,25 +76,12 @@ async def chat_prompt(
     it or a message of the thread the prompt shows names before the others not open (``_listing``). With ``ships``, its
     principal's card leaves merging to the agent, and its rules say so. Its rules let an interactive answer load
     libraries from the CDNs only while the chat is not restricted, as it is at the claim."""
-    from evo_agents.hub.server.chat_views import message_select, profiles_by_id
-
     found = await chat_run(conn, run_id)
     assert found is not None  # run_specs asks for the prompt of a chat run alone, which a message started
     profile = await run_profile(conn, run_id)
-    c, cm = tables.chats, tables.chat_messages
-    title, kind = (await conn.execute(select(c.c.title, c.c.kind).where(c.c.id == found.chat_id))).one()
+    title, kind = await store.chat_title_kind(conn, found.chat_id)
     direct, root_id = kind == chats.DIRECT, found.root_id
-    thread = message_select().where(
-        cm.c.chat_id == found.chat_id, or_(cm.c.id == root_id, cm.c.thread_root_id == root_id)
-    )
-    if direct:  # the latest turns: the messages of the threads before this one, the agent's answers in them too
-        earlier = func.coalesce(cm.c.thread_root_id, cm.c.id) < root_id
-    else:  # the chat before the thread: the messages that start no thread
-        earlier = cm.c.thread_root_id.is_(None) & (cm.c.id < root_id)
-    limit = rules.DIRECT_MESSAGES if direct else rules.BEFORE_MESSAGES
-    before = message_select().where(cm.c.chat_id == found.chat_id, earlier).order_by(cm.c.id.desc()).limit(limit + 1)
-    before_rows = list(reversed((await conn.execute(before)).all()))
-    thread_rows = (await conn.execute(thread.order_by(cm.c.seq))).all()
+    before_rows, thread_rows = await store.prompt_rows(conn, found.chat_id, root_id, direct=direct)
     rows = [*before_rows, *thread_rows]
     # the dispatcher clears what the prompt shows, and so does the member whose worker runs it, when another
     readers = [await label_reader(conn, user_id, [row.label for row in rows]) for user_id in _clearers(found)]
@@ -150,6 +139,4 @@ def _lowered(projects: Sequence[LabelProject], project: str) -> dict | None:
 
 
 async def _member_names(conn: AsyncConnection, chat_id: int) -> tuple[list[str], list[str]]:
-    from evo_agents.hub.server.chat_views import member_names
-
     return (await member_names(conn, [chat_id]))[chat_id]

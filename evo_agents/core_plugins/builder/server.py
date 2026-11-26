@@ -46,7 +46,8 @@ from evo_agents.hub.self_managed import ProjectScope, state_of
 from evo_agents.hub.server import notifications
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.agent_types import enabled_type
-from evo_agents.hub.server.chat_runs import ChatRun, chat_run, hub_reply
+from evo_agents.hub.server.chats.models.runs import ChatRun
+from evo_agents.hub.server.chats.service.runs import chat_run, hub_reply
 from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market_install import GitHubInstallIn, Installing, install_github

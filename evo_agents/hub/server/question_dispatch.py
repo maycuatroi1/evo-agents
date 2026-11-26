@@ -30,7 +30,7 @@ from evo_agents.hub import plugin_calls, plugin_events, profiles, question_runs,
 from evo_agents.hub.question_runs import MAX_ASKER_CHARS, MAX_REF_CHARS
 from evo_agents.hub.server import agent_placement, audit, member_channels
 from evo_agents.hub.server.agent_types import enabled_type, type_left
-from evo_agents.hub.server.chat_runs import project_repos
+from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_state import move_run, notify_queued

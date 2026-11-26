@@ -51,7 +51,7 @@ from evo_agents.hub.server.blobs import (
     issue_uploads,
     put_bytes,
 )
-from evo_agents.hub.server.chat_store import write_event as write_chat_event
+from evo_agents.hub.server.chats.repository.store import write_event as write_chat_event
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.run_state import write_event

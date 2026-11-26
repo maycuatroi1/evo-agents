@@ -1,12 +1,12 @@
-"""What a message of a direct chat hands its agent (``evo_agents.hub.server.chats``, ``chat_direct``, ``chat_runs``), as
-criterion a2 of the plan agent-direct-chats names it: each message of the person outside a thread is a task, handed
-to the chat's agent without an @, as a mention would (a new session, dispatched by the sender, hop 1, within
-MAX_RUNS_PER_MESSAGE, whatever the chat's runs cost before); an @ of the agent makes one run, not two; a reply in the thread of the agent's
-answer goes on in that session; with no worker the hub says why in the thread. An @ of an agent the chat does not have,
-by its person or by its agent's `worker chat mention`, opens the group chat of the thread (``chat_groups``) and the work
-goes there; an agent the person may not add stays out with why. The prompt of a run in a direct chat
-shows the latest turns (the person's messages and the agent's answers in the threads before) within SNAPSHOT_BYTES,
-the oldest left out first. A group chat is as it was: a message without an @ makes no run.
+"""What a message of a direct chat hands its agent (``evo_agents.hub.server.chats.service.chats``, ``chats.service.direct``,
+``chats.service.runs``), as criterion a2 of the plan agent-direct-chats names it: each message of the person outside a thread is
+a task, handed to the chat's agent without an @, as a mention would (a new session, dispatched by the sender, hop 1,
+within MAX_RUNS_PER_MESSAGE, whatever the chat's runs cost before); an @ of the agent makes one run, not two; a reply in
+the thread of the agent's answer goes on in that session; with no worker the hub says why in the thread. An @ of an
+agent the chat does not have, by its person or by its agent's `worker chat mention`, opens the group chat of the thread
+(``chats.service.groups``) and the work goes there; an agent the person may not add stays out with why. The prompt of a run in a
+direct chat shows the latest turns (the person's messages and the agent's answers in the threads before) within
+SNAPSHOT_BYTES, the oldest left out first. A group chat is as it was: a message without an @ makes no run.
 
 Opening a direct chat and its members are in ``tests.hub.test_direct_chats``."""
 
@@ -22,7 +22,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import autonomy_card, chat_runs, tables
-from evo_agents.hub.server.chats import NOT_IN_DIRECT
+from evo_agents.hub.server.chats.models.messages import NOT_IN_DIRECT
 from tests.hub import test_chat_runs as group_runs
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (

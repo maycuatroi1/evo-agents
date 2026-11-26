@@ -6,10 +6,10 @@ Create Date: 2026-10-27
 
 chats.label_override holds the level an admin of every project with an agent in a chat set for it, and the projects it
 lowers: {"level": <a level>, "projects": [<project names>]}, or NULL when the chat's label is its projects' default
-(``evo_agents.hub.server.chat_labels``). chats_label_override_check keeps it an object. project_sinks_kind_check
-takes ``channel``, a sink naming a kind of channel of a core plugin by its id (knowledge.schema.json, the seam
-knowledge-manifest-v1). ``evo_agents.hub.tables_chats`` describes the column; the CHECKs are this file's alone. Every
-statement is an Alembic operation on SQLAlchemy Core expressions.
+(``evo_agents.hub.server.chats.service.labels``). chats_label_override_check keeps it an object.
+project_sinks_kind_check takes ``channel``, a sink naming a kind of channel of a core plugin by its id
+(knowledge.schema.json, the seam knowledge-manifest-v1). ``evo_agents.hub.tables_chats`` describes the column; the
+CHECKs are this file's alone. Every statement is an Alembic operation on SQLAlchemy Core expressions.
 
 Going back deletes the sinks of kind channel and drops the column: every chat's label is its projects' default again,
 and the messages sent meanwhile keep the label they were sent with.

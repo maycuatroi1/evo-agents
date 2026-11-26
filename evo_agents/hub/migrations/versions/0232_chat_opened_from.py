@@ -6,11 +6,11 @@ Create Date: 2026-11-10
 
 A mention in a direct chat of an agent it does not have, by its person or by its agent (``evo-agents worker chat
 mention``), opens a group chat of that person, the direct chat's agent and the agent mentioned
-(``evo_agents.hub.server.chat_groups``). The group keeps the first message of the direct chat's thread it came from,
-so that a later mention in that thread adds to the same group instead of opening another: one group per thread, held by
-the partial unique index chats_opened_from_key. NULL: a chat made otherwise, as every chat before. The column allows
-NULL and has no default, so the code before it runs on the schema after it. The message going (its chat deleted) sets it
-NULL.
+(``evo_agents.hub.server.chats.service.groups``). The group keeps the first message of the direct chat's thread it came
+from, so that a later mention in that thread adds to the same group instead of opening another: one group per thread,
+held by the partial unique index chats_opened_from_key. NULL: a chat made otherwise, as every chat before. The column
+allows NULL and has no default, so the code before it runs on the schema after it. The message going (its chat deleted)
+sets it NULL.
 
 Going back drops the column and its index: the groups stay, and a later mention opens another.
 """

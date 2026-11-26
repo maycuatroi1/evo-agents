@@ -1,6 +1,7 @@
-"""What the chat API answers (``evo_agents.hub.server.chats``): a chat with its people and agents, its messages with
-their authors, mentions, reactions and replies, and the events its stream sends, read from the tables of
-``tables_chats``. The list of chats (``ChatSummary``) is put together by ``chat_summaries``.
+"""What the chat API answers (``evo_agents.hub.server.chats.service.chats``): a chat with its people and agents, its
+messages with their authors, mentions, reactions and replies, and the events its stream sends. ``chats.service.views``
+puts them together from the tables of ``tables_chats``, and ``chats.service.summaries`` the list of chats
+(``ChatSummary``).
 
 An agent shows with its name, colour and avatar as its profile has them now, deleted or not: a soft-deleted profile
 takes no new work and keeps its name and avatar on what it wrote, flagged ``deleted``. A person shows with the avatar
@@ -8,34 +9,24 @@ of their GitHub account as the hub knows it now (``chats.github_avatar``), none 
 a message, a reaction, a member's change and in a chat's people alike. A guest, the sender of a bridged group's message
 who linked no account of the hub, shows with the name its bridge gave it and no avatar. A message's reactions are
 counted by emoji, in the order each emoji was first put, with who put it and whether the reader did. A message read
-by a person carries the progress of the agents' runs it handed work to (``ChatProgress``, read by ``chat_progress``).
+by a person carries the progress of the agents' runs it handed work to (``ChatProgress``, read by
+``chats.service.progress``).
 """
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Text, case, func, select
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, chats, tables
-from evo_agents.hub.db import one_of
-from evo_agents.hub.server import attachment_store
-from evo_agents.hub.server.agent_profiles import icon_url
-from evo_agents.hub.server.chat_access import ChatAccess, LabelReader, label_admin, label_levels
+from evo_agents.hub import chat_runs, chats
 from evo_agents.hub.server.output_views import RunOutput
-from evo_agents.hub.server.output_views import by_message as outputs_by_message
-from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
-from evo_agents.hub.server.runs.models.attachment_parts import LinkedAttachment, linked
-from evo_agents.hub.server.work_status import WorkBrief, WorkCard, cards
+from evo_agents.hub.server.profile_store import Profile, icon_url
+from evo_agents.hub.server.runs.models.attachment_parts import LinkedAttachment
+from evo_agents.hub.server.work_status_models import WorkBrief, WorkCard
 
 HUB_NAME = "hub"
-
-
-# Models
 
 
 class ChatAuthor(BaseModel):
@@ -321,9 +312,6 @@ class ChatProgressNow(BaseModel):
     progress: list[ChatProgress] = Field(description="of every message of the chat whose run is on its way now")
 
 
-# Authors and members
-
-
 def agent_author(profile: Profile) -> ChatAuthor:
     return ChatAuthor(
         kind="agent",
@@ -361,176 +349,9 @@ def agent_member(profile: Profile, added_by: str | None, added_at: datetime) -> 
     )
 
 
-async def profiles_by_id(conn: AsyncConnection, ids) -> dict[int, Profile]:
-    wanted = sorted(set(ids))
-    if not wanted:
-        return {}
-    rows = await conn.execute(profile_select().where(one_of(tables.agent_profiles.c.id, wanted)))
-    return {row.id: profile_of(row) for row in rows}
-
-
-def _members_query(chat_id: int):
-    m, u, adder = tables.chat_members, tables.users, tables.users.alias("adder")
-    return (
-        select(m.c.user_id, m.c.profile_id, u.c.login, u.c.github_id, adder.c.login.label("added_by"), m.c.added_at)
-        .select_from(m.outerjoin(u, u.c.id == m.c.user_id).outerjoin(adder, adder.c.id == m.c.added_by))
-        .where(m.c.chat_id == chat_id, m.c.removed_at.is_(None))
-        .order_by(m.c.added_at, m.c.id)
-    )
-
-
-async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
-    """The chat ``chat`` names, as its reader sees it."""
-    rows = (await conn.execute(_members_query(chat.chat_id))).all()
-    found = await profiles_by_id(conn, [row.profile_id for row in rows if row.profile_id is not None])
-    people = [
-        ChatPerson(login=r.login, added_by=r.added_by, added_at=r.added_at, avatar_url=chats.github_avatar(r.github_id))
-        for r in rows
-        if r.user_id
-    ]
-    agents = [agent_member(found[r.profile_id], r.added_by, r.added_at) for r in rows if r.profile_id]
-    c = tables.chats
-    query = select(c.c.event_seq, c.c.image_sha256).where(c.c.id == chat.chat_id)
-    seq, image = (await conn.execute(query)).one()
-    m = tables.chat_members
-    read = (await conn.execute(select(m.c.last_read_seq).where(m.c.id == chat.member_id))).scalar_one()
-    return Chat(
-        id=chat.chat_id,
-        title=chat.title,
-        created_by=chat.creator,
-        created_at=chat.created_at,
-        people=people,
-        agents=agents,
-        label=chat.label,
-        label_level=chat.label_level,
-        label_levels=label_levels(chat),
-        label_admin=await label_admin(conn, chat),
-        bridges=await bridges_of(conn, chat.chat_id),
-        restricted=chat.restricted,
-        last_seq=seq,
-        last_read_seq=read,
-        kind=chat.kind,
-        image_url=chats.image_url(chat.chat_id, image),
-    )
-
-
-async def bridges_of(conn: AsyncConnection, chat_id: int) -> list[ChatBridge]:
-    """The linked bridges of chat ``chat_id``, oldest first."""
-    b, u = tables.chat_bridges, tables.users
-    query = (
-        select(b.c.id, b.c.kind, b.c.external_id, u.c.login, b.c.linked_at)
-        .select_from(b.outerjoin(u, u.c.id == b.c.linked_by))
-        .where(b.c.chat_id == chat_id, b.c.unlinked_at.is_(None))
-        .order_by(b.c.id)
-    )
-    return [
-        ChatBridge(id=r.id, kind=r.kind, external_id=r.external_id, linked_by=r.login, linked_at=r.linked_at)
-        for r in await conn.execute(query)
-    ]
-
-
-async def person_avatars(conn: AsyncConnection, logins) -> dict[str, str | None]:
-    """The GitHub avatar of each person ``logins`` names, by login lowered; a login of nobody is left out."""
-    wanted = sorted({login.lower() for login in logins})
-    if not wanted:
-        return {}
-    u = tables.users
-    query = select(u.c.login, u.c.github_id).where(one_of(func.lower(u.c.login, type_=Text), wanted))
-    return {row.login.lower(): chats.github_avatar(row.github_id) for row in await conn.execute(query)}
-
-
-# Messages
-
-
-def message_select():
-    cm, u = tables.chat_messages, tables.users
-    return select(
-        cm.c.id,
-        cm.c.chat_id,
-        cm.c.seq,
-        cm.c.thread_root_id,
-        cm.c.author_user_id,
-        cm.c.author_profile_id,
-        u.c.login.label("author_login"),
-        u.c.github_id.label("author_github_id"),
-        cm.c.run_id,
-        cm.c.body,
-        cm.c.label,
-        cm.c.created_at,
-        cm.c.via,
-        cm.c.from_output_id,
-        cm.c.guest_name,
-        cm.c.repeats_id,
-    ).select_from(cm.outerjoin(u, u.c.id == cm.c.author_user_id))
-
-
-async def _mentions(conn: AsyncConnection, ids: list[int]) -> dict[int, list[ChatMention]]:
-    cn, u, ap = tables.chat_mentions, tables.users, tables.agent_profiles
-    query = (
-        select(cn.c.message_id, cn.c.name, cn.c.via, cn.c.refusal, cn.c.run_id, u.c.login, ap.c.handle)
-        .select_from(cn.outerjoin(u, u.c.id == cn.c.user_id).outerjoin(ap, ap.c.id == cn.c.profile_id))
-        .where(one_of(cn.c.message_id, ids))
-        .order_by(cn.c.message_id, cn.c.ordinal)
-    )
-    found: dict[int, list[ChatMention]] = defaultdict(list)
-    for row in await conn.execute(query):
-        mention = ChatMention(
-            name=row.name,
-            via=row.via,
-            login=row.login,
-            handle=row.handle or None,
-            refusal=row.refusal,
-            run_id=row.run_id,
-        )
-        found[row.message_id].append(mention)
-    return found
-
-
-async def _reactions(conn: AsyncConnection, ids: list[int], reader_id: int) -> dict[int, list[ChatReaction]]:
-    cr, u, ap = tables.chat_reactions, tables.users, tables.agent_profiles
-    query = (
-        select(cr.c.message_id, cr.c.emoji, cr.c.user_id, u.c.login, ap.c.handle)
-        .select_from(cr.outerjoin(u, u.c.id == cr.c.user_id).outerjoin(ap, ap.c.id == cr.c.profile_id))
-        .where(one_of(cr.c.message_id, ids))
-        .order_by(cr.c.message_id, cr.c.id)
-    )
-    grouped: dict[int, dict[str, ChatReaction]] = defaultdict(dict)
-    for row in await conn.execute(query):
-        emoji = grouped[row.message_id].setdefault(
-            row.emoji, ChatReaction(emoji=row.emoji, count=0, mine=False, people=[], agents=[])
-        )
-        emoji.count += 1
-        if row.login is not None:
-            emoji.people.append(row.login)
-            emoji.mine = emoji.mine or row.user_id == reader_id
-        elif row.handle is not None:
-            emoji.agents.append(row.handle)
-    return {message_id: list(emojis.values()) for message_id, emojis in grouped.items()}
-
-
-async def _bridged(conn: AsyncConnection, ids: list[int]) -> dict[int, list[BridgedTo]]:
-    bm, b = tables.chat_bridge_messages, tables.chat_bridges
-    query = (
-        select(bm.c.message_id, b.c.id, b.c.kind)
-        .join_from(bm, b, b.c.id == bm.c.bridge_id)
-        .where(one_of(bm.c.message_id, ids), bm.c.direction == "out")
-        .order_by(bm.c.message_id, b.c.id)
-    )
-    found: dict[int, list[BridgedTo]] = defaultdict(list)
-    for row in await conn.execute(query):
-        found[row.message_id].append(BridgedTo(bridge_id=row.id, kind=row.kind))
-    return found
-
-
-async def _reply_counts(conn: AsyncConnection, ids: list[int]) -> dict[int, int]:
-    cm = tables.chat_messages
-    query = (
-        select(cm.c.thread_root_id, func.count()).where(one_of(cm.c.thread_root_id, ids)).group_by(cm.c.thread_root_id)
-    )
-    return {root: count for root, count in await conn.execute(query)}
-
-
-def _author(row, profiles: dict[int, Profile]) -> ChatAuthor:
+def message_author(row, profiles: dict[int, Profile]) -> ChatAuthor:
+    """The author of message ``row`` (``chats.repository.views.message_select``), its agent's profile among
+    ``profiles``."""
     if row.author_profile_id is not None:
         return agent_author(profiles[row.author_profile_id])
     if row.author_login is not None:
@@ -538,157 +359,3 @@ def _author(row, profiles: dict[int, Profile]) -> ChatAuthor:
     if row.guest_name is not None:
         return guest_author(row.guest_name)
     return HUB_AUTHOR
-
-
-async def messages_view(
-    conn: AsyncConnection, rows, reader: LabelReader, progress: dict[int, list[ChatProgress]] | None = None
-) -> list[GroupMessage]:
-    """The messages of ``rows`` (``message_select``) that ``reader`` clears the label of, in the order given, each
-    with its ``progress`` by message id (``chat_progress.by_message``), none when not given."""
-    shown = [row for row in rows if reader.sees(row.label)]
-    ids = [row.id for row in shown]
-    if not ids:
-        return []
-    profiles = await profiles_by_id(conn, [row.author_profile_id for row in shown if row.author_profile_id])
-    mentions = await _mentions(conn, ids)
-    reactions = await _reactions(conn, ids, reader.user_id)
-    replies = await _reply_counts(conn, ids)
-    files = await _outputs(conn, shown)
-    attached = await attachment_store.of_messages(conn, ids)
-    bridged = await _bridged(conn, ids)
-    forwarders = await _forwarders(conn, shown)
-    work = await _work_cards(conn, ids)
-    return [
-        GroupMessage(
-            id=row.id,
-            chat_id=row.chat_id,
-            seq=row.seq,
-            thread_root_id=row.thread_root_id,
-            reply_count=replies.get(row.id, 0),
-            author=_author(row, profiles),
-            run_id=row.run_id,
-            body=row.body,
-            mentions=mentions.get(row.id, []),
-            reactions=reactions.get(row.id, []),
-            label=row.label,
-            created_at=row.created_at,
-            progress=(progress or {}).get(row.id, []),
-            outputs=files.get(row.id, []),
-            attachments=linked(attached.get(row.id, []), f"/v1/chats/{row.chat_id}"),
-            via=row.via,
-            bridged_to=bridged.get(row.id, []),
-            from_answer=row.from_output_id,
-            forwarded_by=forwarders.get(row.id),
-            repeats=row.repeats_id,
-            work=work.get(row.id),
-        )
-        for row in shown
-    ]
-
-
-async def _work_cards(conn: AsyncConnection, ids: list[int]) -> dict[int, WorkCard]:
-    """The work card each message of ``ids`` that carries one carries (``work_cards``), by message id."""
-    t = tables.system_traces
-    query = select(t.c.card_message_id, t.c.id).where(one_of(t.c.card_message_id, ids))
-    carried = {message: trace for message, trace in await conn.execute(query)}
-    found = await cards(conn, list(carried.values())) if carried else {}
-    return {message: found[trace] for message, trace in carried.items() if trace in found}
-
-
-async def _forwarders(conn: AsyncConnection, rows) -> dict[int, str]:
-    """The handle of the agent whose run posted each message of ``rows`` an other agent wrote (a forward), by id."""
-    runs = {row.id: row.run_id for row in rows if row.run_id is not None and row.author_profile_id is not None}
-    if not runs:
-        return {}
-    r, p = tables.runs, tables.agent_profiles
-    query = (
-        select(r.c.id, r.c.profile_id, p.c.handle)
-        .join(p, p.c.id == r.c.profile_id)
-        .where(one_of(r.c.id, sorted(set(runs.values()))))
-    )
-    by_run = {row.id: (row.profile_id, row.handle) for row in await conn.execute(query)}
-    authors = {row.id: row.author_profile_id for row in rows}
-    return {
-        message: by_run[run][1] for message, run in runs.items() if run in by_run and by_run[run][0] != authors[message]
-    }
-
-
-async def _outputs(conn: AsyncConnection, rows) -> dict[int, list[RunOutput]]:
-    """The outputs the messages of ``rows`` that a run wrote carry, by message id."""
-    found: dict[int, list[RunOutput]] = {}
-    by_chat: dict[int, list[int]] = defaultdict(list)
-    for row in rows:
-        if row.run_id is not None:
-            by_chat[row.chat_id].append(row.id)
-    for chat_id, ids in by_chat.items():
-        found.update(await outputs_by_message(conn, chat_id, ids))
-    return found
-
-
-async def message_rows(conn: AsyncConnection, chat_id: int, ids: list[int]) -> list:
-    """The rows (``message_select``) of the messages ``ids`` of chat ``chat_id``, oldest first."""
-    if not ids:
-        return []
-    cm = tables.chat_messages
-    query = message_select().where(cm.c.chat_id == chat_id, one_of(cm.c.id, ids)).order_by(cm.c.seq)
-    return (await conn.execute(query)).all()
-
-
-# The list of chats
-
-
-def summaries_query(user_id: int):
-    """The chats person ``user_id`` is in, the latest active first, with what ``ChatSummary`` shows."""
-    c, m, u, cm = tables.chats, tables.chat_members, tables.users, tables.chat_messages
-    mine = m.alias("mine")
-    last = select(cm.c.created_at).where(cm.c.chat_id == c.c.id).order_by(cm.c.seq.desc()).limit(1).scalar_subquery()
-    unread = case(
-        (mine.c.last_read_seq >= c.c.event_seq, 0),
-        else_=(
-            select(func.count())
-            .where(
-                cm.c.chat_id == c.c.id,
-                cm.c.seq > mine.c.last_read_seq,
-                cm.c.author_user_id.is_distinct_from(user_id),
-            )
-            .scalar_subquery()
-        ),
-    )
-    return (
-        select(
-            c.c.id,
-            c.c.title,
-            u.c.login.label("created_by"),
-            c.c.created_at,
-            last.label("last_message_at"),
-            c.c.event_seq.label("last_seq"),
-            unread.label("unread"),
-            c.c.kind,
-            c.c.image_sha256,
-            c.c.direct_profile_id,
-        )
-        .select_from(c.join(mine, mine.c.chat_id == c.c.id).join(u, u.c.id == c.c.created_by))
-        .where(mine.c.user_id == user_id, mine.c.removed_at.is_(None))
-        .order_by(func.coalesce(last, c.c.created_at).desc(), c.c.id.desc())
-    )
-
-
-async def member_names(conn: AsyncConnection, chat_ids: list[int]) -> dict[int, tuple[list[str], list[str]]]:
-    """(people's logins, agents' handles) of each chat of ``chat_ids``, in the order they were added."""
-    if not chat_ids:
-        return {}
-    m, u, ap = tables.chat_members, tables.users, tables.agent_profiles
-    query = (
-        select(m.c.chat_id, u.c.login, ap.c.handle)
-        .select_from(m.outerjoin(u, u.c.id == m.c.user_id).outerjoin(ap, ap.c.id == m.c.profile_id))
-        .where(one_of(m.c.chat_id, chat_ids), m.c.removed_at.is_(None))
-        .order_by(m.c.chat_id, m.c.added_at, m.c.id)
-    )
-    found: dict[int, tuple[list[str], list[str]]] = {chat_id: ([], []) for chat_id in chat_ids}
-    for row in await conn.execute(query):
-        people, agents = found[row.chat_id]
-        if row.login is not None:
-            people.append(row.login)
-        else:
-            agents.append(row.handle)
-    return found

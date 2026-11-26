@@ -4,7 +4,7 @@ plan srs-tasks-plugins): ``srs__read``, ``srs__search``, ``srs__diff``, ``srs__p
 
 The hub lists them in a session whose project enabled the plugin, and checks their arguments against the manifest's
 schemas first. Each acts for a person (``acting``): the agent of a chat run for the person who mentioned the agent,
-the origin of the chain (``chat_runs.ChatRun.dispatcher_id``), also when the run went to the worker of the type's
+the origin of the chain (``chats.models.runs.ChatRun.dispatcher_id``), also when the run went to the worker of the type's
 run_as; the agent of any other run for the member who dispatched it; anyone else for themselves. A document is read
 when that person sees it through the session's sink and, when the run's worker is another member's, when that member
 does too: what a tool answers reaches the machine the agent runs on.
@@ -49,7 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.server.agent_types import enabled_type
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal

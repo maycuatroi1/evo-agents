@@ -13,9 +13,9 @@ Else, in a savepoint (``work_chats.hand_over``), the hub puts the question as a 
 naming the asking run: in the work chat of the asking run's trace of an agent system, in the thread of the agent asked
 (``docs/hub.md``, Work chats), the thread of the plan step its brief names (``--ref plan:<id>/step:<key>``) when it
 names one, so each step runs in a session of its own and independent steps take free slots of the agent's pool at once,
-else in the origin's direct chat with the agent asked (``chat_direct.direct_chat``),
+else in the origin's direct chat with the agent asked (``chats.service.direct.direct_chat``),
 where it starts a thread: the run
-it hands (``chat_runs.hand_work``) is of the agent asked, on its pool, dispatched by the origin, at one hop more, and
+it hands (``chats.service.runs.hand_work``) is of the agent asked, on its pool, dispatched by the origin, at one hop more, and
 acts within the asking run's principal and autonomy snapshot (``run_autonomy.of_message``), so each run of a chain has
 no more rights than the run before it. A refusal of ``hand_work`` rolls the savepoint back. The new run names the
 asking run in ``spawned_by_run_id`` and the wait it opens on the asking run in ``spawned_wait_id`` (a decision of
@@ -25,7 +25,7 @@ keeps the wait it has, and each wait names the run asked in ``decisions.awaits_r
 asked, in which project, and what, in the asking run's thread, or in the work chat when the trace has one
 (``work_chats.say``).
 
-When the run asked ends (``answer_asker``, from ``chat_runs.chat_run_moved``), the hub answers that wait
+When the run asked ends (``answer_asker``, from ``chats.service.runs.chat_run_moved``), the hub answers that wait
 (``run_waits.wake``), which resumes the asking run in its session, with ``delegated_answer``: the last message the
 run asked, or a run it went on from, wrote in its thread, past the hub's lines of its pushes (``last_reply``), whole,
 and the refs of its work (its outputs, its branch and repos; the knowledge graph nodes are named in its answer, as the
@@ -33,7 +33,7 @@ question asks), or why it failed or was cancelled. The same text goes where the 
 to ANSWER_IN_THREAD with the id of the message that holds it whole. A run asked that goes on in its session (a parked run resumed, an inbox untaken)
 carries both columns, and every wait whose ``awaits_run_id`` is in its chain of resumed runs is answered too, so the
 run that really ends answers each ask that reached it. A run lost is no end: its next attempt carries both columns and
-its chain goes back through ``parent_run_id``, and the run lost answers nothing (``chat_runs.chat_run_moved``), since its
+its chain goes back through ``parent_run_id``, and the run lost answers nothing (``chats.service.runs.chat_run_moved``), since its
 worker may come back for it (``run_reattach``), which cancels that attempt and has the run go on with its waits open. A wait answered already, by its time or by a person, is left as it is.
 Waits that close a cycle, two runs each waiting on the other's end, are broken by the reaper (``wait_cycles``).
 """
@@ -61,9 +61,10 @@ from evo_agents.hub.server import (
     work_chats,
 )
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, Handle, agent_run
-from evo_agents.hub.server.chat_runs import agent_access, chat_run, hub_reply
-from evo_agents.hub.server.chat_store import insert_message
+from evo_agents.hub.server.chats.models.agents import REFUSALS, Handle
+from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply
 from evo_agents.hub.server.decisions.models import OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody

@@ -1,13 +1,14 @@
 """What happens in a group chat, as its members read it: GET /v1/chats/{id}/events?after=SEQ and the live stream GET
 /v1/chats/{id}/stream.
 
-Each change of a chat is an event numbered by the chat (``chat_store``): a message, a reaction put or taken off, a
-member added or removed, its image set or taken off, a message that reads otherwise now (``message_changed``: outputs
-of its run went under it, ``output_store``). A message event and a message_changed event carry the message as it reads
-now (``chat_views.GroupMessage``); a reaction event the emoji, who put it or took it off and how many put it after the
-change; a member event who was added or removed and by whom; an image event the image's URL now and who changed it. A
-person in an event shows with their GitHub avatar as the hub knows it when the event is read. A member reads the events of messages whose label they clear, and the reaction events of those
-messages; the others are left out, and the numbers go on past them.
+Each change of a chat is an event numbered by the chat (``chats.repository.store``): a message, a reaction put or taken
+off, a member added or removed, its image set or taken off, a message that reads otherwise now (``message_changed``:
+outputs of its run went under it, ``output_store``). A message event and a message_changed event carry the message as it
+reads now (``chats.models.views.GroupMessage``); a reaction event the emoji, who put it or took it off and how many put
+it after the change; a member event who was added or removed and by whom; an image event the image's URL now and who
+changed it. A person in an event shows with their GitHub avatar as the hub knows it when the event is read. A member
+reads the events of messages whose label they clear, and the reaction events of those messages; the others are left out,
+and the numbers go on past them.
 
 The stream is server-sent events, as a run's is (``run_events``): each event has its seq as id, a reconnecting
 client's Last-Event-ID (or ``after`` on the first connection) says where to go on, FastAPI sends a ``: ping`` comment
@@ -16,10 +17,10 @@ connection while it waits: ``ChatStreams`` wakes it when CHANNEL is notified wit
 one LISTEN connection (``listen``), and it looks again every STREAM_POLL_SECONDS besides. Each look checks the reader
 is still a member who clears the chat's label: once they are not, an ``end`` event says why and the stream closes.
 
-Asked for ``progress``, the stream also sends a ``progress`` event with no id (``chat_views.ChatProgressNow``): the
-progress of the agents' runs on their way under the messages they took, as the reader may read them
-(``chat_progress``), at once and then after each look that found it changed, so it stays out of Last-Event-ID and the
-chat's numbering. GET .../events?progress=true answers the same with its events.
+Asked for ``progress``, the stream also sends a ``progress`` event with no id (``chats.models.views.ChatProgressNow``):
+the progress of the agents' runs on their way under the messages they took, as the reader may read them
+(``chats.service.progress``), at once and then after each look that found it changed, so it stays out of Last-Event-ID
+and the chat's numbering. GET .../events?progress=true answers the same with its events.
 """
 
 from __future__ import annotations
@@ -29,41 +30,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access, label_reader
-from evo_agents.hub.server.chat_members import REFUSALS, ChatId
-from evo_agents.hub.server.chat_progress import by_message, chat_progress
-from evo_agents.hub.server.chat_store import CHANNEL
-from evo_agents.hub.server.chat_views import (
-    ChatAuthor,
-    ChatEvent,
-    ChatEvents,
-    ChatImageChange,
-    ChatMemberChange,
-    ChatProgress,
-    ChatProgressNow,
-    ChatReactionChange,
-    message_rows,
-    messages_view,
-    person_avatars,
-)
+from evo_agents.hub.server.chats.models.events import MAX_EVENTS_PAGE, PROGRESS_PARAM, STREAM_BATCH
+from evo_agents.hub.server.chats.models.members import REFUSALS, ChatId
+from evo_agents.hub.server.chats.models.views import ChatEvents, ChatProgress, ChatProgressNow
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.events import ChatStreams, chat_events, look
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.listen import Listener
-from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute
+from evo_agents.hub.server.run_events import JSON_ERROR, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser, Principal, still_live
 
 STREAM_POLL_SECONDS = 5.0  # a stream looks again this often, notification or not
-STREAM_BATCH = 200  # events a stream reads at a time
 STREAM_TOKEN_ENDED = "the run's token that opened this stream is revoked or its run is no longer held"
-MAX_EVENTS_PAGE = 500
-MESSAGE_EVENTS = ("message", chats.MESSAGE_CHANGED)  # each carries its message as it reads now
-REACTION_EVENTS = ("reaction_added", "reaction_removed")
-MEMBER_EVENTS = ("member_added", "member_removed")
-PROGRESS_PARAM = "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
 
 router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
 stream_router = APIRouter(
@@ -72,74 +51,6 @@ stream_router = APIRouter(
     route_class=StreamRoute,
     responses={401: {"description": "Unauthorized", **JSON_ERROR}},
 )
-
-
-class ChatStreams(RunStreams):
-    """The streams open in this api process, by chat, woken by CHANNEL on the process's one LISTEN."""
-
-    def __init__(self, listener: Listener):
-        super().__init__(listener, CHANNEL)
-
-
-def _people(rows) -> set[str]:
-    """The logins of the people the reaction and member events of ``rows`` name."""
-    found = set()
-    for row in rows:
-        named = row.body.get("by") if row.kind in REACTION_EVENTS else row.body.get("member")
-        if row.kind in REACTION_EVENTS + MEMBER_EVENTS and isinstance(named, dict) and named.get("kind") == "person":
-            found.add(named["login"])
-    return found
-
-
-def _faced(author: ChatAuthor, avatars: dict[str, str | None]) -> None:
-    if author.kind == "person" and author.login is not None:
-        author.avatar_url = avatars.get(author.login.lower())
-
-
-def _event(row, chat_id: int, messages: dict, avatars: dict[str, str | None]) -> ChatEvent:
-    event = ChatEvent(seq=row.seq, kind=row.kind, created_at=row.created_at)
-    if row.kind in MESSAGE_EVENTS:
-        event.message = messages[row.body["message_id"]]
-    elif row.kind in REACTION_EVENTS:
-        event.reaction = ChatReactionChange.model_validate(row.body)
-        _faced(event.reaction.by, avatars)
-    elif row.kind == chats.IMAGE_CHANGED:
-        event.image = ChatImageChange(image_url=chats.image_url(chat_id, row.body["sha256"]), by=row.body["by"])
-    else:
-        event.member = ChatMemberChange.model_validate(row.body)
-        _faced(event.member.member, avatars)
-    return event
-
-
-async def events_after(
-    conn: AsyncConnection, chat: ChatAccess, user: Principal, after: int, limit: int
-) -> tuple[list[ChatEvent], int, list[ChatProgress] | None]:
-    """(the events of the chat after seq ``after``, at most ``limit`` read, that its reader ``user`` may see; the seq
-    of the last event read, ``after`` when none was; the chat's progress, read for the messages among them, None when
-    there was none)."""
-    ce = tables.chat_events
-    query = (
-        select(ce.c.seq, ce.c.kind, ce.c.body, ce.c.created_at)
-        .where(ce.c.chat_id == chat.chat_id, ce.c.seq > after)
-        .order_by(ce.c.seq)
-        .limit(limit)
-    )
-    rows = (await conn.execute(query)).all()
-    about = {row.body["message_id"] for row in rows if row.kind in MESSAGE_EVENTS + REACTION_EVENTS}
-    found = await message_rows(conn, chat.chat_id, sorted(about))
-    reader = await label_reader(conn, chat.user_id, [row.label for row in found])
-    shown = {row.id: row for row in found if reader.sees(row.label)}
-    new = [shown[r.body["message_id"]] for r in rows if r.kind in MESSAGE_EVENTS and r.body["message_id"] in shown]
-    progress = await chat_progress(conn, user, chat.chat_id) if new else None
-    viewed = await messages_view(conn, new, reader, by_message(progress or []))
-    messages = {message.id: message for message in viewed}
-    avatars = await person_avatars(conn, _people(rows))
-    events = [
-        _event(row, chat.chat_id, messages, avatars)
-        for row in rows
-        if row.kind not in MESSAGE_EVENTS + REACTION_EVENTS or row.body["message_id"] in shown
-    ]
-    return events, rows[-1].seq if rows else after, progress
 
 
 @router.get("/{chat_id}/events", response_model=ChatEvents, responses=REFUSALS)
@@ -154,12 +65,7 @@ async def list_events(
     """The chat's events after ``after``, oldest first; ``more`` when there are later ones. With ``progress``, the
     progress of the agents' runs on their way under the messages they took, as the reader may read them."""
     async with request.app.state.engine.begin() as conn:
-        chat = await chat_access(conn, user, chat_id)
-        events, last, found = await events_after(conn, chat, user, after, limit)
-        if progress and found is None:
-            found = await chat_progress(conn, user, chat_id)
-    now = found if progress else None
-    return ChatEvents(events=events, last_seq=chat.event_seq, more=last < chat.event_seq, progress=now)
+        return await chat_events(conn, user, chat_id, after, limit, progress=progress)
 
 
 async def _streamed_chat(request: Request, chat_id: ChatId, user: CurrentUser) -> tuple[int, Principal]:
@@ -204,10 +110,7 @@ async def stream(
                 try:
                     if not await still_live(conn, user):
                         raise HTTPException(401, STREAM_TOKEN_ENDED)
-                    chat = await chat_access(conn, user, chat_id)
-                    events, last, now = await events_after(conn, chat, user, seen, STREAM_BATCH)
-                    if progress and now is None:
-                        now = await chat_progress(conn, user, chat_id)
+                    events, last, now = await look(conn, user, chat_id, seen, STREAM_BATCH, progress=progress)
                 except HTTPException as refused:
                     refusal = refused.detail
             if refusal is not None:

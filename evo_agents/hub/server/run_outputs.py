@@ -37,7 +37,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, output_views
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Uploads
-from evo_agents.hub.server.chat_store import write_event as write_chat_event
+from evo_agents.hub.server.chats.repository.store import write_event as write_chat_event
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.local_runs import owned_local_run
 from evo_agents.hub.server.output_store import (

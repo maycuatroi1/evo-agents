@@ -44,8 +44,8 @@ from evo_agents.hub.openapi import document
 from evo_agents.hub.server import core_plugin_api as hub
 from evo_agents.hub.server import notifications, plugin_routes
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_store import insert_message
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.core_plugin_api import _acts
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token

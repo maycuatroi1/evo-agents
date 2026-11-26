@@ -22,14 +22,16 @@ async def resume_parked(
     "as owner answered decision #3". The parked run's decisions still open go to the new run, and for an author run,
     the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
     parked, which its agent reads in the new run's first turn. ``woken_by``, the answer or the message that resumes
-    it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title.
+    it, titles the new run of a chat run (``chats.service.runs.go_on_parked``); any other keeps the parked run's title.
     ``user`` is None when the hub resumes it itself, as the reaper, for a wait that woke (``run_waits``). A request that
     carries a run's token resumes none (``run_access_rules.refuse_new_run``)."""
     run_access_rules.refuse_new_run()
     token_id = None if user is None else user.token_id
     kind = await repository.run_kind(conn, parked_id)
     if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
-        from evo_agents.hub.server.chat_runs import go_on_parked  # it queues runs through the routes that import this
+        from evo_agents.hub.server.chats.service.runs import (
+            go_on_parked,  # it queues runs through the routes that import this
+        )
 
         return await go_on_parked(conn, parked_id, why, woken_by=woken_by, token_id=token_id)
     new_id = await repository.reserve_run_id(conn)

@@ -1,8 +1,8 @@
 """The notices of group chats (``evo_agents.hub.chats``): to a person someone mentioned in a chat (chat_mention) or
 added to one (chat_added), never to the one who did it, through the outbox of ``notifications``. In a restricted chat
-(``chat_access``) a notice names the chat and links to it, nothing more: no sender, no text. A notice is kept in the
-project of one of the chat's agents, a restricted one first (``ChatAccess.notice_project``), so a member who loses the
-grant on it stops getting it; one of a chat without agents is kept in no project.
+(``chats.service.access``) a notice names the chat and links to it, nothing more: no sender, no text. A notice is kept
+in the project of one of the chat's agents, a restricted one first (``ChatAccess.notice_project``), so a member who
+loses the grant on it stops getting it; one of a chat without agents is kept in no project.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats
-from evo_agents.hub.server.chat_access import ChatAccess
+from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.notifications import notify
 
 EXCERPT_CHARS = 1000  # of a message in the notice of a mention

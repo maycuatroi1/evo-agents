@@ -1,81 +1,53 @@
 """Who is in a group chat (``evo_agents.hub.chats``): PUT and DELETE /v1/chats/{id}/people/{login} and
-/v1/chats/{id}/agents/{handle}, and the checks creating a chat makes too (``chats.create_chat``).
+/v1/chats/{id}/agents/{handle}, and the checks creating a chat makes too (``chats.service.messages``).
 
 Any member adds a person or an agent. Adding an agent of project P needs the writer role on P; a deleted agent is
 refused (409), and an agent the caller cannot see is the 404 of one that does not exist. Adding a person needs them to
 clear the chat's label, and adding an agent needs every person in the chat to clear the label it takes the chat to
-(``chat_access``): otherwise 409 names who does not, and why. A person who is a writer on P and clears P's part by their own
-grant shares that part with whom it would pass (``share_part``): adding an agent of P, with the people of the chat;
-adding a person, with them, for each project of the chat's agents they are a writer on; creating a chat, with the
-people it starts with. So a member of P brings people outside P into a chat with P's agent, and only the parts the one
-adding cannot share still refuse. The hub's own flows (triage, settle, the Orchestrator) and the agents of runs share
-nothing: they add only whom the label clears. A chat holds no person and
-agent of the same name, so that @name names one member (409), at most ``chats.MAX_PEOPLE`` people and
-``chats.MAX_AGENTS`` agents. Adding someone already in the chat changes nothing. A person added gets the notice
-chat_added.
+(``chats.service.access``): otherwise 409 names who does not, and why. A person who is a writer on P and clears P's part
+by their own grant shares that part with whom it would pass (``share_part``): adding an agent of P, with the people of
+the chat; adding a person, with them, for each project of the chat's agents they are a writer on; creating a chat, with
+the people it starts with. So a member of P brings people outside P into a chat with P's agent, and only the parts the
+one adding cannot share still refuse. The hub's own flows (triage, settle, the Orchestrator) and the agents of runs
+share nothing: they add only whom the label clears. A chat holds no person and agent of the same name, so that @name
+names one member (409), at most ``chats.MAX_PEOPLE`` people and ``chats.MAX_AGENTS`` agents. Adding someone already in
+the chat changes nothing. A person added gets the notice chat_added.
 
 A person leaves a chat, or its creator removes them; any member removes an agent. Each change is audited (chat.add,
 chat.remove; for an agent in its project) and is an event of the chat's stream.
 
-The members of a direct chat (``chat_direct``) never change: adding or removing anyone there, its person leaving
-included, is refused (409, ``refuse_direct``), and a group chat is made for more people or agents.
+The members of a direct chat (``chats.service.direct``) never change: adding or removing anyone there, its person
+leaving included, is refused (409, ``refuse_direct``), and a group chat is made for more people or agents.
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import replace
-from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Request, Response
-from sqlalchemy import func, select
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, profiles, tables
+from evo_agents.hub import chats
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.chat_access import (
-    ChatAccess,
-    LabelProject,
-    LabelReader,
-    agent_projects,
-    chat_access,
-    chat_projects,
-    grants_of,
-    shares_part,
-    uncleared,
-)
-from evo_agents.hub.server.chat_notices import notice_added
-from evo_agents.hub.server.chat_store import add_member, member_event, remove_member, share_label
-from evo_agents.hub.server.chat_views import Chat, agent_author, chat_view, person_author
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.chats.models.access import ChatAccess, LabelProject, LabelReader, shares_part
+from evo_agents.hub.server.chats.models.members import SHARE_HINT
+from evo_agents.hub.server.chats.models.views import Chat, agent_author, person_author
+from evo_agents.hub.server.chats.repository import members as store
+from evo_agents.hub.server.chats.repository.access import grants_of
+from evo_agents.hub.server.chats.repository.store import add_member, member_event, remove_member, share_label
+from evo_agents.hub.server.chats.service.access import agent_projects, chat_access, chat_projects, uncleared
+from evo_agents.hub.server.chats.service.notices import notice_added
+from evo_agents.hub.server.chats.service.views import chat_view
 from evo_agents.hub.server.profile_store import Profile, by_handle
-from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.security import CurrentUser, Principal
-
-log = logging.getLogger(__name__)
-
-LOGIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"  # a GitHub login
-ChatId = Annotated[int, Path(ge=1, le=MAX_ID)]
-LoginPath = Annotated[str, Path(pattern=LOGIN_PATTERN, description="a person's login")]
-HandlePath = Annotated[str, Path(pattern=profiles.HANDLE_PATTERN, description="an agent's handle, @ left out")]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-
-router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
-
-
-# The checks
+from evo_agents.hub.server.security import Principal
 
 
 async def addable_agent(conn: AsyncConnection, user: Principal, handle: str) -> Profile:
     """The agent ``handle`` names, when ``user`` may add it to a chat: 404 for one they cannot see, 403 without the
     writer role on its project, 409 for a deleted one."""
     profile = await by_handle(conn, handle)
-    g = tables.grants
-    role = None
-    if profile is not None:
-        query = select(g.c.role).where(g.c.user_id == user.user_id, g.c.project_id == profile.project_id)
-        role = (await conn.execute(query)).scalar_one_or_none()
+    role = None if profile is None else await store.role_on(conn, user.user_id, profile.project_id)
     if profile is None or role is None:
         raise HTTPException(404, f"no agent @{handle} that you can see: see `evo-agents hub agent list`")
     if not has_role(role, "writer"):
@@ -91,8 +63,7 @@ async def addable_agent(conn: AsyncConnection, user: Principal, handle: str) -> 
 
 async def person(conn: AsyncConnection, login: str) -> tuple[int, str]:
     """(id, login) of the person who signed in to the hub as ``login``, ignoring case; 404 for nobody."""
-    u = tables.users
-    row = (await conn.execute(select(u.c.id, u.c.login).where(func.lower(u.c.login) == login.lower()))).one_or_none()
+    row = await store.user_named(conn, login)
     if row is None:
         raise HTTPException(404, f"nobody signed in to this hub as {login}: they sign in once before they are added")
     return row.id, row.login
@@ -119,12 +90,6 @@ def refuse_direct(chat: ChatAccess, doing: str) -> None:
         )
 
 
-SHARE_HINT = (
-    "A writer on the project whose own grant clears its label adds them, or its agent, and shares the project's part "
-    "of the chat's label with them"
-)
-
-
 def refuse_uncleared(found: list[str], doing: str, hint: str = "") -> None:
     if found:
         raise HTTPException(
@@ -132,23 +97,6 @@ def refuse_uncleared(found: list[str], doing: str, hint: str = "") -> None:
             f"{doing} would put work of a project in front of people who do not clear its label: {'; '.join(found)}. "
             f"Nothing changed{'. ' + hint if hint else ''}",
         )
-
-
-async def _members(conn: AsyncConnection, chat_id: int) -> tuple[dict[int, str], list[str]]:
-    """({person id: login}, [agent handle]) of the chat now."""
-    m, u, ap = tables.chat_members, tables.users, tables.agent_profiles
-    query = (
-        select(m.c.user_id, u.c.login, ap.c.handle)
-        .select_from(m.outerjoin(u, u.c.id == m.c.user_id).outerjoin(ap, ap.c.id == m.c.profile_id))
-        .where(m.c.chat_id == chat_id, m.c.removed_at.is_(None))
-    )
-    people, agents = {}, []
-    for row in await conn.execute(query):
-        if row.user_id is not None:
-            people[row.user_id] = row.login
-        else:
-            agents.append(row.handle)
-    return people, agents
 
 
 async def _record(conn, user: Principal, action: str, target: str, project_id: int | None = None) -> None:
@@ -196,7 +144,7 @@ async def label_problems(conn: AsyncConnection, chat: ChatAccess, profile: Profi
     """Who of the chat would not clear its label with agent ``profile`` in it, as ``uncleared`` says, one line each,
     shares the one adding it would make left out; none when it is in the chat already or everyone clears it. Changes
     nothing."""
-    people, agents = await _members(conn, chat.chat_id)
+    people, agents = await store.members_now(conn, chat.chat_id)
     if profile.handle in agents:
         return []
     return await uncleared(conn, people, await _with_agent(conn, chat, profile.project_id))
@@ -209,7 +157,7 @@ async def put_agent(
     it themselves, ``user`` shares its project's part with the people of the chat (``share_part``); the hub's own flows
     and the agents of runs share nothing."""
     refuse_direct(chat, f"adding @{profile.handle}")
-    people, agents = await _members(conn, chat.chat_id)
+    people, agents = await store.members_now(conn, chat.chat_id)
     if profile.handle in agents:
         return False
     refuse_clash(people.values(), [profile.handle])
@@ -239,7 +187,7 @@ async def put_person(
     ``share``, a person adding them themselves, ``user`` shares with them the part of each project of the chat's agents
     they may share (``share_part``); the hub's own flows share nothing."""
     refuse_direct(chat, f"adding {login}")
-    people, agents = await _members(conn, chat.chat_id)
+    people, agents = await store.members_now(conn, chat.chat_id)
     if user_id in people:
         return False
     refuse_clash([login], agents)
@@ -259,64 +207,52 @@ async def put_person(
     return True
 
 
-@router.put("/{chat_id}/people/{login}", response_model=Chat, responses=REFUSALS)
-async def add_person(request: Request, chat_id: ChatId, login: LoginPath, user: CurrentUser) -> Chat:
-    """Add a person to the chat; nothing changes when they are in it."""
-    async with request.app.state.engine.begin() as conn:
-        chat = await chat_access(conn, user, chat_id, lock=True)
-        refuse_direct(chat, f"adding {login}")
-        user_id, found = await person(conn, login)
-        added = await put_person(conn, user, chat, user_id, found, share=True)
-        view = await chat_view(conn, chat)
-    log.info("chat person added", extra={"chat_id": chat_id, "login": found, "added": added})
-    return view
+async def add_person(conn: AsyncConnection, user: Principal, chat_id: int, login: str) -> tuple[Chat, str, bool]:
+    """Add person ``login`` to chat ``chat_id`` as ``user`` (``put_person``, sharing): the chat as it reads now, their
+    login as they signed in, and whether they were not in it."""
+    chat = await chat_access(conn, user, chat_id, lock=True)
+    refuse_direct(chat, f"adding {login}")
+    user_id, found = await person(conn, login)
+    added = await put_person(conn, user, chat, user_id, found, share=True)
+    return await chat_view(conn, chat), found, added
 
 
-@router.put("/{chat_id}/agents/{handle}", response_model=Chat, responses=REFUSALS)
-async def add_agent(request: Request, chat_id: ChatId, handle: HandlePath, user: CurrentUser) -> Chat:
-    """Add an agent to the chat (the writer role on its project); nothing changes when it is in it."""
-    async with request.app.state.engine.begin() as conn:
-        chat = await chat_access(conn, user, chat_id, lock=True)
-        refuse_direct(chat, f"adding @{handle}")
-        profile = await addable_agent(conn, user, handle)
-        added = await put_agent(conn, user, chat, profile, share=True)
-        view = await chat_view(conn, await label_now(conn, chat))
-    log.info("chat agent added", extra={"chat_id": chat_id, "handle": handle, "added": added})
-    return view
+async def add_agent(conn: AsyncConnection, user: Principal, chat_id: int, handle: str) -> tuple[Chat, bool]:
+    """Add agent ``handle`` to chat ``chat_id`` as ``user`` (``put_agent``, sharing): the chat as it reads now, and
+    whether it was not in it."""
+    chat = await chat_access(conn, user, chat_id, lock=True)
+    refuse_direct(chat, f"adding @{handle}")
+    profile = await addable_agent(conn, user, handle)
+    added = await put_agent(conn, user, chat, profile, share=True)
+    return await chat_view(conn, await label_now(conn, chat)), added
 
 
 # Removing
 
 
-@router.delete("/{chat_id}/people/{login}", status_code=204, responses=REFUSALS)
-async def remove_person(request: Request, chat_id: ChatId, login: LoginPath, user: CurrentUser) -> Response:
-    """Leave the chat, or, for its creator, take a person out of it."""
-    async with request.app.state.engine.begin() as conn:
-        chat = await chat_access(conn, user, chat_id, lock=True)
-        refuse_direct(chat, f"taking {login} out" if login.lower() != user.login.lower() else "leaving it")
-        user_id, found = await person(conn, login)
-        if user_id != user.user_id and user.user_id != chat.created_by:
-            raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, takes others out of it")
-        if not await remove_member(conn, chat_id, user_id=user_id):
-            raise HTTPException(404, f"{found} is not in chat {chat_id}")
-        await member_event(conn, chat_id, "member_removed", person_author(found), user.login)
-        await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} person:{found}")
-    log.info("chat person removed", extra={"chat_id": chat_id, "login": found})
-    return Response(status_code=204)
+async def remove_person(conn: AsyncConnection, user: Principal, chat_id: int, login: str) -> str:
+    """Take person ``login`` out of chat ``chat_id``: ``user`` leaving, or the chat's creator taking them out; their
+    login as they signed in."""
+    chat = await chat_access(conn, user, chat_id, lock=True)
+    refuse_direct(chat, f"taking {login} out" if login.lower() != user.login.lower() else "leaving it")
+    user_id, found = await person(conn, login)
+    if user_id != user.user_id and user.user_id != chat.created_by:
+        raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, takes others out of it")
+    if not await remove_member(conn, chat_id, user_id=user_id):
+        raise HTTPException(404, f"{found} is not in chat {chat_id}")
+    await member_event(conn, chat_id, "member_removed", person_author(found), user.login)
+    await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} person:{found}")
+    return found
 
 
-@router.delete("/{chat_id}/agents/{handle}", status_code=204, responses=REFUSALS)
-async def remove_agent(request: Request, chat_id: ChatId, handle: HandlePath, user: CurrentUser) -> Response:
-    """Take an agent out of the chat."""
-    async with request.app.state.engine.begin() as conn:
-        refuse_direct(await chat_access(conn, user, chat_id, lock=True), f"taking @{handle} out")
-        profile = await by_handle(conn, handle)
-        if profile is None or not await remove_member(conn, chat_id, profile_id=profile.id):
-            raise HTTPException(404, f"@{handle} is not in chat {chat_id}")
-        await member_event(conn, chat_id, "member_removed", agent_author(profile), user.login)
-        await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} agent:@{handle}", profile.project_id)
-    log.info("chat agent removed", extra={"chat_id": chat_id, "handle": handle})
-    return Response(status_code=204)
+async def remove_agent(conn: AsyncConnection, user: Principal, chat_id: int, handle: str) -> None:
+    """Take agent ``handle`` out of chat ``chat_id`` as ``user``."""
+    refuse_direct(await chat_access(conn, user, chat_id, lock=True), f"taking @{handle} out")
+    profile = await by_handle(conn, handle)
+    if profile is None or not await remove_member(conn, chat_id, profile_id=profile.id):
+        raise HTTPException(404, f"@{handle} is not in chat {chat_id}")
+    await member_event(conn, chat_id, "member_removed", agent_author(profile), user.login)
+    await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} agent:@{handle}", profile.project_id)
 
 
 async def label_now(conn: AsyncConnection, chat: ChatAccess) -> ChatAccess:

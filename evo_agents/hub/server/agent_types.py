@@ -41,7 +41,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
 from evo_agents.hub.server.agent_profiles import AgentPermissions
-from evo_agents.hub.server.chat_members import LOGIN_PATTERN
+from evo_agents.hub.server.chats.models.members import LOGIN_PATTERN
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import create_pool, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access

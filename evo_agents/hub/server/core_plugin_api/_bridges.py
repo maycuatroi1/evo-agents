@@ -1,8 +1,8 @@
 """Bridges of group chats to groups of the plugin's channel through the API (1.5): the code a chat admin makes,
 linking, finding and unlinking a bridge, the state it keeps, what goes out to its group and what comes in from it: a
 linked member's message (``bridge_send``), or a guest's (1.8, ``bridge_guest``), a sender who linked no account.
-Private to ``core_plugin_api``; ``evo_agents.hub.server.chat_bridges`` holds the queries, ``docs/chat-bridges.md``
-the contract."""
+Private to ``core_plugin_api``; ``evo_agents.hub.server.chats.service.bridges`` holds the rules and
+``chats.repository.bridges`` the queries, ``docs/chat-bridges.md`` the contract."""
 
 from __future__ import annotations
 
@@ -17,13 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import attachments, blob_gc, chats, features, outputs
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server import attachment_store, audit, chat_bridges, hub_settings, member_channels
+from evo_agents.hub.server import attachment_store, audit, hub_settings, member_channels
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
-from evo_agents.hub.server.chat_access import agent_projects, channel_cleared, chat_access
-from evo_agents.hub.server.chat_runs import hub_access
-from evo_agents.hub.server.chat_store import insert_message
-from evo_agents.hub.server.chat_views import message_rows, profiles_by_id
-from evo_agents.hub.server.chats import ChatMessageIn, deliver_message
+from evo_agents.hub.server.chats.models.bridges import external_id as bridge_external_id
+from evo_agents.hub.server.chats.models.messages import ChatMessageIn
+from evo_agents.hub.server.chats.repository import bridges as bridge_store
+from evo_agents.hub.server.chats.repository.views import message_rows, profiles_by_id
+from evo_agents.hub.server.chats.service import bridges as chat_bridges
+from evo_agents.hub.server.chats.service.access import agent_projects, channel_cleared, chat_access
+from evo_agents.hub.server.chats.service.messages import deliver_message
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import hub_access
 from evo_agents.hub.server.core_plugin_api._acts import NO_PROJECT, READS, WRITES, chat_grants, feature_on, granting
 from evo_agents.hub.server.core_plugin_api._base import Context, transaction
 from evo_agents.hub.server.core_plugin_api._types import (
@@ -61,7 +65,7 @@ async def _own_bridge(conn: AsyncConnection, plugin: str, bridge_id: int):
     if isinstance(bridge_id, bool) or not isinstance(bridge_id, int):
         raise ValueError("a bridge id is an integer")
     for kind in _kinds_of(plugin):
-        row = await chat_bridges.linked(conn, kind, bridge_id=bridge_id)
+        row = await bridge_store.linked(conn, kind, bridge_id=bridge_id)
         if row is not None and row.plugin == plugin:
             return row
     raise Refused(404, NOT_LINKED.format(bridge=bridge_id))
@@ -72,7 +76,7 @@ def _kinds_of(plugin: str) -> tuple[str, ...]:
 
 
 def _external(value) -> str:
-    return chat_bridges.external_id(value)
+    return bridge_external_id(value)
 
 
 # Linking and unlinking
@@ -115,7 +119,7 @@ async def bridge_link(
 async def bridge_find(conn: AsyncConnection, plugin: Plugin, kind: str, external_id: str | int) -> Bridge | None:
     """The linked bridge of the group ``external_id`` of ``kind``, or None."""
     own_kind(own_plugin(plugin), kind)
-    row = await chat_bridges.linked(conn, kind, group=_external(external_id))
+    row = await bridge_store.linked(conn, kind, group=_external(external_id))
     return None if row is None or row.plugin != plugin.id else _bridge(row)
 
 
@@ -169,7 +173,7 @@ async def bridge_set_state(conn: AsyncConnection, plugin: Plugin, bridge_id: int
     own_plugin(plugin)
     kept = member_channels.json_object(state, "a bridge's state")
     row = await _own_bridge(conn, plugin.id, bridge_id)
-    return await chat_bridges.set_state(conn, row.id, kept)
+    return await bridge_store.set_state(conn, row.id, kept)
 
 
 # Out to the group
@@ -199,7 +203,7 @@ async def _going_out(conn: AsyncConnection, plugin: Plugin, bridge_id: int, mess
     elif message.guest_name is not None:
         author_kind, author = "guest", message.guest_name
     root = message.thread_root_id
-    reply_to = None if root is None else await chat_bridges.group_message(conn, row.id, root)
+    reply_to = None if root is None else await bridge_store.group_message(conn, row.id, root)
     attached = (await attachment_store.of_messages(conn, [message.id])).get(message.id, [])
     files = tuple(BridgeFile(f.id, f.name, f.media_type, f.size) for f in attached)
     read = BridgeMessage(
@@ -268,7 +272,7 @@ async def bridge_sent(
     row = await _own_bridge(conn, plugin.id, bridge_id)
     if not await message_rows(conn, row.chat_id, [message_id]):
         raise Refused(404, f"chat {row.chat_id} has no message {message_id}")
-    await chat_bridges.carry(conn, row.id, message_id, "out", _external(external_id))
+    await bridge_store.carry(conn, row.id, message_id, "out", _external(external_id))
 
 
 # In from the group
@@ -296,11 +300,11 @@ async def bridge_send(
     in as."""
     row = await _member_bridge(conn, member, bridge_id)
     group_message = _external(external_id)
-    known = await chat_bridges.hub_message(conn, row.id, group_message)
+    known = await bridge_store.hub_message(conn, row.id, group_message)
     if known is not None:
         (found,) = await message_rows(conn, row.chat_id, [known])
         return SentMessage(found.id, found.seq, found.thread_root_id)
-    answered = None if reply_to is None else await chat_bridges.hub_message(conn, row.id, _external(reply_to))
+    answered = None if reply_to is None else await bridge_store.hub_message(conn, row.id, _external(reply_to))
     user = principal_of(member)
     with refusing():
         await feature_on(conn, user, "chats")
@@ -309,7 +313,7 @@ async def bridge_send(
         await chat_grants(conn, member.plugin, chat, WRITES)
         message_id = await deliver_message(conn, chat, user, message, via=row.kind, via_bridge=row.id)
         (sent,) = await message_rows(conn, chat.chat_id, [message_id])
-    await chat_bridges.carry(conn, row.id, message_id, "in", group_message)
+    await bridge_store.carry(conn, row.id, message_id, "in", group_message)
     return SentMessage(sent.id, sent.seq, sent.thread_root_id)
 
 
@@ -349,7 +353,7 @@ async def bridge_guest(
     row = await _own_bridge(conn, plugin.id, bridge_id)
     guest = _guest(name)
     group_message = _external(external_id)
-    known = await chat_bridges.hub_message(conn, row.id, group_message)
+    known = await bridge_store.hub_message(conn, row.id, group_message)
     if known is not None:
         (found,) = await message_rows(conn, row.chat_id, [known])
         return SentMessage(found.id, found.seq, found.thread_root_id)
@@ -359,13 +363,13 @@ async def bridge_guest(
     chat = await hub_access(conn, row.chat_id)
     await chat_grants(conn, plugin.id, chat, WRITES)
     root = None
-    answered = None if reply_to is None else await chat_bridges.hub_message(conn, row.id, _external(reply_to))
+    answered = None if reply_to is None else await bridge_store.hub_message(conn, row.id, _external(reply_to))
     for replied in await message_rows(conn, row.chat_id, [] if answered is None else [answered]):
         root = replied.thread_root_id or replied.id
     message_id, seq = await insert_message(
         conn, chat, message.body, thread_root_id=root, via=row.kind, via_bridge=row.id, guest_name=guest
     )
-    await chat_bridges.carry(conn, row.id, message_id, "in", group_message)
+    await bridge_store.carry(conn, row.id, message_id, "in", group_message)
     target = f"chat:{chat.chat_id} message:{message_id} plugin:{plugin.id}"
     await audit.record(conn, actor_id=None, token_id=None, action=audit.CHAT_MESSAGE, target=target)
     return SentMessage(message_id, seq, root)

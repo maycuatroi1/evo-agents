@@ -15,7 +15,7 @@ from evo_agents.hub import excerpts, facet_job, history, history_index, review
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.server import rankers
 from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
-from evo_agents.hub.server.chat_access import chat_access, label_reader
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
 from evo_agents.hub.server.history import repository
 from evo_agents.hub.server.history.models import (
     AGENT_SOURCES,
@@ -167,7 +167,7 @@ async def _run_hits(conn, access, runs_read: RunReader, query, since, until, log
 
 
 def _through_sink(access: ProjectAccess, label, seen_through: str | None) -> bool:
-    """Whether the project's part of a chat message's label (``chat_access.LabelProject.label``) is visible through
+    """Whether the project's part of a chat message's label (``chats.models.access.LabelProject.label``) is visible through
     ``seen_through``, the sink the caller reads through."""
     named = [item for item in label or [] if isinstance(item, dict) and item.get("projects") == [access.name]]
     return seen_through is not None and len(named) == 1 and access.visible(named[0], seen_through)

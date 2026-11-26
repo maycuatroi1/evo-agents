@@ -14,7 +14,7 @@ A plan run has no step of its own: its worker reports each step (POST /v1/worker
 through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key. A
 review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has room
 for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A chat run has none either: its moves
-put its agent's reaction on the message that started it (``chat_runs.chat_run_moved``). A judge run writes no step
+put its agent's reaction on the message that started it (``chats.service.runs.chat_run_moved``). A judge run writes no step
 either: its end moves its change of the Curator on, and a failure sends the notice ``run_failed``
 (``change_shift.judge_ended``); a replay run writes none either: its end moves its replay on, and a failure sends the
 notice ``run_failed`` (``replays.replay_ended``), as does a history run's (``history.service.runs.history_ended``); a release run
@@ -616,7 +616,9 @@ async def record_move(
         await run_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "chat":  # it writes no step: its agent's reactions and replies are in its chat
-        from evo_agents.hub.server.chat_runs import chat_run_moved  # it queues runs through the routes that import this
+        from evo_agents.hub.server.chats.service.runs import (
+            chat_run_moved,  # it queues runs through the routes that import this
+        )
 
         await chat_run_moved(conn, run_id, new, old)
         return None

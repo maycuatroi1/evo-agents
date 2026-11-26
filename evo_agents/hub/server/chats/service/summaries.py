@@ -1,7 +1,7 @@
-"""The list of a person's chats (GET /v1/chats, ``chats.list_chats``) with what the web draws for each: its kind, its
-image, the agent of a direct chat, the faces of a group chat and its last message.
+"""The list of a person's chats (GET /v1/chats, ``chats.routes.chats.list_chats``) with what the web draws for each: its
+kind, its image, the agent of a direct chat, the faces of a group chat and its last message.
 
-A group chat shows the image its members set (``chat_images``); without one, the web draws ``faces``: at most
+A group chat shows the image its members set (``chats.service.images``); without one, the web draws ``faces``: at most
 ``chats.FACES`` members other than the reader, in the order they were added, an agent with its colour and avatar, a
 person with their GitHub avatar. A direct chat shows its agent (``direct_agent``), deleted or not. ``last_message`` is
 the latest message of the chat's main line: of a group chat, the latest that starts no thread; of a direct chat, the
@@ -17,67 +17,24 @@ the traces of the work chats among them.
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
-from evo_agents.hub.db import one_of
-from evo_agents.hub.server.chat_access import LabelReader, label_reader
-from evo_agents.hub.server.chat_views import (
-    HUB_AUTHOR,
+from evo_agents.hub import chats
+from evo_agents.hub.server.chats.models.access import LabelReader
+from evo_agents.hub.server.chats.models.views import (
     ChatAuthor,
     ChatLastMessage,
     ChatSummary,
     agent_author,
-    guest_author,
+    message_author,
     person_author,
-    profiles_by_id,
-    summaries_query,
 )
+from evo_agents.hub.server.chats.repository import summaries as store
+from evo_agents.hub.server.chats.repository.views import profiles_by_id
+from evo_agents.hub.server.chats.service.access import label_reader
 from evo_agents.hub.server.profile_store import Profile
-from evo_agents.hub.server.work_status import WorkBrief, briefs
-
-
-def _members_query(chat_ids: list[int]):
-    m, u = tables.chat_members, tables.users
-    return (
-        select(m.c.chat_id, m.c.user_id, m.c.profile_id, u.c.login, u.c.github_id)
-        .select_from(m.outerjoin(u, u.c.id == m.c.user_id))
-        .where(one_of(m.c.chat_id, chat_ids), m.c.removed_at.is_(None))
-        .order_by(m.c.chat_id, m.c.added_at, m.c.id)
-    )
-
-
-def _last_query(chat_ids: list[int]):
-    """The latest message of the main line of each chat of ``chat_ids``, one row a chat that has one, its text cut to
-    ``chats.PREVIEW_SOURCE`` characters: one query, each chat's row found through its index on (chat, seq)."""
-    c, cm, u = tables.chats, tables.chat_messages, tables.users
-    latest = (
-        select(
-            cm.c.id,
-            cm.c.thread_root_id,
-            cm.c.author_user_id,
-            cm.c.author_profile_id,
-            cm.c.guest_name,
-            func.substr(cm.c.body, 1, chats.PREVIEW_SOURCE).label("body"),
-            cm.c.label,
-            cm.c.created_at,
-        )
-        .where(cm.c.chat_id == c.c.id, or_(cm.c.thread_root_id.is_(None), c.c.kind == chats.DIRECT))
-        .order_by(cm.c.seq.desc())
-        .limit(1)
-        .lateral("latest")
-    )
-    return (
-        select(
-            c.c.id.label("chat_id"),
-            latest,
-            u.c.login.label("author_login"),
-            u.c.github_id.label("author_github_id"),
-        )
-        .select_from(c.join(latest, true()).outerjoin(u, u.c.id == latest.c.author_user_id))
-        .where(one_of(c.c.id, chat_ids))
-    )
+from evo_agents.hub.server.work_status import briefs
+from evo_agents.hub.server.work_status_models import WorkBrief
 
 
 def _face(member, profiles: dict[int, Profile]) -> ChatAuthor:
@@ -89,14 +46,7 @@ def _face(member, profiles: dict[int, Profile]) -> ChatAuthor:
 def _last(row, profiles: dict[int, Profile], reader: LabelReader) -> ChatLastMessage | None:
     if row is None:
         return None
-    if row.author_profile_id is not None:
-        author = agent_author(profiles[row.author_profile_id])
-    elif row.author_login is not None:
-        author = person_author(row.author_login, row.author_github_id)
-    elif row.guest_name is not None:
-        author = guest_author(row.guest_name)
-    else:
-        author = HUB_AUTHOR
+    author = message_author(row, profiles)
     seen = reader.sees(row.label)
     return ChatLastMessage(
         id=row.id,
@@ -112,23 +62,19 @@ async def _work(conn: AsyncConnection, chat_ids: list[int]) -> dict[int, WorkBri
     """The work of each work chat of ``chat_ids`` (``work_status.briefs``), by chat id."""
     if not chat_ids:
         return {}
-    t = tables.system_traces
-    query = select(t.c.work_chat_id, func.min(t.c.id)).where(one_of(t.c.work_chat_id, chat_ids))
-    traces = {key: value for key, value in await conn.execute(query.group_by(t.c.work_chat_id))}
+    traces = await store.work_traces(conn, chat_ids)
     found = await briefs(conn, list(traces.values()))
     return {chat_id: found[trace] for chat_id, trace in traces.items() if trace in found}
 
 
 async def chat_summaries(conn: AsyncConnection, user_id: int) -> list[ChatSummary]:
     """The chats person ``user_id`` is in, the latest active first, each as ``ChatSummary`` shows it to them."""
-    rows = (await conn.execute(summaries_query(user_id))).all()
+    rows = await store.chats_of(conn, user_id)
     chat_ids = [row.id for row in rows]
     if not chat_ids:
         return []
-    members: dict[int, list] = {chat_id: [] for chat_id in chat_ids}
-    for member in await conn.execute(_members_query(chat_ids)):
-        members[member.chat_id].append(member)
-    last = {row.chat_id: row for row in await conn.execute(_last_query(chat_ids))}
+    members = await store.members_of(conn, chat_ids)
+    last = await store.last_messages(conn, chat_ids)
     profiles = await profiles_by_id(
         conn,
         [m.profile_id for found in members.values() for m in found if m.profile_id is not None]

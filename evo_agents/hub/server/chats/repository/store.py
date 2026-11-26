@@ -3,15 +3,15 @@ the reactions on them, the events its stream sends and the notices it sends, eac
 
 Every change writes one event of the chat (chat_events), numbered by the chat (``chats.event_seq``, counted under its
 row lock, so a reader never sees a number before the ones below it), and notifies CHANNEL with the chat's id once the
-transaction commits, which wakes the chat's streams (``chat_events.ChatStreams``) on the api process's one LISTEN. A
-message is numbered by the event that brought it. A message also queues, in the same transaction, a build of the
-knowledge graph of each project its label names whose graph holds its chats (``kg_sources.reads_chats``: the plugin
-chats), which joins a build that waits (``kg_build.queue_if_configured``). What changes the progress of a chat run
-under its messages (``chat_progress``) wakes them with no event (``wake``).
+transaction commits, which wakes the chat's streams (``chats.service.events.ChatStreams``) on the api process's
+one LISTEN. A message is numbered by the event that brought it; ``chats.service.posting`` stores it with
+``message_row`` and hands it to the plugins, the builds of the knowledge graph and the bridges in the same transaction.
+What changes the progress of a chat run under its messages (``chats.service.progress``) wakes them with no event
+(``wake``).
 
 ``status_reaction`` is how a run of an agent marks the message that started it as the run moves (``chats.
 STATUS_REACTIONS``): by rule, with no model. A run calls it in the transaction that moves it, so this module imports
-neither the notifications nor the runs (``chat_notices`` sends the notices).
+neither the notifications nor the runs (``chats.service.notices`` sends the notices).
 """
 
 from __future__ import annotations
@@ -22,12 +22,11 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_bridge_events, chats, kg_sources, plugin_events, tables
+from evo_agents.hub import chat_bridge_events, chats, tables
 from evo_agents.hub import wake as wakeups
-from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_build import queue_if_configured
-from evo_agents.hub.server.chat_access import ChatAccess
-from evo_agents.hub.server.chat_views import ChatAuthor, agent_author, profiles_by_id
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.views import ChatAuthor, agent_author
+from evo_agents.hub.server.chats.repository.views import profiles_by_id
 
 CHANNEL = "evo_chat_events"  # notified with a chat's id when an event of it is written, so its streams look again
 
@@ -53,8 +52,8 @@ async def write_event(conn: AsyncConnection, chat_id: int, kind: str, body: dict
 
 async def wake(conn: AsyncConnection, chat_id: int) -> None:
     """Wake the streams of chat ``chat_id`` once the caller's transaction commits: one that writes no event, such as
-    a move of a chat run, changes what they show (``chat_progress``). The equal wake-ups of one transaction go out as one
-    (``evo_agents.hub.wake``)."""
+    a move of a chat run, changes what they show (``chats.service.progress``). The equal wake-ups of one transaction go
+    out as one (``evo_agents.hub.wake``)."""
     await wakeups.notify(conn, CHANNEL, str(chat_id))
 
 
@@ -114,7 +113,7 @@ async def share_label(
     conn: AsyncConnection, chat_id: int, project_id: int, user_ids: list[int], shared_by: int
 ) -> list[int]:
     """Share project ``project_id``'s part of the chat's label with the people ``user_ids`` (chat_label_shares,
-    ``chat_access``), as ``shared_by``; the people it was not shared with before."""
+    ``chats.service.access``), as ``shared_by``; the people it was not shared with before."""
     if not user_ids:
         return []
     s = tables.chat_label_shares
@@ -163,7 +162,7 @@ async def mark_read(conn: AsyncConnection, member_id: int, seq: int) -> int:
 # Messages
 
 
-async def insert_message(
+async def message_row(
     conn: AsyncConnection,
     chat: ChatAccess,
     body: str,
@@ -173,16 +172,13 @@ async def insert_message(
     author_profile_id: int | None = None,
     run_id: int | None = None,
     via: str | None = None,
-    via_bridge: int | None = None,
     from_output_id: int | None = None,
     copied_from_id: int | None = None,
     guest_name: str | None = None,
 ) -> tuple[int, int]:
     """Store a message of a person, an agent, a guest (``guest_name``) or the hub (none of them) in the chat, with the
-    chat's label now, and its event, hand it to the chat's bridges but ``via_bridge``, the one it came in by (``via``
-    its kind of channel), and queue the builds of the graphs that hold it; (its id, its seq). ``from_output_id`` is the
-    interactive answer a person sent it from, ``copied_from_id`` the message of another chat it copies
-    (``work_chats``)."""
+    chat's label now, and its event: (its id, its seq). ``chats.service.posting.insert_message`` hands it on.
+    """
     seq = await next_seq(conn, chat.chat_id)
     cm = tables.chat_messages
     statement = (
@@ -205,17 +201,6 @@ async def insert_message(
     )
     message_id = (await conn.execute(statement)).scalar_one()
     await write_event(conn, chat.chat_id, "message", {"message_id": message_id}, seq)
-    by = "person" if author_user_id is not None else "agent" if author_profile_id is not None else "hub"
-    by = "guest" if guest_name is not None else by
-    said = {"chat_id": chat.chat_id, "message_id": message_id, "seq": seq, "thread_root_id": thread_root_id, "by": by}
-    for project in chat.projects:  # the projects of its agents, its label's: a chat of people alone belongs to none
-        await plugin_events.emit(conn, "chat.message", project.id, {**said, "run_id": run_id})
-        if await kg_sources.reads_chats(conn, project.id):
-            await queue_if_configured(JobQueue.in_transaction(), conn, project.id, project.name)
-    projects = [project.id for project in chat.projects]
-    await chat_bridge_events.message(
-        conn, chat.chat_id, {**said, "run_id": run_id}, projects=projects, via_bridge=via_bridge
-    )
     return message_id, seq
 
 

@@ -10,9 +10,10 @@ from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import audit, system_store
 from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chats import ChatMessageIn, deliver_message
+from evo_agents.hub.server.chats.models.messages import ChatMessageIn
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.direct import direct_chat
+from evo_agents.hub.server.chats.service.messages import deliver_message
 from evo_agents.hub.server.plan_systems.repository import STORE
 from evo_agents.hub.server.plans.service import visible
 from evo_agents.hub.server.projects import ProjectAccess, project_access

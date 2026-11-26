@@ -1210,7 +1210,7 @@ are two types with the same handle. `mentioned_by` says who hands the profile wo
 `writer`, the default, for the project's writers, or `admin` for its admins alone. Any other member who mentions it
 gets the hub's refusal in the thread, and no run starts (core plugin builder, above).
 
-`chat_runs` says where the chat runs of the profile go (`evo_agents/hub/server/chat_route.py`):
+`chat_runs` says where the chat runs of the profile go (`evo_agents/hub/server/chats/service/route.py`):
 
 - `mentioner`, the default: to a worker of the member who mentioned it, as for any agent (`docs/hub.md`, Group chats).
 - `run_as`: to a worker of the type's `run_as` (below), among the workers the type names, whoever mentioned it, so a

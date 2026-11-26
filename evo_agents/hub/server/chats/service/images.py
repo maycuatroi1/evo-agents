@@ -23,37 +23,27 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
-from sqlalchemy import select, update
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, chats, tables
+from evo_agents.hub import blob_gc, chats
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.agent_profiles import AVATAR_MAX_BYTES, AVATAR_TYPES, AvatarUpload, media_type
-from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access
-from evo_agents.hub.server.chat_members import ChatId
-from evo_agents.hub.server.chat_store import write_event
-from evo_agents.hub.server.chat_views import Chat, chat_view
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.security import CurrentUser, Principal
-
-log = logging.getLogger(__name__)
-
-IMAGE_KIND = "chat-image"  # the kind blob_deletions records an image no chat refers to any longer with
-UNAVAILABLE = "the blob store did not answer; the chat's image was not changed, try again shortly"
-SET_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422, 503)}
-DROP_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 503)}
-
-router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
+from evo_agents.hub.server.blobs import fetch_bytes, put_bytes
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.images import IMAGE_KIND, UNAVAILABLE
+from evo_agents.hub.server.chats.models.views import Chat
+from evo_agents.hub.server.chats.repository import images as store
+from evo_agents.hub.server.chats.repository.store import write_event
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.views import chat_view
+from evo_agents.hub.server.security import Principal
 
 
-def _group(chat: ChatAccess) -> ChatAccess:
+def group(chat: ChatAccess) -> ChatAccess:
+    """``chat``, a group chat; 409 for a direct chat."""
     if chat.kind == chats.DIRECT:
         raise HTTPException(
             409,
@@ -62,7 +52,8 @@ def _group(chat: ChatAccess) -> ChatAccess:
     return chat
 
 
-def _image(body: AvatarUpload) -> tuple[bytes, str]:
+def image(body: AvatarUpload) -> tuple[bytes, str]:
+    """(the bytes of ``body``'s image, their SHA-256); 413 over the size, 422 for what is no image."""
     data = base64.b64decode(body.data, validate=True)
     if len(data) > AVATAR_MAX_BYTES:
         raise HTTPException(413, f"the image is {len(data)} bytes, over the {AVATAR_MAX_BYTES} a chat's image may have")
@@ -73,18 +64,25 @@ def _image(body: AvatarUpload) -> tuple[bytes, str]:
     return data, hashlib.sha256(data).hexdigest()
 
 
-async def _change(conn: AsyncConnection, store, chat: ChatAccess, user: Principal, image, data: bytes) -> bool:
+async def store_image(blobs, sha256: str, data: bytes) -> None:
+    """Put ``data``, of SHA-256 ``sha256``, in the blob store ``blobs``; 503 when it does not answer."""
+    try:
+        await asyncio.to_thread(put_bytes, blobs, sha256, data)
+    except BlobStoreUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None
+
+
+async def _change(conn: AsyncConnection, blobs, chat: ChatAccess, user: Principal, image, data: bytes) -> bool:
     """Make ``image`` ((SHA-256, size), or None) the chat's image, holding the blob lock exclusively: put its bytes
     back when their deletion was pending, record the old blob for deletion when nothing else refers to it, and write
     the event and the audit row. Whether it changed."""
-    c = tables.chats
-    old = (await conn.execute(select(c.c.image_sha256, c.c.image_size).where(c.c.id == chat.chat_id))).one()
+    old = await store.image_of(conn, chat.chat_id)
     sha256, size = image if image is not None else (None, None)
     if old.image_sha256 == sha256:
         return False
     if sha256 is not None and await blob_gc.revive(conn, [sha256]):
-        await asyncio.to_thread(put_bytes, store, sha256, data, replace=True)
-    await conn.execute(update(c).values(image_sha256=sha256, image_size=size).where(c.c.id == chat.chat_id))
+        await asyncio.to_thread(put_bytes, blobs, sha256, data, replace=True)
+    await store.set_image(conn, chat.chat_id, sha256, size)
     if old.image_sha256 is not None:
         await blob_gc.forget(conn, {old.image_sha256: (old.image_size, IMAGE_KIND)})
     await write_event(conn, chat.chat_id, chats.IMAGE_CHANGED, {"sha256": sha256, "by": user.login})
@@ -93,78 +91,42 @@ async def _change(conn: AsyncConnection, store, chat: ChatAccess, user: Principa
     return True
 
 
-async def _set(request: Request, chat_id: int, user: Principal, image, data: bytes = b"") -> Chat:
-    store = blob_store(request) if image is not None else None
-    try:
-        async with request.app.state.engine.begin() as conn:
-            await blob_gc.lock_exclusive(conn)  # before the chat's row, so its messages never wait for the lock
-            chat = _group(await chat_access(conn, user, chat_id, lock=True))
-            changed = await _change(conn, store, chat, user, image, data)
-            view = await chat_view(conn, chat)
-    except BlobStoreUnavailable:
-        raise HTTPException(503, UNAVAILABLE) from None
-    log.info("chat image changed", extra={"chat_id": chat_id, "set": image is not None, "changed": changed})
-    return view
+async def change_image(
+    conn: AsyncConnection, blobs, chat_id: int, user: Principal, image, data: bytes = b""
+) -> tuple[Chat, bool]:
+    """Make ``image`` ((SHA-256, size), or None) the image of chat ``chat_id`` for ``user``, its bytes ``data`` in the
+    blob store ``blobs`` (None to take it off): the chat as it reads now, and whether it changed."""
+    await blob_gc.lock_exclusive(conn)  # before the chat's row, so its messages never wait for the lock
+    chat = group(await chat_access(conn, user, chat_id, lock=True))
+    changed = await _change(conn, blobs, chat, user, image, data)
+    return await chat_view(conn, chat), changed
 
 
-@router.put("/{chat_id}/image", response_model=Chat, responses=SET_REFUSALS)
-async def put_image(request: Request, chat_id: ChatId, body: AvatarUpload, user: CurrentUser) -> Chat:
-    """Set the group chat's image, a PNG, JPEG or WebP image: its members see it in their list and its header."""
-    async with request.app.state.engine.begin() as conn:  # the refusals of the caller before the bytes are stored
-        _group(await chat_access(conn, user, chat_id))
-    data, sha256 = _image(body)
-    try:
-        await asyncio.to_thread(put_bytes, blob_store(request), sha256, data)
-    except BlobStoreUnavailable:
-        raise HTTPException(503, UNAVAILABLE) from None
-    return await _set(request, chat_id, user, (sha256, len(data)), data)
-
-
-@router.delete("/{chat_id}/image", response_model=Chat, responses=DROP_REFUSALS)
-async def delete_image(request: Request, chat_id: ChatId, user: CurrentUser) -> Chat:
-    """Take the group chat's image off: the web draws the faces of its members again."""
-    return await _set(request, chat_id, user, None)
-
-
-def _matches(if_none_match: str | None, etag: str) -> bool:
+def matches(if_none_match: str | None, etag: str) -> bool:
+    """Whether ``if_none_match`` names ``etag``."""
     if if_none_match is None:
         return False
     tags = [tag.strip().removeprefix("W/") for tag in if_none_match.split(",")]
     return "*" in tags or etag in tags
 
 
-@router.get(
-    "/{chat_id}/image",
-    response_class=Response,
-    responses={
-        200: {"content": {kind: {} for kind in AVATAR_TYPES}},
-        304: {"description": "the image the browser holds, named by If-None-Match, is the chat's still"},
-        **READ_REFUSALS,
-    },
-)
-async def get_image(
-    request: Request,
-    chat_id: ChatId,
-    user: CurrentUser,
-    if_none_match: Annotated[str | None, Header(description="the ETag of the image the browser holds")] = None,
-) -> Response:
-    """The group chat's image, for its members; 404 when it has none."""
-    async with request.app.state.engine.begin() as conn:
-        await chat_access(conn, user, chat_id)
-        c = tables.chats
-        sha256 = (await conn.execute(select(c.c.image_sha256).where(c.c.id == chat_id))).scalar_one()
+async def image_sha256(conn: AsyncConnection, user: Principal, chat_id: int) -> str:
+    """The SHA-256 of the image of chat ``chat_id``, which ``user`` reads; 404 when it has none."""
+    await chat_access(conn, user, chat_id)
+    sha256 = (await store.image_of(conn, chat_id)).image_sha256
     if sha256 is None:
         raise HTTPException(404, f"chat {chat_id} has no image: the web draws the faces of its members")
-    etag = f'"{sha256}"'
-    headers = {"Cache-Control": "private, max-age=86400", "ETag": etag}
-    if _matches(if_none_match, etag):
-        return Response(status_code=304, headers=headers)
+    return sha256
+
+
+async def image_bytes(blobs, chat_id: int, sha256: str) -> tuple[bytes, str]:
+    """(the bytes of the image ``sha256`` of chat ``chat_id``, their media type); 503 when the blob store ``blobs``
+    does not answer, 404 when it lacks them."""
     try:
-        data = await asyncio.to_thread(fetch_bytes, blob_store(request), sha256, AVATAR_MAX_BYTES)
+        data = await asyncio.to_thread(fetch_bytes, blobs, sha256, AVATAR_MAX_BYTES)
     except BlobStoreUnavailable:
         raise HTTPException(503, "the blob store did not answer; try again shortly") from None
     kind = media_type(data or b"")
     if kind is None:
         raise HTTPException(404, f"the image of chat {chat_id} is not in the blob store")
-    headers |= {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'"}
-    return Response(content=data, media_type=kind, headers=headers)
+    return data or b"", kind

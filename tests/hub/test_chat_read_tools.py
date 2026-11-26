@@ -1,5 +1,5 @@
 """Agents find chat messages in the knowledge graph and read them whole through tools that check who may, at each call
-(``evo_agents.hub.server.chat_read``), as criterion a5 of plan chat-history-in-kg names it.
+(``evo_agents.hub.server.chats.service.read``), as criterion a5 of plan chat-history-in-kg names it.
 
 Checked here, on Postgres with the api and the worker in this process, on chats that the core plugin chats puts into
 each project's graph: chat one, Kiwi rollout, of alice, dave and bob, who joined once the agent of beta had left; chat
@@ -36,7 +36,7 @@ from sqlalchemy import func, insert, select
 
 from evo_agents.hub import chat_runs, chats, tables
 from evo_agents.hub.contract import check_command, commands
-from evo_agents.hub.server.chat_read import DATA_LINE, NOT_THERE
+from evo_agents.hub.server.chats.models.read import DATA_LINE, NOT_THERE
 from evo_agents.kg import serve
 from tests.hub import live
 from tests.hub.test_kg import PROJECT, REGISTRATION, Machine, doc, grant, open_hub, push, run_jobs, tool_ok

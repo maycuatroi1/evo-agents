@@ -17,7 +17,7 @@
 - GET /v1/chats/{id}/attachments/{aid}/content, to a member who clears the label of the message that carries it (or
   the uploader, for an upload not sent yet);
 - GET /v1/worker/runs/{id}/attachments/{aid}/content, to the worker that claimed the run: a file of a message the run's
-  inbox took, or of a chat message the run's agent may read (``chat_read``).
+  inbox took, or of a chat message the run's agent may read (``chats.service.read``).
 
 The bytes are served as an output's are (``output_content.serve``): nosniff, a safe Content-Disposition, one Range,
 and a sandbox Content-Security-Policy for HTML and SVG. Anyone else gets the 404 of a file that does not exist.
@@ -43,10 +43,10 @@ from evo_agents.hub.output_prune import delete_objects
 from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.chat_access import chat_access, label_reader
-from evo_agents.hub.server.chat_members import ChatId
-from evo_agents.hub.server.chat_read import readable, run_readers
-from evo_agents.hub.server.chat_views import message_select
+from evo_agents.hub.server.chats.models.members import ChatId
+from evo_agents.hub.server.chats.repository.views import message_select
+from evo_agents.hub.server.chats.service.access import chat_access, label_reader
+from evo_agents.hub.server.chats.service.read import readable, run_readers
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.output_content import CONTENT, Download, IfNoneMatch, RangeHeader, Sink, serve
 from evo_agents.hub.server.run_events import claimed_run

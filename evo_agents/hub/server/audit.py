@@ -272,23 +272,24 @@ BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did
 # relayed, never a key, a text, a URL or a frame.
 BROWSER_VIEW = "browser.view"  # the dispatcher opened the run's browser in the live view, or the view ended
 BROWSER_CONTROL = "browser.control"  # in a view, the dispatcher got the browser to drive (mode human), or gave it back
-# Group chats (evo_agents.hub.server.chats); the target is "chat:<id>", then "person:<login>", "agent:@<handle>" or
-# "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's project.
+# Group chats (evo_agents.hub.server.chats.service.chats); the target is "chat:<id>", then "person:<login>",
+# "agent:@<handle>" or "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's
+# project.
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with
 CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 # A writer on a project shared its part of a chat's label with people of the chat who hold no grant that clears it, in
-# the project: "chat:<id> shared:<login>,<login>" (evo_agents.hub.server.chat_access).
+# the project: "chat:<id> shared:<login>,<login>" (evo_agents.hub.server.chats.service.access).
 CHAT_SHARE = "chat.share"
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 # A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
 CHAT_IMAGE = "chat.image"
 # An admin of every project of a chat's agents set the level of its label, or took it off: "chat:<id> label:<level>" or
-# "chat:<id> label:default" (evo_agents.hub.server.chat_labels).
+# "chat:<id> label:default" (evo_agents.hub.server.chats.service.labels).
 CHAT_LABEL = "chat.label"
 # A group chat was bridged to a group of a core plugin's channel, by the code of a chat admin's web session, or the
 # bridge was taken off: "chat:<id> bridge:<id> kind:<kind>", an unlink followed by `` via=<web|cli|bot|admin>``
-# (evo_agents.hub.server.chat_bridges).
+# (evo_agents.hub.server.chats.service.bridges).
 CHAT_BRIDGE = "chat.bridge"
 CHAT_UNBRIDGE = "chat.unbridge"
 # The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is

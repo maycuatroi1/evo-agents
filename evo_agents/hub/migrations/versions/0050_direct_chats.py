@@ -7,9 +7,10 @@ Create Date: 2026-10-20
 chats.kind says what a chat is, ``group`` (every chat there is, and the default) or ``direct``; a direct chat names its
 person (``direct_user_id``) and its agent (``direct_profile_id``), and a group chat neither (chats_direct_check).
 chats_direct_key holds one direct chat per (person, agent): two requests that open the same one at once make one row,
-the second finding the first's (``evo_agents.hub.server.chat_direct``). chat_mentions_via_check takes ``direct``, how a
-message of a direct chat without an @ of its agent reached it. ``evo_agents.hub.tables_chats`` describes the columns
-and the key; the CHECKs are this file's alone. Every statement is an Alembic operation on SQLAlchemy Core expressions.
+the second finding the first's (``evo_agents.hub.server.chats.service.direct``). chat_mentions_via_check takes
+``direct``, how a message of a direct chat without an @ of its agent reached it. ``evo_agents.hub.tables_chats``
+describes the columns and the key; the CHECKs are this file's alone. Every statement is an Alembic operation on
+SQLAlchemy Core expressions.
 
 Going back makes every direct chat a group chat of the same person and agent, and a mention that reached its agent
 ``via`` direct reads as ``via`` thread, how a message without an @ reached an agent before.
