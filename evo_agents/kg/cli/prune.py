@@ -9,41 +9,33 @@ needs only.
 
 from __future__ import annotations
 
-import sys
-
-from evo_agents.kg.cli_scrub import project_name
-from evo_agents.kg.project import ProjectError
-
-
-def cmd_prune(args) -> int:
-    from evo_agents.hub.cli import kg as kg_cli
-
-    if args.all and args.project:
-        print("error: --all goes without --project", file=sys.stderr)
-        return 2
-    try:
-        args.project = project_name(args)
-    except ProjectError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    args.dry_run, args.graph_files = not args.delete, False
-    return kg_cli.KG_PRUNE(args)
+from evo_agents.clikit import Arg, Result
+from evo_agents.hub.cli import positive
+from evo_agents.kg.cli.base import JSON, PROJECT, KgCommand, KgContext, done, hub_project_args
+from evo_agents.kg.cli.scrub import ALL
 
 
-def register(ksub) -> None:
-    from evo_agents.hub.cli import positive
-
-    prune = ksub.add_parser(
-        "prune",
-        help="count, and with --delete delete, the artifacts of a project's older graphs on the hub (a hub admin)",
+class KgPrune(KgCommand):
+    name = "prune"
+    help = "count, and with --delete delete, the artifacts of a project's older graphs on the hub (a hub admin)"
+    arguments = (
+        PROJECT,
+        ALL,
+        Arg(
+            "--keep",
+            type=positive,
+            help="newest graphs of each project whose artifact stays (default: the hub's EVO_HUB_KG_KEEP_ARTIFACTS, 3)",
+        ),
+        Arg("--delete", action="store_true", help="delete what the count finds"),
+        JSON,
     )
-    prune.add_argument("--project", help="project name or harness path (default: from the cwd)")
-    prune.add_argument("--all", action="store_true", help="every project on the hub")
-    prune.add_argument(
-        "--keep",
-        type=positive,
-        help="newest graphs of each project whose artifact stays (default: the hub's EVO_HUB_KG_KEEP_ARTIFACTS, 3)",
-    )
-    prune.add_argument("--delete", action="store_true", help="delete what the count finds")
-    prune.add_argument("--json", action="store_true", help="machine-readable output")
-    prune.set_defaults(func=cmd_prune)
+
+    def run(self, ctx: KgContext) -> Result:
+        from evo_agents.hub.cli import kg as kg_cli
+
+        args = hub_project_args(ctx.args)
+        args.dry_run, args.graph_files = not args.delete, False
+        return done(kg_cli.KG_PRUNE(args))
+
+
+PRUNE = KgPrune()

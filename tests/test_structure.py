@@ -287,6 +287,16 @@ def test_an_import_exception_renamed_with_its_module_adds_nothing():
     assert "`evo_agents.older -> evo_agents.hub.server`" in problem
 
 
+def test_an_import_exception_of_a_package_split_into_modules_adds_nothing():
+    main = {"c": {"evo_agents.kg.cli -> evo_agents.hub.**"}}
+    renamed = {"evo_agents/kg/cli.py": "evo_agents/kg/cli/__init__.py"}
+    assert structure.compare_contracts({"c": {"evo_agents.kg.cli.** -> evo_agents.hub.**"}}, main, renamed) == []
+    [other] = structure.compare_contracts({"c": {"evo_agents.kg.cli.** -> evo_agents.worker"}}, main, renamed)
+    assert "`evo_agents.kg.cli.** -> evo_agents.worker`" in other
+    [wider] = structure.compare_contracts({"c": {"evo_agents.kg.** -> evo_agents.hub.**"}}, main, renamed)
+    assert "`evo_agents.kg.** -> evo_agents.hub.**`" in wider
+
+
 def test_renamed_files_follow_a_module_git_moved(tmp_path):
     def run(*args):
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)

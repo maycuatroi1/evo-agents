@@ -148,7 +148,7 @@ def test_entity_words_is_a_query_flag_off_by_default(tmp_path):
 
     import pytest
 
-    from evo_agents.kg import cli_bench
+    from evo_agents.kg.bench import selection
 
     assert kg_settings.DEFAULT.entity_words is False
     assert kg_settings.parse_value("entity_words", "on") is True
@@ -156,4 +156,4 @@ def test_entity_words_is_a_query_flag_off_by_default(tmp_path):
         kg_settings.of({"entity_words": 3})
     path = tmp_path / "s.json"
     path.write_text(json.dumps({"settings": {"entity_words": True}}))
-    assert cli_bench._tuning_file(str(path)) == {"entity_words": True}
+    assert selection.tuning_file(str(path)) == {"entity_words": True}

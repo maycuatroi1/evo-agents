@@ -45,7 +45,7 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | Contract | Rule | Exceptions today |
 | --- | --- | --- |
 | `worker-not-hub-server` | nothing `evo_agents.worker` imports reaches `evo_agents.hub.server`, directly or through another module | none |
-| `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.cli_links`, `kg.cli_prune`, `kg.cli_scrub` |
+| `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: the modules of `kg.cli` (`kg.cli.**`) |
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
@@ -72,7 +72,8 @@ Each contract's `ignore_imports` only shrinks: the test fails a change that adds
 you remove the import an entry names, remove the entry too (import-linter fails on an entry that matches nothing).
 An entry that names a module git sees renamed from main (`git mv`: a module of main gone and one of nearly the same
 content in its place, or a rename a commit of the branch made) counts under the module's new name, so renaming the
-module and its entry adds nothing.
+module and its entry adds nothing. An entry `P.** -> X` counts as held when main holds `P -> X` for the same
+package P, after renaming: it gathers the entries of the modules the package was split into.
 
 ## Budgets
 

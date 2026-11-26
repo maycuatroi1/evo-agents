@@ -883,10 +883,10 @@ def _corpus_mirror(tmp_path, monkeypatch):
 
 
 def test_corpus_licenses_are_recorded_and_the_noncode_group_names_the_seven():
-    from evo_agents.kg.cli_bench import _benches
+    from evo_agents.kg.bench.selection import benches
 
     seven = ["musique", "longmemeval", "memoryagentbench", "medical", "literature", "music", "customers"]
-    assert list(datasets.NONCODE_BENCHES) == seven and _benches(["noncode"]) == seven
+    assert list(datasets.NONCODE_BENCHES) == seven and benches(["noncode"]) == seven
     assert set(datasets.LICENSES) == set(seven) and all(datasets.LICENSES.values())
     pinned = [s for b in datasets.CORPUS_BENCHES for s in datasets.CORPUS_SOURCES[b]]
     assert pinned and all(len(s.revision) == 40 for s in pinned)

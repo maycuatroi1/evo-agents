@@ -22412,26 +22412,6 @@
                 }
             }
         ],
-        "./evo_agents/kg/cli_graph.py": [
-            {
-                "code": "reportPossiblyUnboundVariable",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 53,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/kg/cli_links.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 43,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/kg/clusters.py": [
             {
                 "code": "reportAttributeAccessIssue",
