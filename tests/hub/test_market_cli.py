@@ -74,7 +74,7 @@ class Hub:
 def hub(monkeypatch):
     def use(answers: dict) -> Hub:
         made = Hub(answers)
-        monkeypatch.setattr("evo_agents.hub.cli.market.signed_in", lambda: (made, None))
+        monkeypatch.setattr("evo_agents.hub.cli.base.signed_in", lambda: (made, None))
         return made
 
     return use
