@@ -1,5 +1,5 @@
 """``evo-agents hub run watch [RUN ...] [--plan PLAN[:STEP,...]] [--state STATE] [--no-decisions] [--for MIN]
-[--every SEC]``, for ``evo_agents.hub.run_cli``: wait until something on the hub changes that an agent waiting on it
+[--every SEC]``, for ``evo_agents.hub.cli.run``: wait until something on the hub changes that an agent waiting on it
 needs to see, print what changed and exit 0; after ``--for`` minutes with nothing changed, say so and exit
 EXIT_NO_CHANGE.
 
@@ -26,27 +26,28 @@ the rest of the client.
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode
 
-from evo_agents.hub.cli_client import client_command, project_path, signed_in
+from evo_agents.clikit import Arg, Result, UsageError
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.plan import Plans
+from evo_agents.hub.cli.run.resources import Decisions, Runs
 from evo_agents.hub.client import HubError, transient
-from evo_agents.hub.mirror import plans_path
-from evo_agents.hub.plan_cli import checked_plan_id, project_of_args
+from evo_agents.hub.plan_writes import checked_plan_id
 from evo_agents.hub.plans import CLOSED_STEP_STATUSES
 from evo_agents.hub.runs import SHOWN_STATES, TERMINAL_STATES
 
-EXIT_USAGE = 2
 EXIT_NO_CHANGE = 3  # the time ran out and nothing watched changed
 DEFAULT_MINUTES = 360
 MAX_MINUTES = 7 * 24 * 60  # a parked run is cancelled after a week (runs.PARKED_DAYS)
 DEFAULT_EVERY = 60
 MIN_EVERY = 15  # seconds between looks at the least: each look is a request per run and plan, and one for decisions
-DECISIONS_PAGE = 200  # the most decisions the hub lists at once (decision_cli.MAX_LIST)
+DECISIONS_PAGE = 200  # the most decisions the hub lists at once (``evo_agents.hub.cli.decision.MAX_LIST``)
 QUIET_CATEGORIES = frozenset({"wait"})  # decisions that need nobody: a run's own wait for a time or an event
 ATTENTION_STATUSES = frozenset({"blocked", "descoped"})  # a step that turns one of these wakes a plan's watch
 FINAL_STATES = frozenset({*TERMINAL_STATES, "ended"})  # ended: a local run's session is over
@@ -76,13 +77,21 @@ def _plan_option(text: str) -> tuple[str, tuple[str, ...]]:
     return checked_plan_id(plan), named
 
 
+def watched_plans(given: list[str]) -> dict[str, tuple[str, ...]]:
+    """The ``--plan`` options as each plan watched with the steps named, a plan given twice once."""
+    plans: dict[str, tuple[str, ...]] = {}
+    for text in given:
+        plan, steps = _plan_option(text)
+        plans[plan] = tuple(dict.fromkeys((*plans.get(plan, ()), *steps)))
+    return plans
+
+
 def look(hub, project: str, runs: tuple[int, ...], plans: tuple[str, ...], decisions: bool) -> Look:
     """One look at the hub; HubError as ``Hub.call`` raises it."""
-    states = {run: hub.call("GET", f"{project_path(project)}/runs/{run}")["state"] for run in runs}
+    states = {run: Runs(hub, project).get(run)["state"] for run in runs}
     opened: dict[int, dict] = {}
     if decisions:
-        query = urlencode({"state": "open", "limit": DECISIONS_PAGE})
-        listed = hub.call("GET", f"{project_path(project)}/decisions?{query}")
+        listed = Decisions(hub, project).open(DECISIONS_PAGE)
         opened = {
             decision["id"]: decision
             for decision in listed["decisions"]
@@ -90,7 +99,7 @@ def look(hub, project: str, runs: tuple[int, ...], plans: tuple[str, ...], decis
         }
     steps = {}
     for plan in plans:
-        body = hub.call("GET", plans_path(project, plan))["body"]
+        body = Plans(hub, project).get(plan)["body"]
         steps[plan] = {str(step["id"]): str(step.get("status") or "pending") for step in body.get("steps") or ()}
     return Look(states, opened, steps)
 
@@ -223,83 +232,82 @@ def watch(
     return EXIT_NO_CHANGE
 
 
-@client_command
-def cmd_watch(args) -> int:
-    if not args.runs and not args.plan and not args.decisions:
-        print("error: nothing to watch: name a run or a --plan, or leave decisions watched", file=sys.stderr)
-        return EXIT_USAGE
-    if not 1 <= args.minutes <= MAX_MINUTES:
-        print(f"error: --for takes 1 to {MAX_MINUTES} minutes", file=sys.stderr)
-        return EXIT_USAGE
-    if args.every < MIN_EVERY:
-        print(f"error: --every takes {MIN_EVERY} seconds or more", file=sys.stderr)
-        return EXIT_USAGE
-    plans: dict[str, tuple[str, ...]] = {}
-    for text in args.plan or ():
-        plan, steps = _plan_option(text)
-        plans[plan] = tuple(dict.fromkeys((*plans.get(plan, ()), *steps)))
-    hub, _ = signed_in()
-    return watch(
-        hub,
-        project_of_args(args),
-        tuple(dict.fromkeys(args.runs)),
-        plans,
-        decisions=args.decisions,
-        wanted=frozenset(args.state or ()),
-        minutes=args.minutes,
-        every=args.every,
-    )
+DESCRIPTION = (
+    "Look at the hub every --every seconds and exit 0 as soon as something changed against the first "
+    "look: a run named moved to another state, a decision of the project opened or closed (a run's own wait "
+    "aside), or a step of a plan watched turned blocked or descoped, changed status when it is named after "
+    "PLAN:, or every step of the plan is closed. After --for minutes with no change it exits "
+    f"{EXIT_NO_CHANGE}. A look the hub could not answer for a moment (a redeploy, 5xx) is skipped. Start it in "
+    "the background of an interactive session: its exit wakes the agent. A plan run on a worker waits with "
+    "`evo-agents worker wait` instead."
+)
 
 
-def register_watch(rsub, project_option) -> None:
-    watched = rsub.add_parser(
-        "watch",
-        help="wait until a run's state, an open decision of the project or a plan's step changes, then say what "
-        "changed; for an agent's background wait",
-        description="Look at the hub every --every seconds and exit 0 as soon as something changed against the first "
-        "look: a run named moved to another state, a decision of the project opened or closed (a run's own wait "
-        "aside), or a step of a plan watched turned blocked or descoped, changed status when it is named after "
-        "PLAN:, or every step of the plan is closed. After --for minutes with no change it exits "
-        f"{EXIT_NO_CHANGE}. A look the hub could not answer for a moment (a redeploy, 5xx) is skipped. Start it in "
-        "the background of an interactive session: its exit wakes the agent. A plan run on a worker waits with "
-        "`evo-agents worker wait` instead.",
+class RunWatch(HubCommand):
+    """Writes each line as ``watch`` says it, as the looks go: the session waiting on it reads them when it exits."""
+
+    name = "watch"
+    help = (
+        "wait until a run's state, an open decision of the project or a plan's step changes, then say what "
+        "changed; for an agent's background wait"
     )
-    watched.add_argument("runs", metavar="RUN", type=int, nargs="*", help="a run's id, as `hub run list` shows it")
-    project_option(watched)
-    watched.add_argument(
-        "--plan",
-        action="append",
-        metavar="PLAN[:STEP,...]",
-        help="watch this plan's steps: a step turning blocked or descoped, or every step closed, wakes it; with "
-        ":STEP (or :STEP,STEP), so does any change of those steps' status; repeat it for several plans",
+    parser_options = {"description": DESCRIPTION}
+    arguments = (
+        Arg("runs", metavar="RUN", type=int, nargs="*", help="a run's id, as `hub run list` shows it"),
+        PROJECT,
+        Arg(
+            "--plan",
+            action="append",
+            metavar="PLAN[:STEP,...]",
+            help="watch this plan's steps: a step turning blocked or descoped, or every step closed, wakes it; with "
+            ":STEP (or :STEP,STEP), so does any change of those steps' status; repeat it for several plans",
+        ),
+        Arg(
+            "--state",
+            action="append",
+            choices=SHOWN_STATES,
+            metavar="STATE",
+            help=f"wake only when a run named reaches one of these states, one of {', '.join(SHOWN_STATES)}; repeat "
+            "it for several (default: any other state)",
+        ),
+        Arg("--no-decisions", dest="decisions", action="store_false", help="do not watch the project's open decisions"),
+        Arg(
+            "--for",
+            dest="minutes",
+            type=int,
+            default=DEFAULT_MINUTES,
+            metavar="MIN",
+            help=f"give up after this many minutes with no change, exit {EXIT_NO_CHANGE} (default {DEFAULT_MINUTES})",
+        ),
+        Arg(
+            "--every",
+            type=int,
+            default=DEFAULT_EVERY,
+            metavar="SEC",
+            help=f"seconds between looks, {MIN_EVERY} or more (default {DEFAULT_EVERY})",
+        ),
     )
-    watched.add_argument(
-        "--state",
-        action="append",
-        choices=SHOWN_STATES,
-        metavar="STATE",
-        help=f"wake only when a run named reaches one of these states, one of {', '.join(SHOWN_STATES)}; repeat it "
-        "for several (default: any other state)",
-    )
-    watched.add_argument(
-        "--no-decisions",
-        dest="decisions",
-        action="store_false",
-        help="do not watch the project's open decisions",
-    )
-    watched.add_argument(
-        "--for",
-        dest="minutes",
-        type=int,
-        default=DEFAULT_MINUTES,
-        metavar="MIN",
-        help=f"give up after this many minutes with no change, exit {EXIT_NO_CHANGE} (default {DEFAULT_MINUTES})",
-    )
-    watched.add_argument(
-        "--every",
-        type=int,
-        default=DEFAULT_EVERY,
-        metavar="SEC",
-        help=f"seconds between looks, {MIN_EVERY} or more (default {DEFAULT_EVERY})",
-    )
-    watched.set_defaults(func=cmd_watch)
+
+    def check(self, args: argparse.Namespace) -> None:
+        if not args.runs and not args.plan and not args.decisions:
+            raise UsageError("nothing to watch: name a run or a --plan, or leave decisions watched")
+        if not 1 <= args.minutes <= MAX_MINUTES:
+            raise UsageError(f"--for takes 1 to {MAX_MINUTES} minutes")
+        if args.every < MIN_EVERY:
+            raise UsageError(f"--every takes {MIN_EVERY} seconds or more")
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        plans = watched_plans(args.plan or [])
+        status = watch(
+            ctx.hub,
+            ctx.project,
+            tuple(dict.fromkeys(args.runs)),
+            plans,
+            decisions=args.decisions,
+            wanted=frozenset(args.state or ()),
+            minutes=args.minutes,
+            every=args.every,
+            out=lambda line: print(line, file=ctx.out, flush=True),
+        )
+        return Result(None, status=status)

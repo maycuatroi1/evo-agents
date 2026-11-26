@@ -14,7 +14,6 @@ import pytest
 
 from evo_agents import __version__
 from evo_agents.hub import (
-    cli_inbox,
     cli_market,
     contract,
     kg_cli,
@@ -28,9 +27,10 @@ from evo_agents.hub import (
     skill_sync,
     transcript_sync,
 )
+from evo_agents.hub.cli import inbox as inbox_command
 from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
-from evo_agents.hub.plan_cli import ImportResult
+from evo_agents.hub.plan_writes import ImportResult
 from evo_agents.hub.registry import PullResult
 from evo_agents.worker import agent_read_cli
 from tests.hub import pg
@@ -65,7 +65,7 @@ BUILT_HERE = {
     "hub sessions sync": lambda: transcript_sync.Report(HUB_URL).as_json(),
     "hub send": lambda: local_send.send_json("demo", 7, "session", [], []),
     "hub market seller-key": lambda: cli_market.seller_key_json("seller.key", "ed25519:0", "AA=="),
-    "hub inbox": lambda: cli_inbox.inbox_json([]),
+    "hub inbox": lambda: inbox_command.inbox_json([]),
     "worker agent read": lambda: agent_read_cli.read_json({}),
 }
 

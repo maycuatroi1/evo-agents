@@ -23,10 +23,10 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.curator import money
-from evo_agents.hub.plan_cli import project_of_args
 
 STATUS_KEYS = ("project", "budget_usd", "runtime", "model", "llm", "runs", "clusters", "hidden")
 CLUSTER_LIST_KEYS = ("project", "min_sessions", "clusters", "hidden", "counted_at")
@@ -57,7 +57,7 @@ def _path(project: str, *parts: str) -> str:
 @client_command
 def cmd_status(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project))
     if args.json:
         print_json(found)
@@ -96,7 +96,7 @@ def cmd_status(args) -> int:
 @client_command
 def cmd_clusters(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project, "clusters") + f"?{urlencode({'limit': args.limit})}")
     if args.json:
         print_json(found)
@@ -134,7 +134,7 @@ def _when(value: str | None) -> str:
 @client_command
 def cmd_sessions(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     asked = _query(
         kind=args.kind,
         since=args.since,
@@ -172,7 +172,7 @@ def cmd_sessions(args) -> int:
 @client_command
 def cmd_search(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     asked = _query(
         q=args.query,
         source=args.source or None,
@@ -197,7 +197,7 @@ def cmd_search(args) -> int:
 @client_command
 def cmd_lines(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     asked = _query(line=args.line, file=args.file, before=args.before, after=args.after)
     path = f"/v1/projects/{quote(project, safe='')}/transcripts/{quote(args.session, safe='')}/lines"
     found = hub.call("GET", path + asked)

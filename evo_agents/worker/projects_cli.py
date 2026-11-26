@@ -13,8 +13,8 @@ signed in to its hub, and its daemon takes the list from the settings of its nex
 
 from __future__ import annotations
 
+from evo_agents.hub.cli.run.workers import worker_id as named_worker
 from evo_agents.hub.client import Hub, HubError, load_credentials
-from evo_agents.hub.run_cli_workers import worker_id as named_worker
 from evo_agents.worker.home import WorkerConfig, WorkerHome
 
 

@@ -1,4 +1,4 @@
-"""The worker ``evo-agents hub run`` commands name with ``--worker``, for ``evo_agents.hub.run_cli``: an id, a name or
+"""The worker ``evo-agents hub run`` commands name with ``--worker``, for ``evo_agents.hub.cli.run``: an id, a name or
 ``owner/name``, among the caller's workers and those other members share with them (``docs/workers.md``, Shared
 workers). Standard library only, like the rest of the client."""
 

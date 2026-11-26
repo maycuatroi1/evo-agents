@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.review import LENSES
 
 PLAYBOOK_KEYS = ("project", "entries", "live", "retired")
@@ -34,7 +34,7 @@ def _path(project: str, name: str, **params) -> str:
 @client_command
 def cmd_playbook(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project, "playbook", lens=args.lens, retired="true" if args.retired else None))
     if args.json:
         print_json(found)
@@ -61,7 +61,7 @@ def cmd_playbook(args) -> int:
 @client_command
 def cmd_earlier(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project, "earlier", lens=args.lens, status=args.status, limit=args.limit))
     if args.json:
         print_json(found)

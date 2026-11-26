@@ -17,10 +17,10 @@ import asyncio
 import os
 from types import SimpleNamespace
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.review import LENSES, MAX_BODY_BYTES, SEVERITIES
 from evo_agents.hub.tiers import CHANGE_KINDS, split_target
 
@@ -76,7 +76,7 @@ def cmd_finding(args) -> int:
     from evo_agents.worker.agent_input import evidence_items, read_text
 
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
     if args.body_file:
         text = _input(lambda: read_text(args.body_file, "body", MAX_BODY_BYTES))
@@ -101,7 +101,7 @@ def cmd_propose(args) -> int:
     from evo_agents.worker.agent_input import evidence_items, plan_file, probe_file, promotion_file, read_text
 
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     paths = []
     for text in args.path or []:
         found = split_target(text)

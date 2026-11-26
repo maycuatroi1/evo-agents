@@ -184,7 +184,7 @@ def test_the_checks_of_runs_hold_a_command_runs_timeout_and_command(client, hub)
 def test_a_command_run_ends_done_without_verify_results_and_run_show_says_it_is_a_command_run(client, hub):
     """The reports the daemon makes (``CommandRun.start``): running, verifying, then done with no verify command,
     which the hub took as a step run's done and refused; and `run show` says what a command run is."""
-    from evo_agents.hub.run_cli import _describe
+    from evo_agents.hub.cli.run.describe import describe
 
     worker = kinds_worker(client, hub["owner"], "mac-mini", runs.RUN_KINDS)
     run_id = queued(client, "evo-agents --version", repo=None, timeout_min=10)
@@ -202,7 +202,7 @@ def test_a_command_run_ends_done_without_verify_results_and_run_show_says_it_is_
 
     shown = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=hub["owner"])
     assert shown.status_code == 200, shown.text
-    fields = dict(_describe(shown.json()))
+    fields = dict(describe(shown.json()))
     assert fields["kind"].startswith("command run: a cron job's shell command line")
     assert "plan" not in fields
     assert fields["runtime"] == "none, the machine's shell runs the command, timeout 10 min"

@@ -1,4 +1,4 @@
-"""Plan writes against the hub, shared by ``evo-agents hub plan`` (``plan_cli``), the MCP tools of the hub
+"""Plan writes against the hub, shared by ``evo-agents hub plan`` (``cli.plan``), the MCP tools of the hub
 (``evo_agents.hub.server.mcp``) and ``evo-agents worker plan``: ``put_file``, ``patch_item``, ``complete_plan``,
 ``abandon_plan``, ``reopen_plan`` and ``import_plans``, each against one ``Hub`` (anything with its ``call`` and
 ``url``), and the keys of the hub's answers they print.

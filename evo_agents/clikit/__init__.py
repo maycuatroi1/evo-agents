@@ -16,7 +16,18 @@ from evo_agents.clikit.command import (
     UsageError,
 )
 from evo_agents.clikit.json_output import JsonOutput, json_option, returns_array, returns_map, returns_object
-from evo_agents.clikit.views import NOTHING, Result, Table, Text, View, Views, json_text, table_lines
+from evo_agents.clikit.views import (
+    NOTHING,
+    Result,
+    Stderr,
+    Table,
+    Text,
+    Verbatim,
+    View,
+    Views,
+    json_text,
+    table_lines,
+)
 
 __all__ = [
     "EXIT_USAGE",
@@ -30,8 +41,10 @@ __all__ = [
     "ListCommand",
     "Node",
     "Result",
+    "Stderr",
     "Table",
     "Text",
+    "Verbatim",
     "UsageError",
     "View",
     "Views",

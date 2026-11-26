@@ -16,7 +16,7 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import client as hub_client
-from evo_agents.hub import hooks, local_account, local_store, local_sync, plan_cli
+from evo_agents.hub import hooks, local_account, local_store, local_sync, plan_writes
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.memory import MemorySync
 from tests.hub import live, pg
@@ -752,13 +752,13 @@ def test_a_plan_patch_names_the_local_run_of_the_session_that_writes(own_home, f
             return {"revision": 4, "body": {"steps": []}}
 
     monkeypatch.setenv(local_sync.SESSION_VARIABLE, SESSION)
-    plan_cli.patch_item(Plans(), "demo", "rollout", "steps", {"status": "done"}, step=1, if_revision=3)
+    plan_writes.patch_item(Plans(), "demo", "rollout", "steps", {"status": "done"}, step=1, if_revision=3)
     assert sent == [
         ("PATCH", {"section": "steps", "updates": {"status": "done"}, "step": 1, "if_revision": 3, "run_id": 7})
     ]
     fire("session-end", payload(own_home), monkeypatch, capsys)
     sent.clear()
-    plan_cli.patch_item(Plans(), "demo", "rollout", "steps", {"status": "done"}, step=1, if_revision=3)
+    plan_writes.patch_item(Plans(), "demo", "rollout", "steps", {"status": "done"}, step=1, if_revision=3)
     assert "run_id" not in sent[0][1]  # an ended session names no run
 
 
@@ -775,7 +775,7 @@ def test_a_plan_patch_the_hub_refuses_for_its_run_is_made_without_it(monkeypatch
                 raise HubError("no such run", 404)
             return {"revision": 2}
 
-    assert plan_cli.write_plan(Plans(), "PATCH", "/p", {"step": 1}, "demo") == {"revision": 2}
+    assert plan_writes.write_plan(Plans(), "PATCH", "/p", {"step": 1}, "demo") == {"revision": 2}
     assert sent == [{"step": 1, "run_id": 7}, {"step": 1}]
     with pytest.raises(HubError):  # any other refusal is the caller's
 
@@ -783,7 +783,7 @@ def test_a_plan_patch_the_hub_refuses_for_its_run_is_made_without_it(monkeypatch
             def call(self, method, path, body=None):
                 raise HubError("no", 409)
 
-        plan_cli.write_plan(Refusing(), "PATCH", "/p", {"step": 1}, "demo")
+        plan_writes.write_plan(Refusing(), "PATCH", "/p", {"step": 1}, "demo")
 
 
 # The whole of it against a hub
@@ -832,7 +832,7 @@ def test_a_session_of_a_project_is_a_local_run_with_its_log_state_account_and_pl
         assert len(row) == 1 and row[0][2] == "running" and row[0][3] == str(work)
         run_id = row[0][0]
         monkeypatch.setenv(local_sync.SESSION_VARIABLE, SESSION)
-        plan_cli.patch_item(alice, "demo", "rollout", "steps", {"status": "in_progress"}, step=1)
+        plan_writes.patch_item(alice, "demo", "rollout", "steps", {"status": "in_progress"}, step=1)
         run_hook("stop", hook_payload)
         events = alice.call("GET", f"/v1/projects/demo/runs/{run_id}/events")
         assert [e["kind"] for e in events["events"] if e["kind"].startswith("tool")] == [

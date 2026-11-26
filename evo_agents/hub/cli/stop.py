@@ -8,13 +8,19 @@ those of the units they lead and below, a hub admin anyone and the whole hub. ``
 scope, target, reason, stopped_by, stopped_at, lifted_by, lifted_at, runs, leases, told. A refusal (403, 404, 409,
 422) prints the hub's reason and exits 1.
 
-Standard library only, like the rest of the client.
+The command is a class of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`AutonomyStops`
+is the gateway to the two routes, which belong to the hub and not to a project. Standard library only, like the rest
+of the client.
 """
 
 from __future__ import annotations
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.contract import json_option, returns_object
+import argparse
+
+from evo_agents.clikit import Arg, Result, Text, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli_client import call_object
+from evo_agents.hub.client import Hub
 
 # The keys of the hub's answer (``evo_agents.hub.server.autonomy_stops.StopView``).
 STOP_KEYS = (
@@ -30,6 +36,21 @@ STOP_KEYS = (
     "leases",
     "told",
 )
+
+
+class AutonomyStops:
+    """The stops of the hub: POST /v1/autonomy/stops and POST /v1/autonomy/stops/lift (Gateway)."""
+
+    path = "/v1/autonomy/stops"
+
+    def __init__(self, hub: Hub):
+        self.hub = hub
+
+    def stop(self, body: dict) -> dict:
+        return call_object(self.hub, "POST", self.path, body)
+
+    def lift(self, body: dict) -> dict:
+        return call_object(self.hub, "POST", f"{self.path}/lift", body)
 
 
 def stop_body(args) -> dict:
@@ -59,27 +80,32 @@ def stop_lines(view: dict) -> list[str]:
     return lines
 
 
-@client_command
-def cmd_stop(args) -> int:
-    hub, _ = signed_in()
-    path = "/v1/autonomy/stops/lift" if args.lift else "/v1/autonomy/stops"
-    view = hub.call("POST", path, stop_body(args))
-    if args.json:
-        print_json(view)
-    else:
-        print("\n".join(stop_lines(view)))
-    return 0
+SCOPES = (
+    Arg("--login", help="a person's runs (yours, or of someone in a unit you lead)"),
+    Arg("--unit", metavar="SLUG", help="the runs of everyone in this unit and the units below it"),
+    Arg("--all", action="store_true", help="every run of the hub (a hub admin)"),
+)
 
 
-def register_stop(hsub) -> None:
-    stop = hsub.add_parser(
-        "stop", help="stop autonomy S4: cancel the runs of a person, a unit or the hub and hold new ones until --lift"
+class Stop(HubCommand):
+    name = "stop"
+    help = "stop autonomy S4: cancel the runs of a person, a unit or the hub and hold new ones until --lift"
+    arguments = (
+        Arg("--reason", help="why, for the people stopped and the audit (at most 1000 characters)"),
+        Arg("--lift", action="store_true", help="lift the stop that holds for this scope"),
     )
-    scope = stop.add_mutually_exclusive_group(required=True)
-    scope.add_argument("--login", help="a person's runs (yours, or of someone in a unit you lead)")
-    scope.add_argument("--unit", metavar="SLUG", help="the runs of everyone in this unit and the units below it")
-    scope.add_argument("--all", action="store_true", help="every run of the hub (a hub admin)")
-    stop.add_argument("--reason", help="why, for the people stopped and the audit (at most 1000 characters)")
-    stop.add_argument("--lift", action="store_true", help="lift the stop that holds for this scope")
-    json_option(stop, returns_object(*STOP_KEYS, schema="StopView"))
-    stop.set_defaults(func=cmd_stop)
+    output = returns_object(*STOP_KEYS, schema="StopView")
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        scope = parser.add_mutually_exclusive_group(required=True)  # first, before --reason and --lift
+        for arg in SCOPES:
+            scope.add_argument(*arg.flags, **arg.options)
+        super().configure(parser)
+
+    def run(self, ctx: HubContext) -> Result:
+        stops, body = AutonomyStops(ctx.hub), stop_body(ctx.args)
+        view = stops.lift(body) if ctx.args.lift else stops.stop(body)
+        return Result(view, Text(*stop_lines(view)))
+
+
+STOP = Stop()

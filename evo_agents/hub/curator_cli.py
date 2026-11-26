@@ -52,6 +52,7 @@ from urllib.parse import quote, urlencode
 
 import yaml
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -60,7 +61,6 @@ from evo_agents.hub.curator_session_cli import register_session
 from evo_agents.hub.evolve_cli import register_evolve
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.playbook_cli import register_playbook
 from evo_agents.hub.probe_cli import register_probe
 from evo_agents.hub.replay import DEFAULT_TASKS
@@ -309,7 +309,7 @@ def _print_charter(charter: dict) -> None:
 @client_command
 def cmd_charter_show(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     query = f"?{urlencode({'revision': args.revision})}" if args.revision is not None else ""
     charter = hub.call("GET", _curator_path(project, "charter") + query)
     if args.json:
@@ -323,7 +323,7 @@ def cmd_charter_show(args) -> int:
 def cmd_charter_set(args) -> int:
     body = _read_charter(args.file)
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     charter = hub.call("PUT", _curator_path(project, "charter"), body)
     if args.json:
         print_json(charter)
@@ -345,7 +345,7 @@ def cmd_charter_set(args) -> int:
 @client_command
 def cmd_charter_history(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     revisions = hub.call("GET", _curator_path(project, "charter", "revisions"))
     if args.json:
         print_json(revisions)
@@ -410,7 +410,7 @@ def _print_status(status: dict) -> None:
 @client_command
 def cmd_status(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     status = hub.call("GET", _curator_path(project))
     if args.json:
         print_json(status)
@@ -423,7 +423,7 @@ def _switch(action: str):
     @client_command
     def run(args) -> int:
         hub, _ = signed_in()
-        project = project_of_args(args)
+        project = project_of(args)
         status = hub.call("POST", _curator_path(project, action))
         if args.json:
             print_json(status)
@@ -458,7 +458,7 @@ def _query(**values) -> str:
 @client_command
 def cmd_proposal_list(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     query = _query(
         state=args.state or [],
         tier=args.tier or [],
@@ -528,7 +528,7 @@ def _print_proposal(proposal: dict) -> None:
 @client_command
 def cmd_proposal_show(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     proposal = hub.call("GET", _curator_path(project, "proposals", str(args.id)))
     if args.json:
         print_json(proposal)
@@ -541,7 +541,7 @@ def _answer(action: str):
     @client_command
     def run(args) -> int:
         hub, _ = signed_in()
-        project = project_of_args(args)
+        project = project_of(args)
         body: dict = {"action": action}
         if args.note:
             body["note"] = args.note
@@ -566,7 +566,7 @@ cmd_defer = _answer("defer")
 @client_command
 def cmd_proposal_plan(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     change = hub.call("POST", _curator_path(project, "proposals", str(args.id), "plan"))
     if args.json:
         print_json(change)
@@ -590,7 +590,7 @@ def cmd_proposal_plan(args) -> int:
 @client_command
 def cmd_findings(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     query = _query(run_id=args.run, lens=args.lens, limit=args.limit, offset=args.offset or None)
     found = hub.call("GET", _curator_path(project, "findings") + query)
     if args.json:
@@ -609,7 +609,7 @@ def cmd_findings(args) -> int:
 @client_command
 def cmd_figures(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _curator_path(project, "figures") + _query(night=args.night))
     if args.json:
         print_json(found)
@@ -626,7 +626,7 @@ def cmd_figures(args) -> int:
 @client_command
 def cmd_changes(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _curator_path(project, "changes"))
     if args.json:
         print_json(found)
@@ -658,7 +658,7 @@ def cmd_changes(args) -> int:
 @client_command
 def cmd_change_close(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     change = hub.call("POST", _curator_path(project, "changes", str(args.id), "close"), {"reason": args.reason})
     if args.json:
         print_json(change)
@@ -672,7 +672,7 @@ def cmd_change_close(args) -> int:
 @client_command
 def cmd_protection(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     if args.check:
         found = hub.call("POST", _curator_path(project, "protection", quote(args.check, safe=""), "check"))
         if args.json:

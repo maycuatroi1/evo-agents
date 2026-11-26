@@ -148,7 +148,9 @@ its module (drop the underscore and update the callers), or move it into a modul
 
 New commands are classes of `evo_agents.clikit`, the command kit every package shares (standard library only, it
 imports no other package of evo_agents). The commands written as `cmd_*` functions with a `register_*` function move
-over one group at a time; `hub goal` is the first (`evo_agents/hub/cli/goal.py`).
+over one group at a time: `hub goal`, `hub plan`, `hub run`, `hub decision`, `hub notifications`, `hub inbox`,
+`hub stop` and `hub run-cause` so far, each in `evo_agents/hub/cli/` at the path of its command (`hub run` is the
+package `cli/run/`, `hub run-cause` the module `cli/run_cause.py`).
 
 | Class | Pattern | What it does |
 | --- | --- | --- |
@@ -156,7 +158,7 @@ over one group at a time; `hub goal` is the first (`evo_agents/hub/cli/goal.py`)
 | `ListCommand` | Template Method | `fetch` the items and turn each into a `row` under `columns`. |
 | `Group` | Composite | A command word holding commands and groups; it builds its argparse subtree. |
 | `Legacy` | Adapter | A `register_*(subparsers)` function as a node of a `Group`, while a package moves over. |
-| `Result`, `View` (`Text`, `Table`, `Views`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. |
+| `Result`, `View` (`Text`, `Table`, `Views`, `Verbatim`, `Stderr`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. `Verbatim` writes a rendered document as it is, `Stderr` puts a view (a warning) on stderr in its place, and `Table(..., bare=True)` prints the header when there are no rows. A command that follows a stream (`hub run logs --follow`, `hub run watch`) writes what comes as it comes and returns the rest. |
 | `Arg` | Value Object | An argument as a value; options many commands share are constants (`PROJECT`), never mixins. |
 | `HubCommand`, `HubContext` (`evo_agents/hub/cli/base.py`) | Dependency injection | The signed-in hub client and the project, built on first use; a `HubError` becomes `error: ...` and the exit status `client.exit_status` gives it. Tests patch `base.signed_in` once. |
 | `ProjectResource` (same module) | Gateway | One collection of a project's API: the one place that quotes the project and the parts of a path. Commands ask their resource and never build `/v1/...` paths. |

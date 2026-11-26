@@ -20,7 +20,8 @@ if not pg.DSN:
 from fastapi import Request
 from sqlalchemy import select
 
-from evo_agents.hub import cli_stop, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli import stop as stop_command
 from evo_agents.hub.server import autonomy_hold, run_autonomy, security
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import ADMIN, sql
@@ -204,8 +205,8 @@ async def _refused(conn, values: dict) -> None:
 
 def test_autonomy_level_stop_cli_body_and_lines():
     args = SimpleNamespace(login=None, unit="lab", all=False, reason="why", lift=False)
-    assert cli_stop.stop_body(args) == {"scope": "unit", "unit": "lab", "reason": "why"}
-    assert cli_stop.stop_body(SimpleNamespace(login=None, unit=None, all=True, reason="x", lift=True)) == {
+    assert stop_command.stop_body(args) == {"scope": "unit", "unit": "lab", "reason": "why"}
+    assert stop_command.stop_body(SimpleNamespace(login=None, unit=None, all=True, reason="x", lift=True)) == {
         "scope": "all"
     }
     view = {
@@ -218,8 +219,8 @@ def test_autonomy_level_stop_cli_body_and_lines():
         "leases": 2,
         "told": ["ivan"],
     }
-    lines = cli_stop.stop_lines(view)
+    lines = stop_command.stop_lines(view)
     assert lines[0].startswith("Stop #3 of unit:lab (why) holds")
     assert lines[1] == "Runs cancelled or asked to stop: #4, #5; leases ended: 2." and lines[2] == "Told: ivan."
-    lifted = cli_stop.stop_lines({**view, "lifted_at": "2026-10-23T00:00:00Z", "lifted_by": "ivan", "told": []})
+    lifted = stop_command.stop_lines({**view, "lifted_at": "2026-10-23T00:00:00Z", "lifted_by": "ivan", "told": []})
     assert lifted == ["Stop #3 of unit:lab lifted by ivan: runs are queued again."]

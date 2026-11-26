@@ -29,9 +29,11 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import run_cli, run_cli_candidates, run_cli_events
+from evo_agents.hub.cli import base
+from evo_agents.hub.cli.run import events
+from evo_agents.hub.cli.run.events import follow, format_event
+from evo_agents.hub.cli.run.keys import RUN_KEYS
 from evo_agents.hub.client import Hub, HubError, Unreachable
-from evo_agents.hub.run_cli_events import follow, format_event
 from evo_agents.hub.sse import sse_messages
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
@@ -163,7 +165,7 @@ class AnswersCandidates:
 
 def test_candidates_prints_the_workers_agents_and_accounts_with_why(monkeypatch, capsys, tmp_path):
     hub = AnswersCandidates()
-    monkeypatch.setattr(run_cli_candidates, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     result = ok(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo"))
     assert hub.calls == [("GET", "/v1/projects/demo/runs/161/rerun-candidates")]
     assert "Run #161 (step) failed, cause missing_tool: who can run it again" in result.out
@@ -222,7 +224,7 @@ def test_an_event_is_one_line_with_seq_time_kind_and_text():
     raw = {"seq": 7, "at": "not a time", "kind": "output", "body": {"type": "x" * 400}}
     line = format_event(raw)
     assert line.startswith('    7 --:--:-- output  {"type":"xxx') and line.endswith("...")
-    assert len(line) == len("    7 --:--:-- output  ") + run_cli_events.RAW_CHARS
+    assert len(line) == len("    7 --:--:-- output  ") + events.RAW_CHARS
 
 
 # Following a stream, against a fake one
@@ -242,7 +244,7 @@ def chunk(seq: int, kind: str = "agent_message_chunk") -> dict:
 
 
 class FakeStreams:
-    """Stands for ``run_cli_events.open_stream``: each opening takes the next of ``answers``, a list of lines or an
+    """Stands for ``events.open_stream``: each opening takes the next of ``answers``, a list of lines or an
     exception, and records the path and Last-Event-ID it was opened with."""
 
     def __init__(self, *answers):
@@ -302,9 +304,7 @@ def test_follow_shows_only_the_kinds_asked_for_but_reads_on_after_every_event():
 
 
 def test_follow_gives_up_after_tries_in_a_row_that_bring_nothing():
-    down = [Unreachable("cannot reach https://hub.example.org: refused", refused=True)] * (
-        run_cli_events.RECONNECTS + 1
-    )
+    down = [Unreachable("cannot reach https://hub.example.org: refused", refused=True)] * (events.RECONNECTS + 1)
     with pytest.raises(HubError) as raised:
         run_follow(FakeStreams(sse(chunk(1)), *down))
     assert "stopped 6 times in a row without bringing anything" in str(raised.value)
@@ -314,7 +314,7 @@ def test_follow_gives_up_after_tries_in_a_row_that_bring_nothing():
 def test_follow_counts_again_after_a_stream_that_brought_a_ping():
     refused = Unreachable("cannot reach https://hub.example.org: refused", refused=True)
     ping = [b": ping\n", b"\n"]
-    tries = run_cli_events.RECONNECTS
+    tries = events.RECONNECTS
     # the first opening and five more fail; the sixth brings a ping, then the stream breaks and four more fail
     streams = FakeStreams(
         *[refused] * tries, ping, *[refused] * (tries - 1), sse(end={"state": "cancelled", "last_seq": 0})
@@ -413,7 +413,7 @@ class SystemHub:
 
 def test_run_plan_with_a_system_hands_the_plan_to_its_entry_agent(monkeypatch, capsys, tmp_path):
     hub = SystemHub()
-    monkeypatch.setattr(run_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     where = ("--project", "demo")
     shown = ok(cli(monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--system", "dev", *where)).out
     assert hub.calls == [("POST", "/v1/projects/demo/plans/rollout/system-dispatch", {"system": "dev"})]
@@ -449,7 +449,7 @@ def test_run_plan_with_a_system_refuses_the_options_of_a_plan_run_and_sends_noth
     monkeypatch, capsys, tmp_path, given
 ):
     hub = SystemHub()
-    monkeypatch.setattr(run_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     result = cli(
         monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--system", "dev", *given, "--project", "demo"
     )
@@ -463,13 +463,13 @@ def test_run_plan_with_a_system_refuses_the_options_of_a_plan_run_and_sends_noth
 
 def test_run_plan_without_a_system_still_queues_a_plan_run(monkeypatch, capsys, tmp_path):
     hub = SystemHub()
-    monkeypatch.setattr(run_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     cli(monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--as-me", "--project", "demo", "--json")
     assert hub.calls == [("POST", "/v1/projects/demo/plan-runs", {"plan_id": "rollout", "as_me": True})]
 
 
-def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypatch, capsys, tmp_path):
-    from evo_agents.hub import decision_cli
+def test_hub_decision_shows_a_decision_without_a_plan_by_its_run_alone(monkeypatch, capsys, tmp_path):
+    from evo_agents.hub.cli import base
 
     planless = {
         "id": 12,
@@ -501,7 +501,7 @@ def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypat
                 return planless
             return {"decisions": [planned, planless], "total": 2, "limit": 50, "offset": 0}
 
-    monkeypatch.setattr(decision_cli, "signed_in", lambda: (Answers(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (Answers(), None))
     home = tmp_path / "home"
     table = ok(cli(monkeypatch, capsys, home, "hub", "decision", "list", "--project", "demo")).out
     (row,) = [line for line in table.splitlines() if line.startswith("#12")]
@@ -517,7 +517,7 @@ def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypat
 
 
 def test_decision_show_prints_the_label_and_where_its_message_stands_on_each_channel(monkeypatch, capsys, tmp_path):
-    from evo_agents.hub import decision_cli
+    from evo_agents.hub.cli import base
 
     found = {
         "id": 12,
@@ -562,7 +562,7 @@ def test_decision_show_prints_the_label_and_where_its_message_stands_on_each_cha
         def call(self, method, path, body=None):
             return found
 
-    monkeypatch.setattr(decision_cli, "signed_in", lambda: (Answers(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (Answers(), None))
     shown = ok(cli(monkeypatch, capsys, tmp_path / "home", "hub", "decision", "show", "12", "--project", "demo")).out
     lines = [line.strip() for line in shown.splitlines()]
     assert next(line for line in lines if line.startswith("label ")).split(None, 1)[1] == "internal"
@@ -584,7 +584,7 @@ def test_decision_show_prints_the_label_and_where_its_message_stands_on_each_cha
 def test_decision_show_prints_the_recommended_reason_reversible_undo_and_decision_evidence(
     monkeypatch, capsys, tmp_path
 ):
-    from evo_agents.hub import decision_cli
+    from evo_agents.hub.cli import base
 
     found = {
         "id": 14,
@@ -620,7 +620,7 @@ def test_decision_show_prints_the_recommended_reason_reversible_undo_and_decisio
         def call(self, method, path, body=None):
             return found if path.endswith("/decisions/14") else {**found, "reversible": False, "undo": None}
 
-    monkeypatch.setattr(decision_cli, "signed_in", lambda: (Answers(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (Answers(), None))
     home = tmp_path / "home"
     shown = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "14", "--project", "demo")).out
     lines = [line.strip() for line in shown.splitlines()]
@@ -653,7 +653,7 @@ def test_answers_and_reads_that_say_nothing_are_usage_errors(monkeypatch, capsys
 
 def queued_attempt(**fields) -> dict:
     """A run as GET .../runs/{id} answers it: the second attempt of step 2, queued, after run 12 was lost."""
-    run = {key: None for key in run_cli.RUN_KEYS}
+    run = {key: None for key in RUN_KEYS}
     run.update(
         id=13,
         kind="step",
@@ -693,7 +693,7 @@ def show_offline(monkeypatch, capsys, tmp_path, run: dict) -> list[str]:
             assert (method, path) == ("GET", f"/v1/projects/demo/runs/{run['id']}")
             return run
 
-    monkeypatch.setattr(run_cli, "signed_in", lambda: (Answering(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (Answering(), None))
     home = tmp_path / "home"
     if not home.exists():
         write_credentials(home, HUB_URL, "owner", "evh_unused")
@@ -994,7 +994,7 @@ def test_logs_reads_every_page_of_events(hub, monkeypatch, capsys):
         "they come."
     )
 
-    monkeypatch.setattr(run_cli_events, "EVENTS_PAGE", 2)  # three pages
+    monkeypatch.setattr(events, "EVENTS_PAGE", 2)  # three pages
     page = as_json(runs_of(hub, monkeypatch, capsys, "reader", "logs", str(run_id), "--json"))
     assert_json_keys("hub run logs", page)
     assert (page["run_id"], page["state"], page["last_seq"], page["more"]) == (run_id, "running", 5, False)
@@ -1459,7 +1459,7 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
 
 
 def test_decision_show_says_words_without_an_option_are_a_free_answer_and_names_the_channel():
-    from evo_agents.hub.decision_cli import _answer_lines
+    from evo_agents.hub.cli.decision import answer_lines as _answer_lines
 
     answered = {
         "state": "answered",

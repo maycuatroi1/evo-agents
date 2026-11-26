@@ -26,7 +26,8 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from evo_agents.hub import attachment_prune, attachments, blob_gc, blobs, cli_chats, run_cli_send, tables
+from evo_agents.hub import attachment_prune, attachments, blob_gc, blobs, cli_chats, tables
+from evo_agents.hub.cli import base
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
@@ -326,7 +327,7 @@ def test_attachment_cli_run_send_and_chat_send_upload_each_file_first(monkeypatc
     (tmp_path / "shot.png").write_bytes(b"png")
     message = {"id": 7, "run_id": 12, "seq": 3}
     hub = FakeHub(message)
-    monkeypatch.setattr(run_cli_send, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     files = ("--attach", str(tmp_path / "notes.txt"), "--attach", str(tmp_path / "shot.png"))
     said = ok(cli(monkeypatch, capsys, home, "hub", "run", "send", "12", *files, "--project", "demo")).out
     assert hub.uploads == [
@@ -356,7 +357,7 @@ def test_attachment_cli_run_send_and_chat_send_upload_each_file_first(monkeypatc
 def test_attachment_cli_refuses_a_missing_file_or_no_text_before_any_upload(monkeypatch, capsys, tmp_path):
     home = write_credentials(tmp_path / "home", "https://hub.test", "owner", "evh_test")
     hub = FakeHub({})
-    monkeypatch.setattr(run_cli_send, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     monkeypatch.setattr(cli_chats, "signed_in", lambda: (hub, None))
     missing = cli(monkeypatch, capsys, home, "hub", "run", "send", "12", "--attach", "nope.txt", "--project", "demo")
     assert missing.code == 2 and "nope.txt: no such file" in missing.err
@@ -368,13 +369,11 @@ def test_attachment_cli_refuses_a_missing_file_or_no_text_before_any_upload(monk
 
 
 def test_attachment_names_show_in_hub_run_chat(monkeypatch, capsys, tmp_path):
-    from evo_agents.hub import run_cli
-
     home = write_credentials(tmp_path / "home", "https://hub.test", "owner", "evh_test")
     said = {"author": "owner", "login": "owner", "at": "2026-10-22T10:00:00+00:00", "run_id": 12, "text": ""}
     said["attachments"] = [{"id": 1, "name": "notes.txt", "media_type": "text/plain", "size": 3}]
     chat = {"run_id": 12, "state": "running", "status": "working", "plan_id": None, "plan_revision": None}
     chat |= {"messages": [said], "more": False, "owner": "owner"}
-    monkeypatch.setattr(run_cli, "signed_in", lambda: (SimpleNamespace(call=lambda *a, **k: chat), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (SimpleNamespace(call=lambda *a, **k: chat), None))
     shown = ok(cli(monkeypatch, capsys, home, "hub", "run", "chat", "12", "--project", "demo")).out
     assert "(files: notes.txt (3 bytes))" in shown

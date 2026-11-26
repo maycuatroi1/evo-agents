@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from evo_agents.hub.cli.run.outputs import place, size_text
 from evo_agents.hub.client import HubError
-from evo_agents.hub.run_cli_outputs import place, size_text
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials

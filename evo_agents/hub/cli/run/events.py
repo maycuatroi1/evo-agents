@@ -1,5 +1,6 @@
 """The events of a run for ``evo-agents hub run logs``: a page of them (GET .../runs/{id}/events?after=SEQ), a line
-each, or its server-sent events followed until the hub sends ``end`` (``follow``), out of ``run_cli``.
+each, or its server-sent events followed until the hub sends ``end`` (``follow``), for ``evo_agents.hub.cli.run``.
+The paths are those of ``resources.Runs``; ``open_stream`` reads one as a raw stream, outside ``Hub.call``.
 
 A followed stream that stops before ``end`` (a proxy closed it, the hub restarted, or nothing came for
 STREAM_TIMEOUT seconds although the hub pings every 15) is opened again with ``Last-Event-ID`` set to the last event
@@ -18,10 +19,9 @@ import urllib.request
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from urllib.parse import urlencode
 
 from evo_agents import __version__
-from evo_agents.hub.cli_client import project_path
+from evo_agents.hub.cli.run.resources import Runs
 from evo_agents.hub.client import OPENER, HubError, Unreachable, json_body, origin
 from evo_agents.hub.sse import sse_messages
 
@@ -45,14 +45,6 @@ KIND_LABELS = {
     "state": "state",
 }
 LABEL_WIDTH = max(len(label) for label in KIND_LABELS.values())
-
-
-def runs_path(project: str, run_id: int | None = None, action: str | None = None) -> str:
-    """The path of the runs of ``project``, of run ``run_id``, or of its ``action``."""
-    path = f"{project_path(project)}/runs"
-    if run_id is not None:
-        path += f"/{run_id}"
-    return path + (f"/{action}" if action else "")
 
 
 def clip(text: str, limit: int) -> str:
@@ -107,11 +99,10 @@ def print_event(event: dict) -> None:
 def read_events(hub, project: str, run_id: int, after: int = 0, kinds: Iterable[str] = ()) -> dict:
     """Every event of the run after ``after`` (of ``kinds`` only, when given), read a page at a time: the hub's
     answer to a page, holding them all."""
-    path = runs_path(project, run_id, "events")
+    runs = Runs(hub, project)
     events: list[dict] = []
     while True:
-        query = [("after", after), ("limit", EVENTS_PAGE), *(("kind", kind) for kind in kinds)]
-        page = hub.call("GET", f"{path}?{urlencode(query)}")
+        page = runs.events(run_id, [("after", after), ("limit", EVENTS_PAGE), *(("kind", kind) for kind in kinds)])
         events.extend(page["events"])
         if not page["more"] or not page["events"]:
             return {**page, "events": events, "more": False}
@@ -174,8 +165,8 @@ def follow(
     them, until the stream's ``end``; what ``end`` says, ``{state, last_seq}``. A stream that stops before ``end`` is
     opened again after the last event read."""
     warn = warn or (lambda line: print(line, file=sys.stderr, flush=True))
-    path = runs_path(project, run_id, "stream")
-    first_path = f"{path}?{urlencode({'after': after})}"
+    runs = Runs(hub, project)
+    path, first_path = runs.stream_path(run_id), runs.stream_path(run_id, after)
     last, opened, tries = after, False, 0
     while True:
         received = False

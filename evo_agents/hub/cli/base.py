@@ -20,7 +20,7 @@ from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg, Command, Context
 from evo_agents.hub.cli_client import signed_in
-from evo_agents.hub.client import Hub, HubError, exit_status
+from evo_agents.hub.client import Credentials, Hub, HubError, exit_status
 from evo_agents.hub.mirror import harness_project, harness_root
 
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
@@ -28,21 +28,38 @@ PROJECT = Arg("--project", help=PROJECT_HELP)
 NO_PROJECT = "which project? pass --project, or run this inside a harness whose harness.yaml has hub.project"
 
 
+def project_of(args: argparse.Namespace) -> str:
+    """The project a command works on: ``--project``, else ``hub.project`` of the harness around the current
+    directory; HubError when there is neither."""
+    if getattr(args, "project", None):
+        return args.project
+    try:
+        root = harness_root(None)
+    except HubError:
+        raise HubError(NO_PROJECT) from None
+    return harness_project(root)
+
+
 class HubContext(Context):
     @cached_property
+    def session(self) -> tuple[Hub, Credentials]:
+        return signed_in()
+
+    @property
     def hub(self) -> Hub:
-        hub, _ = signed_in()
-        return hub
+        return self.session[0]
+
+    @property
+    def credentials(self) -> Credentials:
+        return self.session[1]
 
     @cached_property
     def project(self) -> str:
-        if getattr(self.args, "project", None):
-            return self.args.project
-        try:
-            root = harness_root(None)
-        except HubError:
-            raise HubError(NO_PROJECT) from None
-        return harness_project(root)
+        return project_of(self.args)
+
+    def with_project(self) -> str:
+        """The ``--project`` to repeat in a command printed for the person, when the harness did not give it."""
+        return f" --project {self.project}" if getattr(self.args, "project", None) else ""
 
 
 class HubCommand(Command[HubContext]):

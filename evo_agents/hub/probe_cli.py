@@ -29,9 +29,9 @@ import sys
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import HubError, client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.probes import MAX_TASK_BYTES, STATES
 
 PROBE_KEYS = (
@@ -109,7 +109,7 @@ def _print(probe: dict) -> None:
 @client_command
 def cmd_probe_list(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call(
         "GET", _path(project, change=args.change, proposal=args.proposal, state=args.state, limit=args.limit)
     )
@@ -138,7 +138,7 @@ def cmd_probe_list(args) -> int:
 @client_command
 def cmd_probe_show(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _path(project_of_args(args), str(args.id)))
+    found = hub.call("GET", _path(project_of(args), str(args.id)))
     if args.json:
         print_json(found)
         return 0
@@ -153,7 +153,7 @@ def cmd_probe_add(args) -> int:
     if args.commit:
         body["commit"] = args.commit
     body["change_id" if args.change else "proposal_id"] = args.change or args.proposal
-    found = hub.call("POST", _path(project_of_args(args)), body)
+    found = hub.call("POST", _path(project_of(args)), body)
     if args.json:
         print_json(found)
         return 0
@@ -169,7 +169,7 @@ def cmd_probe_edit(args) -> int:
     if not body:
         raise HubError("give at least one of --repo, --commit, --task, --task-file or --verify")
     hub, _ = signed_in()
-    found = hub.call("PATCH", _path(project_of_args(args), str(args.id)), body)
+    found = hub.call("PATCH", _path(project_of(args), str(args.id)), body)
     if args.json:
         print_json(found)
         return 0
@@ -185,7 +185,7 @@ def _run_words(item: dict) -> str:
 @client_command
 def cmd_probe_requeue(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("POST", _path(project_of_args(args), str(args.id), "requeue"), {})
+    found = hub.call("POST", _path(project_of(args), str(args.id), "requeue"), {})
     if args.json:
         print_json(found)
         return 0
@@ -204,7 +204,7 @@ def cmd_probe_requeue(args) -> int:
 def cmd_probe_retire(args) -> int:
     hub, _ = signed_in()
     body = {"note": args.note} if args.note else {}
-    found = hub.call("POST", _path(project_of_args(args), str(args.id), "retire"), body)
+    found = hub.call("POST", _path(project_of(args), str(args.id), "retire"), body)
     if args.json:
         print_json(found)
         return 0
@@ -215,7 +215,7 @@ def cmd_probe_retire(args) -> int:
 @client_command
 def cmd_probe_report(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     asked = {"weeks": args.weeks, **({"week": args.week} if args.week else {})}
     found = hub.call("GET", f"/v1/projects/{quote(project, safe='')}/curator/probe-report?{urlencode(asked)}")
     if args.json:
