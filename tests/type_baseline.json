@@ -5324,7 +5324,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/acting.py": [
+        "./evo_agents/hub/server/canvas/service/acting.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -5384,7 +5384,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/baseline_models.py": [
+        "./evo_agents/hub/server/canvas/models/baselines.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -5530,7 +5530,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/baselines.py": [
+        "./evo_agents/hub/server/canvas/service/baselines.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -5564,7 +5564,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/checks.py": [
+        "./evo_agents/hub/server/canvas/service/checks.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -5654,7 +5654,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/commands.py": [
+        "./evo_agents/hub/server/canvas/service/commands.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -5672,7 +5672,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/content.py": [
+        "./evo_agents/hub/server/canvas/models/content.py": [
             {
                 "code": "reportCallIssue",
                 "range": {
@@ -5706,7 +5706,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/decisions.py": [
+        "./evo_agents/hub/server/canvas/service/decisions.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -5724,7 +5724,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/models.py": [
+        "./evo_agents/hub/server/canvas/models/api.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -6238,7 +6238,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/proposals.py": [
+        "./evo_agents/hub/server/canvas/service/proposals.py": [
             {
                 "code": "reportOptionalOperand",
                 "range": {
@@ -6330,7 +6330,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/server.py": [
+        "./evo_agents/hub/server/canvas/routes.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -6348,7 +6348,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/transfer.py": [
+        "./evo_agents/hub/server/canvas/service/transfer.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -6528,7 +6528,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/canvas/writes.py": [
+        "./evo_agents/hub/server/canvas/service/writes.py": [
             {
                 "code": "reportOptionalOperand",
                 "range": {
