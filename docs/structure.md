@@ -151,9 +151,14 @@ its module (drop the underscore and update the callers), or move it into a modul
 New commands are classes of `evo_agents.clikit`, the command kit every package shares (standard library only, it
 imports no other package of evo_agents). The commands written as `cmd_*` functions with a `register_*` function move
 over one group at a time: `hub goal`, `hub plan`, `hub run`, `hub decision`, `hub notifications`, `hub inbox`,
-`hub stop`, `hub run-cause`, `hub kg` (with `hub admin kg-pool`), `hub curator` and `hub release` so far, each in
+`hub stop`, `hub run-cause`, `hub kg` (with `hub admin kg-pool`), `hub curator`, `hub release`, the commands of the
+client and its accounts (`hub login`, `logout`, `whoami`, `token`, `admin`, `project`, `registry`, `email`, `org`,
+`policy`, `autonomy`, `secret`, `account`, `account-pool`, `provider-account`, `model-catalog`, `hub agent account`)
+and of plugins (`hub plugin`, `hub market`, and the commands plugins add, `cli/extensions.py`) so far, each in
 `evo_agents/hub/cli/` at the path of its command (`hub run` is the package `cli/run/`, `hub run-cause` the module
-`cli/run_cause.py`); `hub release` lives with the Curator's commands in `cli/curator/`. What a command calls but is
+`cli/run_cause.py`); `hub release` lives with the Curator's commands in `cli/curator/`. The helpers the function
+commands not moved yet share (`client_command`, `print_json`, `table`, `when`, `call_object`, `signed_in`) live in
+`cli/base.py`, the one copy of each. What a command calls but is
 not a command stays out of it: `hub kg`'s gateways are in `evo_agents/hub/kg_routes.py` and `cli/kg/resources.py`,
 and the remote graph session `evo-agents kg` shares with it in `evo_agents/hub/kg_remote.py`.
 
