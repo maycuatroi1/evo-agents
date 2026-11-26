@@ -138,6 +138,11 @@ export async function finishWork(system: WorkSystem, work: SeededWork): Promise<
   await agentAnswers(system.leadBox, work.leadRun, "Every refund ticket has a reply.");
 }
 
+/** @lead's run records more of the work (`work set`): its outcome against the done-when and what is left, say. */
+export async function setWork(system: WorkSystem, work: SeededWork, body: { outcome?: "met" | "not_met"; left?: string; title?: string }): Promise<WorkCard> {
+  return workerPost<WorkCard>(system.leadBox, `/v1/worker/runs/${work.leadRun}/work`, body);
+}
+
 /** The work as `person`'s list of chats says it: null until the list carries it. */
 export async function listedWork(person: Account, workChat: number) {
   return (await chatsOf(person)).find((chat) => chat.id === workChat)?.work ?? null;

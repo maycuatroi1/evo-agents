@@ -569,8 +569,8 @@ def test_a_worker_handed_no_release_pass_checks_no_schedule_and_says_so(world, c
 def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkeypatch, tmp_path):
     import argparse
 
-    from evo_agents.hub import cli as hub_cli
     from evo_agents.hub import worker
+    from evo_agents.hub.cli import WORKER
     from evo_agents.hub.config import S3_VARIABLES
 
     for name, value in zip(S3_VARIABLES, ("https://s3.northwind.test", "northwind-hub", "id", "secret"), strict=True):
@@ -581,7 +581,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
     args = argparse.Namespace(
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker", queues=None
     )
-    assert hub_cli.cmd_worker.__wrapped__(args) == 0
+    assert WORKER.run(WORKER.context(args)).status == 0
     from evo_agents.hub.server.cron_fire import cron_pass
     from evo_agents.hub.server.hub_runtime import take_turn as hub_turn
     from evo_agents.hub.server.kg_entity_key import find as entity_key

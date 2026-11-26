@@ -10,7 +10,7 @@ shows it is there is kept with it. A project with no opportunity works as before
 | the model: codes, fields, signals | `evo_agents/hub/opportunities.py` |
 | the routes and the writes | `evo_agents/hub/server/opportunities.py`, `evo_agents/hub/server/opportunity_evidence.py` |
 | the tables | `evo_agents/hub/tables_opportunities.py` (schema 0143) |
-| the commands | `evo_agents/hub/cli_opportunities.py` |
+| the commands | `evo_agents/hub/cli/opportunity.py` |
 | the MCP tools `opportunity_list`, `opportunity_show`, `opportunity_evidence` | `evo_agents/hub/mcp_tools.py`, `evo_agents/hub/server/opportunity_mcp.py` |
 | the knowledge graph | `evo_agents/hub/kg_opportunities.py`, `evo_agents/hub/kg_sources.py` |
 | @builder's proposals of kind `opportunity` | `evo_agents/core_plugins/builder/opportunity_changes.py` |

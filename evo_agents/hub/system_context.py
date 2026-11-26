@@ -7,7 +7,8 @@ only but the spec module, so the hub, the worker's commands and the tests share 
   the knowledge graphs it uses (its uses_kg edges, which the kg tools read when no ``graph`` is named), the
   Orchestrator it escalates to (with ESCALATE_COMMAND), and the rules of asking: a brief (goal, output, done-when), a reason for an agent off
   its edges, forwarding an answer verbatim, the budget of a trace; for the entry agent, the work chat a hand-off opens,
-  naming the work with WORK_COMMAND, and the final answer in the root thread. It has a byte budget of its own,
+  naming the work with WORK_COMMAND, its outcome recorded before the final answer, and the final answer in the root
+  thread. It has a byte budget of its own,
   SYSTEM_BYTES.
 - ``brief_lines``: the brief an ask gave (``evo-agents worker agent ask --goal ... --done-when``), at the head of the
   prompt of the run it made, within BRIEF_BYTES.
@@ -284,6 +285,9 @@ def _entry_lines() -> list[str]:
         "answers in a thread of its own.",
         f"- Then name the work with `{WORK_COMMAND} --title TEXT --goal TEXT --done-when TEXT`; its card in this "
         "thread shows it with the status.",
+        f"- Before your final answer, record the outcome against the done-when: `{WORK_COMMAND} --outcome met`, or "
+        "`--outcome not_met --left TEXT` naming what is still to do (a merge, a credential, a person's answer) when "
+        "it is not met.",
         "- Give the final answer here, in the thread of the person's message, not in the work chat.",
     ]
 

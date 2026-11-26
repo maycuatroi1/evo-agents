@@ -11,8 +11,14 @@ card, and every ``work set``, also moves the trace (``system_traces.touch``), so
 Observe sends it with its new title, status and wait.
 
 - POST /v1/worker/runs/{id}/work (``evo-agents worker work set``, the hub runtime's ``work_set``): the coordinator (the
-  system's entry agent) sets the title, goal and done-when of the work of its run's trace. The worker token that holds
-  the run; 409 for a run in no trace with a work chat, 403 for an agent that is not the coordinator.
+  system's entry agent) sets the title, goal and done-when of the work of its run's trace, and records its outcome
+  (met or not_met against the done-when) with what is still to do. The worker token that holds the run; 409 for a run
+  in no trace with a work chat, 403 for an agent that is not the coordinator. An outcome given clears a member's mark
+  of handled, and what was left when ``left`` is not given with it.
+- POST /v1/chats/{id}/work/handled (Mark as handled): a member of the work chat who holds the writer role on the
+  trace's project marks the work handled, so a recorded not_met no longer reads so; the card names who and when. 404
+  to anyone who does not read the chat and for a chat that is no work chat, 403 to a member who only reads (a reader
+  of the project, or no grant on it), audited as ``work.handled``.
 - GET /v1/chats/{id}/work: the card of the trace whose work chat that is, to a member who reads it (404 to anyone
   else, and for a chat that is no work chat; 403 to a member who no longer clears its label).
 """
@@ -23,10 +29,11 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, system_context, tables
+from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, system_traces, work_chats, work_status
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
@@ -35,7 +42,7 @@ from evo_agents.hub.server.chat_runs import hub_reply
 from evo_agents.hub.server.chat_store import write_event
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.work_status import WorkCard
 
 log = logging.getLogger(__name__)
@@ -56,12 +63,30 @@ class WorkSetIn(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=TITLE_CHARS, description="a short name of the work")
     goal: str | None = Field(None, min_length=1, max_length=system_context.BRIEF_FIELD_CHARS)
     done_when: str | None = Field(None, min_length=1, max_length=system_context.BRIEF_FIELD_CHARS)
+    outcome: work_status.Outcome | None = Field(
+        None, description="met or not_met: whether the work reached its done-when, recorded before the final answer"
+    )
+    left: str | None = Field(
+        None,
+        min_length=1,
+        max_length=system_context.BRIEF_FIELD_CHARS,
+        description="what is still to do when the done-when is not met",
+    )
 
     @model_validator(mode="after")
     def _something(self) -> WorkSetIn:
-        if self.title is None and self.goal is None and self.done_when is None:
-            raise ValueError("give --title, --goal or --done-when")
+        if all(getattr(self, name) is None for name in FIELDS):
+            raise ValueError(GIVE)
         return self
+
+
+FIELDS = ("title", "goal", "done_when", "outcome", "left")
+GIVE = "give --title, --goal, --done-when, --outcome or --left"
+COLUMNS = {"left": "outcome_left"}  # a field of WorkSetIn: its column of system_traces, where the name differs
+NOT_WRITER = (
+    "marking the work of chat {chat} handled needs the writer role on project {project}, whose system's work it is; "
+    "you hold {role}"
+)
 
 
 # The card's message
@@ -139,7 +164,10 @@ async def set_work(conn: AsyncConnection, run: AgentRun, body: WorkSetIn) -> Wor
         raise HTTPException(403, NOT_COORDINATOR.format(handle=run.profile.handle))
     t = tables.system_traces
     given = body.model_dump(exclude_none=True)
-    await conn.execute(update(t).values(**given).where(t.c.id == trace.id))
+    values = {COLUMNS.get(name, name): value for name, value in given.items()}
+    if body.outcome is not None:  # a new outcome stands for itself: no mark of handled, no left of an older one
+        values |= {"handled_by": None, "handled_at": None, "outcome_left": body.left}
+    await conn.execute(update(t).values(**values).where(t.c.id == trace.id))
     await audit.record(
         conn,
         actor_id=run.principal.user_id,
@@ -154,9 +182,45 @@ async def set_work(conn: AsyncConnection, run: AgentRun, body: WorkSetIn) -> Wor
     return (await work_status.cards(conn, [trace.id]))[trace.id]
 
 
+# Marking the work handled
+
+
+async def mark_handled(conn: AsyncConnection, user: Principal, chat_id: int) -> WorkCard:
+    """Mark the work of the trace whose work chat ``chat_id`` is handled, as member ``user`` (see the module's
+    docstring); the card after it."""
+    await chat_access(conn, user, chat_id)
+    trace = await work_chats.trace_of_chat(conn, chat_id)
+    if trace is None:
+        raise HTTPException(404, f"chat {chat_id} is no work chat")
+    g, p = tables.grants, tables.projects
+    query = (
+        select(p.c.name, g.c.role)
+        .select_from(p.outerjoin(g, (g.c.project_id == p.c.id) & (g.c.user_id == user.user_id)))
+        .where(p.c.id == trace.project_id)
+    )
+    project, role = (await conn.execute(query)).one()
+    if role is None or not has_role(role, "writer"):
+        raise HTTPException(403, NOT_WRITER.format(chat=chat_id, project=project, role=role or "no grant"))
+    t = tables.system_traces
+    await conn.execute(update(t).values(handled_by=user.user_id, handled_at=func.now()).where(t.c.id == trace.id))
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.WORK_HANDLED,
+        target=f"trace:{trace.id} chat:{chat_id}",
+        project_id=trace.project_id,
+    )
+    if not await refresh(conn, trace.id):
+        await system_traces.touch(conn, trace.id)
+    log.info("work handled", extra={"trace_id": trace.id, "chat_id": chat_id})
+    return (await work_status.cards(conn, [trace.id]))[trace.id]
+
+
 @worker_router.post("/runs/{run_id}/work", response_model=WorkCard, responses={403: {"model": ErrorBody}, **REFUSALS})
 async def set_work_route(request: Request, run_id: RunId, body: WorkSetIn, user: CurrentUser) -> WorkCard:
-    """Set the title, goal and done-when of the work of this run's trace, as its coordinator."""
+    """Set the title, goal and done-when of the work of this run's trace, and record its outcome, as its
+    coordinator."""
     async with request.app.state.engine.begin() as conn:
         return await set_work(conn, await agent_run(conn, user, run_id), body)
 
@@ -171,3 +235,12 @@ async def show_work(request: Request, chat_id: ChatId, user: CurrentUser) -> Wor
         if card is None:
             raise HTTPException(404, f"chat {chat_id} is no work chat")
         return card
+
+
+@router.post(
+    "/{chat_id}/work/handled", response_model=WorkCard, responses={code: {"model": ErrorBody} for code in (403, 404)}
+)
+async def mark_handled_route(request: Request, chat_id: ChatId, user: CurrentUser) -> WorkCard:
+    """Mark the work of the trace whose work chat this is handled (Mark as handled)."""
+    async with request.app.state.engine.begin() as conn:
+        return await mark_handled(conn, user, chat_id)

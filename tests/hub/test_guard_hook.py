@@ -5,6 +5,7 @@ holds a name; anything else, and anything bound elsewhere, runs. The names are f
 
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import os
@@ -13,6 +14,7 @@ import subprocess
 import pytest
 
 from evo_agents.hub import guard_hook
+from evo_agents.hub.cli.hook import PRE_TOOL_USE
 from evo_agents.private_names import Policy, entries
 
 POLICY = Policy(terms=entries("Northwind") + entries("lumen ops"), targets=["github.com/acme/public"])
@@ -76,12 +78,12 @@ def test_the_hook_denies_through_claude_codes_answer_and_never_fails_the_session
     path.write_text(json.dumps(POLICY.to_json()))
     payload = {"tool_name": "Bash", "tool_input": {"command": "git commit -m northwind"}, "cwd": str(repo)}
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
-    assert guard_hook.cmd_hook_pre_tool_use(None) == 0
+    assert PRE_TOOL_USE(argparse.Namespace()) == 0
     out = json.loads(capsys.readouterr().out)["hookSpecificOutput"]
     assert out["permissionDecision"] == "deny" and "northwind" in out["permissionDecisionReason"]
     monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
-    assert guard_hook.cmd_hook_pre_tool_use(None) == 0
+    assert PRE_TOOL_USE(argparse.Namespace()) == 0
     assert capsys.readouterr().out == ""
     path.unlink()
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
-    assert guard_hook.cmd_hook_pre_tool_use(None) == 0 and capsys.readouterr().out == ""
+    assert PRE_TOOL_USE(argparse.Namespace()) == 0 and capsys.readouterr().out == ""

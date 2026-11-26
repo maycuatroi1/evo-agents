@@ -266,6 +266,18 @@ extra and must not load the server. Move what both sides need out of evo_agents.
 evo_agents.hub the server imports, or call the API over HTTP. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-server-not-cli"
+name = "evo_agents.hub.server does not import the commands of evo_agents.hub.cli"
+type = "forbidden"
+source_modules = ["evo_agents.hub.server"]
+forbidden_modules = ["evo_agents.hub.cli"]
+broken_contract_guidance = """\
+The server runs the hub's API, and evo_agents.hub.cli holds the commands that call it: a command imports what it \
+shares with the server, never the reverse. Move the code the server needs out of the command into a module of its \
+own outside evo_agents.hub.cli (evo_agents.hub.plan_writes is one), and have the command import it from there. See \
+docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "hub-runs-layers"
 name = "The run API of the hub goes from its routes to its service to its models, never back"
 type = "layers"

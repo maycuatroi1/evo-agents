@@ -147,7 +147,7 @@ once, and the hub keeps it in `hub_events`, where the Loop reads it (`docs/plugi
 
 ## Commands
 
-`evo-agents hub task` is the client of the routes below (`evo_agents/hub/cli_tasks.py`). `--json` prints what the hub
+`evo-agents hub task` is the client of the routes below (`evo_agents/hub/cli/task.py`). `--json` prints what the hub
 answered, and a refusal prints the hub's reason and each problem it listed. Sprints have routes and no command.
 
 ```sh

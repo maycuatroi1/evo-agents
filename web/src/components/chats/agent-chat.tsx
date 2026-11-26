@@ -40,6 +40,8 @@ export function frameOf(chatId: number | null, opened: boolean, messages: number
  * that chat (`ChatView`: its messages, live, its threads and their interactive answers, its composer). The chat's own
  * head names the agent, so the bar goes: the name there opens the picker, and `actions` stand before Details. The bar
  * stays while the chat cannot be read, so another agent can still be chosen.
+ * Without `picker`, the frame names no picker (Home's rail has it) and its bar over the start holds only `back`, the
+ * control that shows the rail again under 768 px, and `actions`.
  * The first message opens the direct chat (PUT /v1/chats/direct/{handle}) and sends; looking at an agent opens
  * nothing. The caller holds which agent is chosen (`handle`) and hears a pick (`onPick`); `useUnder` and
  * `agentPanels` go to the chat as on its own page. Home uses it, and so may any page that puts a chat with an agent in
@@ -52,6 +54,8 @@ export function AgentChat({
   useUnder,
   agentPanels,
   actions,
+  picker = true,
+  back,
   className,
 }: {
   agents: readonly ChatHomeAgent[];
@@ -60,6 +64,8 @@ export function AgentChat({
   useUnder?: UseUnder;
   agentPanels?: AgentPanels;
   actions?: ReactNode;
+  picker?: boolean;
+  back?: ReactNode;
   className?: string;
 }) {
   const queryClient = useQueryClient();
@@ -100,13 +106,15 @@ export function AgentChat({
     onPick(next);
   };
   // The chat's head names the agent: the bar over it would say it twice.
-  const bar = frame === "start" || page.isError;
+  const barFrame = frame === "start" || page.isError;
+  const bar = barFrame && (picker || actions !== undefined || back !== undefined);
 
   return (
     <div className={cn("flex min-h-0 w-full flex-col gap-3", className)} data-testid="agent-chat" data-agent={agent.handle} data-frame={frame}>
       {bar ? (
-        <div className="flex min-w-0 items-center gap-2">
-          <AgentPicker agents={agents} current={agent} onPick={choose} className="min-w-0 shrink" />
+        <div className={cn("flex min-w-0 items-center gap-2", !picker && actions === undefined && "md:hidden")}>
+          {back}
+          {picker ? <AgentPicker agents={agents} current={agent} onPick={choose} className="min-w-0 shrink" /> : null}
           {actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
@@ -126,7 +134,9 @@ export function AgentChat({
             initialError={null}
             useUnder={useUnder}
             agentPanels={agentPanels}
-            headSlots={bar ? undefined : { title: (name) => <AgentPicker agents={agents} current={agent} onPick={choose} title={name} />, actions }}
+            headSlots={
+              barFrame ? undefined : { title: picker ? (name) => <AgentPicker agents={agents} current={agent} onPick={choose} title={name} /> : undefined, actions }
+            }
           />
         ) : (
           <FrameLoading />

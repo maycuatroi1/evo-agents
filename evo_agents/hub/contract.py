@@ -23,7 +23,8 @@ are not read. Placeholders pass:
 a value written as alternatives, ``a|b`` (``a\\|b`` in a markdown table), passes when each alternative does.
 A command ends at a shell operator (``|``, ``&&``, ``;``, ``>``, ``)``) or a comment. Indented code blocks are not
 read. ``check`` needs only the core package; ``--contract FILE`` checks against a saved contract instead of the
-command line of this installation.
+command line of this installation. The two commands are the classes of ``evo_agents.hub.cli.contract`` (CONTRACT);
+this module holds what they print and check.
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ import argparse
 import json
 import re
 import shlex
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -448,51 +448,3 @@ def load_commands(path: str) -> dict:
     if held.get("version") != CONTRACT_VERSION or not isinstance(held.get("commands"), dict):
         raise ValueError(f"{path} is not a version {CONTRACT_VERSION} hub contract")
     return held["commands"]
-
-
-# Commands
-
-
-def cmd_print(args) -> int:
-    from evo_agents.hub.cli import missing_extra
-
-    try:
-        text = render(build())
-    except ImportError as exc:
-        return missing_extra(exc, args)
-    sys.stdout.write(text)
-    return 0
-
-
-def cmd_check(args) -> int:
-    try:
-        contract_commands = load_commands(args.contract) if args.contract else commands()
-        count, problems = check_files(contract_commands, args.files)
-    except (OSError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_USAGE
-    for line in problems:
-        print(line)
-    files = f"{len(args.files)} file(s)"
-    if problems:
-        print(f"{len(problems)} problem(s) in the {count} hub command(s) of {files}")
-        return EXIT_PROBLEMS
-    print(f"{count} hub command(s) in {files}, all in the contract")
-    return 0
-
-
-def register(hsub) -> None:
-    from evo_agents.hub.cli import server_command
-
-    contract = hsub.add_parser("contract", help="the hub command line as data (seam hub-cli-v1), and a check of docs")
-    csub = contract.add_subparsers(dest="contract_command", required=True)
-    printed = csub.add_parser(
-        "print", help="print the commands, their options and --json keys, and the OpenAPI document, as JSON"
-    )
-    printed.set_defaults(func=server_command(cmd_print))
-    checked = csub.add_parser(
-        "check", help="report `evo-agents hub` commands in markdown code that the command line does not have"
-    )
-    checked.add_argument("files", metavar="FILE", nargs="+", help="markdown files")
-    checked.add_argument("--contract", help="a saved `contract print` output to check against (default: this one)")
-    checked.set_defaults(func=cmd_check)

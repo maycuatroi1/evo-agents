@@ -11596,6 +11596,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/work/handled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Handled Route
+         * @description Mark the work of the trace whose work chat this is handled (Mark as handled).
+         */
+        post: operations["mark_handled_route_v1_chats__chat_id__work_handled_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -12185,7 +12205,8 @@ export interface paths {
         put?: never;
         /**
          * Set Work Route
-         * @description Set the title, goal and done-when of the work of this run's trace, as its coordinator.
+         * @description Set the title, goal and done-when of the work of this run's trace, and record its outcome, as its
+         *     coordinator.
          */
         post: operations["set_work_route_v1_worker_runs__run_id__work_post"];
         delete?: never;
@@ -26226,6 +26247,11 @@ export interface components {
              * @description the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it
              */
             forwarded_by?: string | null;
+            /**
+             * Repeats
+             * @description the message of the same work chat that this line of the hub repeats (the question of an asked line, the answer of an answered line); null on every other message
+             */
+            repeats?: number | null;
             /** @description the work card of a trace of an agent system, on the hub's message that carries it in the trace's root thread; a message_changed event says it changed. Null on every other message */
             work?: components["schemas"]["WorkCard"] | null;
         };
@@ -35532,6 +35558,11 @@ export interface components {
              * @description the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it
              */
             forwarded_by?: string | null;
+            /**
+             * Repeats
+             * @description the message of the same work chat that this line of the hub repeats (the question of an asked line, the answer of an answered line); null on every other message
+             */
+            repeats?: number | null;
             /** @description the work card of a trace of an agent system, on the hub's message that carries it in the trace's root thread; a message_changed event says it changed. Null on every other message */
             work?: components["schemas"]["WorkCard"] | null;
             /**
@@ -51357,6 +51388,16 @@ export interface components {
              * @description the handle of the system's entry agent, which coordinates the work
              */
             coordinator?: string | null;
+            /**
+             * Outcome
+             * @description what the entry agent recorded of the work against its done-when (work set --outcome); null when it recorded none, and for a not_met a member marked handled
+             */
+            outcome?: ("met" | "not_met") | null;
+            /**
+             * Left
+             * @description what the entry agent named as still to do (work set --left); null for nothing
+             */
+            left?: string | null;
         };
         /**
          * WorkCard
@@ -51388,6 +51429,16 @@ export interface components {
              * @description the handle of the system's entry agent, which coordinates the work
              */
             coordinator?: string | null;
+            /**
+             * Outcome
+             * @description what the entry agent recorded of the work against its done-when (work set --outcome); null when it recorded none, and for a not_met a member marked handled
+             */
+            outcome?: ("met" | "not_met") | null;
+            /**
+             * Left
+             * @description what the entry agent named as still to do (work set --left); null for nothing
+             */
+            left?: string | null;
             /**
              * Chat Id
              * @description the chat of the message that opened the trace
@@ -51450,6 +51501,16 @@ export interface components {
              * @description from its start to its end, or to now
              */
             seconds: number;
+            /**
+             * Handled By
+             * @description the login of the member who marked the work handled; null until one did
+             */
+            handled_by?: string | null;
+            /**
+             * Handled At
+             * @description when the work was marked handled
+             */
+            handled_at?: string | null;
         };
         /** WorkDecision */
         WorkDecision: {
@@ -51510,6 +51571,16 @@ export interface components {
             goal?: string | null;
             /** Done When */
             done_when?: string | null;
+            /**
+             * Outcome
+             * @description met or not_met: whether the work reached its done-when, recorded before the final answer
+             */
+            outcome?: ("met" | "not_met") | null;
+            /**
+             * Left
+             * @description what is still to do when the done-when is not met
+             */
+            left?: string | null;
         };
         /** WorkSummary */
         WorkSummary: {
@@ -97791,6 +97862,64 @@ export interface operations {
         };
     };
     show_work_v1_chats__chat_id__work_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkCard"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_handled_route_v1_chats__chat_id__work_handled_post: {
         parameters: {
             query?: never;
             header?: never;

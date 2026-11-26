@@ -116,10 +116,11 @@ test.describe("shell", () => {
     await admin.grant(second, account.login, "writer", "public");
 
     await signInAs(account);
+    // Home has no sidebar (its rail opens the hub's menu as a sheet): the picker is read on Today.
+    await open(page, "/today");
     expect(await pickerProjects(page)).toEqual([first, second].sort());
 
     // Today's Projects card lists the same projects, with roles.
-    await open(page, "/today");
     const cards = page.locator("#main").getByTestId("home-projects").getByTestId("home-project");
     await expect(cards).toHaveCount(2);
     expect(await cards.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-project")))).toEqual([first, second].sort());
@@ -152,10 +153,10 @@ test.describe("shell", () => {
   test("a user without grants sees an empty picker and an empty state", async ({ page, signInAs }) => {
     const account = newAccount("nogrants");
     await signInAs(account);
-    expect(await pickerProjects(page)).toEqual([]);
     // Home is the chat home, with no agent to chat with; Today's Projects card says there is no project.
     await expect(page.getByTestId("chat-home-none")).toBeVisible();
     await open(page, "/today");
+    expect(await pickerProjects(page)).toEqual([]);
     await expect(page.getByTestId("state-empty")).toContainText("Bạn chưa được cấp dự án nào");
     await expect(page.getByTestId("state-empty")).toContainText(account.login);
   });
@@ -165,7 +166,12 @@ test.describe("shell", () => {
     await page.getByTestId("user-menu").click();
     await expect(page.getByTestId("user-login")).toHaveText(me.login);
     await expect(page.getByTestId("user-role")).toHaveText("Thành viên");
+    await page.keyboard.press("Escape");
+    // The sidebar is Today's (Home's is a sheet behind its rail's menu): no admin link in it.
+    await open(page, "/today");
+    await expect(page.getByTestId("nav-today")).toBeVisible();
     await expect(page.getByTestId("nav-admin")).toHaveCount(0);
+    await page.getByTestId("user-menu").click();
     await page.getByTestId("logout").click();
     await expect(page).toHaveURL(/\/login$/);
     expect((await page.request.get("/v1/auth/whoami")).status()).toBe(401);
@@ -196,15 +202,15 @@ test.describe("shell", () => {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow, `${path} scrolls sideways`).toBeLessThanOrEqual(0);
     }
-    // The sidebar is a sheet on small screens, opened from the header.
+    // The sidebar is a sheet on small screens, opened from the header (Home has no header: the page here is /admin).
     await page.getByRole("button", { name: "Ẩn hoặc hiện thanh bên" }).click();
     const sheet = page.getByRole("dialog", { name: "Điều hướng chính" });
     await expect(sheet).toBeVisible();
     await expect(sheet.getByTestId("fleet-line")).toBeVisible();
     // Touch targets in the sheet are 44 px tall.
     expect((await sheet.getByTestId("nav-inbox").boundingBox())?.height).toBe(44);
-    await sheet.getByTestId("nav-home").click();
-    await expect(page).toHaveURL(/\/$/);
+    await sheet.getByTestId("nav-today").click();
+    await expect(page).toHaveURL(/\/today$/);
     await expect(sheet).toBeHidden();
     // The top bar keeps 52 px on a phone, with 44 px controls.
     expect((await page.getByTestId("top-bar").boundingBox())?.height).toBe(52);

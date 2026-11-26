@@ -17,7 +17,8 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 pytest.importorskip("croniter", reason="the cron helper needs the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub import cli_cron, cron
+from evo_agents.hub import cron
+from evo_agents.hub.cli import base as cli_base
 from tests.hub import pg
 
 # The helper
@@ -90,7 +91,7 @@ def test_set_keeps_what_it_is_not_given_and_sends_the_revision_it_read(monkeypat
     held = {"kind": "agent", "cron": "0 9 * * *", "timezone": "Europe/Paris", "revision": 4}
     held |= {"agent": "lumen-pm", "chat_id": None, "prompt": "Standup"}
     hub = FakeHub(held)
-    monkeypatch.setattr(cli_cron, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     assert main(["hub", "cron", "set", "standup", "--project", "northwind", "--cron", "0 10 * * *"]) == 0
     method, path, body = hub.calls[-1]
     assert (method, path) == ("PUT", "/v1/projects/northwind/cron-jobs/standup")
@@ -102,7 +103,7 @@ def test_set_refuses_flags_of_two_kinds(monkeypatch):
     from evo_agents.cli import main
 
     hub = FakeHub(None)
-    monkeypatch.setattr(cli_cron, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     argv = [
         "hub",
         "cron",

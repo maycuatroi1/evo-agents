@@ -81,6 +81,9 @@ worker run never registers one.
 
 PostToolUse (``evo_agents.hub.spool``) writes a tool result longer than its threshold to a file under
 ~/.evo/tool-output and hands the model its head, its tail and the file's path instead, by the same rules.
+
+This module holds the hooks' work and no command: ``evo_agents.hub.cli.hook`` (HOOK) runs it within the budgets and
+writes the answers to Claude Code.
 """
 
 from __future__ import annotations
@@ -286,7 +289,7 @@ def _ends_the_run(exc: BaseException) -> bool:
     return isinstance(exc, Unreachable) or (isinstance(exc, HubError) and exc.status == 401)
 
 
-def _failure(what: str, exc: BaseException) -> str:
+def failure(what: str, exc: BaseException) -> str:
     """``what`` failed: the sentence of a HubError, which names no secret; the type of anything else."""
     reason = str(exc) if isinstance(exc, HubError) else f"unexpected {type(exc).__name__}"
     return f"{what}: {reason}"
@@ -312,7 +315,7 @@ def _pull_memories(hub: Hub, login: str, where: Path, line: Line):
         if _ends_the_run(exc):
             raise
         line.project = line.project or _memory_place(sync, where)
-        line.add(_failure("memories not pulled", exc), trouble=True)
+        line.add(failure("memories not pulled", exc), trouble=True)
         return sync
     line.project = line.project or _memory_place(sync, where)
     pulled = sum(report.counts.get(key, 0) for key in PULLED)
@@ -342,7 +345,7 @@ def _harness(where: Path, line: Line) -> tuple[Path, str] | None:
         root = find_manifest(where)
         project = hub_project(load_manifest(root)) if root is not None else None
     except Exception as exc:
-        line.add(_failure("plans not exported, harness.yaml cannot be read", exc), trouble=True)
+        line.add(failure("plans not exported, harness.yaml cannot be read", exc), trouble=True)
         return None
     if project is None:
         return None  # not in a harness whose plans the hub keeps
@@ -358,7 +361,7 @@ def _export_plans(hub: Hub, root: Path, project: str, line: Line) -> None:
     except Exception as exc:
         if _ends_the_run(exc):
             raise
-        line.add(_failure("plans not exported", exc), trouble=True)
+        line.add(failure("plans not exported", exc), trouble=True)
         return
     written = sum(1 for p in result.plans if p["status"] == "written")
     kept = sum(1 for p in result.plans if p["status"] == "kept")
@@ -383,7 +386,7 @@ def _check_skills(hub: Hub, line: Line) -> None:
     except Exception as exc:
         if _ends_the_run(exc):
             raise
-        line.add(_failure("skills not checked", exc), trouble=True)
+        line.add(failure("skills not checked", exc), trouble=True)
         return
     if report.errors:
         line.add(f"skills: {_plural(len(report.errors), 'error')} (`evo-agents hub skills sync --check` says why)")
@@ -522,7 +525,7 @@ def _sweep_digests(url: str, places, skip, line: Line, now: float, deadline: flo
         if seen or any(mark[1] < since for mark in swept.values()):
             digests.note_swept(seen, since)
     except Exception as exc:  # only ever a second chance: the next SessionStart looks again
-        line.add(_failure("ended sessions not checked for a digest", exc))
+        line.add(failure("ended sessions not checked for a digest", exc))
         return 0
     if marked:
         line.add(f"{_plural(marked, 'session')} whose digest no hook sent, queued for the next Stop")
@@ -727,136 +730,3 @@ def _push_digest(
     record.pop("refused_at", None)
     digests.put(session_id, {**record, "sha256": digest.fingerprint(built), "pending": False})
     return True
-
-
-# Commands
-
-
-def _write(stream, text: str) -> None:
-    with contextlib.suppress(OSError, ValueError):  # a closed stdout or stderr must not fail the hook either
-        print(text, file=stream, flush=True)
-
-
-def cmd_hook_session_start(args) -> int:
-    line = Line()
-    seconds = BUDGETS["session-start"]
-    try:
-        with budget(seconds):
-            session_start(read_payload(), line)
-    except OutOfTime:
-        line.add(f"stopped after {seconds:g}s with what was done; the rest waits for the next session", trouble=True)
-    except BaseException as exc:  # a hook never fails the session
-        line.add(_failure("the SessionStart hook failed", exc), trouble=True)
-    text = line.text()
-    output: dict = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}
-    if line.trouble:
-        output["systemMessage"] = text
-    _write(sys.stdout, json.dumps(output, ensure_ascii=False))
-    return 0
-
-
-def cmd_hook_stop(args) -> int:
-    outcome = Outcome()
-    seconds = BUDGETS["stop"]
-    try:
-        with budget(seconds):
-            stop(read_payload(), outcome)
-    except OutOfTime:
-        outcome.quiet = f"evo-hub: memory push stopped after {seconds:g}s; what is left goes at a later Stop"
-    except BaseException as exc:  # a hook never fails the session
-        outcome.quiet = "evo-hub: " + _failure("the Stop hook failed", exc)
-    if outcome.loud:
-        _write(sys.stdout, json.dumps({"systemMessage": one_line(outcome.loud)}, ensure_ascii=False))
-    if outcome.quiet:
-        _write(sys.stderr, one_line(outcome.quiet))
-    return 0
-
-
-def cmd_hook_post_tool_use(args) -> int:
-    from evo_agents.hub.spool import cmd_hook_post_tool_use as run
-
-    return run(args)
-
-
-def cmd_hook_user_prompt(args) -> int:
-    from evo_agents.hub import local_sync
-
-    return local_sync.cmd_hook_user_prompt(args)
-
-
-def cmd_hook_local_tool(args) -> int:
-    from evo_agents.hub import local_sync
-
-    return local_sync.cmd_hook_local_tool(args)
-
-
-def cmd_hook_local_ask(args) -> int:
-    from evo_agents.hub import local_sync
-
-    return local_sync.cmd_hook_local_ask(args)
-
-
-def cmd_hook_pre_tool_use(args) -> int:
-    from evo_agents.hub import guard_hook
-
-    return guard_hook.cmd_hook_pre_tool_use(args)
-
-
-def cmd_hook_session_end(args) -> int:
-    outcome = Outcome()
-    seconds = BUDGETS["session-end"]
-    try:
-        with budget(seconds):
-            session_end(read_payload(), outcome)
-    except OutOfTime:
-        outcome.quiet = f"evo-hub: SessionEnd stopped after {seconds:g}s; a digest left waits for a later Stop"
-    except BaseException as exc:  # a hook never fails the session
-        outcome.quiet = "evo-hub: " + _failure("the SessionEnd hook failed", exc)
-    if outcome.quiet:
-        _write(sys.stderr, one_line(outcome.quiet))
-    return 0
-
-
-def register_hooks(hsub) -> None:
-    hook = hsub.add_parser("hook", help="Claude Code hook entry points of the evo-hub plugin; they always exit 0")
-    ksub = hook.add_subparsers(dest="hook_name", required=True)
-    ksub.add_parser(
-        "session-start",
-        help="pull the memories of the session's directory, export the plans of its harness, count the skills to "
-        "sync, and print one line for the session",
-    ).set_defaults(func=cmd_hook_session_start)
-    ksub.add_parser(
-        "stop",
-        help="push the memory files of the session's directory that changed since the last sync and the session's "
-        "digest, and queue its transcript for the hub",
-    ).set_defaults(func=cmd_hook_stop)
-    ksub.add_parser(
-        "post-tool-use",
-        help="write a tool result longer than EVO_SPOOL_THRESHOLD characters to a file under ~/.evo/tool-output and "
-        "give the model its head, its tail and the file's path instead",
-    ).set_defaults(func=cmd_hook_post_tool_use)
-    ksub.add_parser(
-        "user-prompt",
-        help="register the session as a local run of its hub project at its first turn and report it running "
-        "(EVO_HUB_LOCAL_SYNC=0 turns it off)",
-    ).set_defaults(func=cmd_hook_user_prompt)
-    ksub.add_parser(
-        "local-tool",
-        help="put the agent's words and the tool that ran, redacted, in the log of the session's local run, and queue "
-        "the files it sent and the images of its result as the run's outputs",
-    ).set_defaults(func=cmd_hook_local_tool)
-    ksub.add_parser(
-        "session-end",
-        help="push the session's digest and those that waited, report its local run ended, and queue its transcript "
-        "for the hub",
-    ).set_defaults(func=cmd_hook_session_end)
-    ksub.add_parser(
-        "local-ask",
-        help="put the questions of an AskUserQuestion dialog about to open to the hub as decisions of the session's "
-        "local run, so the member can answer them there too; it does not wait",
-    ).set_defaults(func=cmd_hook_local_ask)
-    ksub.add_parser(
-        "pre-tool-use",
-        help="deny a Bash command that would commit, push or write with gh a private name of the hub's projects to a "
-        "repo they publish (the core plugin guard's policy, kept at SessionStart)",
-    ).set_defaults(func=cmd_hook_pre_tool_use)

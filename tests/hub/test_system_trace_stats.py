@@ -90,7 +90,7 @@ if pg.DSN:
     from sqlalchemy import func, insert, literal, select, update
 
     from evo_agents.hub import system_spec, tables
-    from evo_agents.hub.cli_systems import cmd_metrics
+    from evo_agents.hub.cli.system import SystemMetrics
     from evo_agents.hub.server import system_trace_views
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401
@@ -218,13 +218,13 @@ if pg.DSN:
                 assert response.status_code == 200, response.text
                 return response.json()
 
-        monkeypatch.setattr("evo_agents.hub.cli_systems.signed_in", lambda: (Hub(), None))
+        monkeypatch.setattr("evo_agents.hub.cli.base.signed_in", lambda: (Hub(), None))
         args = argparse.Namespace(project=PROJECT, slug=None, days=30, traces=True, json=True)
-        assert cmd_metrics(args) == 0
+        assert SystemMetrics()(args) == 0
         printed = json.loads(capsys.readouterr().out)
         assert sorted(each["system"] for each in printed) == ["docs", SLUG]
         args.json = False
-        assert cmd_metrics(args) == 0
+        assert SystemMetrics()(args) == 0
         out = capsys.readouterr().out
         assert f"system {SLUG}: 2 traces" in out and "system docs: 0 traces" in out
         assert "edge fix -> review: 2 crossings, 2 off design (100%)" in out

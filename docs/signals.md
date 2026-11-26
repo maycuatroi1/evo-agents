@@ -6,7 +6,7 @@ them in batches with an ingest key; members can push them too, for results they 
 not a plugin's: the canvas plugin's value check (section Value check), the Loop and the Curator all read them.
 
 The code is `evo_agents/hub/signals.py` (taking batches, reading, the retention), `evo_agents/hub/server/signals.py`
-and `evo_agents/hub/server/signal_keys.py` (the routes), and `evo_agents/hub/cli_signals.py` (the command line). The
+and `evo_agents/hub/server/signal_keys.py` (the routes), and `evo_agents/hub/cli/signal.py` (the command line). The
 tables are `signal_keys`, `signal_ingest_keys` and `signals` (migration 0074), and `hub_events` (migration 0077)
 keeps the events of a project the Loop reads.
 

@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import insert, select, update
 
 from evo_agents.hub import profiles, runs, tables
-from evo_agents.hub.cli_agents import packs_from
+from evo_agents.hub.cli.agent.profiles import packs_from
 from evo_agents.hub.server.app import create_app
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.test_plugin_runtimes import ADMIN_GRANT, beat, enable, install, message, set_plugins, state_of

@@ -25,6 +25,7 @@ import {
 } from "./support/runs";
 import { packSkill, publishSkill } from "./support/skills";
 import { toast } from "./support/toast";
+import { seedWork, workSystem } from "./support/work";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
@@ -33,7 +34,8 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its head, its decision and
  * its trace's latest rows before its details and opens the full trace on a screen of its own, a decision from the
  * Inbox is a screen of its own with its answer in a bar at the foot, the Chats list's row of agents scrolls sideways
- * on its own, and a direct chat's bubbles fit the screen with React and Reply under each.
+ * on its own, and a direct chat's bubbles fit the screen with React and Reply under each. Home's rail is the first
+ * screen, and a task opens on a screen of its own with a back control to the rail.
  */
 const PHONE = { width: 375, height: 812 };
 const IPHONE_UA =
@@ -618,4 +620,56 @@ test("a direct chat at 375 px: the member's bubbles on the right, the agent's un
   await main(page).getByTestId("chat-composer-send").tap();
   await expect(composer).toHaveValue("");
   await expect.poll(async () => (await chatPageOf(me, chat.id, asked.id)).messages.map((item) => item.body)).toContain("Then raise the timeout.\nTo 2 s.");
+});
+
+test("home on a phone: the rail is the first screen, a task opens on a screen of its own, and back returns to the rail", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const system = await workSystem(me, me.projects[0]);
+  const work = await seedWork(me, system, "Refund backlog");
+  await open(page, `/?agent=${system.lead}`);
+
+  // The rail first, the main pane out of sight; its controls are touch targets.
+  const home = page.getByTestId("chat-home");
+  const rail = page.getByTestId("home-rail");
+  await expect(home).toHaveAttribute("data-view", "rail");
+  await expect(rail).toBeVisible();
+  await expect(page.getByTestId("home-main")).toBeHidden();
+  const row = rail.locator(`[data-testid="home-task"][data-chat-id="${work.workChat}"]`);
+  await expect(row).toHaveAttribute("data-section", "needsYou");
+  for (const testId of ["home-menu", "home-new-task", "home-rail-search", "home-rail-direct", "palette-trigger", "inbox-bell", "chat-home-today"]) {
+    await touchSized(rail.getByTestId(testId), testId);
+  }
+  await touchSized(row, "a task's row");
+  expect(await fieldText(rail.getByTestId("home-rail-search"))).toBe("16px");
+  await expectNoSeriousViolations(page, "Home's rail at 375 px");
+
+  // A task opens on the whole screen, named in the address; back shows the rail again.
+  await row.tap();
+  await expect(page).toHaveURL(new RegExp(`[?&]task=${work.workChat}(&|$)`));
+  await expect(home).toHaveAttribute("data-view", "main");
+  await expect(rail).toBeHidden();
+  const pane = page.getByTestId("home-main");
+  await expect(pane.getByTestId("chat-header")).toBeVisible();
+  expect((await box(pane)).width, "the task takes the screen").toBe(PHONE.width);
+  const layout = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: window.innerWidth }));
+  expect(layout.scroll, "the page never scrolls sideways").toBeLessThanOrEqual(layout.width);
+  const back = pane.getByTestId("home-back");
+  await touchSized(back, "Back to tasks");
+  await back.tap();
+  await expect(home).toHaveAttribute("data-view", "rail");
+  await expect(row).toBeVisible();
+
+  // The address opens the task on its own screen; New task opens the direct chat with its box focused.
+  await open(page, `/?agent=${system.lead}&task=${work.workChat}`);
+  await expect(page.getByTestId("home-main").getByTestId("chat-header")).toBeVisible();
+  await page.getByTestId("home-main").getByTestId("home-back").tap();
+  await rail.getByTestId("home-new-task").tap();
+  await expect(page).not.toHaveURL(/[?&]task=/);
+  await expect(page.getByTestId("chat-home-composer-text")).toBeFocused();
+  await touchSized(page.getByTestId("home-main").getByTestId("home-back"), "Back to tasks over the start");
+
+  // The hub's menu is the sidebar's sheet.
+  await page.getByTestId("home-main").getByTestId("home-back").tap();
+  await rail.getByTestId("home-menu").tap();
+  await expect(page.getByRole("dialog").getByTestId("nav-today")).toBeVisible();
 });
