@@ -8,8 +8,7 @@ import json
 
 import pytest
 
-from evo_agents.hub.cli.plugin import agent_types as cli_plugin_agent_types
-from evo_agents.hub.cli.plugin import projects as cli_plugin_projects
+from evo_agents.hub.cli import base
 
 TRIAGER = {
     "plugin": "lumen-qa",
@@ -60,8 +59,7 @@ class FakeHub:
 @pytest.fixture
 def fake_hub(monkeypatch):
     hub = FakeHub()
-    monkeypatch.setattr(cli_plugin_agent_types, "signed_in", lambda: (hub, None))
-    monkeypatch.setattr(cli_plugin_projects, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     return hub
 
 

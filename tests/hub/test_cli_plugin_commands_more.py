@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from evo_agents.hub.cli import base
 from evo_agents.hub.cli import extensions as cpc
 from evo_agents.plugins.manifest import _command_problems
 
@@ -41,7 +42,7 @@ DELETE = {
 def parser_of(*commands: dict) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     hsub = parser.add_subparsers(dest="hub_command")
-    cpc.register_plugin_commands(hsub, [{"id": "lumen", "commands": list(commands)}])
+    cpc.Extensions([{"id": "lumen", "commands": list(commands)}]).attach(hsub)
     return parser
 
 
@@ -64,7 +65,7 @@ def test_plugin_cli_when_picks_the_route_of_the_first_argument_given_and_values_
 
 def test_plugin_cli_confirm_calls_nothing_without_its_switch(monkeypatch, capsys):
     called = []
-    monkeypatch.setattr(cpc, "signed_in", lambda: called.append(1))
+    monkeypatch.setattr(base, "signed_in", lambda: called.append(1))
     args = parser_of(DELETE).parse_args(["lumen", "delete", "--project", "northwind", "ada"])
     assert args.func(args) == 2 and called == []
     assert capsys.readouterr().err.strip() == "Delete ada from project northwind? Run again with --yes."
@@ -78,7 +79,7 @@ def test_plugin_cli_render_text_prints_the_routes_words_and_json_the_answer(monk
             asked.append(path)
             return {"text": "Denied domain lumen.example"} if "render=text" in path else [{"id": 1}]
 
-    monkeypatch.setattr(cpc, "signed_in", lambda: (Hub(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (Hub(), None))
     parser = parser_of(DENYLIST)
     args = parser.parse_args(["lumen", "denylist", "--project", "northwind", "--add", "domain", "lumen.example"])
     assert args.func(args) == 0
