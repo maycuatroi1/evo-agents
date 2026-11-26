@@ -19,11 +19,13 @@ import argparse
 import asyncio
 import os
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from functools import cached_property
 from typing import Any, ClassVar, TypeVar
 
 from evo_agents.clikit import Command, Context
+from evo_agents.hub import chats
 from evo_agents.hub.client import HubError, exit_status
 from evo_agents.worker.extra import EXTRA_HINT
 from evo_agents.worker.home import WorkerConfig, WorkerHome, WorkerStateError
@@ -33,6 +35,10 @@ EXIT_FAILED = 1
 EXIT_USAGE = 2
 RUN_VARIABLE = "EVO_RUN_ID"
 UNSET_HINT = "The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
+# How long a command tries again while the hub does not answer: a deploy swaps the hub's api in less, and an agent's
+# shell gives a command about two minutes
+OUTAGE_SECONDS = 90.0
+RETRY_FIRST_DELAY = 1.0  # seconds before the second try, doubling after each
 
 T = TypeVar("T")
 
@@ -48,6 +54,16 @@ def hubapi():
     except ImportError as exc:
         raise MissingExtra(f"missing module {exc.name}") from None
     return hubapi
+
+
+def text_of(value: str, most: int = chats.MAX_MESSAGE_BYTES) -> str:
+    """TEXT, or stdin for ``-``: a message of at most ``most`` bytes of UTF-8 with some text."""
+    text = sys.stdin.read() if value == "-" else value
+    if not text.strip():
+        raise WorkerStateError("the message has no text")
+    if len(text.encode()) > most:
+        raise WorkerStateError(f"a message is at most {most} bytes of UTF-8")
+    return text
 
 
 class WorkerContext(Context):
@@ -162,6 +178,34 @@ class AgentRunContext(WorkerContext):
             raise exc.hub_error() from None
         except gitops.GitError as exc:
             raise WorkerStateError(str(exc)) from None
+
+    def in_chats(self, route: str, body: dict) -> dict:
+        """POST ``body`` to the hub's route of the run's agent in chats, with the worker's token; HubError when the
+        hub refuses, or does not answer for OUTAGE_SECONDS. A call the hub does not answer, or answers with a 5xx or
+        429 (a deploy swapping its api: run #8743's forward got a 500 of the proxy then), is sent again after a
+        backoff, as the daemon does, each try said on stderr."""
+        api = hubapi()
+        run_id = self.run_id
+
+        async def go() -> dict:
+            backoff = api.Backoff(first=RETRY_FIRST_DELAY)
+            deadline = time.monotonic() + OUTAGE_SECONDS
+            async with api.new_session() as session:
+                hub = api.WorkerHub(self.config.url, self.token, session)
+                while True:
+                    try:
+                        return await hub.in_chats(run_id, route, body)
+                    except api.Unreachable as exc:
+                        delay = max(backoff.next(), min(exc.retry_after or 0.0, api.RETRY_AFTER_MOST))
+                        if time.monotonic() + delay > deadline:
+                            raise
+                        print(f"the hub did not take it ({exc}): trying again in {delay:.0f}s", file=sys.stderr)
+                        await asyncio.sleep(delay)
+
+        try:
+            return asyncio.run(go())
+        except api.HubProblem as exc:
+            raise HubError(str(exc), exc.status, exc.code) from None
 
     def workspaces(self) -> dict:
         """The run's worktrees by repo, from its record."""
