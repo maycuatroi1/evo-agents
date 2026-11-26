@@ -692,7 +692,7 @@ item, and queues a build when its data changes:
 
 | Source | What it gives | Where it is described |
 | --- | --- | --- |
-| `plugin.docs` | the latest version of each document of the feature docs, `plugin.docs:document:<slug>`, a Document with a Section per heading | `docs/hub.md`, Docs |
+| `plugin.docs` | the latest version of each document of the feature docs, `plugin.docs:document:<slug>`, a Document with a Section per heading, and the typed node, links, level and audience it declares | `docs/hub.md`, Docs; Typed documents, below |
 | `plugin.srs` | the approved version of each SRS document, its use cases and requirements | `docs/srs-plugin.md` |
 | `plugin.tasks` | each task, a Ticket | `docs/tasks-plugin.md` |
 | `plugin.canvas` | each Lean Canvas and its claims | `docs/canvas-plugin.md` |
@@ -704,6 +704,47 @@ item, and queues a build when its data changes:
 A source of a plugin or feature the project does not have on gives nothing, and its items leave the next build. So a
 research note an agent saved with `evo-agents hub docs put` is found by `kg_search` on a phrase of it, in the next
 build after the save.
+
+## Typed documents
+
+A document of the feature docs may declare what it is to the graph in the YAML block its Markdown opens with
+(`evo_agents/hub/server/docs/typed.py`): a campaign, an artifact, an insight, an audience, a brain rule, an approval or
+a research note of a creative project, each a kind of the project's ontology.
+
+```yaml
+---
+type: Campaign                       # a node kind the project's ontology.yaml adds
+links:                               # relation: the slug of another document, or a list of them
+  targets: lumen-audience-makers
+level: customer                      # raises the document's label in the graph, never lowers it
+audience: chat:12                    # the members of chat 12, the brand space; or a list of chats
+---
+```
+
+At the next build:
+
+- `type` makes the node `plugin.docs:<kind in lower case>:<slug>` of that kind, named by the document's title, which
+  the Document node `defines`. It must be a node kind `ontology.yaml` adds (Ontology rules, below); a hub kind is
+  refused, and a project without an ontology takes no type.
+- Each link is an edge of its relation from the typed node, or from the Document without a type, to the typed node of
+  the target document, else to its Document. The relation must be one the ontology or the hub knows
+  (`known_relations`); a link to a slug no document has is dropped as dangling.
+- `level` is joined with the document's stored label, the higher of the two on the project's ladder; a level the
+  ladder lacks reads as its highest.
+- `audience` is joined with the label's audience. A brand space is a group chat whose members are the space's members,
+  so `chat:<id>` is the audience the hub already gives a chat's messages (Audience, above), and a member holds it while
+  they are in that chat and clear its label. A member outside the space finds neither the typed node nor the document
+  by `kg_node` or `kg_search`. An entry other than `chat:<id>` cannot be read, so the document is left out of the
+  graph rather than shown to the whole project.
+
+The block is no text of the graph: search reads the body below it. A block that is not a YAML mapping declares nothing,
+and what it declares wrongly in other ways is skipped. The declared level and audience are the graph's: the docs
+pages and routes still check the stored label alone.
+
+A typed node shows as locked to a member of its audience whose clearance its level is above: `kg_node` answers its id,
+its kind and its label with `locked: true`, and no name, props, evidence or edges (`SessionView.locked` in
+`evo_agents/kg/serve_view.py`). Any node opts in to that with `props.locked: true`; every other node above the
+clearance stays as hidden as a missing one.
 
 ## Freshness
 

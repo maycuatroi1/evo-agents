@@ -260,6 +260,15 @@ async def kg_documents(conn: AsyncConnection, project_id: int) -> list[KgDocumen
     return [KgDocument(**row._mapping) for row in await conn.execute(query)]
 
 
+async def kg_frame(conn: AsyncConnection, project_id: int) -> tuple[list[str], dict | None]:
+    """The ladder of levels of project ``project_id`` and the ontology of its knowledge config (None without one):
+    what its documents may declare to the graph (``evo_agents.hub.server.docs.typed``)."""
+    p, c = tables.projects, tables.kg_configs
+    levels = await conn.scalar(select(p.c.levels).where(p.c.id == project_id))
+    ontology = await conn.scalar(select(c.c.ontology).where(c.c.project_id == project_id))
+    return list(levels or []), ontology if isinstance(ontology, dict) else None
+
+
 async def shows_image(conn: AsyncConnection, doc: DocumentRow, sha256: str) -> tuple[str, int] | None:
     """The media type and size of image ``sha256`` when a version of ``doc`` shows it; None otherwise."""
     k, v, i = tables.docs.version_images, tables.docs.versions, tables.docs.images

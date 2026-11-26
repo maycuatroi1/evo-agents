@@ -169,3 +169,16 @@ class SessionView:
             alias = store.alias_of(node_id, b)
             n = store.node(alias, b) if alias else None
         return n if n is not None and self.shows(n) else None
+
+    def locked(self, store: SnapshotView, node_id: str, b: int) -> dict | None:
+        """The node ``node_id`` names when it is above the clearance and asks to show as locked (``props.locked``, as
+        the docs plugin's typed nodes do): of the reader's audience and the named graph the call reads, but of a level
+        or location the clearance does not reach. None for any other, a missing node among them. Only its id, kind
+        and label may be answered of it: the audience of the reader leaves out the nodes of a space they are not in
+        before this is asked (``SnapshotView.node``)."""
+        if not isinstance(node_id, str) or not node_id:
+            return None
+        n = next((x for x in (store.node(c, b) for c in stored(node_id)) if x is not None), None)
+        if n is None or (n.get("props") or {}).get("locked") is not True or not self.scoped(n):
+            return None
+        return n if audience_below(n["label"][3] if len(n["label"]) > 3 else frozenset(), self.audience) else None
