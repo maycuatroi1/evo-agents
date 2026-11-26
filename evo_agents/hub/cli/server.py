@@ -99,18 +99,6 @@ class ServerCommand(Command[Context]):
             return EXIT_FAILED
 
 
-def server_command(func):
-    """``func(args)`` as a :class:`ServerCommand` runs it (for ``hub openapi`` and ``hub contract print``)."""
-
-    class Wrapped(ServerCommand):
-        name = help = ""
-
-        def run(self, ctx: Context) -> Result:
-            return Result(None, status=func(ctx.args))
-
-    return Wrapped()
-
-
 def config(args: argparse.Namespace, **options):
     """The hub's configuration from ``--dsn`` and ``--data-dir`` and the environment."""
     from evo_agents.hub.config import load_config

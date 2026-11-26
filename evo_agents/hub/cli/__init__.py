@@ -13,7 +13,7 @@ attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
 ``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli.problem``, ``opportunity`` by ``cli.opportunity``, ``intake`` by ``cli_intake``, ``merge`` by
 ``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
-package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
+package, so they work on a core install. ``hub openapi`` (``cli.openapi``) and ``hub contract print`` (``cli.contract``) need the extra for the API
 document; ``hub contract check`` does not. The commands of plugins (``pm``, ``crm`` and ``marketing`` of the core
 plugins installed with the CLI among them) come from their manifests, registered last by ``cli.extensions``.
 """
@@ -23,9 +23,10 @@ from __future__ import annotations
 from evo_agents.hub.cli.server import (  # noqa: F401 (the names other modules import from here)
     EXTRA_HINT,
     SERVER,
+    MissingExtra,
+    ServerCommand,
     missing_extra,
     positive,
-    server_command,
 )
 
 OWN_COMMANDS: set[str] = set()  # the hub commands of the CLI itself, the plugins' left out (cli_plugin_commands)
@@ -86,16 +87,16 @@ def _register_workspace_commands(hsub) -> None:
 
 def _register_team_commands(hsub) -> None:
     """The client's groups from hub mcp to hub emails."""
-    from evo_agents.hub.mcp_proxy import register_mcp
+    from evo_agents.hub.cli.mcp import MCP
 
-    register_mcp(hsub)
+    MCP.attach(hsub)
 
     # the commands of the evo-hub plugin: its hooks, and `hub send`, which the hooks start in the background
-    from evo_agents.hub.cli.send import register_send
-    from evo_agents.hub.hooks import register_hooks
+    from evo_agents.hub.cli.hook import HOOK
+    from evo_agents.hub.cli.send import SEND
 
-    register_hooks(hsub)
-    register_send(hsub)
+    HOOK.attach(hsub)
+    SEND.attach(hsub)
 
     from evo_agents.hub.cli_agents import register_agents
 
@@ -216,13 +217,13 @@ def register(sub) -> None:
 
     _register_client_commands(hsub)
 
-    from evo_agents.hub.openapi import register as register_openapi
+    from evo_agents.hub.cli.openapi import OPENAPI
 
-    register_openapi(hsub)
+    OPENAPI.attach(hsub)
 
-    from evo_agents.hub.contract import register as register_contract
+    from evo_agents.hub.cli.contract import CONTRACT
 
-    register_contract(hsub)
+    CONTRACT.attach(hsub)
     OWN_COMMANDS.clear()
     OWN_COMMANDS.update(hsub.choices)
 
