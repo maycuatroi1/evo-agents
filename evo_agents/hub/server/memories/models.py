@@ -100,6 +100,8 @@ class Memory(MemoryState):
 
 
 class Written(Memory):
+    __module__ = "evo_agents.hub.server.memories"  # its OpenAPI name, shared with another Written, is by module
+
     created: bool
     changed: bool = Field(description="false when the hub already held exactly this")
 
@@ -118,7 +120,12 @@ class Results(BaseModel):
 
 
 class Conflict(ErrorBody):
+    __module__ = "evo_agents.hub.server.memories"  # its OpenAPI name, shared with another Conflict, is by module
+
     current: Memory | None = Field(description="the version the hub holds, when the caller may see it")
+
+
+Conflict.model_rebuild()  # its annotations name this module's models, not those of the module it is named by
 
 
 @dataclass(frozen=True)
