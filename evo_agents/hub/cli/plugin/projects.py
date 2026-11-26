@@ -7,7 +7,7 @@ NAME --project P`` prints what the installed version asks for, each permission w
 grants exactly that once the person at the terminal answers yes, or with ``--yes``; without a terminal it needs
 ``--yes``. ``--records-level LEVEL`` sets the highest level of P's ladder its jobs and events, which have no caller,
 reach in its records (records:use). ``disable NAME --project P`` turns it off for P, its grants going with it.
-``agent-type list|enable|disable`` keeps the agent types of P's plugins (``cli_plugin_agent_types``).
+``agent-type list|enable|disable`` keeps the agent types of P's plugins (``cli.plugin.agent_types``).
 
 ``config NAME --project P`` prints the project's layer of the plugin's config (``--agent H`` an agent profile's,
 ``--instance`` instead of ``--project`` the hub's), ``--versions`` every version of it. ``--set FIELD=VALUE`` (VALUE
@@ -26,9 +26,9 @@ import json
 import sys
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli_plugin_agent_types import register_agent_type_commands
-from evo_agents.hub.cli_secrets import Refused, read_value
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.plugin.agent_types import register_agent_type_commands
+from evo_agents.hub.cli.secret.values import Refused, read_value
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
 

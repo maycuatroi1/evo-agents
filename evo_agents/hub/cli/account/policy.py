@@ -22,7 +22,7 @@ from evo_agents.hub.accounts import (
     QUOTA_PACING,
     STRATEGIES,
 )
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, when
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, when
 from evo_agents.hub.contract import json_option, returns_object
 
 EXIT_USAGE = 2

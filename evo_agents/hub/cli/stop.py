@@ -18,8 +18,7 @@ from __future__ import annotations
 import argparse
 
 from evo_agents.clikit import Arg, Result, Text, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext
-from evo_agents.hub.cli_client import call_object
+from evo_agents.hub.cli.base import HubCommand, HubContext, call_object
 from evo_agents.hub.client import Hub
 
 # The keys of the hub's answer (``evo_agents.hub.server.autonomy_stops.StopView``).

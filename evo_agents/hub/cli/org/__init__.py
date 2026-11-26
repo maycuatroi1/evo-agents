@@ -7,7 +7,7 @@ the role, whether the seat is primary, reports_to, sponsor, the end date and the
 Archived units and ended seats are left out unless ``--all``. ``--json`` prints GET /v1/org as the hub answered it.
 
 ``org unit create|edit|archive`` change a unit and ``org seat add|edit|end`` a seat; ``hub autonomy ceiling set``
-(``evo_agents.hub.cli_autonomy``) writes the ceilings. A seat is named by its id (``--seat``), by a login, or by
+(``evo_agents.hub.cli.autonomy``) writes the ceilings. A seat is named by its id (``--seat``), by a login, or by
 ``--agent HANDLE --project P``; with a login, ``--unit`` picks the live seat in that unit, else the person's live
 primary seat is meant. What a member may change is the hub's to decide: a refusal
 (403, 404, 409, 422) prints the hub's reason and exits 1.
@@ -21,8 +21,8 @@ import sys
 from datetime import date
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.cli_org_workers import register_workers
+from evo_agents.hub.cli.base import client_command, print_json, signed_in
+from evo_agents.hub.cli.org.workers import register_workers
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 

@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from evo_agents.hub import plugin_calls, tables
-from evo_agents.hub.cli_plugin_commands import (
+from evo_agents.hub.cli.extensions import (
     CACHE_FILE,
     cached,
     register_plugin_commands,

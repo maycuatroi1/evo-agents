@@ -26,8 +26,7 @@ import sys
 from urllib.parse import quote, urlencode
 
 from evo_agents.hub import transcript_sync
-from evo_agents.hub.cli.base import project_of
-from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import EXIT_FAILED, client_command, print_json, project_of, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.transcripts import RUNTIMES
 

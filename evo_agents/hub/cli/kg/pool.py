@@ -5,7 +5,7 @@ With no option it prints the pool named now, its owner and the projects it serve
 member's pool, in place of the one named before; ``--clear`` names none. Its ready nodes, which run evo-agents with the
 feature repoless_review, take the KG runs (lens kg_questions and kg_init) of a project with no repo whose default
 agent's pool has no ready node, when the project's creator owns the pool; the hub adds each such project to the pool.
-The command is :data:`KG_POOL`, which ``hub admin`` lists (``evo_agents.hub.cli_invites``). Standard library only, like
+The command is :data:`KG_POOL`, which ``hub admin`` lists (``evo_agents.hub.cli.admin.invites``). Standard library only, like
 the rest of the client.
 """
 

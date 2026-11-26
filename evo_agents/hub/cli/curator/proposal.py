@@ -12,10 +12,9 @@ import json
 from dataclasses import dataclass
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, when
 from evo_agents.hub.cli.curator.charter import labelled
 from evo_agents.hub.cli.curator.resources import CHANGE, PROPOSAL, Proposals
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.review import DEFER_DAYS, LENSES, PROPOSAL_STATES, evidence_text
 
 PROPOSAL_ID = Arg("id", type=int, help="the proposal's id")

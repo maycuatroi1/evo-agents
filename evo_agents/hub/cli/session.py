@@ -8,7 +8,7 @@ core dependency). Results go to stdout; a failure is one ``error:`` line on stde
 prints what the hub answered, with the keys declared next to the flag (``contract.json_option``). No command ever
 prints a token.
 
-``hub admin`` covers grants, users and row counts (``server.admin``), and invite links in ``cli_invites`` (over
+``hub admin`` covers grants, users and row counts (``server.admin``), and invite links in ``cli.admin.invites`` (over
 ``server.invites``); the audit trail and every user's tokens
 (``server.admin_console``) have no command and are read in the web's admin area. ``project register`` reads the
 harness through ``registration``, and ``registry pull`` writes the registry through ``registry``.
@@ -19,36 +19,31 @@ harness through ``registration``, and ``registry pull`` writes the registry thro
 notifications of plan runs),
 ``hub curator`` in ``cli.curator`` (over the night shift of a project's charter),
 ``hub memory`` in ``cli_memory`` (over ``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and
-``skills``), ``hub secret`` in ``cli_secrets`` (over the owner's secret routes), ``hub kg`` in ``cli.kg`` (over
+``skills``), ``hub secret`` in ``cli.secret`` (over the owner's secret routes), ``hub kg`` in ``cli.kg`` (over
 ``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``), ``hub hook`` (the evo-hub plugin's hooks) in
 ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are registered by ``cli``.
 """
 
 from __future__ import annotations
 
-import functools
 import json
 import sys
-from datetime import UTC, datetime
 from urllib.parse import quote
 
 from evo_agents.hub.access import ROLES
-from evo_agents.hub.client import EXIT_FAILED as EXIT_FAILED  # cli_memory and cli_skills take it from here
+from evo_agents.hub.cli.base import call_object, client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import (
     TOKEN_VARIABLE,
     URL_VARIABLE,
-    Hub,
     HubError,
     NotSignedIn,
     check_url,
     env_credentials,
-    exit_status,
     hub_dir,
     load_credentials,
     login,
     remove_credentials,
 )
-from evo_agents.hub.client import signed_in as signed_in  # every hub command takes it from here
 from evo_agents.hub.contract import json_option, returns_array, returns_map, returns_object
 
 ENV_PAIR = f"{TOKEN_VARIABLE} and {URL_VARIABLE}"  # the token and hub that come before any login (env_credentials)
@@ -85,53 +80,8 @@ PROJECT_KEYS = (
 )
 
 
-def client_command(func):
-    """Turn a HubError of ``func`` into an ``error:`` line and the exit status ``client.exit_status`` gives it."""
-
-    @functools.wraps(func)
-    def run(args) -> int:
-        try:
-            return func(args)
-        except HubError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return exit_status(exc)
-
-    return run
-
-
-def call_object(hub: Hub, method: str, path: str, body: dict | None = None) -> dict:
-    """The hub's answer to ``method path``, for a route that answers a JSON object; HubError when it did not."""
-    found = hub.call(method, path, body)
-    if not isinstance(found, dict):
-        raise HubError(f"the hub answered {method} {path} with no JSON object")
-    return found
-
-
-def print_json(data) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2))
-
-
-def when(value: str | None) -> str:
-    """An ISO timestamp from the hub as ``YYYY-MM-DD HH:MM`` UTC; ``-`` for none."""
-    if not value:
-        return "-"
-    try:
-        moment = datetime.fromisoformat(value)
-    except ValueError:
-        return value
-    if moment.tzinfo is not None:
-        moment = moment.astimezone(UTC)
-    return moment.strftime("%Y-%m-%d %H:%M")
-
-
 def _grants(grants: list[dict]) -> str:
     return ", ".join(f"{g['project']} {g['role']} up to {g['max_level']}" for g in grants) or "none"
-
-
-def table(header: tuple[str, ...], rows: list[tuple]) -> None:
-    widths = [max(len(str(cell)) for cell in column) for column in zip(header, *rows, strict=False)]
-    for row in (header, *rows):
-        print("  ".join(str(cell).ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip())
 
 
 @client_command
@@ -537,7 +487,7 @@ def _register_session(hsub) -> None:
 
 def _register_admin(hsub) -> None:
     """hub admin: grants, users, stats and the Telegram bot."""
-    from evo_agents.hub.cli_invites import admin_commands  # hub admin, and hub admin invite in that module
+    from evo_agents.hub.cli.admin.invites import admin_commands  # hub admin, and hub admin invite in that module
 
     asub = admin_commands(hsub)
     grant = asub.add_parser("grant", help="give a login a role on a project, or change it")
@@ -678,7 +628,7 @@ def _register_other_groups(hsub) -> None:
 
     register_skills(hsub)
 
-    from evo_agents.hub.cli_secrets import register_secrets
+    from evo_agents.hub.cli.secret import register_secrets
 
     register_secrets(hsub)
 

@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import tables
-from evo_agents.hub.cli_autonomy import Usage, reach_groups
+from evo_agents.hub.cli.autonomy import Usage, reach_groups
 from evo_agents.hub.server import autonomy_store, run_access, run_access_rules
 from evo_agents.hub.server.autonomy_models import RunReachSet
 from evo_agents.hub.server.run_access_rules import REACH_GROUPS, refusal

@@ -1,5 +1,5 @@
 """``evo-agents hub plugin agent-type list|enable|disable`` and ``hub plugin enable --records-level``
-(``evo_agents.hub.cli_plugin_agent_types``, ``cli_plugin_projects``): the routes they call, the bodies they send and
+(``evo_agents.hub.cli.plugin.agent_types``, ``cli.plugin.projects``): the routes they call, the bodies they send and
 what they print, against a hub that answers in this process. No hub, no Postgres."""
 
 from __future__ import annotations
@@ -8,7 +8,8 @@ import json
 
 import pytest
 
-from evo_agents.hub import cli_plugin_agent_types, cli_plugin_projects
+from evo_agents.hub.cli.plugin import agent_types as cli_plugin_agent_types
+from evo_agents.hub.cli.plugin import projects as cli_plugin_projects
 
 TRIAGER = {
     "plugin": "lumen-qa",

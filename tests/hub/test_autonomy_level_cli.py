@@ -1,4 +1,4 @@
-"""The commands of the autonomy levels (``evo_agents.hub.cli_autonomy``), as criteria a2 and a3 of plan autonomy-levels
+"""The commands of the autonomy levels (``evo_agents.hub.cli.autonomy``), as criteria a2 and a3 of plan autonomy-levels
 name them: `hub autonomy show [--login] [--agent] [--project] [--repo] [--json]`, `hub autonomy set --level A0..A5
 [--class Kn=mode]... [--reset]`, and `hub autonomy ceiling set` with `--class`, `--environment` and `--worker`, over
 HTTP alone; a refusal of the hub prints its reason and exits 1, a wrong command line exits 2 before the hub.
@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import cli_autonomy
 from evo_agents.hub.autonomy_levels import CLASSES
+from evo_agents.hub.cli import autonomy as cli_autonomy
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys

@@ -15,9 +15,8 @@ from pathlib import Path
 import yaml
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_array
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, when
 from evo_agents.hub.cli.curator.resources import CHARTER, REVISION_KEYS, Charters
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.curator import CHARTER_META, money, period_budget
 from evo_agents.hub.history import budget_usd as history_budget

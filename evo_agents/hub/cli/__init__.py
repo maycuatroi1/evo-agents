@@ -8,14 +8,14 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
-``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by
-``cli.curator.release``, ``policy`` by ``cli_policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
-``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli_org`` and ``autonomy`` by ``cli_autonomy``; they need nothing beyond the core
+registered by ``cli.session``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
+``cli.plugin``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
+``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
+``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
+``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
 package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
 document; ``hub contract check`` does not. The commands of plugins (``pm``, ``crm`` and ``marketing`` of the core
-plugins installed with the CLI among them) come from their manifests, registered last by ``cli_plugin_commands``.
+plugins installed with the CLI among them) come from their manifests, registered last by ``cli.extensions``.
 """
 
 from __future__ import annotations
@@ -330,7 +330,7 @@ def _register_client_commands(hsub) -> None:
 
 def _register_workspace_commands(hsub) -> None:
     """The client's groups from hub login to hub emails."""
-    from evo_agents.hub.cli_client import register_client
+    from evo_agents.hub.cli.session import register_client
 
     register_client(hsub)
 
@@ -350,11 +350,11 @@ def _register_workspace_commands(hsub) -> None:
 
     register_chats(hsub)
 
-    from evo_agents.hub.cli_plugins import register_plugins
+    from evo_agents.hub.cli.plugin import register_plugins
 
     register_plugins(hsub)
 
-    from evo_agents.hub.cli_market import register_market
+    from evo_agents.hub.cli.market import register_market
 
     register_market(hsub)
 
@@ -386,7 +386,7 @@ def _register_workspace_commands(hsub) -> None:
 
     register_sessions(hsub)
 
-    from evo_agents.hub.cli_emails import register_emails
+    from evo_agents.hub.cli.email import register_emails
 
     register_emails(hsub)
 
@@ -397,7 +397,7 @@ def _register_steering_commands(hsub) -> None:
 
     RELEASE.attach(hsub)
 
-    from evo_agents.hub.cli_policy import register_policy
+    from evo_agents.hub.cli.policy import register_policy
 
     register_policy(hsub)
 
@@ -425,8 +425,8 @@ def _register_steering_commands(hsub) -> None:
 
     register_loop(hsub)
 
-    from evo_agents.hub.cli_autonomy import register_autonomy
-    from evo_agents.hub.cli_org import register_org
+    from evo_agents.hub.cli.autonomy import register_autonomy
+    from evo_agents.hub.cli.org import register_org
 
     register_org(hsub)
     register_autonomy(hsub)
@@ -467,7 +467,7 @@ def register(sub) -> None:
     OWN_COMMANDS.clear()
     OWN_COMMANDS.update(hsub.choices)
 
-    from evo_agents.hub.cli_plugin_commands import register_plugin_commands
+    from evo_agents.hub.cli.extensions import register_plugin_commands
 
     register_plugin_commands(hsub)  # last: a plugin whose id is a command of the CLI's own is left out
 

@@ -16,7 +16,8 @@ if not pg.DSN:
 
 from sqlalchemy import func, insert, select, update
 
-from evo_agents.hub import cli_client, kg_build, loop_jobs, plugin_jobs, tables
+from evo_agents.hub import kg_build, loop_jobs, plugin_jobs, tables
+from evo_agents.hub.cli import session as cli_client
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.server import autonomy_hold, project_archive
 from evo_agents.hub.server.curator_shift import due_schedules

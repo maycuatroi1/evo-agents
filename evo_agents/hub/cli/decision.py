@@ -35,8 +35,7 @@ from urllib.parse import urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, Views, returns_object
 from evo_agents.hub import approval_heads, credential_requests
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_client import call_object, when
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, call_object, when
 from evo_agents.hub.plan_writes import checked_plan_id
 from evo_agents.hub.runs import DECISION_STATES
 
@@ -421,7 +420,7 @@ class AnswerGiven:
 
     def secret(self) -> str:
         """The value a credential request asks for, read from stdin or asked for; UsageError when it is refused."""
-        from evo_agents.hub.cli_secrets import Refused, check_value, read_value
+        from evo_agents.hub.cli.secret.values import Refused, check_value, read_value
 
         decision = self.args.decision
         try:

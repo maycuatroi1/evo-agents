@@ -766,7 +766,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_account_pools.py": [
+        "./evo_agents/hub/cli/account_pool.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -824,7 +824,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_agent_accounts.py": [
+        "./evo_agents/hub/cli/agent/account.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -1092,7 +1092,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_autonomy.py": [
+        "./evo_agents/hub/cli/autonomy.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -1206,7 +1206,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_bindings.py": [
+        "./evo_agents/hub/cli/secret/bindings.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -1414,7 +1414,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_client.py": [
+        "./evo_agents/hub/cli/session.py": [
             {
                 "code": "reportGeneralTypeIssues",
                 "range": {
@@ -1804,7 +1804,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_emails.py": [
+        "./evo_agents/hub/cli/email.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -1968,7 +1968,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_invites.py": [
+        "./evo_agents/hub/cli/admin/invites.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -2132,7 +2132,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_market.py": [
+        "./evo_agents/hub/cli/market/__init__.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -2530,7 +2530,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_model_catalog.py": [
+        "./evo_agents/hub/cli/model_catalog.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -2646,7 +2646,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_org.py": [
+        "./evo_agents/hub/cli/org/__init__.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -2840,7 +2840,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_org_workers.py": [
+        "./evo_agents/hub/cli/org/workers.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -2850,7 +2850,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_plugin_commands.py": [
+        "./evo_agents/hub/cli/extensions.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -2884,7 +2884,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_plugin_projects.py": [
+        "./evo_agents/hub/cli/plugin/projects.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -2966,7 +2966,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_plugins.py": [
+        "./evo_agents/hub/cli/plugin/__init__.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -3008,7 +3008,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_policy.py": [
+        "./evo_agents/hub/cli/policy.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -3180,7 +3180,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_project_admin.py": [
+        "./evo_agents/hub/cli/admin/project.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -3366,7 +3366,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_provider_accounts.py": [
+        "./evo_agents/hub/cli/provider_account.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -3440,7 +3440,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_secrets.py": [
+        "./evo_agents/hub/cli/secret/__init__.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -3772,7 +3772,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/cli_shares.py": [
+        "./evo_agents/hub/cli/secret/shares.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {

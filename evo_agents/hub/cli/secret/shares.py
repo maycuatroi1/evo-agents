@@ -18,7 +18,7 @@ import sys
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in
+from evo_agents.hub.cli.base import EXIT_FAILED, client_command, print_json, signed_in
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.credential_shares import MAX_BUDGET_USD, MAX_RUNNING, TERMS_WARNING

@@ -25,7 +25,7 @@ directory of its package that holds ``pages/``), and is framed the same way; oth
 web itself, and names no entry.
 
 A command (``cli``) is one of ``evo-agents hub <id> <name>``: its arguments, the route of the plugin it calls and how
-its answer prints (``evo_agents.hub.cli_plugins``); its path arguments appear in the route's path, a positional has no
+its answer prints (``evo_agents.hub.cli.plugin``); its path arguments appear in the route's path, a positional has no
 flag, and each argument has one name.
 
 A runtime (``runtimes``) names one of ``acp``, the command of an agent that speaks the Agent Client Protocol, which

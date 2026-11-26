@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 
 CATALOG_KEYS = ("source", "groups", "providers")

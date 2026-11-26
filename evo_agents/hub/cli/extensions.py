@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
 from evo_agents.hub.client import HubError
 from evo_agents.hub.plugin_commands import (  # noqa: F401 (moved there; the callers take them from here)
     BUNDLED_FILE,

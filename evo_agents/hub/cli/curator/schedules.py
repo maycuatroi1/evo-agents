@@ -8,10 +8,9 @@ lets them run again.
 from __future__ import annotations
 
 from evo_agents.clikit import Result, Text
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, when
 from evo_agents.hub.cli.curator.charter import period_of
 from evo_agents.hub.cli.curator.resources import STATUS, NightShift
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.curator import money, zone_of
 
 

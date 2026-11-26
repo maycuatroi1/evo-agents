@@ -11,7 +11,7 @@ The parsing runs without Postgres; everything that needs the hub skips without E
 
 import pytest
 
-from evo_agents.hub.cli_org_workers import Unknown, find_worker, worker_line
+from evo_agents.hub.cli.org.workers import Unknown, find_worker, worker_line
 from evo_agents.hub.contract import commands
 from tests.hub import pg
 

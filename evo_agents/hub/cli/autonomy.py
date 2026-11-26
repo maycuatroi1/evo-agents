@@ -28,7 +28,7 @@ from urllib.parse import urlencode
 
 from evo_agents.hub import autonomy_levels
 from evo_agents.hub.autonomy_levels import CLASSES, LEVELS
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
+from evo_agents.hub.cli.base import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.credentials import RUN_REACH_GROUPS
 

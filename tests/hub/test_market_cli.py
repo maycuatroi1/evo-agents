@@ -1,4 +1,4 @@
-"""``evo-agents hub market`` and ``hub plugin install --github`` / ``hub plugin publisher`` (``evo_agents.hub.cli_market``)
+"""``evo-agents hub market`` and ``hub plugin install --github`` / ``hub plugin publisher`` (``evo_agents.hub.cli.market``)
 against a hub that answers from memory: what each command asks the hub and what it prints. The routes themselves are
 tests/hub/test_market.py."""
 
@@ -74,7 +74,7 @@ class Hub:
 def hub(monkeypatch):
     def use(answers: dict) -> Hub:
         made = Hub(answers)
-        monkeypatch.setattr("evo_agents.hub.cli_market.signed_in", lambda: (made, None))
+        monkeypatch.setattr("evo_agents.hub.cli.market.signed_in", lambda: (made, None))
         return made
 
     return use

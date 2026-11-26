@@ -74,7 +74,7 @@ def test_a_number_out_of_bounds_is_refused_before_the_hub_is_asked(monkeypatch, 
 
 
 def test_show_tells_an_oauth_account_that_needs_a_new_sign_in_and_which_command_renews_it(capsys):
-    from evo_agents.hub.cli_secrets import _print_account
+    from evo_agents.hub.cli.secret import _print_account
 
     account = {
         "name": "oauth-a",
@@ -120,7 +120,7 @@ if pg.DSN:
 
 @needs_pg
 def test_a_service_account_shows_no_cost(capsys):
-    from evo_agents.hub.cli_secrets import _print_account
+    from evo_agents.hub.cli.secret import _print_account
 
     account = {
         "name": "gitlab-a",

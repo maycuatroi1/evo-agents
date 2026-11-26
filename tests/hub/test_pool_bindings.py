@@ -21,7 +21,7 @@ if not pg.DSN:
 from sqlalchemy import select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.cli_bindings import BOTH, bound_to, where_cell, where_text
+from evo_agents.hub.cli.secret.bindings import BOTH, bound_to, where_cell, where_text
 from evo_agents.hub.server.brief import _pool, _pool_words
 from evo_agents.hub.server.night_duty import on_duty
 from tests.hub.account_pool_setup import give_account_pool

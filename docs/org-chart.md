@@ -13,7 +13,7 @@ ended is at A0, and the hub stops their runs (Seats that end, below).
 
 `evo_agents/hub/org.py` holds the rules as pure functions on a snapshot of the tables; `evo_agents/hub/tables_org.py`
 the tables; `evo_agents/hub/server/org.py` the routes, `org_writes.py` the writes, `org_store.py` the reads and
-`org_expiry.py` the seats that end; `evo_agents/hub/cli_org.py` the commands; `web/src/components/org/` the page.
+`org_expiry.py` the seats that end; `evo_agents/hub/cli/org.py` the commands; `web/src/components/org/` the page.
 
 ## Units
 

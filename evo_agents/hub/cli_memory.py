@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlencode
 
-from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import EXIT_FAILED, client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.memory import AGENT_SINK, MemorySync, Report, well_formed

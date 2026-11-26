@@ -16,8 +16,8 @@ import sys
 from urllib.parse import quote
 
 from evo_agents.hub.access import ROLES
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli_invites import CREATED_KEYS, DEFAULT_DAYS, MAX_DAYS
+from evo_agents.hub.cli.admin.invites import CREATED_KEYS, DEFAULT_DAYS, MAX_DAYS
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_object
 
 VIEW_KEYS = ("name", "self_managed", "trusted_owners", "levels", "grants")

@@ -666,7 +666,7 @@ TELEGRAM_SINK = {"id": "telegram", "kind": "channel", "clearance": {"level": "pu
 def test_a_channel_sink_is_stored_at_register_and_listed_by_project_list_json(
     client, github, hub_db, monkeypatch, capsys
 ):
-    from evo_agents.hub import cli_client
+    from evo_agents.hub.cli import session as cli_client
 
     who = users(client, github)
     sinks = [*body()["sinks"], TELEGRAM_SINK]

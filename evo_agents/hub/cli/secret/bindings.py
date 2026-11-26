@@ -1,4 +1,4 @@
-"""Where a secret or an account is bound, for ``hub secret`` and ``hub account`` (``cli_secrets``): on workers named
+"""Where a secret or an account is bound, for ``hub secret`` and ``hub account`` (``cli.secret``): on workers named
 (``--worker``), on the nodes of worker pools (``--pool``, plan worker-pools, criterion a4), or on any worker of its
 owner. A pool covers each of its nodes, those that join after the binding too; a binding names workers or pools, not
 both.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.credentials import FORGE_KIND, SECRET_NAME
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 
 from evo_agents.hub.access import ROLES
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -140,7 +140,7 @@ def admin_commands(hsub):
     admin = hsub.add_parser("admin", help="users, grants and invite links (hub admins only)")
     asub = admin.add_subparsers(dest="admin_command", required=True)
     _invite_commands(asub)
-    from evo_agents.hub.cli_project_admin import project_commands
+    from evo_agents.hub.cli.admin.project import project_commands
 
     project_commands(asub)
     from evo_agents.hub.cli.kg.pool import KG_POOL

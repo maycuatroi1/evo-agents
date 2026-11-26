@@ -21,8 +21,7 @@ from __future__ import annotations
 import argparse
 
 from evo_agents.clikit import Arg, Group, Result, Text, returns_object
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_client import when
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.curator import money
 from evo_agents.hub.releases import DEFAULT_AT, DEFAULT_TIMEZONE, MAX_PATHS, short
 

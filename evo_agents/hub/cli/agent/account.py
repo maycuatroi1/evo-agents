@@ -16,7 +16,7 @@ keep new runs off an account or let them take it again; ``remove`` deletes it, i
 and its leases still out being revoked.
 
 The value never comes from the command line: it is read from stdin when stdin is not a terminal, else asked for
-without echo (``cli_secrets.read_value``), checked for what the hub refuses, and never printed, not even in an error.
+without echo (``cli.secret.values.read_value``), checked for what the hub refuses, and never printed, not even in an error.
 Every check of the arguments comes before the value is read. ``--expires YYYY-MM-DD`` ends the account at 00:00 UTC of
 that day. Standard library only, like the rest of the client.
 """
@@ -27,9 +27,9 @@ import sys
 from urllib.parse import quote, urlencode
 
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.secret.values import Refused, check_name, check_value, expires_at, read_value
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli_secrets import Refused, check_name, check_value, expires_at, read_value
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import env_name_refusal
 from evo_agents.hub.curator import money

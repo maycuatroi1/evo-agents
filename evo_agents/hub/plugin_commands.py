@@ -1,7 +1,7 @@
 """The commands plugins add to the CLI (extension point ``cli``), as a list: the one the hub gives at
 ``GET /v1/cli/plugins`` (``evo_agents.hub.server.plugin_command_list``), kept in ``cli-plugins.json`` of the login directory
 (``~/.evo/hub``), and the one of the core plugins installed with the CLI, read from their ``cli.json`` without
-importing them. ``evo_agents.hub.cli_plugin_commands`` builds the parsers of ``evo-agents hub <plugin> <command>``
+importing them. ``evo_agents.hub.cli.extensions`` builds the parsers of ``evo-agents hub <plugin> <command>``
 from it, and ``evo_agents.hub.contract`` builds the contract under ``BUNDLED_ONLY``, from the bundled plugins alone.
 Standard library only, like the rest of the client.
 """

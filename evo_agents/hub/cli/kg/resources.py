@@ -12,8 +12,7 @@ from typing import Any, ClassVar
 from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg
-from evo_agents.hub.cli.base import ProjectResource
-from evo_agents.hub.cli_client import call_object
+from evo_agents.hub.cli.base import ProjectResource, call_object
 
 KG_PROJECT = Arg("--project", required=True, help="project name on the hub")
 SINK = Arg("--sink", help="sink whose clearance applies (default: the agent session's)")

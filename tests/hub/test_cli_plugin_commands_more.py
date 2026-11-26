@@ -1,4 +1,4 @@
-"""What a plugin's command says beyond one route (``evo_agents.hub.cli_plugin_commands``, ``docs/plugins.md``, Commands
+"""What a plugin's command says beyond one route (``evo_agents.hub.cli.extensions``, ``docs/plugins.md``, Commands
 of the CLI): ``when`` switches route on an argument, ``values`` splits a flag into fields, ``group`` makes flags exclude
 each other, ``confirm`` calls nothing without its switch, ``output.render`` asks the route for its words, and the
 core plugins installed with the CLI ship theirs in ``cli.json``, which win over the list kept. No hub, no Postgres.
@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from evo_agents.hub import cli_plugin_commands as cpc
+from evo_agents.hub.cli import extensions as cpc
 from evo_agents.plugins.manifest import _command_problems
 
 DENYLIST = {

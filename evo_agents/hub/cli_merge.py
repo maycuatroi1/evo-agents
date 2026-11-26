@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli_policy import PROJECT_HELP
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.policy import PROJECT_HELP
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.mirror import harness_project, harness_root

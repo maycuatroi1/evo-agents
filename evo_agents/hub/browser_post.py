@@ -1,4 +1,4 @@
-"""The browser script of the CLI (``client`` browser_post of a plugin's command, ``evo_agents.hub.cli_plugin_commands``):
+"""The browser script of the CLI (``client`` browser_post of a plugin's command, ``evo_agents.hub.cli.extensions``):
 it posts one text a plugin's gate passed to a channel that has no posting API, in the logged-in browser session of the
 account. The core plugin marketing is the one that uses it (``docs/marketing-plugin.md`` of evo-agents-core-plugins, Browser adapter).
 

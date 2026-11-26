@@ -1,4 +1,4 @@
-"""The commands of the org chart (``evo_agents.hub.cli_org``, ``.cli_autonomy``), as criterion a4 of plan org-chart
+"""The commands of the org chart (``evo_agents.hub.cli.org``, ``.cli_autonomy``), as criterion a4 of plan org-chart
 names them: `hub org show [--json]`, `hub org unit create|edit|archive`, `hub org seat add|edit|end` and
 `hub autonomy ceiling set`, over HTTP alone; a refusal of the hub prints its reason and exits non-zero.
 
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import cli_org
+from evo_agents.hub.cli import org as cli_org
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg

@@ -9,11 +9,11 @@ without one the hub refuses the bundle as unsigned. The hub checks the bundle wh
 
 ``list`` prints every plugin with its state, installed and latest version and the upgrade waiting; ``show NAME`` one
 plugin with every version. ``install NAME`` installs the newest version that runs on the hub, or ``--version``;
-``install --github OWNER/REPO[@TAG]`` installs from a GitHub release instead (``evo_agents.hub.cli_market``);
+``install --github OWNER/REPO[@TAG]`` installs from a GitHub release instead (``evo_agents.hub.cli.market``);
 ``upgrade NAME`` moves the installed one to the newest above it, or ``--version``; ``remove NAME`` removes it, every
 version staying in the store. ``--json`` prints what the hub answered. Standard library only, like the rest of the
-client. ``publisher list|add|remove`` are in ``evo_agents.hub.cli_market``. ``list --project``, ``enable``, ``disable``, ``config`` and ``rollback``, for the members of a project, are in
-``evo_agents.hub.cli_plugin_projects``.
+client. ``publisher list|add|remove`` are in ``evo_agents.hub.cli.market``. ``list --project``, ``enable``, ``disable``, ``config`` and ``rollback``, for the members of a project, are in
+``evo_agents.hub.cli.plugin.projects``.
 """
 
 from __future__ import annotations
@@ -21,9 +21,9 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli_market import INSTALLED_KEYS, install_github, register_publishers
-from evo_agents.hub.cli_plugin_projects import list_project, project_list_output, register_project_commands
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.market import INSTALLED_KEYS, install_github, register_publishers
+from evo_agents.hub.cli.plugin.projects import list_project, project_list_output, register_project_commands
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
 from evo_agents.hub.skill_sync import put_bundle

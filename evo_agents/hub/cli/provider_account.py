@@ -20,8 +20,8 @@ import sys
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
-from evo_agents.hub.cli_model_catalog import register_model_catalog
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
+from evo_agents.hub.cli.model_catalog import register_model_catalog
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.provider_accounts import API_FORMATS
 

@@ -24,7 +24,8 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.hub import setup_token
-from evo_agents.hub.cli_secrets import Refused, login_ends, login_token
+from evo_agents.hub.cli.secret import login_ends, login_token
+from evo_agents.hub.cli.secret.values import Refused
 from evo_agents.hub.contract import commands
 from evo_agents.hub.setup_token import Mask, Screen, default_end, find_token
 from tests.hub import pg

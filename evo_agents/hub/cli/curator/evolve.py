@@ -21,8 +21,7 @@ from __future__ import annotations
 import argparse
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_client import call_object
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, call_object
 from evo_agents.hub.curator import money
 
 EVOLVE_KEYS = (

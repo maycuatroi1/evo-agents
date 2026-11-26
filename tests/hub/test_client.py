@@ -14,8 +14,9 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import cli_client, mcp_proxy
 from evo_agents.hub import client as hub_client
+from evo_agents.hub import mcp_proxy
+from evo_agents.hub.cli import session as cli_client
 from evo_agents.hub.client import (
     TOKEN_VARIABLE,
     URL_VARIABLE,
