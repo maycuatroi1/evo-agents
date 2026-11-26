@@ -666,9 +666,9 @@ def _register_other_groups(hsub) -> None:
     DECISION.attach(hsub)
     NOTIFICATIONS.attach(hsub)
 
-    from evo_agents.hub.cli.curator import register_curator
+    from evo_agents.hub.cli.curator import CURATOR
 
-    register_curator(hsub)
+    CURATOR.attach(hsub)
 
     from evo_agents.hub.cli_memory import register_memory
 
