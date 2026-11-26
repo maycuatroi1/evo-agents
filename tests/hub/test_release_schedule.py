@@ -570,7 +570,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
     import argparse
 
     from evo_agents.hub import worker
-    from evo_agents.hub.cli.server import WORKER
+    from evo_agents.hub.cli import WORKER
     from evo_agents.hub.config import S3_VARIABLES
 
     for name, value in zip(S3_VARIABLES, ("https://s3.northwind.test", "northwind-hub", "id", "secret"), strict=True):

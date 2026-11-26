@@ -124,7 +124,7 @@ def test_serve_hands_uvicorn_the_proxies_it_may_believe(monkeypatch, tmp_path):
 
     import uvicorn
 
-    from evo_agents.hub.cli.server import SERVE
+    from evo_agents.hub.cli import SERVE
 
     calls = []
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))

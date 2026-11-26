@@ -18,7 +18,7 @@ from sqlalchemy import func, insert, select
 
 from evo_agents.hub import plugin_calls, plugin_schema
 from evo_agents.hub import tables as hub_tables
-from evo_agents.hub.cli.server import MIGRATE
+from evo_agents.hub.cli import MIGRATE
 from evo_agents.hub.migrate import MigrationError, migrate, status
 from evo_agents.hub.plugin_schema import PluginChain, PluginSchemaError
 from evo_agents.plugins import core
