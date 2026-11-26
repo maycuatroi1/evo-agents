@@ -4,8 +4,6 @@
   :class:`Context`, runs the command, maps a known failure to its exit status and shows the :class:`Result`. A command
   writes ``run`` alone, plus the hooks it needs (``check``, ``failed``, ``add_arguments``).
 - :class:`Group` is a Composite: a command word holding commands and groups, which builds its own argparse subtree.
-  :class:`Legacy` adapts a ``register_*(subparsers)`` function, so old and new commands share one tree while a package
-  moves over.
 - :class:`Arg` is an argument as a value. Options many commands share are constants (``PROJECT``), never mixins.
 
 The parser stays argparse, and ``configure`` sets the same defaults ``json_option`` sets, so ``evo-agents hub contract``
@@ -18,7 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, Generic, Protocol, TextIO, TypeVar
 
@@ -178,12 +176,3 @@ class Group:
         for child in self.children:
             child.attach(below)
 
-
-class Legacy:
-    """Adapter: a ``register_*(subparsers)`` function of a package not moved yet, as a node of a :class:`Group`."""
-
-    def __init__(self, register: Callable[[argparse._SubParsersAction], Any]):
-        self.register = register
-
-    def attach(self, subparsers: argparse._SubParsersAction) -> None:
-        self.register(subparsers)

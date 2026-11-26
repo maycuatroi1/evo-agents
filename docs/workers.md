@@ -210,7 +210,7 @@ Schema 0148 adds `worker_pools`, `worker_join_tokens` and `workers.pool_id`; 014
 and `runs.tolerations`; 0150 the pool of a charter, a schedule and a secret binding (`pool_id`). The hub's side is
 `evo_agents/hub/server/worker_pools.py` (pools and tokens), `worker_join.py` (the join), `worker_placement.py`
 (labels, taints, readiness) and `worker_reaper.py`; the command line is `evo-agents worker pool`
-(`evo_agents/worker/pool_cli.py`), and the web shows the pools at `/workers/pools`, reached from the Pools button of
+(`evo_agents/worker/cli/pool.py`), and the web shows the pools at `/workers/pools`, reached from the Pools button of
 the Workers page.
 
 ```sh

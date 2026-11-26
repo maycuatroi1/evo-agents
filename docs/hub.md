@@ -2265,7 +2265,7 @@ evo-agents worker pool user-data vps --max-nodes 1 > user-data.sh  # a token and
 evo-agents worker pool show vps                               # its nodes, each ready or why not
 ```
 
-`worker pool` (`evo_agents/worker/pool_cli.py`) reads and writes `/v1/worker-pools` with the machine token of `hub
+`worker pool` (`evo_agents/worker/cli/pool.py`) reads and writes `/v1/worker-pools` with the machine token of `hub
 login`: `create NAME --project P [--slots N] [--label L ...] [--taint T ...] [--accept-finding CODE ...]
 [--reap-after-days D]`, `list`, `show NAME`, `set NAME` with the same flags (a list given replaces the whole list;
 `--no-labels`, `--no-taints` and `--no-accepted-findings` empty one), `token create NAME [--hours H] [--max-uses N]`,
