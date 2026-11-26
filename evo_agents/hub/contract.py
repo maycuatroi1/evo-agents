@@ -36,6 +36,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents.clikit.json_output import JsonOutput as JsonOutput
+from evo_agents.clikit.json_output import json_option as json_option
+from evo_agents.clikit.json_output import returns_array as returns_array
+from evo_agents.clikit.json_output import returns_map as returns_map
+from evo_agents.clikit.json_output import returns_object as returns_object
+
 CONTRACT_VERSION = 1
 EXIT_PROBLEMS = 1
 EXIT_USAGE = 2
@@ -71,51 +77,7 @@ HELP_FLAGS = frozenset({"-h", "--help"})
 OPERATOR = re.compile(r"[();<>|&]+")
 
 
-# Declaring what --json prints
-
-
-@dataclass(frozen=True)
-class JsonOutput:
-    """What a command prints with ``--json``.
-
-    ``kind`` is ``object`` (one object with ``keys``), ``array`` (a list of objects with ``keys``) or ``map`` (an
-    object whose keys are data, ``keys`` empty). ``schema`` names the OpenAPI component the hub answers with when
-    the command prints that answer, and ``added`` the keys the client adds to it; tests check that ``keys`` is
-    exactly the component's properties plus ``added``. ``variants`` lists, per option, what is printed instead
-    when that option is given.
-    """
-
-    kind: str
-    keys: tuple[str, ...] = ()
-    schema: str | None = None
-    added: tuple[str, ...] = ()
-    variants: tuple[tuple[str, JsonOutput], ...] = ()
-
-    def to_json(self) -> dict:
-        data: dict = {"kind": self.kind, "keys": list(self.keys)}
-        if self.schema:
-            data["schema"] = self.schema
-        if self.variants:
-            data["with"] = {option: output.to_json() for option, output in self.variants}
-        return data
-
-
-def returns_object(*keys: str, schema: str | None = None, added: tuple[str, ...] = (), variants=()) -> JsonOutput:
-    return JsonOutput("object", keys, schema, added, tuple(variants))
-
-
-def returns_array(*keys: str, schema: str | None = None) -> JsonOutput:
-    return JsonOutput("array", keys, schema)
-
-
-def returns_map(schema: str | None = None) -> JsonOutput:
-    return JsonOutput("map", (), schema)
-
-
-def json_option(parser: argparse.ArgumentParser, output: JsonOutput, help: str = "machine-readable output") -> None:
-    """Add ``--json`` to ``parser`` and declare what it prints."""
-    parser.add_argument("--json", action="store_true", help=help)
-    parser.set_defaults(json_output=output)
+# Declaring what --json prints: evo_agents.clikit.json_output, imported back here for the modules that take it from here
 
 
 # The command line as data

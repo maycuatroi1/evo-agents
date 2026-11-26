@@ -1,4 +1,4 @@
-"""The goals of a project (``evo_agents.hub.goals``, ``evo_agents.hub.server.goals`` and ``evo_agents.hub.cli_goals``),
+"""The goals of a project (``evo_agents.hub.goals``, ``evo_agents.hub.server.goals`` and ``evo_agents.hub.cli.goal``),
 as criterion a2 of plan loop-engine names it: a goal has a statement, a key of the project's signals as its metric with
 a target, a deadline, the canvas it drives, an owner and a status, and no budget; an admin of the project writes it
 whole as its next revision, every revision is kept and audited; ``evo-agents hub goal list|show|set|close``. The
