@@ -15,8 +15,9 @@ row.
 - ``orchestrator_answer``, ``orchestrator_reassign``, ``orchestrator_ask_owner``: the Orchestrator's actions in a
   thread the hub opened to it (``orchestrator_actions``), as ``evo-agents worker triage answer|reassign|ask-owner``.
 - ``ops_action``: the Orchestrator's actions in an ops thread (``ops_actions``), as ``evo-agents worker ops ...``.
-- ``work_set``: as the entry agent of its system, name the work of its trace (title, goal, done-when), which the work
-  card shows (``work_cards.set_work``), as ``evo-agents worker work set``.
+- ``work_set``: as the entry agent of its system, name the work of its trace (title, goal, done-when) and record its
+  outcome (met or not_met, what is left), which the work card shows (``work_cards.set_work``), as ``evo-agents worker
+  work set``.
 - ``memory_write``: a memory of the project, under the rules of ``memories.put``.
 
 A tool that is refused answers the model with why, as the worker's command prints it; nothing raises past ``call``.
@@ -54,6 +55,7 @@ from evo_agents.hub.server import (
     orchestrator_actions,
     output_store,
     work_cards,
+    work_status,
 )
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.mcp_run import hub_principal
@@ -196,8 +198,15 @@ TOOLS = [
     _function(
         "work_set",
         "As the entry agent of your system, once a hand-off opened the work chat: name the work of this trace (title, "
-        "goal, done-when) that its card shows. Give at least one.",
-        {"title": _TEXT, "goal": _TEXT, "done_when": _TEXT},
+        "goal, done-when) that its card shows, and before your final answer record its outcome (met or not_met "
+        "against the done-when) with what is left to do when not met. Give at least one.",
+        {
+            "title": _TEXT,
+            "goal": _TEXT,
+            "done_when": _TEXT,
+            "outcome": {"type": "string", "enum": list(work_status.OUTCOMES)},
+            "left": {"type": "string", "description": "what is still to do when the done-when is not met"},
+        },
         [],
     ),
     _function(
@@ -369,7 +378,7 @@ async def orchestrator_ask_owner(turn: Turn, arguments: dict) -> str:
 
 
 async def work_set(turn: Turn, arguments: dict) -> str:
-    body = work_cards.WorkSetIn(**{key: arguments[key] for key in ("title", "goal", "done_when") if arguments.get(key)})
+    body = work_cards.WorkSetIn(**{key: arguments[key] for key in work_cards.FIELDS if arguments.get(key)})
     async with turn.engine.begin() as conn:
         card = await work_cards.set_work(conn, await _agent_run(conn, turn), body)
     return f"the work of trace #{card.trace_id} is now: {card.title} (status {card.status})"

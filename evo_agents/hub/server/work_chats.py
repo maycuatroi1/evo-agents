@@ -19,7 +19,10 @@ it into that thread.
 What the coordinator writes in that thread is copied onto the main line (``copy_out``), and a person's message on the
 main line that mentions no agent goes to the coordinator's session as a copy in that thread (``to_coordinator``); a
 copy names the message it copies (``chat_messages.copied_from_id``) and hands no work. The lines of the hub about a
-hand-off (asked, answered, refused, gave no answer, withheld, escalated) go to the work chat (``line_place``).
+hand-off (asked, answered, refused, gave no answer, withheld, escalated) go to the work chat (``line_place``). A line
+that repeats a message of the work chat (the question an "asked" line shows, the answer an "answered" line shows) names
+it (``chat_messages.repeats_id``, the ``repeats`` of the chat API), so a page may fold it; a line in any other chat,
+and every line before revision 0270, names none.
 """
 
 from __future__ import annotations
@@ -362,11 +365,24 @@ async def line_place(
 
 
 async def say(
-    conn: AsyncConnection, run_id: int, own: tuple[int, int], text: str, there: tuple[int, int] | None = None
+    conn: AsyncConnection,
+    run_id: int,
+    own: tuple[int, int],
+    text: str,
+    there: tuple[int, int] | None = None,
+    *,
+    repeats: int | None = None,
 ) -> int:
-    """The line ``text`` of the hub about a hand-off of run ``run_id``, where ``line_place`` puts it; its id."""
+    """The line ``text`` of the hub about a hand-off of run ``run_id``, where ``line_place`` puts it; its id. It names
+    message ``repeats``, which it repeats, when the line is in a work chat and that message is of the same chat."""
     chat_id, root_id = await line_place(conn, run_id, own, there)
-    return await hub_reply(conn, chat_id, root_id, text)
+    message_id = await hub_reply(conn, chat_id, root_id, text)
+    if repeats is not None:
+        m, c = tables.chat_messages, tables.chats
+        same = exists().where(m.c.id == repeats, m.c.chat_id == chat_id)
+        work = exists().where(c.c.id == chat_id, c.c.kind == chats.WORK)
+        await conn.execute(update(m).values(repeats_id=repeats).where(m.c.id == message_id, same, work))
+    return message_id
 
 
 # Copies between the work chat and the coordinator's session

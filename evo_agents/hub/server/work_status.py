@@ -16,6 +16,11 @@ a person drives (``interactive``) or reviews (``review``); ``run``, the run an o
 none.
 ``agent`` is the handle of the latest run of the trace at work (WORKING).
 
+The outcome (OUTCOMES) is apart from the status, which it never changes: what the entry agent recorded of the work
+against its done-when (``work set --outcome met|not_met --left TEXT``), null until it records one. Once a member of the
+work chat marked the work handled (``work_cards``, Mark as handled), a recorded ``not_met`` reads null; the card names
+who marked it and when, and a later ``work set --outcome`` clears the mark.
+
 ``briefs`` gives this for many traces at once, ``cards`` the whole card: what the entry agent set (``work set``; the
 first line of the trace's first message is the title until then), the sub-tasks (each ask, escalation and reassignment:
 the agent, the goal of its brief, its status, run, cost and thread), the decisions (the Orchestrator's threads with
@@ -41,6 +46,8 @@ from evo_agents.hub.server import system_store, system_trace_stats, system_trace
 
 WorkStatus = Literal["running", "needs_person", "failed", "done"]
 STATUSES: tuple[str, ...] = get_args(WorkStatus)
+Outcome = Literal["met", "not_met"]
+OUTCOMES: tuple[str, ...] = get_args(Outcome)
 WaitKind = Literal["run", "person", "decision"]
 WAITS: tuple[str, ...] = get_args(WaitKind)
 AskKind = Literal["ask", "escalate", "reassign"]
@@ -83,6 +90,14 @@ class WorkBrief(BaseModel):
     waiting: WorkWaiting | None = Field(description="what the work waits for; null for nothing")
     coordinator: str | None = Field(
         default=None, description="the handle of the system's entry agent, which coordinates the work"
+    )
+    outcome: Outcome | None = Field(
+        default=None,
+        description="what the entry agent recorded of the work against its done-when (work set --outcome); null "
+        "when it recorded none, and for a not_met a member marked handled",
+    )
+    left: str | None = Field(
+        default=None, description="what the entry agent named as still to do (work set --left); null for nothing"
     )
 
 
@@ -139,6 +154,10 @@ class WorkCard(WorkBrief):
     started_at: datetime
     ended_at: datetime | None = Field(description="its last span, once no run of it is active; null while running")
     seconds: float = Field(description="from its start to its end, or to now")
+    handled_by: str | None = Field(
+        default=None, description="the login of the member who marked the work handled; null until one did"
+    )
+    handled_at: datetime | None = Field(default=None, description="when the work was marked handled")
 
 
 @dataclass
@@ -156,7 +175,7 @@ class _Read:
 
 def _trace_query(trace_ids: list[int]):
     t, s, m = tables.system_traces, tables.agent_systems, tables.chat_messages
-    p, a = tables.projects, tables.agent_profiles
+    p, a, u = tables.projects, tables.agent_profiles, tables.users
     return (
         select(
             t.c.id,
@@ -170,6 +189,10 @@ def _trace_query(trace_ids: list[int]):
             t.c.title,
             t.c.goal,
             t.c.done_when,
+            t.c.outcome,
+            t.c.outcome_left,
+            t.c.handled_at,
+            u.c.login.label("handled_login"),
             t.c.started_at,
             t.c.last_at,
             s.c.name.label("system_name"),
@@ -183,6 +206,7 @@ def _trace_query(trace_ids: list[int]):
             .outerjoin(m, m.c.id == t.c.message_id)
             .outerjoin(p, p.c.id == t.c.project_id)
             .outerjoin(a, a.c.id == s.c.entry_profile_id)
+            .outerjoin(u, u.c.id == t.c.handled_by)
         )
         .where(t.c.id.in_(trace_ids))
     )
@@ -314,6 +338,13 @@ def _waiting(read: _Read, trace_id: int) -> WorkWaiting | None:
     return None
 
 
+def outcome_of(row) -> str | None:
+    """The outcome a trace's row reads (see the module's docstring): a not_met a member marked handled reads null."""
+    if row["outcome"] == "not_met" and row["handled_at"] is not None:
+        return None
+    return row["outcome"]
+
+
 def _brief(read: _Read, trace_id: int) -> WorkBrief:
     trace = read.traces[trace_id]
     row = trace._mapping
@@ -328,6 +359,8 @@ def _brief(read: _Read, trace_id: int) -> WorkBrief:
         agent=working[-1].agent if working else None,
         waiting=_waiting(read, trace_id),
         coordinator=row["coordinator"],
+        outcome=outcome_of(row),  # type: ignore[arg-type]  # one of OUTCOMES
+        left=row["outcome_left"],
     )
 
 
@@ -457,6 +490,8 @@ def _card(read: _Read, trace_id: int, asks: list[WorkAsk], used: tuple, limits: 
         started_at=row["started_at"],
         ended_at=ended,
         seconds=max(0.0, round(seconds, 3)),
+        handled_by=row["handled_login"],
+        handled_at=row["handled_at"],
     )
 
 
@@ -484,7 +519,10 @@ async def cards(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, WorkCa
 
 def card_state(card: WorkCard) -> str:
     """A short key of what ``card`` shows that a move changes: when it is the one stored, the streams are not told."""
-    shown = card.model_dump(mode="json", include={"title", "goal", "done_when", "status", "agent", "waiting"})
+    shown = card.model_dump(
+        mode="json",
+        include={"title", "goal", "done_when", "status", "agent", "waiting", "outcome", "left", "handled_by"},
+    )
     shown["asks"] = [(ask.status, ask.run_id) for ask in card.asks]
     shown["decisions"] = [(d.kind, d.id, d.state, d.outcome) for d in card.decisions]
     return hashlib.sha256(json.dumps(shown, sort_keys=True).encode()).hexdigest()[:32]

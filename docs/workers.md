@@ -955,7 +955,8 @@ thread, and the command exits 1.
 ### The work of a trace
 
 The entry agent of an agent system, which coordinates a trace, names its work with `evo-agents worker work set`
-(`POST /v1/worker/runs/{id}/work`, body `{title, goal, done_when}`, each optional but one needed; 422 for none). The
+(`POST /v1/worker/runs/{id}/work`, body `{title, goal, done_when, outcome, left}`, each optional but one needed; 422
+for none). The
 worker token that holds the run sends it. The hub keeps them on the trace, refreshes the work card in the root thread
 (`docs/hub.md`, Work chats) and answers with the card. It refuses with 409 a run in no trace with a work chat (a trace
 that handed no work over yet), and with 403 an agent that is not the system's entry agent. Without `--title` the card
@@ -963,9 +964,15 @@ shows the first line of the person's message, at most 80 characters. A run of th
 for the same. The System section of the entry agent's prompt tells it that hand-offs open a work chat, to name the
 work with this command, and to give its final answer in the root thread.
 
+Before its final answer the entry agent records the outcome against the done-when with `work set --outcome met`, or
+`--outcome not_met --left TEXT` naming what is still to do (a merge, a credential, a person's answer). The card shows
+it apart from its status, and a member of the work chat can then mark the work handled (`docs/hub.md`, The work card).
+An outcome given without `--left` clears what was left.
+
 ```sh
 evo-agents worker work set --title "Refund R-17" --goal "a decision on refund R-17" \
   --done-when "the customer has the answer in the root thread"
+evo-agents worker work set --outcome not_met --left "the refund needs a person's approval"
 ```
 
 ### Escalation

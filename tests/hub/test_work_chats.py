@@ -697,3 +697,130 @@ def test_a_home_mention_of_two_agents_of_one_system_makes_one_run_of_its_entry_a
         ("reviewer", True, None),
     ]
     assert len({mention["run_id"] for mention in said["mentions"]}) == 1
+
+
+# The outcome of the work, Mark as handled and the hub's lines that repeat (plan agent-workspace-home, step 1)
+
+
+def test_work_set_records_outcome(client, hub, hub_db):
+    import argparse
+
+    from evo_agents.hub.server import work_status
+    from evo_agents.worker import work_cli
+
+    parser = argparse.ArgumentParser(prog="evo-agents worker")
+    work_cli.register_work(parser.add_subparsers(dest="command"))
+    args = parser.parse_args(["work", "set", "--outcome", "not_met", "--left", "merge the fix"])
+    assert work_cli.payload(args) == {"outcome": "not_met", "left": "merge the fix"}
+    with pytest.raises(SystemExit):
+        parser.parse_args(["work", "set", "--outcome", "maybe"])
+
+    studio, _, chat, _, parent = desk(client, hub)
+    asked(client, studio, parent, "fixer")
+    trace_id, work = opened(hub_db)
+    message_id = card_message(hub_db, trace_id)
+    shown = card(client, hub, work)
+    assert (shown["outcome"], shown["left"], shown["handled_by"]) == (None, None, None), "none recorded yet"
+    assert in_chats(client, studio, parent, "work", {"outcome": "maybe"}).status_code == 422
+    before = card_events(hub_db, chat["id"], message_id)
+    body = {"outcome": "not_met", "left": "merge the fix: the run had no GitHub credential"}
+    done = in_chats(client, studio, parent, "work", body)
+    assert done.status_code == 200, done.text
+    assert (done.json()["outcome"], done.json()["left"]) == tuple(body.values())
+    assert done.json()["status"] in work_status.STATUSES
+    assert card_events(hub_db, chat["id"], message_id) == before + 1, "the outcome changed the card"
+    listed = {item["id"]: item for item in client.get("/v1/chats", headers=hub["owner"]).json()}
+    brief = listed[work]["work"]
+    assert (brief["outcome"], brief["left"]) == tuple(body.values()), "the list carries the outcome"
+    assert brief["status"] in work_status.STATUSES
+
+    again = in_chats(client, studio, parent, "work", {"title": "Retry loop"})
+    assert again.json()["outcome"] == "not_met", "a field not given keeps its value"
+    met = in_chats(client, studio, parent, "work", {"outcome": "met"})
+    assert (met.json()["outcome"], met.json()["left"]) == ("met", None), "an outcome without --left clears it"
+
+
+def handled(client, headers: dict, chat_id: int):
+    return client.post(f"/v1/chats/{chat_id}/work/handled", headers=headers)
+
+
+def test_member_marks_work_handled(client, hub, hub_db):
+    studio, _, chat, _, parent = desk(client, hub)
+    asked(client, studio, parent, "fixer")
+    trace_id, work = opened(hub_db)
+    message_id = card_message(hub_db, trace_id)
+    body = {"outcome": "not_met", "left": "merge the fix"}
+    assert in_chats(client, studio, parent, "work", body).status_code == 200
+
+    assert handled(client, hub["other"], work).status_code == 404, "not a member: the chat is not theirs to read"
+    assert handled(client, hub["owner"], chat["id"]).status_code == 404, "no work chat"
+    assert client.put(f"/v1/chats/{work}/people/{OTHER}", headers=hub["owner"]).status_code == 200
+    reader = {"role": "reader", "max_level": "internal"}
+    grant = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OTHER}", json=reader, headers=hub["admin"])
+    assert grant.status_code == 200, grant.text
+    assert card_of(client, hub["other"], work).status_code == 200, "a reader reads the card"
+    refused = handled(client, hub["other"], work)
+    assert refused.status_code == 403 and "writer role" in refused.text, refused.text
+    audits = select(func.count()).where(tables.audit.c.action == "work.handled")
+    assert rows(hub_db, audits) == [(0,)]
+
+    before = card_events(hub_db, chat["id"], message_id)
+    done = handled(client, hub["owner"], work)
+    assert done.status_code == 200, done.text
+    shown = card(client, hub, work)
+    assert shown["outcome"] is None, "a not_met marked handled no longer reads so"
+    assert shown["left"] == "merge the fix" and shown["handled_by"] == OWNER and shown["handled_at"] is not None
+    listed = {item["id"]: item for item in client.get("/v1/chats", headers=hub["owner"]).json()}
+    assert listed[work]["work"]["outcome"] is None
+    assert card_events(hub_db, chat["id"], message_id) == before + 1, "the mark changed the card"
+    a = tables.audit
+    assert rows(hub_db, select(a.c.target).where(a.c.action == "work.handled")) == [(f"trace:{trace_id} chat:{work}",)]
+
+    # a later outcome of the coordinator stands for itself
+    assert in_chats(client, studio, parent, "work", {"outcome": "not_met"}).status_code == 200
+    shown = card(client, hub, work)
+    assert (shown["outcome"], shown["handled_by"], shown["handled_at"]) == ("not_met", None, None)
+
+
+def test_hub_lines_name_what_they_repeat(client, hub, hub_db):
+    studio = chat_worker(client, hub["owner"], "studio", slots=3)
+    fixer = chat_worker(client, hub["owner"], "fixer-node", slots=3, pool="fixer")
+
+    # outside a work chat a line of the hub names nothing it repeats, as before
+    plain = created(client, hub["owner"], title="Retry talk")
+    mention, own = started(client, hub, studio, plain)
+    assert asked(client, studio, own["id"], "fixer", "is the cap five?")["refusal"] is None
+    lines = [item for item in messages_in(hub_db, plain["id"]) if item["body"].startswith("@reviewer asked @fixer")]
+    assert lines, "the asked line in the plain chat"
+    shown = thread(client, hub["owner"], plain["id"], lines[0]["root"] or lines[0]["id"])
+    assert shown and all(item["repeats"] is None for item in shown)
+    m = tables.chat_messages
+    assert rows(hub_db, select(func.count()).where(m.c.repeats_id.is_not(None))) == [(0,)]
+    assert claimed(client, fixer) is not None
+    recover(client)
+
+    put_system(client, hub["owner"], SPEC)
+    chat = created(client, hub["owner"])
+    _, spec_run = started(client, hub, studio, chat)
+    parent = spec_run["id"]
+    child = asked(client, studio, parent, "fixer")["run_id"]
+    _, work = opened(hub_db)
+    (question,) = [item for item in messages_in(hub_db, work) if asking(item, QUESTION)]
+    (line,) = [item for item in messages_in(hub_db, work) if item["body"].startswith("@reviewer asked @fixer")]
+    shown = thread(client, hub["owner"], work, line["root"] or line["id"])
+    assert [item["repeats"] for item in shown if item["id"] == line["id"]] == [question["id"]], (
+        "the asked line names the question it repeats"
+    )
+
+    assert claimed(client, fixer) == child
+    moved(client, fixer, child, "running", session_id="sess-fix")
+    moved(client, studio, parent, "waiting")
+    recover(client)
+    reply(client, fixer, child, "The loop now backs off, capped at five.")
+    ended(client, fixer, child)
+    (said,) = [item for item in messages_in(hub_db, work) if item["run_id"] == child and "backs off" in item["body"]]
+    shown = thread(client, hub["owner"], work, question["id"])
+    (answered,) = [item for item in shown if item["body"].startswith(f"@fixer answered (run #{child})")]
+    assert answered["repeats"] == said["id"], "the answered line names the answer it repeats"
+    hub_lines = {line["id"], answered["id"]}
+    assert all(item["repeats"] is None for item in shown if item["id"] not in hub_lines), "no other message repeats"
