@@ -29,12 +29,20 @@ COPY evo_agents ./evo_agents
 RUN /opt/venv/bin/pip install '.[hub-server,graphify,semantic,ingest,entities]' \
     && /opt/venv/bin/evo-agents --version
 # pip installs exactly the lines evo_agents.plugins.core_install wrote (--no-deps), each wheel against its hash, and
-# never builds a source distribution. -I keeps /src off the path: the helper is the installed one.
+# never builds a source distribution. -I keeps /src off the path: the helper is the installed one. A release published
+# minutes before the build may not be in the index's CDN yet (pip: "Could not find a version that satisfies the
+# requirement"): the install runs again, up to 8 times, waiting 15 s more each time, without a cache so the index page
+# is read afresh. The pins and --require-hashes stay as they are; a wrong pin still fails the build, after the last try.
 COPY deploy/hub/core-plugins.txt /tmp/core-plugins.txt
 RUN /opt/venv/bin/python -I -m evo_agents.plugins.core_install pinned /tmp/core-plugins.txt > /tmp/pinned.txt \
     && if [ -s /tmp/pinned.txt ]; then \
-         /opt/venv/bin/pip install --no-deps --require-hashes --only-binary=:all: \
-           --index-url https://pypi.org/simple -r /tmp/pinned.txt; \
+         n=1; \
+         until /opt/venv/bin/pip install --no-cache-dir --no-deps --require-hashes --only-binary=:all: \
+           --index-url https://pypi.org/simple -r /tmp/pinned.txt; do \
+           [ "$n" -lt 8 ] || exit 1; \
+           echo "pinned core plugins: index lag? try $n of 8 failed, waiting $((n * 15)) s" >&2; \
+           sleep $((n * 15)); n=$((n + 1)); \
+         done; \
        fi
 # The secret's URLs, which may hold a credential, live in its tmpfs and in the environment of the one pip command,
 # never in a file of a layer; the argument's requirements are no secret (`docker history` of this stage shows them).

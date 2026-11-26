@@ -369,3 +369,17 @@ def test_core_install_check_in_a_process_of_its_own_exits_1_on_a_plugin_that_doe
     assert done.returncode == alone.returncode, done.stdout + done.stderr
     assert [line for line in done.stderr.splitlines() if " does not load: " in line] == lagging
     assert "core plugin lumen-relay 1.0.0: entry point lumen-relay of lumen-relay 1.0.0" in done.stdout
+
+
+def test_dockerfile_retries_the_pinned_install_against_index_lag_and_keeps_the_hash_pin():
+    """A release the index's CDN does not list yet fails pip once; the build tries again, the pin staying strict."""
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "deploy/hub/Dockerfile").read_text()
+    step = re.search(r"RUN [^\n]*core_install pinned.*?\n       fi\n", text, re.S)
+    assert step, "the pinned install step"
+    body = step.group(0)
+    assert "until /opt/venv/bin/pip install" in body and "sleep" in body and "exit 1" in body
+    for flag in ("--require-hashes", "--only-binary=:all:", "--no-deps", "--index-url https://pypi.org/simple"):
+        assert flag in body
