@@ -434,15 +434,15 @@ def _register_steering_commands(hsub) -> None:
     from evo_agents.hub.cli_browser import register_browser
 
     register_browser(hsub)
-    from evo_agents.hub.cli_stop import register_stop
+    from evo_agents.hub.cli.stop import STOP
 
-    register_stop(hsub)
-    from evo_agents.hub.cli_run_cause import register_run_cause
+    STOP.attach(hsub)
+    from evo_agents.hub.cli.run_cause import RUN_CAUSE
 
-    register_run_cause(hsub)
-    from evo_agents.hub.cli_inbox import register_inbox
+    RUN_CAUSE.attach(hsub)
+    from evo_agents.hub.cli.inbox import INBOX
 
-    register_inbox(hsub)
+    INBOX.attach(hsub)
 
 
 def register(sub) -> None:

@@ -1,8 +1,10 @@
 """The keys of the run the hub answers, as ``evo-agents hub run`` commands print it with --json: the contract of the
-schema Run (``evo-agents hub contract print``), which ``evo_agents.hub.run_cli`` and the commands around it name. A key
+schema Run (``evo-agents hub contract print``), which ``evo_agents.hub.cli.run`` and the commands around it name. A key
 the hub adds to Run is added here, or the contract test fails. Standard library only, like the rest of the client."""
 
 from __future__ import annotations
+
+from evo_agents.clikit import returns_object
 
 RUN_KEYS = (
     "id",
@@ -75,3 +77,5 @@ RUN_KEYS += ("as_owner", "as_owner_since")  # its owner lets it call the hub as 
 RUN_KEYS += ("model_used", "routing")  # the model its runtime used, and what the model routing did (null: none)
 RUN_KEYS += ("spawned_by_run_id",)  # the chat run whose agent asked for this one (worker agent ask); null otherwise
 RUN_KEYS += ("priority",)  # the order a worker claims queued runs in (runs.PRIORITIES); medium unless set
+
+RUN_OUTPUT = returns_object(*RUN_KEYS, schema="Run")  # what a command that answers one run prints with --json

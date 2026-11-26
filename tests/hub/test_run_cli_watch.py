@@ -9,9 +9,10 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import run_cli_watch
+from evo_agents.hub.cli import base
+from evo_agents.hub.cli.run import watch as watching
+from evo_agents.hub.cli.run.watch import EXIT_NO_CHANGE, Clock, watch
 from evo_agents.hub.client import HubError, Unreachable
-from evo_agents.hub.run_cli_watch import EXIT_NO_CHANGE, Clock, watch
 
 PROJECT = "demo"
 
@@ -210,8 +211,8 @@ def test_the_command_reads_runs_decisions_and_plans_of_the_project(monkeypatch, 
         {"runs": {7: "done"}, "plans": {"rollout": {"1": "pending"}}},
         {"runs": {7: "done"}, "plans": {"rollout": {"1": "done"}}},
     )
-    monkeypatch.setattr(run_cli_watch, "signed_in", lambda: (hub, None))
-    monkeypatch.setattr(run_cli_watch, "Clock", lambda: FakeClock(hub))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(watching, "Clock", lambda: FakeClock(hub))
     result = cli(monkeypatch, capsys, "7", "7", "--plan", "rollout:1", "--plan", "rollout", "--project", PROJECT)
     assert result.code == 0, result.err
     assert hub.calls[:3] == [

@@ -16,7 +16,7 @@ project.
 
 ``list`` prints the caller's own secrets without their values (GET /v1/secrets), and ``delete`` deletes one (DELETE
 /v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``bind``, in
-``cli_bindings``, binds one to other workers or pools without its value. ``hub run credentials``, in ``run_cli``, lists
+``cli_bindings``, binds one to other workers or pools without its value. ``hub run credentials``, in ``evo_agents.hub.cli.run``, lists
 the leases one run got of them.
 
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same

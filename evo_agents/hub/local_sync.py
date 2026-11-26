@@ -30,7 +30,7 @@ current:
 
 Every hook registers a session it does not know yet, so a Claude that fires only some of these events still shows its
 sessions; a hub that never sees SessionEnd ends a run silent for 24 hours. The plan and step of the run are the hub's
-to set: a plan write that names the run sets them (``run_for`` gives the id to ``evo_agents.hub.plan_cli`` and to the
+to set: a plan write that names the run sets them (``run_for`` gives the id to ``evo_agents.hub.cli.plan`` and to the
 MCP proxy), whether it comes from ``hub plan step``, ``evo harness step`` through the hub, or the ``plan_step`` tool.
 
 What this machine keeps is ``~/.evo/hub/local/<session id>.json`` (``evo_agents.hub.local_store``): the run's id, the

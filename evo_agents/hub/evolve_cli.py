@@ -17,10 +17,10 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import call_object, client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.curator import money
-from evo_agents.hub.plan_cli import project_of_args
 
 EVOLVE_KEYS = (
     "id",
@@ -109,7 +109,7 @@ def _print_evolution(found: dict) -> None:
 @client_command
 def cmd_run(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     if args.repo:
         body = {"target": "git", "repo": args.repo, "paths": args.path or []}
     else:
@@ -127,7 +127,7 @@ def cmd_run(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    found = call_object(hub, "GET", _path(project_of_args(args), str(args.evolution)))
+    found = call_object(hub, "GET", _path(project_of(args), str(args.evolution)))
     if args.json:
         print_json(found)
         return 0
@@ -138,7 +138,7 @@ def cmd_show(args) -> int:
 @client_command
 def cmd_status(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     query = {"limit": args.limit, **({"state": args.state} if args.state else {})}
     found = call_object(hub, "GET", _path(project) + f"?{urlencode(query)}")
     if args.json:

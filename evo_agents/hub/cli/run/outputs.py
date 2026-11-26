@@ -1,4 +1,4 @@
-"""``evo-agents hub run outputs RUN [--source S] [--download DIR] [--json]``, for ``evo_agents.hub.run_cli``: the files
+"""``evo-agents hub run outputs RUN [--source S] [--download DIR] [--json]``, for ``evo_agents.hub.cli.run``: the files
 a run's agent made that the hub keeps (``evo_agents.hub.outputs``), as GET /v1/projects/{p}/runs/{id}/outputs lists
 them, oldest first: id, source, name, media type, size and caption.
 
@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from urllib.parse import quote, urlencode
 
+from evo_agents.clikit import Arg, Result, Table, Text, Views, returns_object
 from evo_agents.hub import outputs
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.run.options import RUN_ID
+from evo_agents.hub.cli.run.resources import Runs
 from evo_agents.hub.client import HubError, get_presigned
-from evo_agents.hub.contract import json_option, returns_object
 
 OUTPUTS_KEYS = ("run_id", "outputs", "count", "bytes", "tool_images")
 CAPTION_CHARS = 50  # of a caption in the table
@@ -67,14 +68,15 @@ def place(directory: Path, name: str, sha256: str) -> tuple[Path, bool]:
     return candidate, False
 
 
-def download(hub, path: str, outputs_listed: list[dict], directory: Path) -> list[tuple[str, Path, bool]]:
-    """Save each output into ``directory`` (see the module): (name, path, whether it was there already) of each."""
+def download(runs: Runs, run_id: int, outputs_listed: list[dict], directory: Path) -> list[tuple[str, Path, bool]]:
+    """Save each output of run ``run_id`` into ``directory`` (see the module): (name, path, whether it was there
+    already) of each."""
     directory.mkdir(parents=True, exist_ok=True)
     saved = []
     for output in outputs_listed:
         target, held = place(directory, output["name"], output["sha256"])
         if not held:
-            link = hub.call("GET", f"{path}/{output['id']}/link")
+            link = runs.output_link(run_id, output["id"])
             target.parent.mkdir(parents=True, exist_ok=True)
             partial = target.with_name(target.name + ".part")
             digest = get_presigned(link["url"], partial, output["size"])
@@ -86,48 +88,39 @@ def download(hub, path: str, outputs_listed: list[dict], directory: Path) -> lis
     return saved
 
 
-def register_outputs(rsub, with_run, project_of) -> None:
-    """Add ``run outputs`` to the subparsers ``rsub`` of ``run``, its ``RUN`` and ``--project`` by ``with_run``;
-    ``project_of`` reads the project of the parsed arguments."""
+class RunOutputs(HubCommand):
+    name = "outputs"
+    help = (
+        "the files a run's agent made that the hub keeps (sent, tool images, .evo-run/outputs/); --download saves them"
+    )
+    arguments = (
+        RUN_ID,
+        PROJECT,
+        Arg(
+            "--source",
+            action="append",
+            choices=outputs.SOURCES,
+            metavar="SOURCE",
+            help=f"only outputs of this source, one of {', '.join(outputs.SOURCES)}; repeat it for several",
+        ),
+        Arg(
+            "--download",
+            metavar="DIR",
+            help="save each output into DIR under its own name, checked against its SHA-256",
+        ),
+    )
+    output = returns_object(*OUTPUTS_KEYS, schema="RunOutputs")
+    columns = ("ID", "SOURCE", "NAME", "TYPE", "SIZE", "CAPTION")
 
-    @client_command
-    def command(args) -> int:
-        hub, _ = signed_in()
-        path = f"/v1/projects/{quote(project_of(args), safe='')}/runs/{args.run}/outputs"
-        query = urlencode([("source", source) for source in args.source or ()])
-        found = hub.call("GET", path + (f"?{query}" if query else ""))
-        saved = download(hub, path, found["outputs"], Path(args.download)) if args.download else []
-        if args.json:
-            print_json(found)
-            return 0
+    def run(self, ctx: HubContext) -> Result:
+        args, runs = ctx.args, Runs.of(ctx)
+        found = runs.outputs(args.run, args.source or ())
+        saved = download(runs, args.run, found["outputs"], Path(args.download)) if args.download else []
         rows = [
             (o["id"], o["source"], o["name"], o["media_type"], size_text(o["size"]), _caption(o))
             for o in found["outputs"]
         ]
-        if rows:
-            table(("ID", "SOURCE", "NAME", "TYPE", "SIZE", "CAPTION"), rows)
-        else:
-            print(f"Run #{args.run} has no outputs" + (" of these sources." if args.source else "."))
-        print(f"{found['count']} output(s), {size_text(found['bytes'])}, on the hub for run #{args.run}.")
-        for name, target, held in saved:
-            print(f"{'kept' if held else 'saved'} {name} -> {target}")
-        return 0
-
-    listed = rsub.add_parser(
-        "outputs",
-        help="the files a run's agent made that the hub keeps (sent, tool images, .evo-run/outputs/); --download "
-        "saves them",
-    )
-    with_run(listed)
-    listed.add_argument(
-        "--source",
-        action="append",
-        choices=outputs.SOURCES,
-        metavar="SOURCE",
-        help=f"only outputs of this source, one of {', '.join(outputs.SOURCES)}; repeat it for several",
-    )
-    listed.add_argument(
-        "--download", metavar="DIR", help="save each output into DIR under its own name, checked against its SHA-256"
-    )
-    json_option(listed, returns_object(*OUTPUTS_KEYS, schema="RunOutputs"))
-    listed.set_defaults(func=command)
+        none = f"Run #{args.run} has no outputs" + (" of these sources." if args.source else ".")
+        lines = [f"{found['count']} output(s), {size_text(found['bytes'])}, on the hub for run #{args.run}."]
+        lines += [f"{'kept' if held else 'saved'} {name} -> {target}" for name, target, held in saved]
+        return Result(found, Views(Table(self.columns, rows, none), Text(*lines)))

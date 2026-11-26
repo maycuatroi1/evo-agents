@@ -14,8 +14,8 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from evo_agents.hub import tables
+from evo_agents.hub.cli.run.workers import worker_id
 from evo_agents.hub.client import HubError
-from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from tests.hub.test_plans import registration
 from tests.hub.test_pool_scheduling import agentless
 from tests.hub.test_runs import (  # noqa: F401  (fixtures)
@@ -175,14 +175,14 @@ def test_the_command_line_names_a_shared_worker_by_its_name_or_owner_and_name():
             assert (method, path) == ("GET", "/v1/workers")
             return rows
 
-    assert _worker_id(Hub(), "me", "lab") == 1  # one's own first
-    assert _worker_id(Hub(), "me", "ann/lab") == 2
-    assert _worker_id(Hub(), "me", "box") == 5
-    assert _worker_id(Hub(), "me", "7") == 7
+    assert worker_id(Hub(), "me", "lab") == 1  # one's own first
+    assert worker_id(Hub(), "me", "ann/lab") == 2
+    assert worker_id(Hub(), "me", "box") == 5
+    assert worker_id(Hub(), "me", "7") == 7
     with pytest.raises(HubError, match="several members share a worker named 'gpu'"):
-        _worker_id(Hub(), "me", "gpu")
+        worker_id(Hub(), "me", "gpu")
     with pytest.raises(HubError, match="no member shares one by that name"):
-        _worker_id(Hub(), "me", "nope")
+        worker_id(Hub(), "me", "nope")
 
 
 def test_the_shared_column_starts_false_for_every_worker(client, hub, hub_db):

@@ -461,7 +461,7 @@ def _note_strays(result: ExportResult, on_hub: set) -> None:
 
 
 def export(
-    hub, root: Path, project: str | None = None, *, commit: bool = False, keep_edited: bool = False
+    hub, root: Path | None, project: str | None = None, *, commit: bool = False, keep_edited: bool = False
 ) -> ExportResult:
     """Write the copy of every plan of the project that the caller sees into the harness at ``root``. With
     ``keep_edited``, a file at a copy's path that is not that copy as the hub wrote it stays as it is (status

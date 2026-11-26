@@ -1,6 +1,7 @@
-"""Options of ``evo-agents hub run`` that ``evo_agents.hub.run_cli`` registers through these functions: where, how and
-how long a step run, a plan run or an author run runs, the account a run takes and the agent profile it goes under,
-and the filters of ``run list``; and how a command refuses options that do not go together (``usage_error``).
+"""Options of ``evo-agents hub run``, as the arguments (``Arg``) the commands of ``evo_agents.hub.cli.run`` take:
+where, how and how long a step run, a plan run or an author run runs, the account a run takes and the agent profile
+it goes under, and the filters of ``run list``. :class:`RunOptions` is the value object that turns them into the body
+of a dispatch, a plan run, an author run or a rerun, and refuses (``UsageError``) options that do not go together.
 
 ``--account NAME`` on ``dispatch``, ``plan``, ``author`` and ``rerun`` picks one of your env secrets bound to the
 project, by name (``evo-agents hub account list``), or ``LOGIN/NAME`` one that member shares with you: the run takes it
@@ -26,7 +27,7 @@ reruns, and its identities.
 ``--as-me`` on ``dispatch`` and ``plan`` lets the run's agent call the hub's API as you, secrets, tokens and workers
 aside, through a token of the run's own that ends with it (``docs/credentials.md``, "A run that runs as its owner"); a
 rerun and the run that resumes a parked one keep the choice, and ``hub run access`` changes it afterwards
-(``run_cli_access``).
+(``evo_agents.hub.cli.run.access``).
 
 ``--system SLUG`` on ``plan`` hands the plan to an agent system of the project rather than queueing a plan run: its
 entry agent gets the plan in your direct chat with it and shares the steps out (POST .../plans/{id}/system-dispatch).
@@ -36,11 +37,16 @@ library only, like the rest of the client.
 
 from __future__ import annotations
 
+import argparse
 import sys
+from dataclasses import dataclass
 
-from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H
+from evo_agents.clikit import Arg, UsageError
+from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H, MAX_REQUEST_BYTES
+from evo_agents.hub.plan_writes import checked_plan_id
 from evo_agents.hub.runs import (
     APPROVALS,
+    MAX_MODEL_CHARS,
     MODES,
     PLAN_TIMEOUT_CHOICES,
     RUNTIMES,
@@ -54,7 +60,6 @@ RUNTIME_HELP = (
     f"any (the default: the first runtime of the core the claiming worker has), {', '.join(RUNTIMES)}, or "
     "<plugin>/<name>, a runtime a plugin enabled on the project declares"
 )
-EXIT_USAGE = 2
 ACCOUNT_HELP = (
     "one of your env secrets bound to the project, by name, as `hub account list` shows it, or LOGIN/NAME for one "
     "that member shares with you: the run takes it and keeps it, with no failover (default: the rules of your policy "
@@ -90,139 +95,19 @@ AGENT_HELP = (
     "the agent profile the run goes under, by handle, as `hub agent list` shows it; the hub refuses what it does not "
     "allow (default: the project's default agent, which allows everything)"
 )
-
-
-def account_option(parser, help_text: str = ACCOUNT_HELP, *, agent: bool = True) -> None:
-    """``--account``, and with ``agent`` ``--agent``: what a dispatched run takes and goes under."""
-    parser.add_argument("--account", metavar="NAME", help=help_text)
-    if agent:
-        parser.add_argument("--agent", metavar="HANDLE", help=AGENT_HELP)
-
-
 BROWSER_HELP = (
     "give the agent a Chromium of its own on its worker, whose DevTools endpoint it reads in EVO_BROWSER_CDP; only a "
     "worker that ran `evo-agents worker browser install` takes the run"
 )
-
-
 IDENTITY_HELP = (
     "open the run's Chromium logged in as this browser identity of yours, else of the project's (`evo-agents hub "
     "browser identity list`); once for each, the first one's profile with the others' cookies; implies --browser"
 )
-
-
-def browser_option(parser, *, identities: bool = False) -> None:
-    """``--browser``: the run's agent gets a Chromium of its own; with ``identities``, ``--identity`` too."""
-    parser.add_argument("--browser", action="store_true", help=BROWSER_HELP)
-    if identities:
-        parser.add_argument("--identity", metavar="NAME", action="append", dest="identities", help=IDENTITY_HELP)
-
-
-def browser_body(args) -> dict:
-    """What a dispatch, a plan run or a rerun sends of ``--browser`` and ``--identity``: only when asked, so an older
-    hub takes the rest."""
-    body = {"browser": True} if getattr(args, "browser", False) else {}
-    if getattr(args, "identities", None):
-        body["identities"] = list(args.identities)
-    return body
-
-
 AS_ME_HELP = (
     "let the run's agent call the hub's API as you, with your grants and hub admin if you are one, but never your "
     "secrets, tokens or workers, through a token of the run's own that ends with the run; a step, plan or author run "
     "only, and `hub run access RUN --revoke` stops it"
 )
-
-
-def as_me_option(parser) -> None:
-    """``--as-me``: the run runs as you (``AS_ME_HELP``)."""
-    parser.add_argument("--as-me", action="store_true", help=AS_ME_HELP)
-
-
-def as_me_body(args) -> dict:
-    """What a dispatch or a plan run sends of ``--as-me``: only when asked, so an older hub takes the rest."""
-    return {"as_me": True} if getattr(args, "as_me", False) else {}
-
-
-def usage_error(text: str) -> int:
-    """Say on stderr what is wrong with the options; the exit status of a usage error."""
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
-
-
-def rerun_options(parser) -> None:
-    """The options of `hub run rerun` after its run and --project: the account the rerun takes."""
-    group = parser.add_mutually_exclusive_group()
-    account_option(
-        group,
-        "one of your env secrets bound to the project, by name: the rerun takes it, with no failover (default: the "
-        "account picked by hand for the run rerun, if one was, else the rules of your policy pick)",
-        agent=False,
-    )
-    group.add_argument(
-        "--account-by-rule",
-        action="store_true",
-        help="let the rules of your policy pick the account, not keep the one picked by hand for the run rerun",
-    )
-    browser_option(parser)
-
-
-def rerun_body(args) -> dict | None:
-    """The body of a rerun: none when it keeps everything, so an older hub, which takes none, still takes it."""
-    body = browser_body(args)
-    if getattr(args, "account", None):
-        body["account"] = args.account
-    elif getattr(args, "account_by_rule", False):
-        body["account_by_rule"] = True
-    return body or None
-
-
-def dispatch_options(dispatch) -> None:
-    """The options of `hub run dispatch` after its plan, steps and --project: where, how and how long each run runs."""
-    dispatch.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
-    dispatch.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    dispatch.add_argument(
-        "--approval",
-        choices=APPROVALS,
-        help="default: review, which waits for `hub run approve`; auto marks the step done once every verify command "
-        "the worker runs again exits 0",
-    )
-    dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
-    browser_option(dispatch, identities=True)
-    as_me_option(dispatch)
-
-
-def list_options(listed) -> None:
-    """The filters and the page of `hub run list` after its --project."""
-    listed.add_argument(
-        "--state",
-        action="append",
-        choices=SHOWN_STATES,
-        metavar="STATE",
-        help=f"only runs in this state, one of {', '.join(SHOWN_STATES)}; repeat it for several",
-    )
-    listed.add_argument(
-        "--kind", choices=SHOWN_KINDS, metavar="KIND", help=f"only runs of this kind, one of {', '.join(SHOWN_KINDS)}"
-    )
-    listed.add_argument("--account", metavar="EMAIL", help="only local runs of this Claude account")
-    listed.add_argument("--plan", help="only runs of this plan")
-    listed.add_argument("--step", help="only runs of this step key")
-    listed.add_argument(
-        "--worker", help="only runs this worker of yours, or one shared with you, claimed, by id, name or owner/name"
-    )
-    listed.add_argument("--by", metavar="LOGIN", help="only runs this member dispatched")
-    listed.add_argument(
-        "--search",
-        metavar="TEXT",
-        help="text in the title, step, plan, repo, branch, worker, login, error, machine, directory or account, or a "
-        "run number such as #12",
-    )
-    listed.add_argument("--limit", type=int, choices=range(1, 201), metavar="N", help="1 to 200 (default 50)")
-    listed.add_argument("--offset", type=int, metavar="N", help="skip this many runs, for the next page")
-
-
 SYSTEM_HELP = (
     "hand the plan to this agent system of the project, by slug, rather than queue a plan run: its entry agent gets "
     "the plan in your direct chat with it, opens a trace and shares the steps out; no other option of a plan run goes "
@@ -242,60 +127,219 @@ SYSTEM_REFUSES = (
     ("--as-me", "as_me"),
 )
 
+# The arguments
 
-def system_conflicts(args) -> list[str]:
-    """The options of a plan run given together with ``--system``, as flags; empty without ``--system``."""
-    if getattr(args, "system", None) is None:
-        return []
-    return [flag for flag, name in SYSTEM_REFUSES if getattr(args, name, None) not in (None, False)]
+RUN_ID = Arg("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
+PLAN_ID = Arg("plan", metavar="PLAN", help="the plan's id")
+RUNTIME = Arg("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
+MODEL = Arg(
+    "--model",
+    help="the model, as the runtime names it (opencode: provider/model); needs --runtime with that runtime "
+    "(default: the runtime's own choice)",
+)
+MODE = Arg("--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker")
+APPROVAL = Arg(
+    "--approval",
+    choices=APPROVALS,
+    help="default: review, which waits for `hub run approve`; auto marks the step done once every verify command "
+    "the worker runs again exits 0",
+)
+TIMEOUT = Arg("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
+PLAN_TIMEOUT_H = Arg(
+    "--timeout-h",
+    type=int,
+    choices=PLAN_TIMEOUT_CHOICES,
+    metavar="HOURS",
+    help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
+    "decision and parked do not count",
+)
+SESSION_PER_STEP = Arg(
+    "--session-per-step",
+    action="store_true",
+    help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
+    "than one session for every step, and its steps run one after another, never two at once, where one session "
+    "starts the ready steps together; a worker takes it once its daemon says it runs one",
+)
+BROWSER = Arg("--browser", action="store_true", help=BROWSER_HELP)
+IDENTITY = Arg("--identity", metavar="NAME", action="append", dest="identities", help=IDENTITY_HELP)
+AS_ME = Arg("--as-me", action="store_true", help=AS_ME_HELP)
+ACCOUNT = Arg("--account", metavar="NAME", help=ACCOUNT_HELP)
+AGENT = Arg("--agent", metavar="HANDLE", help=AGENT_HELP)
+SYSTEM = Arg("--system", metavar="SLUG", help=SYSTEM_HELP)
 
-
-def plan_options(plan, with_model) -> None:
-    """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
-    plan.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
-    with_model(plan)
-    plan.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    plan.add_argument(
-        "--timeout-h",
-        type=int,
-        choices=PLAN_TIMEOUT_CHOICES,
-        metavar="HOURS",
-        help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
-        "decision and parked do not count",
-    )
-    plan.add_argument(
-        "--session-per-step",
-        action="store_true",
-        help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
-        "than one session for every step, and its steps run one after another, never two at once, where one session "
-        "starts the ready steps together; a worker takes it once its daemon says it runs one",
-    )
-    browser_option(plan, identities=True)
-    account_option(plan)
-    as_me_option(plan)
-    plan.add_argument("--system", metavar="SLUG", help=SYSTEM_HELP)
-
-
-def author_options(authored) -> None:
-    """The options of `hub run author` after its request and --project."""
-    authored.add_argument(
+# after the plan, the steps and --project of `hub run dispatch`: where, how and how long each run runs
+DISPATCH_ARGS = (RUNTIME, MODE, APPROVAL, TIMEOUT, BROWSER, IDENTITY, AS_ME, MODEL, ACCOUNT, AGENT)
+# after the plan and --project of `hub run plan`: where, how and how long the plan run runs
+PLAN_ARGS = (RUNTIME, MODEL, MODE, PLAN_TIMEOUT_H, SESSION_PER_STEP, BROWSER, IDENTITY, ACCOUNT, AGENT, AS_ME, SYSTEM)
+# after the request and --project of `hub run author`
+AUTHOR_ARGS = (
+    Arg(
         "--plan",
         metavar="PLAN",
         help="the plan to revise, one you can read; the agent puts it back with its revision (default: a new plan)",
-    )
-    authored.add_argument(
+    ),
+    Arg(
         "--runtime",
         choices=REQUESTED_RUNTIMES,
         help=f"default: {AUTHOR_RUNTIMES[0]}, the one runtime an author run takes; the hub refuses another",
-    )
-    authored.add_argument("--model", help="the model, as Claude Code names it (default: Claude Code's own choice)")
-    authored.add_argument(
+    ),
+    Arg("--model", help="the model, as Claude Code names it (default: Claude Code's own choice)"),
+    Arg(
         "--timeout-h",
         type=int,
         choices=AUTHOR_TIMEOUT_CHOICES,
         metavar="HOURS",
         help=f"hours of agent time, one of {', '.join(map(str, AUTHOR_TIMEOUT_CHOICES))} (default {DEFAULT_TIMEOUT_H})",
-    )
-    account_option(authored)
+    ),
+    ACCOUNT,
+    AGENT,
+)
+# the filters and the page of `hub run list` after its --project
+LIST_ARGS = (
+    Arg(
+        "--state",
+        action="append",
+        choices=SHOWN_STATES,
+        metavar="STATE",
+        help=f"only runs in this state, one of {', '.join(SHOWN_STATES)}; repeat it for several",
+    ),
+    Arg("--kind", choices=SHOWN_KINDS, metavar="KIND", help=f"only runs of this kind, one of {', '.join(SHOWN_KINDS)}"),
+    Arg("--account", metavar="EMAIL", help="only local runs of this Claude account"),
+    Arg("--plan", help="only runs of this plan"),
+    Arg("--step", help="only runs of this step key"),
+    Arg("--worker", help="only runs this worker of yours, or one shared with you, claimed, by id, name or owner/name"),
+    Arg("--by", metavar="LOGIN", help="only runs this member dispatched"),
+    Arg(
+        "--search",
+        metavar="TEXT",
+        help="text in the title, step, plan, repo, branch, worker, login, error, machine, directory or account, or a "
+        "run number such as #12",
+    ),
+    Arg("--limit", type=int, choices=range(1, 201), metavar="N", help="1 to 200 (default 50)"),
+    Arg("--offset", type=int, metavar="N", help="skip this many runs, for the next page"),
+)
+RERUN_ACCOUNT = Arg(
+    "--account",
+    metavar="NAME",
+    help="one of your env secrets bound to the project, by name: the rerun takes it, with no failover (default: the "
+    "account picked by hand for the run rerun, if one was, else the rules of your policy pick)",
+)
+ACCOUNT_BY_RULE = Arg(
+    "--account-by-rule",
+    action="store_true",
+    help="let the rules of your policy pick the account, not keep the one picked by hand for the run rerun",
+)
+
+
+def rerun_options(parser: argparse.ArgumentParser) -> None:
+    """The options of `hub run rerun` after its run and --project: the account the rerun takes, and --browser."""
+    group = parser.add_mutually_exclusive_group()
+    for arg in (RERUN_ACCOUNT, ACCOUNT_BY_RULE):
+        group.add_argument(*arg.flags, **arg.options)
+    BROWSER.add_to(parser)
+
+
+# What the options send
+
+
+def given(values: dict) -> dict:
+    """``values`` without those left out (None)."""
+    return {key: value for key, value in values.items() if value is not None}
+
+
+@dataclass(frozen=True)
+class RunOptions:
+    """The options of a command that queues a run, as the body the hub takes (Value Object). Each body sends an
+    option only when it is given, so an older hub takes the rest; a check raises UsageError for options that do not
+    go together."""
+
+    args: argparse.Namespace
+
+    def check_model(self) -> None:
+        """Refuse ``--model`` without the ``--runtime`` that names it, or one that is not one short line."""
+        args = self.args
+        if args.model is None:
+            return
+        if args.runtime in (None, "any"):
+            raise UsageError(
+                "--model names a model as one runtime names it, so it needs --runtime with that runtime "
+                f"({', '.join(RUNTIMES)}): with any, the claiming worker picks the runtime"
+            )
+        if not args.model.strip() or len(args.model) > MAX_MODEL_CHARS or not args.model.isprintable():
+            raise UsageError(f"--model takes one line of 1 to {MAX_MODEL_CHARS} characters")
+
+    def system_conflicts(self) -> list[str]:
+        """The options of a plan run given together with ``--system``, as flags; empty without ``--system``."""
+        if getattr(self.args, "system", None) is None:
+            return []
+        return [flag for flag, name in SYSTEM_REFUSES if getattr(self.args, name, None) not in (None, False)]
+
+    def check_system(self) -> None:
+        """Refuse an option of a plan run given with ``--system``."""
+        conflicts = self.system_conflicts()
+        if conflicts:
+            raise UsageError(
+                f"--system hands the plan to the system, whose agents run as it sets them, so it does not go with "
+                f"{', '.join(conflicts)}"
+            )
+
+    def browser(self) -> dict:
+        """What a dispatch, a plan run or a rerun sends of ``--browser`` and ``--identity``."""
+        body: dict = {"browser": True} if getattr(self.args, "browser", False) else {}
+        if getattr(self.args, "identities", None):
+            body["identities"] = list(self.args.identities)
+        return body
+
+    def as_me(self) -> dict:
+        """What a dispatch or a plan run sends of ``--as-me``."""
+        return {"as_me": True} if getattr(self.args, "as_me", False) else {}
+
+    def dispatch(self) -> dict:
+        """The body of POST .../runs: the plan, its steps, and how each run runs."""
+        args = self.args
+        body = {"plan_id": checked_plan_id(args.plan), "steps": args.steps, **self.browser(), **self.as_me()}
+        chosen = {
+            "runtime": args.runtime,
+            "model": args.model,
+            "mode": args.mode,
+            "approval": args.approval,
+            "timeout_min": args.timeout,
+            "account": args.account,
+            "profile": args.agent,
+        }
+        return body | given(chosen)
+
+    def plan(self) -> dict:
+        """The body of POST .../plan-runs; ``session_per_step`` only when asked, as an older hub would ignore it."""
+        args = self.args
+        body = {"plan_id": checked_plan_id(args.plan), **self.browser(), **self.as_me()}
+        chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
+        chosen.update(account=args.account, profile=args.agent)
+        return body | given({**chosen, "session_per_step": True if args.session_per_step else None})
+
+    def request(self) -> str:
+        """The request of an author run, read from stdin for ``-``; UsageError for one empty or too long."""
+        text = sys.stdin.read() if self.args.request == "-" else self.args.request
+        if not text.strip():
+            raise UsageError("the request is empty: say what the plan should achieve")
+        if len(text.encode()) > MAX_REQUEST_BYTES:
+            raise UsageError(
+                f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes"
+            )
+        return text
+
+    def author(self, text: str) -> dict:
+        """The body of POST .../author-runs for the request ``text``."""
+        args = self.args
+        chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
+        chosen.update(account=args.account, profile=args.agent)
+        return {"request": text} | given(chosen)
+
+    def rerun(self) -> dict | None:
+        """The body of a rerun: none when it keeps everything, so an older hub, which takes none, still takes it."""
+        body = self.browser()
+        if getattr(self.args, "account", None):
+            body["account"] = self.args.account
+        elif getattr(self.args, "account_by_rule", False):
+            body["account_by_rule"] = True
+        return body or None

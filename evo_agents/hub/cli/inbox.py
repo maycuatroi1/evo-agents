@@ -16,18 +16,23 @@ the run holds (to its owner), the run's last events, a diagnosis and the command
 
 ``--json`` prints ``{"hubs": [...]}`` for the list and the item's object for ``show``. Exit 1 when no hub could be
 read, or ``show`` finds nothing. Standard library only, like the rest of the client.
+
+The command is a class of ``evo_agents.clikit`` (docs/structure.md, section Command classes) that runs in an
+:class:`InboxContext`: the logins of the hubs this machine is signed in to, rather than one hub and one project. The
+hubs are read in ``evo_agents.hub.inbox``.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
+from functools import cached_property
 
+from evo_agents.clikit import Arg, Command, Context, Result, Text, UsageError, Verbatim, returns_object
 from evo_agents.hub import inbox
-from evo_agents.hub.cli_client import client_command, print_json
-from evo_agents.hub.client import EXIT_FAILED, HubError
-from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import project_of_args
-from evo_agents.hub.run_cli_events import format_event
+from evo_agents.hub.cli.base import project_of
+from evo_agents.hub.cli.run.events import format_event
+from evo_agents.hub.client import EXIT_FAILED, HubError, exit_status
 
 TITLE_CHARS = 110  # of an item's title in the list
 LABELS = {
@@ -99,22 +104,6 @@ def inbox_json(hubs: list[inbox.HubInbox]) -> dict:
     return {"hubs": [hub.to_json() for hub in hubs]}
 
 
-@client_command
-def cmd_inbox(args) -> int:
-    if args.show:
-        return show(args)
-    found = inbox.logins(args.hub)
-    if not found:
-        print("error: not signed in to any hub: evo-agents hub login --url https://...", file=sys.stderr)
-        return EXIT_FAILED
-    hubs = inbox.gather(found, project=args.project, stale=args.stale, since=args.since, waits=args.waits)
-    if args.json:
-        print_json(inbox_json(hubs))
-    else:
-        print("\n".join(inbox_lines(hubs)).rstrip())
-    return EXIT_FAILED if all(hub.error for hub in hubs) else 0
-
-
 def _decision_lines(decision: dict) -> list[str]:
     lines = [
         f"Decision #{decision['id']} ({decision['category']}, {decision['state']}), asked of {decision.get('asked_of')}",
@@ -172,62 +161,93 @@ def show_lines(found: dict) -> list[str]:
     return lines
 
 
-def show(args) -> int:
-    try:
-        ref = inbox.parse_ref(args.show)
-    except ValueError as exc:
+class InboxContext(Context):
+    """What ``hub inbox`` works with: the hubs this machine is signed in to (``--hub`` keeps some), and for ``--show``
+    the project to look in first."""
+
+    @cached_property
+    def logins(self) -> list[inbox.Login]:
+        return inbox.logins(self.args.hub)
+
+    @cached_property
+    def first_project(self) -> str | None:
+        """``--project``, or the harness's; None outside a harness: every project in turn."""
+        try:
+            return project_of(self.args)
+        except HubError:
+            return None
+
+
+class Inbox(Command[InboxContext]):
+    name = "inbox"
+    help = (
+        "what waits on you on every hub you are signed in to: open decisions, runs to approve, failed, lost or "
+        "stale runs, notices that ask for an act; each with the command that acts on it"
+    )
+    arguments = (
+        Arg(
+            "--show",
+            metavar="REF",
+            help="one decision or run whole instead: 582, d582, r1092, #1092, or a link such as .../inbox?decision=582",
+        ),
+        Arg("--hub", metavar="TEXT", help="only the hubs whose URL holds this text"),
+        Arg("--project", help="only this project (with --show, the one to look in first)"),
+        Arg(
+            "--stale",
+            type=int,
+            default=inbox.STALE_MINUTES,
+            metavar="MIN",
+            help="a running run with no event for this long is stale (default 30)",
+        ),
+        Arg(
+            "--since",
+            type=int,
+            default=inbox.SINCE_HOURS,
+            metavar="HOURS",
+            help="failed and lost runs that ended this recently (default 72)",
+        ),
+        Arg("--waits", action="store_true", help="list the agents' timed waits too, which the hub answers"),
+        Arg(
+            "--events",
+            type=int,
+            default=inbox.EVENTS_SHOWN,
+            metavar="N",
+            help="with --show, the run's last N events (default 20)",
+        ),
+    )
+    output = returns_object(*INBOX_KEYS, variants=(("--show", returns_object(*SHOW_KEYS)),))
+
+    def context(self, args: argparse.Namespace) -> InboxContext:
+        return InboxContext(args)
+
+    def failed(self, exc: Exception) -> int | None:
+        if not isinstance(exc, HubError):
+            return None
         print(f"error: {exc}", file=sys.stderr)
-        return 2
-    try:
-        first = project_of_args(args)
-    except HubError:
-        first = None  # outside a harness: every project in turn
-    found = inbox.detail(ref, inbox.logins(args.hub), first, events=args.events)
-    if found is None:
-        print(f"error: no hub this machine is signed in to has {ref.what} {ref.id} for you", file=sys.stderr)
-        return EXIT_FAILED
-    if args.json:
-        print_json(found)
-    else:
-        print("\n".join(show_lines(found)))
-    return 0
+        return exit_status(exc)
+
+    def run(self, ctx: InboxContext) -> Result:
+        return self.one(ctx) if ctx.args.show else self.every(ctx)
+
+    @staticmethod
+    def every(ctx: InboxContext) -> Result:
+        if not ctx.logins:
+            raise HubError("not signed in to any hub: evo-agents hub login --url https://...")
+        args = ctx.args
+        hubs = inbox.gather(ctx.logins, project=args.project, stale=args.stale, since=args.since, waits=args.waits)
+        text = "\n".join(inbox_lines(hubs)).rstrip() + "\n"
+        return Result(inbox_json(hubs), Verbatim(text), EXIT_FAILED if all(hub.error for hub in hubs) else 0)
+
+    @staticmethod
+    def one(ctx: InboxContext) -> Result:
+        try:
+            ref = inbox.parse_ref(ctx.args.show)
+        except ValueError as exc:
+            raise UsageError(str(exc)) from None
+        found = inbox.detail(ref, ctx.logins, ctx.first_project, events=ctx.args.events)
+        if found is None:
+            raise HubError(f"no hub this machine is signed in to has {ref.what} {ref.id} for you")
+        return Result(found, Text(*show_lines(found)))
 
 
-def register_inbox(hsub) -> None:
-    parser = hsub.add_parser(
-        "inbox",
-        help="what waits on you on every hub you are signed in to: open decisions, runs to approve, failed, lost or "
-        "stale runs, notices that ask for an act; each with the command that acts on it",
-    )
-    parser.add_argument(
-        "--show",
-        metavar="REF",
-        help="one decision or run whole instead: 582, d582, r1092, #1092, or a link such as .../inbox?decision=582",
-    )
-    parser.add_argument("--hub", metavar="TEXT", help="only the hubs whose URL holds this text")
-    parser.add_argument("--project", help="only this project (with --show, the one to look in first)")
-    parser.add_argument(
-        "--stale",
-        type=int,
-        default=inbox.STALE_MINUTES,
-        metavar="MIN",
-        help="a running run with no event for this long is stale (default 30)",
-    )
-    parser.add_argument(
-        "--since",
-        type=int,
-        default=inbox.SINCE_HOURS,
-        metavar="HOURS",
-        help="failed and lost runs that ended this recently (default 72)",
-    )
-    parser.add_argument("--waits", action="store_true", help="list the agents' timed waits too, which the hub answers")
-    parser.add_argument(
-        "--events",
-        type=int,
-        default=inbox.EVENTS_SHOWN,
-        metavar="N",
-        help="with --show, the run's last N events (default 20)",
-    )
-    shown = returns_object(*SHOW_KEYS)
-    json_option(parser, returns_object(*INBOX_KEYS, variants=(("--show", shown),)))
-    parser.set_defaults(func=cmd_inbox)
+INBOX = Inbox()

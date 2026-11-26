@@ -1,5 +1,4 @@
-"""``evo-agents hub decision`` and ``evo-agents hub notifications``: the decisions the agents of your plan runs and
-author runs ask you, and what the hub tells you.
+"""``evo-agents hub decision list|show|answer``: the decisions the agents of your plan runs and author runs ask you.
 
 ``decision list`` and ``decision show`` read a project's decisions (GET /v1/projects/{p}/decisions, .../{id}), as any
 reader of the run may; a decision of a run that has put no plan (an author run before its plan, a local session)
@@ -10,37 +9,38 @@ admin of its project (its log and a notice to the dispatcher say so), and the an
 run's inbox, or resumes a parked run on its worker. A credential request
 (``evo_agents.hub.credential_requests``) also takes the value of the variable it asks for with ``--secret``, read from
 stdin when it is not a terminal, else asked for without echo, never from the command line; the hub keeps it as your
-secret and the answer says its name, never the value (an admin's, for another member's run, lent to that run alone). An option marked waits
-leaves the decision open and tells the agent nothing; a decision of category wait is a wait of the agent's for a time
-or an event, which the hub answers itself, and ``decision show`` says what it waits for, and for any decision why the
-agent recommends its option, whether the act can be undone and how, and the refs of its evidence.
-``docs/notifications.md`` describes decisions, their categories and their life.
+secret and the answer says its name, never the value (an admin's, for another member's run, lent to that run alone).
+An option marked waits leaves the decision open and tells the agent nothing; a decision of category wait is a wait of
+the agent's for a time or an event, which the hub answers itself, and ``decision show`` says what it waits for, and for
+any decision why the agent recommends its option, whether the act can be undone and how, and the refs of its evidence.
+``docs/notifications.md`` describes decisions, their categories and their life. ``evo-agents hub notifications`` is in
+``evo_agents.hub.cli.notifications``.
 
-``notifications`` lists your notifications, open decisions first, then newest first (GET /v1/me/notifications), with
-how many are unread and how many decisions wait for your answer (GET /v1/me/notifications/count). ``--read all`` or
-``--read 12,14`` marks them read instead (POST /v1/me/notifications/read) and lists nothing, so it takes none of the
-filters. Notifications are a member's own, so ``--project`` only filters them and never comes from a harness.
+The commands find their project as ``hub run`` does: ``--project``, or ``hub.project`` in the harness.yaml around the
+current directory. ``--json`` prints what the hub answered, with the keys declared next to the flag. Standard library
+only, like the rest of the client.
 
-The decision commands find their project as ``hub run`` does: ``--project``, or ``hub.project`` in the harness.yaml
-around the current directory. ``--json`` prints what the hub answered, with the keys declared next to the flag.
-Standard library only, like the rest of the client.
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`Decisions` is
+the gateway to the routes, :class:`AnswerGiven` the value object that turns the options of ``answer`` into its body.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+from dataclasses import dataclass
+from typing import ClassVar
 from urllib.parse import urlencode
 
+from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, Views, returns_object
 from evo_agents.hub import approval_heads, credential_requests
-from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
-from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import checked_plan_id, project_of_args
-from evo_agents.hub.runs import DECISION_STATES, NOTIFICATION_KINDS
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
+from evo_agents.hub.cli_client import call_object, when
+from evo_agents.hub.plan_writes import checked_plan_id
+from evo_agents.hub.runs import DECISION_STATES
 
-EXIT_USAGE = 2
 QUESTION_CHARS = 60  # of a decision's question in the decision table
-TITLE_CHARS = 60  # of a notification's title in the notification table
 MAX_LIST = 200  # the most decisions or notifications the hub answers at once
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -83,56 +83,108 @@ DECISION_KEYS = (
     "channel_deliveries",
 )
 DECISION_LIST_KEYS = ("decisions", "total", "limit", "offset")
-NOTIFICATION_LIST_KEYS = ("notifications", "total", "limit", "offset")
-READ_KEYS = ("read", "unread")
-DECISION = returns_object(*DECISION_KEYS, schema="Decision")
+DECISION_OUTPUT = returns_object(*DECISION_KEYS, schema="Decision")
 
 
-def _decisions_path(project: str, decision_id: int | None = None, action: str | None = None) -> str:
-    path = f"{project_path(project)}/decisions"
-    if decision_id is not None:
-        path += f"/{decision_id}"
-    return path + (f"/{action}" if action else "")
+class Decisions(ProjectResource):
+    """The decisions of a project: GET /v1/projects/{p}/decisions, .../{id} and POST .../{id}/answer."""
+
+    collection = "decisions"
+
+    def list(
+        self,
+        states: list[str] | None = None,
+        run: int | None = None,
+        plan: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict:
+        """One page of the decisions, ``state`` repeated for each of ``states``."""
+        given = {"state": states or [], "run_id": run, "plan_id": None if plan is None else checked_plan_id(plan)}
+        given |= {"limit": limit, "offset": offset}
+        query = urlencode({key: value for key, value in given.items() if value is not None}, doseq=True)
+        return call_object(self.hub, "GET", self.path() + (f"?{query}" if query else ""))
+
+    def get(self, decision_id: int) -> dict:
+        return self.call("GET", decision_id)
+
+    def answer(self, decision_id: int, body: dict) -> dict:
+        return self.call("POST", decision_id, "answer", body=body)
 
 
-def _one_line(text: str | None, limit: int) -> str:
+def one_line(text: str | None, limit: int) -> str:
+    """``text`` on one line, cut to ``limit`` characters; ``-`` when there is none."""
     flat = " ".join((text or "").split()) or "-"
     return flat if len(flat) <= limit else flat[: limit - 3] + "..."
 
 
-def _with_project(args, project: str) -> str:
-    """The --project to repeat in a command printed for the person, when the harness did not give the project."""
-    return f" --project {project}" if args.project else ""
-
-
-def _usage_error(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
-
-
-def _option_label(decision: dict, key: str | None) -> str | None:
+def option_label(decision: dict, key: str | None) -> str | None:
+    """The label of the decision's option ``key``; None when it has none."""
     return next((option["label"] for option in decision["options"] if option["key"] == key), None)
 
 
-# Decisions
+DECISION_ARG = Arg(
+    "decision",
+    metavar="DECISION",
+    type=int,
+    help="the decision's id, as `hub decision list` and the notification show it",
+)
 
 
-@client_command
-def cmd_list(args) -> int:
-    hub, _ = signed_in()
-    project = project_of_args(args)
-    query: list[tuple[str, object]] = [("state", state) for state in args.state or ()]
-    if args.run is not None:
-        query.append(("run_id", args.run))
-    if args.plan is not None:
-        query.append(("plan_id", checked_plan_id(args.plan)))
-    query += [(key, value) for key, value in (("limit", args.limit), ("offset", args.offset)) if value is not None]
-    listed = hub.call("GET", _decisions_path(project) + (f"?{urlencode(query)}" if query else ""))
-    if args.json:
-        print_json(listed)
-        return 0
-    rows = [
-        (
+# Reading
+
+
+class DecisionList(HubCommand):
+    name = "list"
+    help = "the decisions of a project, newest first, of the plans you may read"
+    arguments = (
+        PROJECT,
+        Arg(
+            "--state",
+            action="append",
+            choices=DECISION_STATES,
+            metavar="STATE",
+            help=f"only decisions in this state, one of {', '.join(DECISION_STATES)}; repeat it for several",
+        ),
+        Arg("--run", type=int, metavar="RUN", help="only the decisions of this run"),
+        Arg("--plan", help="only the decisions of this plan"),
+        Arg("--limit", type=int, choices=range(1, MAX_LIST + 1), metavar="N", help=f"1 to {MAX_LIST} (default 50)"),
+        Arg("--offset", type=int, metavar="N", help="skip this many decisions, for the next page"),
+    )
+    output = returns_object(*DECISION_LIST_KEYS, schema="DecisionList")
+    columns: ClassVar[tuple[str, ...]] = (
+        "DECISION",
+        "STATE",
+        "CATEGORY",
+        "RUN",
+        "PLAN",
+        "STEP",
+        "ANSWERER",
+        "QUESTION",
+        "ASKED (UTC)",
+    )
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        listed = Decisions.of(ctx).list(args.state, args.run, args.plan, args.limit, args.offset)
+        if args.json:
+            return Result(listed)
+        rows = [self.row(decision) for decision in listed["decisions"]]
+        shown = len(rows)
+        lines = [f"{shown} of {listed['total']} decision(s) of project {ctx.project}"]
+        if listed["offset"] + shown < listed["total"]:
+            lines.append(f"More with --offset {listed['offset'] + shown}.")
+        if any(decision["state"] == "open" for decision in listed["decisions"]):
+            where = ctx.with_project()
+            lines.append(
+                f"Read one with `evo-agents hub decision show ID{where}`, and answer it with "
+                f"`evo-agents hub decision answer ID --option KEY{where}`."
+            )
+        return Result(listed, Views(Table(self.columns, rows), Text(*lines)))
+
+    @staticmethod
+    def row(decision: dict) -> tuple:
+        return (
             f"#{decision['id']}",
             decision["state"],
             decision["category"],
@@ -140,27 +192,13 @@ def cmd_list(args) -> int:
             decision["plan_id"] or "-",
             decision["step_key"] or "-",
             decision.get("asked_of") or decision["owner"],
-            _one_line(decision["question"], QUESTION_CHARS),
+            one_line(decision["question"], QUESTION_CHARS),
             when(decision["asked_at"]),
         )
-        for decision in listed["decisions"]
-    ]
-    if rows:
-        table(("DECISION", "STATE", "CATEGORY", "RUN", "PLAN", "STEP", "ANSWERER", "QUESTION", "ASKED (UTC)"), rows)
-    shown = len(rows)
-    print(f"{shown} of {listed['total']} decision(s) of project {project}")
-    if listed["offset"] + shown < listed["total"]:
-        print(f"More with --offset {listed['offset'] + shown}.")
-    if any(decision["state"] == "open" for decision in listed["decisions"]):
-        where = _with_project(args, project)
-        print(
-            f"Read one with `evo-agents hub decision show ID{where}`, and answer it with "
-            f"`evo-agents hub decision answer ID --option KEY{where}`."
-        )
-    return 0
 
 
-def _answer_lines(decision: dict) -> list[tuple[str, str]]:
+def answer_lines(decision: dict) -> list[tuple[str, str]]:
+    """Who answered a decision, how and with what, and whether the agent has the answer yet."""
     if decision["state"] != "answered":
         return []
     who = decision["answered_by"] or "the hub, as what it waited for came"
@@ -168,7 +206,7 @@ def _answer_lines(decision: dict) -> list[tuple[str, str]]:
     through = f" through {via}" if via else ""
     lines = [("answered", f"by {who}{through} at {when(decision['answered_at'])} UTC")]
     if decision["answer_option"]:
-        label = _option_label(decision, decision["answer_option"])
+        label = option_label(decision, decision["answer_option"])
         lines.append(("option", decision["answer_option"] + (f", {label}" if label else "")))
     elif decision["answer_text"] and decision["answered_by"]:
         lines.append(("option", f"none: a free answer in words{through}"))
@@ -182,7 +220,7 @@ def _answer_lines(decision: dict) -> list[tuple[str, str]]:
     return lines
 
 
-def _wait_lines(decision: dict) -> list[tuple[str, str]]:
+def wait_lines(decision: dict) -> list[tuple[str, str]]:
     """What a wait waits for, and when the person asked chose an option that leaves a decision open."""
     lines = []
     if decision.get("wake_on"):
@@ -198,23 +236,23 @@ def _wait_lines(decision: dict) -> list[tuple[str, str]]:
     return lines
 
 
-def _print_fields(lines: list[tuple[str, str]]) -> None:
-    width = max(len(label) for label, _ in lines)
-    for label, text in lines:
+def field_lines(fields: list[tuple[str, str]]) -> list[str]:
+    """``  label  text`` lines, the labels in one column, a text of several lines under its first."""
+    width = max(len(label) for label, _ in fields)
+    lines = []
+    for label, text in fields:
         first, *rest = str(text).splitlines() or [""]
-        print(f"  {label:<{width}}  {first}".rstrip())
-        for line in rest:
-            print(f"  {'':<{width}}  {line}".rstrip())
+        lines.append(f"  {label:<{width}}  {first}".rstrip())
+        lines += [f"  {'':<{width}}  {line}".rstrip() for line in rest]
+    return lines
 
 
-def _print_block(title: str, text: str) -> None:
-    print(f"{title}:")
-    for line in text.splitlines() or [""]:
-        print(f"  {line}".rstrip())
+def block_lines(title: str, text: str) -> list[str]:
+    return [f"{title}:", *(f"  {line}".rstrip() for line in text.splitlines() or [""])]
 
 
-def _print_options(decision: dict) -> None:
-    print("Options:")
+def option_lines(decision: dict) -> list[str]:
+    lines = ["Options:"]
     width = max(len(option["key"]) for option in decision["options"])
     for option in decision["options"]:
         flags = (("recommended", option["recommended"]), ("leaves it open", option.get("waits")))
@@ -222,12 +260,12 @@ def _print_options(decision: dict) -> None:
         if decision["answer_option"] == option["key"]:
             marks.append("chosen")
         label = option["label"] + (f" ({', '.join(marks)})" if marks else "")
-        print(f"  {option['key']:<{width}}  {label}")
-        for line in (option["description"] or "").splitlines():
-            print(f"  {'':<{width}}  {line}".rstrip())
+        lines.append(f"  {option['key']:<{width}}  {label}")
+        lines += [f"  {'':<{width}}  {line}".rstrip() for line in (option["description"] or "").splitlines()]
+    return lines
 
 
-def _reversible_lines(decision: dict) -> list[tuple[str, str]]:
+def reversible_lines(decision: dict) -> list[tuple[str, str]]:
     """Whether the act a decision asks about can be undone, and how, when the agent said."""
     reversible = decision.get("reversible")
     if reversible is None:
@@ -237,15 +275,17 @@ def _reversible_lines(decision: dict) -> list[tuple[str, str]]:
     return [("reversible", "yes" + (f": {decision['undo']}" if decision.get("undo") else ""))]
 
 
-def _print_grounds(decision: dict) -> None:
+def grounds_lines(decision: dict) -> list[str]:
     """Why the agent recommends its option, and the refs of what the question rests on."""
+    lines = []
     if decision.get("recommended_reason"):
-        _print_block(f"Why {decision['recommended']}", decision["recommended_reason"])
+        lines += block_lines(f"Why {decision['recommended']}", decision["recommended_reason"])
     if decision.get("evidence"):
-        _print_block("Evidence", "\n".join(decision["evidence"]))
+        lines += block_lines("Evidence", "\n".join(decision["evidence"]))
+    return lines
 
 
-def _request_lines(decision: dict) -> list[tuple[str, str]]:
+def request_lines(decision: dict) -> list[tuple[str, str]]:
     """What a credential request asks for: a variable's value and the secret that would keep it, the owner's hub
     account."""
     request = decision.get("credential_request")
@@ -259,7 +299,7 @@ def _request_lines(decision: dict) -> list[tuple[str, str]]:
     return lines
 
 
-def _approval_lines(decision: dict) -> list[tuple[str, str]]:
+def approval_lines(decision: dict) -> list[tuple[str, str]]:
     """What a merge approval holds for: the request, its head and its scope."""
     approval = decision.get("approval")
     if not approval:
@@ -269,7 +309,7 @@ def _approval_lines(decision: dict) -> list[tuple[str, str]]:
     return [("holds for", f"head {approval_heads.short(approval['head'])}{pull}{scope}")]
 
 
-def _label_lines(decision: dict) -> list[tuple[str, str]]:
+def label_lines(decision: dict) -> list[tuple[str, str]]:
     """The decision's effective label, and whether the agent gave it; a hub before schema 0265 shows none."""
     label = decision.get("label")
     if not label:
@@ -277,7 +317,7 @@ def _label_lines(decision: dict) -> list[tuple[str, str]]:
     return [("label", label + ("" if decision.get("label_given") else ", the project's default"))]
 
 
-def _channel_text(entry: dict) -> str:
+def channel_text(entry: dict) -> str:
     """Where a decision's message stands on one channel (``channel_deliveries``)."""
     state = entry["state"]
     if state == "sent":
@@ -298,293 +338,176 @@ def _channel_text(entry: dict) -> str:
     return text
 
 
-def _channel_lines(decision: dict) -> list[tuple[str, str]]:
+def channel_lines(decision: dict) -> list[tuple[str, str]]:
     """One line for each channel of ``channel_deliveries``; a hub before schema 0265 has none."""
-    return [(entry["channel"], _channel_text(entry)) for entry in decision.get("channel_deliveries") or []]
+    return [(entry["channel"], channel_text(entry)) for entry in decision.get("channel_deliveries") or []]
 
 
-def _run_line(decision: dict, step: str) -> str:
+def run_line(decision: dict) -> str:
     """The run of a decision, with its plan and step, or the run alone when it has put no plan."""
     run = f"#{decision['run_id']} ({decision['run_state']})"
     if decision["plan_id"] is None:
         return f"{run}, no plan"
+    step = f", step {decision['step_key']}" if decision["step_key"] else ""
     return f"{run} of plan {decision['plan_id']}{step}"
 
 
-@client_command
-def cmd_show(args) -> int:
-    hub, _ = signed_in()
-    project = project_of_args(args)
-    decision = hub.call("GET", _decisions_path(project, args.decision))
-    if args.json:
-        print_json(decision)
-        return 0
-    print(f"Decision #{decision['id']}: {decision['category']}, {decision['state']}")
-    step = f", step {decision['step_key']}" if decision["step_key"] else ""
-    lines = [
-        ("run", _run_line(decision, step)),
-        ("owner", decision["owner"]),
-        ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
-        ("asked", f"{when(decision['asked_at'])} UTC"),
-        *_label_lines(decision),
-        *_channel_lines(decision),
-        *_request_lines(decision),
-        *_approval_lines(decision),
-        *_reversible_lines(decision),
-        *_wait_lines(decision),
-        *_answer_lines(decision),
-    ]
-    _print_fields(lines)
-    _print_block("Question", decision["question"])
-    if decision["context"]:
-        _print_block("Context", decision["context"])
-    _print_options(decision)
-    _print_grounds(decision)
-    if decision["state"] == "open":
-        secret = (
-            " (--secret pastes the value it asks for)"
-            if (decision.get("credential_request") or {}).get("env_var")
-            else ""
-        )
-        print(
-            f"Answer it with `evo-agents hub decision answer {decision['id']} --option KEY"
-            f"{_with_project(args, project)}`; --text adds words of your own, or stands for an option{secret}."
-        )
-    return 0
+class DecisionShow(HubCommand):
+    name = "show"
+    help = "one decision: its question, context, options and answer"
+    arguments = (DECISION_ARG, PROJECT)
+    output = DECISION_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        decision = Decisions.of(ctx).get(ctx.args.decision)
+        if ctx.args.json:
+            return Result(decision)
+        return Result(decision, Text(*self.lines(decision, ctx.with_project())))
+
+    @staticmethod
+    def lines(decision: dict, where: str) -> list[str]:
+        fields = [
+            ("run", run_line(decision)),
+            ("owner", decision["owner"]),
+            ("answerer", f"{decision.get('asked_of') or decision['owner']}, who answers it"),
+            ("asked", f"{when(decision['asked_at'])} UTC"),
+            *label_lines(decision),
+            *channel_lines(decision),
+            *request_lines(decision),
+            *approval_lines(decision),
+            *reversible_lines(decision),
+            *wait_lines(decision),
+            *answer_lines(decision),
+        ]
+        lines = [f"Decision #{decision['id']}: {decision['category']}, {decision['state']}", *field_lines(fields)]
+        lines += block_lines("Question", decision["question"])
+        if decision["context"]:
+            lines += block_lines("Context", decision["context"])
+        lines += option_lines(decision) + grounds_lines(decision)
+        if decision["state"] == "open":
+            asks_value = (decision.get("credential_request") or {}).get("env_var")
+            secret = " (--secret pastes the value it asks for)" if asks_value else ""
+            lines.append(
+                f"Answer it with `evo-agents hub decision answer {decision['id']} --option KEY"
+                f"{where}`; --text adds words of your own, or stands for an option{secret}."
+            )
+        return lines
 
 
-@client_command
-def cmd_answer(args) -> int:
-    if args.option is None and args.text is None and not args.secret:
-        return _usage_error("an answer names an option with --option KEY, gives words with --text TEXT, or both")
-    if args.secret and args.text == "-":
-        return _usage_error("--secret reads the value from stdin: give your words with --text TEXT, not -")
-    if args.secret and args.option is not None and not credential_requests.gives_value(args.option):
-        return _usage_error(
-            f"--secret goes with option {credential_requests.VALUE} or {credential_requests.BOTH}, or with none"
-        )
-    text = sys.stdin.read() if args.text == "-" else args.text
-    hub, _ = signed_in()
-    project = project_of_args(args)
-    body = {key: value for key, value in (("option", args.option), ("text", text)) if value is not None}
-    if args.secret:
+# Answering
+
+
+@dataclass(frozen=True)
+class AnswerGiven:
+    """What the options of ``decision answer`` say (Value Object): checked alone with :meth:`conflict`, then made the
+    body of POST .../answer with :meth:`body`."""
+
+    args: argparse.Namespace
+
+    def conflict(self) -> str | None:
+        """Why the options make no answer; None when they make one."""
+        args = self.args
+        if args.option is None and args.text is None and not args.secret:
+            return "an answer names an option with --option KEY, gives words with --text TEXT, or both"
+        if args.secret and args.text == "-":
+            return "--secret reads the value from stdin: give your words with --text TEXT, not -"
+        if args.secret and args.option is not None and not credential_requests.gives_value(args.option):
+            return f"--secret goes with option {credential_requests.VALUE} or {credential_requests.BOTH}, or with none"
+        return None
+
+    def text(self) -> str | None:
+        """The words of the answer: ``--text``, or stdin for ``--text -``."""
+        return sys.stdin.read() if self.args.text == "-" else self.args.text
+
+    def secret(self) -> str:
+        """The value a credential request asks for, read from stdin or asked for; UsageError when it is refused."""
         from evo_agents.hub.cli_secrets import Refused, check_value, read_value
 
+        decision = self.args.decision
         try:
             value = read_value(
-                f"of decision {args.decision}",
-                prompt=f"Value decision #{args.decision} asks for (not shown): ",
+                f"of decision {decision}",
+                prompt=f"Value decision #{decision} asks for (not shown): ",
                 missing="no value: pipe it on stdin, such as `pbpaste | evo-agents hub decision answer ID --secret`, "
                 "or run the command in a terminal to be asked for it",
             )
             check_value("env", value)
         except Refused as exc:
-            return _usage_error(str(exc))
-        body["secret"] = value
-    decision = hub.call("POST", _decisions_path(project, args.decision, "answer"), body)
-    if args.json:
-        print_json(decision)
-        return 0
-    if decision["state"] == "open":  # an option that waits: not yet
-        print(
-            f"Decision #{decision['id']} stays open: the agent hears nothing, and run #{decision['run_id']} waits for "
-            "your answer with another option."
-        )
-        return 0
-    given = []
-    if decision["answer_option"]:
-        label = _option_label(decision, decision["answer_option"])
-        given.append(f"option {decision['answer_option']}" + (f" ({label})" if label else ""))
-    if args.text is not None:
-        given.append("your words")
-    print(f"Answered decision #{decision['id']} with {' and '.join(given)}.")
-    gave = args.secret or credential_requests.grants_account(decision["answer_option"])
-    if decision.get("credential_request") and gave and decision["answer_text"]:
-        print(decision["answer_text"].rsplit("\n\n", 1)[-1])  # what the hub gave the run, by name, never the value
-    inbox = decision["answer_run_id"]
-    if inbox is not None and inbox != decision["run_id"]:
-        print(
-            f"Run #{decision['run_id']} was parked: the hub queued run #{inbox} on the same worker to resume it in its "
-            "session, and the answer waits in its inbox."
-        )
-    else:
-        print(f"The answer went to the inbox of run #{decision['run_id']}; its worker hands it to the agent.")
-    return 0
+            raise UsageError(str(exc)) from None
+        return value
+
+    def body(self, text: str | None, secret: str | None) -> dict:
+        given = (("option", self.args.option), ("text", text), ("secret", secret))
+        return {key: value for key, value in given if value is not None}
 
 
-# Notifications
-
-
-def _read_body(which: str) -> dict | None:
-    """``--read all`` or ``--read 12,14`` as the body of POST /v1/me/notifications/read; None when it is neither."""
-    if which.strip() == "all":
-        return {"all": True}
-    parts = [part.strip() for part in which.split(",")]
-    if not parts or not all(part.isascii() and part.isdigit() and int(part) > 0 for part in parts):
-        return None
-    return {"ids": list(dict.fromkeys(int(part) for part in parts))}
-
-
-def _kind(notification: dict) -> str:
-    if notification["kind"] == "decision":
-        state = f" ({notification['decision_state']})" if notification["decision_state"] else ""
-        return f"decision #{notification['decision_id']}{state}"
-    if notification["kind"] == "proposal":
-        state = f" ({notification['proposal_state']})" if notification.get("proposal_state") else ""
-        return f"proposal #{notification.get('proposal_id')}{state}"
-    return notification["notice_kind"] or notification["kind"]
-
-
-@client_command
-def cmd_notifications(args) -> int:
-    if args.read is not None:
-        given = (
-            ("--unread", args.unread or None),
-            ("--kind", args.kind),
-            ("--project", args.project),
-            ("--run", args.run),
-            ("--search", args.search),
-            ("--limit", args.limit),
-            ("--offset", args.offset),
-        )
-        filters = [flag for flag, value in given if value is not None]
-        if filters:
-            return _usage_error(f"--read marks notifications read and lists none, so it does not go with {filters[0]}")
-        body = _read_body(args.read)
-        if body is None:
-            return _usage_error(f"--read takes all, or notification ids such as 12,14, not {args.read!r}")
-        hub, _ = signed_in()
-        result = hub.call("POST", "/v1/me/notifications/read", body)
-        if args.json:
-            print_json(result)
-            return 0
-        print(f"Marked {result['read']} notification(s) read; {result['unread']} left unread.")
-        return 0
-    query: list[tuple[str, object]] = [("unread", "true")] if args.unread else []
-    given = (
-        ("kind", args.kind),
-        ("project", args.project),
-        ("run", args.run),
-        ("q", args.search),
-        ("limit", args.limit),
-        ("offset", args.offset),
+class DecisionAnswer(HubCommand):
+    name = "answer"
+    help = (
+        "answer an open decision of a run you dispatched, with an option, words of your own, or both; the "
+        "answer goes to the agent, and a parked run resumes"
     )
-    query += [(key, value) for key, value in given if value is not None]
-    hub, _ = signed_in()
-    listed = hub.call("GET", "/v1/me/notifications" + (f"?{urlencode(query)}" if query else ""))
-    if args.json:
-        print_json(listed)
-        return 0
-    rows = [
-        (
-            f"#{notification['id']}",
-            "read" if notification["read_at"] else "unread",
-            _kind(notification),
-            notification["project"] or "-",
-            f"#{notification['run_id']}" if notification["run_id"] else "-",
-            _one_line(notification["title"], TITLE_CHARS),
-            when(notification["created_at"]),
-        )
-        for notification in listed["notifications"]
-    ]
-    if rows:
-        table(("ID", "READ", "KIND", "PROJECT", "RUN", "TITLE", "WHEN (UTC)"), rows)
-    counts = hub.call("GET", "/v1/me/notifications/count")
-    shown = len(rows)
-    which = "unread notification(s)" if args.unread else "notification(s)"
-    proposals = counts.get("open_proposals") or 0
-    waiting = f" and {proposals} proposal(s)" if proposals else ""
-    print(
-        f"{shown} of {listed['total']} {which}; {counts['unread']} unread in all, {counts['open_decisions']} "
-        f"decision(s){waiting} waiting for your answer"
-    )
-    if listed["offset"] + shown < listed["total"]:
-        print(f"More with --offset {listed['offset'] + shown}.")
-    if counts["unread"]:
-        print("Mark them read with `evo-agents hub notifications --read all`, or --read with their ids.")
-    return 0
-
-
-def register_decisions(hsub) -> None:
-    decision = hsub.add_parser(
-        "decision", help="the decisions the agents of your plan runs and author runs ask you, and your answers"
-    )
-    dsub = decision.add_subparsers(dest="decision_command", required=True)
-    project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
-    decision_help = "the decision's id, as `hub decision list` and the notification show it"
-
-    def with_project(parser) -> None:
-        parser.add_argument("--project", help=project_help)
-
-    def with_decision(parser) -> None:
-        parser.add_argument("decision", metavar="DECISION", type=int, help=decision_help)
-
-    listed = dsub.add_parser("list", help="the decisions of a project, newest first, of the plans you may read")
-    with_project(listed)
-    listed.add_argument(
-        "--state",
-        action="append",
-        choices=DECISION_STATES,
-        metavar="STATE",
-        help=f"only decisions in this state, one of {', '.join(DECISION_STATES)}; repeat it for several",
-    )
-    listed.add_argument("--run", type=int, metavar="RUN", help="only the decisions of this run")
-    listed.add_argument("--plan", help="only the decisions of this plan")
-    listed.add_argument(
-        "--limit", type=int, choices=range(1, MAX_LIST + 1), metavar="N", help=f"1 to {MAX_LIST} (default 50)"
-    )
-    listed.add_argument("--offset", type=int, metavar="N", help="skip this many decisions, for the next page")
-    json_option(listed, returns_object(*DECISION_LIST_KEYS, schema="DecisionList"))
-    listed.set_defaults(func=cmd_list)
-
-    show = dsub.add_parser("show", help="one decision: its question, context, options and answer")
-    with_decision(show)
-    with_project(show)
-    json_option(show, DECISION)
-    show.set_defaults(func=cmd_show)
-
-    answer = dsub.add_parser(
-        "answer",
-        help="answer an open decision of a run you dispatched, with an option, words of your own, or both; the "
-        "answer goes to the agent, and a parked run resumes",
-    )
-    with_decision(answer)
-    answer.add_argument("--option", metavar="KEY", help="the key of one of the decision's options")
-    answer.add_argument("--text", metavar="TEXT", help="your own words, at most 4 KiB; - reads them from stdin")
-    answer.add_argument(
-        "--secret",
-        action="store_true",
-        help="a credential request: paste the value of the variable it asks for, read from stdin, or asked for "
-        "without echo in a terminal; the hub keeps it as your secret, never shows it again",
-    )
-    with_project(answer)
-    json_option(answer, DECISION)
-    answer.set_defaults(func=cmd_answer)
-
-    notifications = hsub.add_parser(
-        "notifications",
-        help="your notifications, open decisions first, then newest first; --read marks them read instead",
-    )
-    notifications.add_argument("--unread", action="store_true", help="only those not read yet")
-    notifications.add_argument("--kind", choices=NOTIFICATION_KINDS, help="only decisions, or only notices")
-    notifications.add_argument("--project", help="only those of this project (default: every project's)")
-    notifications.add_argument("--run", type=int, metavar="ID", help="only those of this run")
-    notifications.add_argument("--search", metavar="WORDS", help="only those whose title or body holds these words")
-    notifications.add_argument(
-        "--limit", type=int, choices=range(1, MAX_LIST + 1), metavar="N", help=f"1 to {MAX_LIST} (default 50)"
-    )
-    notifications.add_argument("--offset", type=int, metavar="N", help="skip this many, for the next page")
-    notifications.add_argument(
-        "--read",
-        metavar="WHICH",
-        help="mark notifications read and list none: all, or ids such as 12,14",
-    )
-    json_option(
-        notifications,
-        returns_object(
-            *NOTIFICATION_LIST_KEYS,
-            schema="NotificationList",
-            variants=[("--read", returns_object(*READ_KEYS, schema="ReadResult"))],
+    arguments = (
+        DECISION_ARG,
+        Arg("--option", metavar="KEY", help="the key of one of the decision's options"),
+        Arg("--text", metavar="TEXT", help="your own words, at most 4 KiB; - reads them from stdin"),
+        Arg(
+            "--secret",
+            action="store_true",
+            help="a credential request: paste the value of the variable it asks for, read from stdin, or asked for "
+            "without echo in a terminal; the hub keeps it as your secret, never shows it again",
         ),
+        PROJECT,
     )
-    notifications.set_defaults(func=cmd_notifications)
+    output = DECISION_OUTPUT
+
+    def check(self, args: argparse.Namespace) -> None:
+        why = AnswerGiven(args).conflict()
+        if why:
+            raise UsageError(why)
+
+    def run(self, ctx: HubContext) -> Result:
+        given = AnswerGiven(ctx.args)
+        text = given.text()
+        decisions = Decisions.of(ctx)  # signed in, and the project found, before the value is asked for
+        secret = given.secret() if ctx.args.secret else None
+        decision = decisions.answer(ctx.args.decision, given.body(text, secret))
+        if ctx.args.json:
+            return Result(decision)
+        return Result(decision, Text(*self.said(decision, ctx.args)))
+
+    @staticmethod
+    def said(decision: dict, args: argparse.Namespace) -> list[str]:
+        if decision["state"] == "open":  # an option that waits: not yet
+            return [
+                f"Decision #{decision['id']} stays open: the agent hears nothing, and run #{decision['run_id']} waits "
+                "for your answer with another option."
+            ]
+        given = []
+        if decision["answer_option"]:
+            label = option_label(decision, decision["answer_option"])
+            given.append(f"option {decision['answer_option']}" + (f" ({label})" if label else ""))
+        if args.text is not None:
+            given.append("your words")
+        lines = [f"Answered decision #{decision['id']} with {' and '.join(given)}."]
+        gave = args.secret or credential_requests.grants_account(decision["answer_option"])
+        if decision.get("credential_request") and gave and decision["answer_text"]:
+            lines.append(decision["answer_text"].rsplit("\n\n", 1)[-1])  # what the run was given, by name, not value
+        inbox = decision["answer_run_id"]
+        if inbox is not None and inbox != decision["run_id"]:
+            lines.append(
+                f"Run #{decision['run_id']} was parked: the hub queued run #{inbox} on the same worker to resume it in "
+                "its session, and the answer waits in its inbox."
+            )
+        else:
+            lines.append(
+                f"The answer went to the inbox of run #{decision['run_id']}; its worker hands it to the agent."
+            )
+        return lines
+
+
+DECISION = Group(
+    "decision",
+    "the decisions the agents of your plan runs and author runs ask you, and your answers",
+    [DecisionList(), DecisionShow(), DecisionAnswer()],
+)

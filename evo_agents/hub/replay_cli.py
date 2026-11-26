@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.curator import money
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.replay import ARMS, SPLITS
 
 TASK_LIST_KEYS = ("project", "split", "tasks", "total", "counts")
@@ -39,7 +39,7 @@ def _arm(item: dict | None) -> str:
 @client_command
 def cmd_tasks(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     query = {"limit": args.limit, **({"split": args.split} if args.split else {})}
     found = hub.call("GET", _path(project, "replay", "tasks") + f"?{urlencode(query)}")
     if args.json:
@@ -62,7 +62,7 @@ def cmd_tasks(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project, "changes", str(args.change), "replay"))
     if args.json:
         print_json(found)

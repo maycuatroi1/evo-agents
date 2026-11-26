@@ -17,10 +17,10 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, when
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.curator import money
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.releases import DEFAULT_AT, DEFAULT_TIMEZONE, MAX_PATHS, short
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -128,7 +128,7 @@ def _landed(run: dict) -> str:
 @client_command
 def cmd_status(args) -> int:
     hub, _ = signed_in()
-    status = hub.call("GET", _path(project_of_args(args)))
+    status = hub.call("GET", _path(project_of(args)))
     if args.json:
         print_json(status)
         return 0
@@ -142,7 +142,7 @@ def cmd_status(args) -> int:
 def cmd_set(args) -> int:
     body = {key: getattr(args, option) for option, key in SET_OPTIONS.items() if getattr(args, option) is not None}
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     status = hub.call("PUT", _path(project, "schedule"), body)
     if args.json:
         print_json(status)
@@ -156,7 +156,7 @@ def _switch(action: str):
     @client_command
     def run(args) -> int:
         hub, _ = signed_in()
-        project = project_of_args(args)
+        project = project_of(args)
         status = hub.call("POST", _path(project, action))
         if args.json:
             print_json(status)
@@ -178,7 +178,7 @@ cmd_resume = _switch("resume")
 @client_command
 def cmd_run(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("POST", _path(project_of_args(args), "run"))
+    found = hub.call("POST", _path(project_of(args), "run"))
     if args.json:
         print_json(found)
         return 0
