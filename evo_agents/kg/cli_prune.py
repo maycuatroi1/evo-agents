@@ -27,7 +27,7 @@ def cmd_prune(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     args.dry_run, args.graph_files = not args.delete, False
-    return kg_cli.cmd_prune(args)
+    return kg_cli.KG_PRUNE(args)
 
 
 def register(ksub) -> None:

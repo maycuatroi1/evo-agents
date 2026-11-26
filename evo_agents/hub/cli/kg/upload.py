@@ -7,7 +7,7 @@ what was sent.
 hashes the file, asks the hub to start the upload (POST /v1/kg/{project}/uploads), which checks the size, the role and
 the label against what the project's hub sink clears before any byte of the archive leaves this machine, then PUTs
 the parts the hub does not hold yet straight to the blob store, PARALLEL at a time, each through a presigned URL and
-tried PUT_ATTEMPTS times, and asks the hub to join them (``evo_agents.hub.server.kg_uploads``). Run again after an
+tried PUT_ATTEMPTS times, and asks the hub to join them (``evo_agents.hub.kg_routes.Uploads.send``). Run again after an
 interruption, it sends only the parts that are missing. Then it follows the flow after the upload (GET
 /v1/kg/{project}/uploads/{id}/pipeline, ``evo_agents.hub.server.kg_pipeline``) every POLL_SECONDS: it prints
 "Knowledge graph build in progress" with the phase each time the phase or what it waits for changes, and "Knowledge
@@ -20,24 +20,20 @@ that followed. ``--json`` prints the hub's answer. Standard library only.
 
 from __future__ import annotations
 
-import hashlib
 import sys
-import time
-from concurrent.futures import ThreadPoolExecutor
+import time  # noqa: F401  tests slow the follow down through upload.time.sleep
+from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import quote
+from typing import Any
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.client import Hub, HubError, put_presigned_part
-from evo_agents.hub.client import transient as hub_transient
-from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.kg_push import PUT_ATTEMPTS, PUT_DELAYS, transient
+from evo_agents.clikit import NOTHING, Arg, Result, Text, View, returns_object
+from evo_agents.hub import kg_routes
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.kg_routes import Uploads
+
+__all__ = ["KG_PIPELINE", "KG_UPLOAD", "KG_UPLOADS", "follow", "progress_line"]
 
 SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz")
-PARALLEL = 4  # parts sent at once
-URLS_AT_ONCE = 2 * PARALLEL  # parts whose URLs one call asks for: each works 15 minutes, so ask as they are needed
-HASH_CHUNK = 4 * 1024 * 1024
-PART_TIMEOUT = 600.0  # seconds for one part's PUT
 UPLOAD = (
     "id",
     "source",
@@ -73,10 +69,7 @@ PIPELINE = (
 )
 POLL_SECONDS = 15.0  # between two reads of the flow while ``upload`` waits
 ENDED = ("ready", "failed", "replaced")
-
-
-def _base(project: str) -> str:
-    return f"/v1/kg/{quote(project, safe='')}/uploads"
+HUB_PROJECT = "project name on the hub"
 
 
 def _bytes(size: int) -> str:
@@ -84,70 +77,6 @@ def _bytes(size: int) -> str:
         if size >= scale:
             return f"{size / scale:.1f} {unit}"
     return f"{size} B"
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        while chunk := handle.read(HASH_CHUNK):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _put(url: str, path: Path, offset: int, size: int) -> None:
-    """PUT one part, PUT_ATTEMPTS times at most while it fails with ``transient``."""
-    for number in range(1, PUT_ATTEMPTS + 1):
-        try:
-            put_presigned_part(url, path, offset, size, PART_TIMEOUT)
-            return
-        except HubError as exc:
-            if number == PUT_ATTEMPTS or not transient(exc):
-                raise
-            time.sleep(PUT_DELAYS[min(number - 1, len(PUT_DELAYS) - 1)])
-
-
-def upload(
-    hub: Hub,
-    project: str,
-    path: Path,
-    *,
-    source: str | None = None,
-    label: str | None = None,
-    new_project: bool = False,
-    progress=None,
-):
-    """Send the archive at ``path``, into project ``project`` the hub first creates with ``new_project``; (the hub's
-    answer for the upload once joined, parts sent, parts kept)."""
-    say = progress or (lambda line: None)
-    size = path.stat().st_size
-    ask = {"name": path.name, "size": size, "sha256": file_sha256(path)}
-    if source:
-        ask["source"] = source
-    if label:
-        ask["label"] = label
-    if new_project:
-        ask["new_project"] = True
-    started = hub.call("POST", _base(project), ask)
-    upload_id, each = started["id"], started["part_size"]
-    kept = set(started["done"])
-    missing = [n for n in range(1, started["parts"] + 1) if n not in kept]
-    if kept:
-        say(f"upload {upload_id} resumed: {len(kept)} of {started['parts']} parts are on the hub already")
-    path_of = f"{_base(project)}/{upload_id}"
-    with ThreadPoolExecutor(max_workers=PARALLEL, thread_name_prefix="kg-upload") as pool:
-        for start in range(0, len(missing), URLS_AT_ONCE):
-            batch = missing[start : start + URLS_AT_ONCE]
-            parts = hub.call("POST", f"{path_of}/parts", {"numbers": batch})["parts"]
-            futures = [pool.submit(_put, p["url"], path, (p["number"] - 1) * each, p["size"]) for p in parts]
-            for future in futures:
-                future.result()
-            say(f"sent {start + len(batch)} of {len(missing)} parts")
-    done = hub.call("POST", f"{path_of}/complete", {}) or {}
-    return done, len(missing), len(kept)
-
-
-def pipeline_of(hub: Hub, project: str, upload_id: int) -> dict:
-    return hub.call("GET", f"{_base(project)}/{upload_id}/pipeline") or {}
 
 
 def _phases(found: dict) -> str:
@@ -171,154 +100,162 @@ def progress_line(found: dict) -> str:
     return f"Knowledge graph ready ({_phases(found)})"
 
 
-def follow(hub: Hub, project: str, upload_id: int, say, *, poll: float | None = None, sleep=None) -> dict:
+def follow(
+    uploads: Uploads,
+    upload_id: int,
+    say: Callable[[str], Any],
+    *,
+    poll: float | None = None,
+    sleep: Callable[[float], Any] | None = None,
+) -> dict:
     """Read the flow after upload ``upload_id`` until it ends, calling ``say`` with each line that changed; its end.
     A read the hub did not answer (``client.transient``: a redeploy, a proxy's 502) is read again, not an end."""
-    last = None
-    while True:
-        try:
-            found = pipeline_of(hub, project, upload_id)
-        except HubError as exc:
-            if not hub_transient(exc):
-                raise
-            line = f"the hub did not answer ({exc}); reading the flow again in a moment"
-            if line != last:
-                say(line)
-                last = line
-            (sleep or time.sleep)(POLL_SECONDS if poll is None else poll)
-            continue
-        line = progress_line(found)
-        if line != last:
-            say(line)
-            last = line
-        if found["state"] in ENDED:
-            return found
-        (sleep or time.sleep)(POLL_SECONDS if poll is None else poll)
+    return kg_routes.follow(
+        lambda: uploads.pipeline(upload_id),
+        progress_line,
+        lambda found: found["state"] in ENDED,
+        say,
+        what="the flow",
+        poll=POLL_SECONDS if poll is None else poll,
+        sleep=sleep,
+    )
 
 
 def _exit(found: dict | None) -> int:
     return 1 if found is not None and found["state"] == "failed" else 0
 
 
-@client_command
-def cmd_upload(args) -> int:
-    path = Path(args.file)
-    if not path.is_file():
-        sys.exit(f"no file {args.file}")
-    if not path.name.lower().endswith(SUFFIXES):
-        sys.exit(f"{path.name} is not an archive the hub reads: {', '.join(SUFFIXES)}")
-    hub, _ = signed_in()
-    progress = None if args.json else (lambda line: print(line, file=sys.stderr))
-    project = args.new_project or args.project
-    done, sent, kept = upload(
-        hub, project, path, source=args.source, label=args.label, new_project=bool(args.new_project), progress=progress
+def _stderr(line: str) -> None:
+    print(line, file=sys.stderr)
+
+
+class KgUpload(HubCommand):
+    """Streams: the upload's line and the flow's lines are printed as they come."""
+
+    name = "upload"
+    help = "send an archive (.zip, .tar, .tar.gz, .tgz) as a source of the graph"
+    arguments = (Arg("file", help="the archive"),)
+    output = returns_object(*UPLOAD, *SENT, "pipeline", schema="KgUpload", added=(*SENT, "pipeline"))
+    json_help = (
+        "machine-readable output: the upload, with the parts sent and kept and the flow's end (null with --no-wait)"
     )
-    found = None
-    if not args.json:
-        made = f"new project {project}" if args.new_project else f"project {project}"
-        print(
-            f"uploaded {path.name} ({_bytes(done['size'])}) to {made} as source {done['source']}: "
-            f"upload {done['id']} is {done['state']}"
+
+    def add_arguments(self, parser) -> None:
+        target = parser.add_mutually_exclusive_group(required=True)
+        target.add_argument("--project", help=HUB_PROJECT)
+        target.add_argument(
+            "--new-project",
+            metavar="PROJECT",
+            help="create this project, with no harness, and upload into it (a hub admin, or an unused register right)",
         )
-        if args.new_project:
-            print(f"an interrupted upload continues with --project {project}", file=sys.stderr)
-    if done["state"] == "failed":
-        if args.json:
-            print_json({**done, "sent": sent, "kept": kept, "pipeline": None})
-        return 1
-    if not args.no_wait:
-        say = (lambda line: print(line, file=sys.stderr)) if args.json else (lambda line: print(line, flush=True))
-        found = follow(hub, project, done["id"], say)
-        if found["state"] == "ready" and not args.json:
-            print(f"the graph: {hub.url}/p/{quote(project, safe='')}/kg")
-    if args.json:
-        print_json({**done, "sent": sent, "kept": kept, "pipeline": found})
-    return _exit(found)
+        parser.add_argument("--source", help="the source it becomes (default: the file's name without its suffix)")
+        parser.add_argument(
+            "--label",
+            help="a level of the project (default: the project's default label; internal for a new project)",
+        )
+        parser.add_argument(
+            "--no-wait",
+            action="store_true",
+            help="return once the parts are joined, without following the build, starter questions and Curator after it",
+        )
+
+    def check(self, args) -> None:
+        path = Path(args.file)
+        if not path.is_file():
+            sys.exit(f"no file {args.file}")
+        if not path.name.lower().endswith(SUFFIXES):
+            sys.exit(f"{path.name} is not an archive the hub reads: {', '.join(SUFFIXES)}")
+
+    def run(self, ctx: HubContext) -> Result:
+        args, path = ctx.args, Path(ctx.args.file)
+        project = args.new_project or args.project
+        uploads = Uploads(ctx.hub, project)
+        done, sent, kept = uploads.send(
+            path,
+            source=args.source,
+            label=args.label,
+            new_project=bool(args.new_project),
+            progress=None if args.json else _stderr,
+        )
+        if not args.json:
+            made = f"new project {project}" if args.new_project else f"project {project}"
+            print(
+                f"uploaded {path.name} ({_bytes(done['size'])}) to {made} as source {done['source']}: "
+                f"upload {done['id']} is {done['state']}",
+                file=ctx.out,
+            )
+            if args.new_project:
+                _stderr(f"an interrupted upload continues with --project {project}")
+        if done["state"] == "failed":
+            return Result({**done, "sent": sent, "kept": kept, "pipeline": None}, NOTHING, 1)
+        found = None
+        view: View = NOTHING
+        if not args.no_wait:
+            found = follow(uploads, done["id"], _stderr if args.json else self.streamed(ctx))
+            if found["state"] == "ready":
+                view = Text(f"the graph: {uploads.web()}")
+        return Result({**done, "sent": sent, "kept": kept, "pipeline": found}, view, _exit(found))
+
+    @staticmethod
+    def streamed(ctx: HubContext) -> Callable[[str], None]:
+        return lambda line: print(line, file=ctx.out, flush=True)
 
 
-@client_command
-def cmd_pipeline(args) -> int:
-    hub, _ = signed_in()
-    upload_id = args.upload
-    if upload_id is None:
-        listed = (hub.call("GET", f"{_base(args.project)}?limit=1") or {})["uploads"]
-        if not listed:
-            sys.exit(f"project {args.project} has no upload your grant sees")
-        upload_id = listed[0]["id"]
-    found = pipeline_of(hub, args.project, upload_id)
-    if args.json:
-        print_json(found)
-        return _exit(found)
-    print(f"upload {found['upload_id']}: {progress_line(found)}")
-    for phase in found["phases"]:
-        detail = f"  {phase['detail']}" if phase.get("detail") else ""
-        print(f"  {phase['name']:<10} {phase['state']:<8}{detail}")
-    return _exit(found)
+class KgPipeline(HubCommand):
+    name = "pipeline"
+    help = "where the flow after an upload stands: upload, extract, build, entities, questions, Curator"
+    arguments = (
+        Arg("--project", required=True, help=HUB_PROJECT),
+        Arg("--upload", type=int, help="the upload, as `hub kg uploads` lists it (default: the newest)"),
+    )
+    output = returns_object(*PIPELINE, schema="KgPipeline")
+
+    def run(self, ctx: HubContext) -> Result:
+        uploads = Uploads(ctx.hub, ctx.project)
+        upload_id = ctx.args.upload
+        if upload_id is None:
+            listed = uploads.list(1)["uploads"]
+            if not listed:
+                sys.exit(f"project {ctx.project} has no upload your grant sees")
+            upload_id = listed[0]["id"]
+        found = uploads.pipeline(upload_id)
+        lines = [f"upload {found['upload_id']}: {progress_line(found)}"]
+        for phase in found["phases"]:
+            detail = f"  {phase['detail']}" if phase.get("detail") else ""
+            lines.append(f"  {phase['name']:<10} {phase['state']:<8}{detail}")
+        return Result(found, Text(*lines), _exit(found))
 
 
 def _skipped(skipped: dict) -> str:
     return ", ".join(f"{reason} {count}" for reason, count in sorted(skipped.items())) or "-"
 
 
-@client_command
-def cmd_uploads(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("GET", f"{_base(args.project)}?limit={args.limit}") or {}
-    if args.json:
-        print_json(found)
-        return 0
-    if not found["uploads"]:
-        print(f"project {args.project} has no upload yet")
-        return 0
-    for item in found["uploads"]:
-        files = "-" if item["files"] is None else str(item["files"])
-        build = "-" if item["build_id"] is None else f"#{item['build_id']} {item['build_status'] or ''}".strip()
-        print(
-            f"#{item['id']} {item['source']} {item['state']} {_bytes(item['size'])} files {files} "
-            f"skipped {_skipped(item['skipped'])} build {build}"
-        )
-        if item.get("error"):
-            print(f"  {item['error']}")
-    return 0
+def _upload_lines(item: dict) -> list[str]:
+    files = "-" if item["files"] is None else str(item["files"])
+    build = "-" if item["build_id"] is None else f"#{item['build_id']} {item['build_status'] or ''}".strip()
+    line = (
+        f"#{item['id']} {item['source']} {item['state']} {_bytes(item['size'])} files {files} "
+        f"skipped {_skipped(item['skipped'])} build {build}"
+    )
+    return [line, f"  {item['error']}"] if item.get("error") else [line]
 
 
-def register(ksub) -> None:
-    parser = ksub.add_parser("upload", help="send an archive (.zip, .tar, .tar.gz, .tgz) as a source of the graph")
-    parser.add_argument("file", help="the archive")
-    target = parser.add_mutually_exclusive_group(required=True)
-    target.add_argument("--project", help="project name on the hub")
-    target.add_argument(
-        "--new-project",
-        metavar="PROJECT",
-        help="create this project, with no harness, and upload into it (a hub admin, or an unused register right)",
+class KgUploads(HubCommand):
+    name = "uploads"
+    help = "list a project's archive uploads"
+    arguments = (
+        Arg("--project", required=True, help=HUB_PROJECT),
+        Arg("--limit", type=int, default=50, help="the newest uploads listed (1 to 200)"),
     )
-    parser.add_argument("--source", help="the source it becomes (default: the file's name without its suffix)")
-    parser.add_argument(
-        "--label",
-        help="a level of the project (default: the project's default label; internal for a new project)",
-    )
-    parser.add_argument(
-        "--no-wait",
-        action="store_true",
-        help="return once the parts are joined, without following the build, starter questions and Curator after it",
-    )
-    json_option(
-        parser,
-        returns_object(*UPLOAD, *SENT, "pipeline", schema="KgUpload", added=(*SENT, "pipeline")),
-        help="machine-readable output: the upload, with the parts sent and kept and the flow's end (null with --no-wait)",
-    )
-    parser.set_defaults(func=cmd_upload)
+    output = returns_object("uploads", schema="KgUploadList")
 
-    flow = ksub.add_parser(
-        "pipeline", help="where the flow after an upload stands: upload, extract, build, entities, questions, Curator"
-    )
-    flow.add_argument("--project", required=True, help="project name on the hub")
-    flow.add_argument("--upload", type=int, help="the upload, as `hub kg uploads` lists it (default: the newest)")
-    json_option(flow, returns_object(*PIPELINE, schema="KgPipeline"))
-    flow.set_defaults(func=cmd_pipeline)
+    def run(self, ctx: HubContext) -> Result:
+        found = Uploads(ctx.hub, ctx.project).list(ctx.args.limit)
+        if not found["uploads"]:
+            return Result(found, Text(f"project {ctx.project} has no upload yet"))
+        return Result(found, Text(*(line for item in found["uploads"] for line in _upload_lines(item))))
 
-    listing = ksub.add_parser("uploads", help="list a project's archive uploads")
-    listing.add_argument("--project", required=True, help="project name on the hub")
-    listing.add_argument("--limit", type=int, default=50, help="the newest uploads listed (1 to 200)")
-    json_option(listing, returns_object("uploads", schema="KgUploadList"))
-    listing.set_defaults(func=cmd_uploads)
+
+KG_UPLOAD = KgUpload()
+KG_PIPELINE = KgPipeline()
+KG_UPLOADS = KgUploads()

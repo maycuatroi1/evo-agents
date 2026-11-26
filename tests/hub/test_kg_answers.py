@@ -13,8 +13,10 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.hub import kg_answers as model
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import answer as kg_answer_cli
 from evo_agents.hub.client import HubError
+from evo_agents.hub.kg_routes import AnswerJobs
 from tests.hub import pg
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
@@ -108,7 +110,7 @@ def job(state="running", **counts):
 def test_follow_prints_each_change_once_and_the_lines_keep_the_files_ids():
     hub = Answers([job(), job(), job(asking=2, pending=1), job("done", answered=2, errors=1, pending=0)])
     said = []
-    found = kg_answer_cli.follow(hub, "northwind", 4, said.append, sleep=lambda _: None)
+    found = kg_answer_cli.follow(AnswerJobs(hub, "northwind"), 4, said.append, sleep=lambda _: None)
     assert found["state"] == "done" and len(said) == 3 and said[-1].startswith("answer job 4 done: 2 answered, 1")
     line = {"question": "q", "evidence": [], "model": "m", "input_tokens": 1, "output_tokens": 1}
     page = {
@@ -118,7 +120,7 @@ def test_follow_prints_each_change_once_and_the_lines_keep_the_files_ids():
         ],
         "total": 2,
     }
-    lines = kg_answer_cli.answer_lines(Answers([page]), "northwind", 4, {"1": 1})
+    lines = AnswerJobs(Answers([page]), "northwind").answers(4, {"1": 1})
     assert lines[0]["id"] == 1 and "error" not in lines[0]
     assert lines[1] == {**line, "id": "q-2", "answer": None, "error": "run #9 ended failed"}
 
@@ -126,10 +128,12 @@ def test_follow_prints_each_change_once_and_the_lines_keep_the_files_ids():
 def test_follow_reads_the_job_again_through_a_redeploy():
     hub = Answers([job(), HubError("answered HTTP 502", status=502), job("done", answered=3, pending=0)])
     said = []
-    found = kg_answer_cli.follow(hub, "northwind", 4, said.append, sleep=lambda _: None)
+    found = kg_answer_cli.follow(AnswerJobs(hub, "northwind"), 4, said.append, sleep=lambda _: None)
     assert found["state"] == "done" and len(hub.calls) == 3 and said[1].startswith("the hub did not answer")
     with pytest.raises(HubError):
-        kg_answer_cli.follow(Answers([HubError("no", status=403)]), "northwind", 4, said.append, sleep=lambda _: None)
+        kg_answer_cli.follow(
+            AnswerJobs(Answers([HubError("no", status=403)]), "northwind"), 4, said.append, sleep=lambda _: None
+        )
 
 
 # On Postgres
@@ -240,14 +244,14 @@ def test_a_file_is_answered_in_batches_of_review_runs_and_written_in_its_order(r
     assert advanced(review) == {"done": 1}
 
     hub = AppHub(client, owner)
-    monkeypatch.setattr(kg_answer_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     out = tmp_path / "answers.jsonl"
     questions = tmp_path / "questions.jsonl"
     questions.write_text("".join(json.dumps(q) + "\n" for q in QUESTIONS))
     args = dict(
         project=PROJECT, questions=None, out=str(out), batch=2, no_wait=False, status=False, reply=None, stop=False
     )
-    assert kg_answer_cli.cmd_answer(argparse.Namespace(**args, job=job_id, limit=20, json=False)) == 0
+    assert kg_answer_cli.KG_ANSWER(argparse.Namespace(**args, job=job_id, limit=20, json=False)) == 0
     lines = [json.loads(line) for line in out.read_text().splitlines()]
     assert [line["id"] for line in lines] == ["1", "q-2", "q-3"], "the file's order"
     assert lines[0] == {
@@ -272,7 +276,7 @@ def test_a_file_is_answered_in_batches_of_review_runs_and_written_in_its_order(r
 
     # The same file again asks only q-2: q-3 has the agent's error, 1 its answer
     args |= {"questions": str(questions), "no_wait": True}
-    assert kg_answer_cli.cmd_answer(argparse.Namespace(**args, job=None, limit=20, json=True)) == 0
+    assert kg_answer_cli.KG_ANSWER(argparse.Namespace(**args, job=None, limit=20, json=True)) == 0
     again = json.loads(capsys.readouterr().out)
     assert (again["id"], again["again"], again["state"], again["pending"], again["answered"]) == (
         job_id,
@@ -300,15 +304,15 @@ def test_status_lists_the_jobs_and_a_job_no_run_can_be_queued_for_fails_after_a_
     failed = client.get(f"{base()}/{second}", headers=owner).json()
     assert (failed["state"], failed["errors"], failed["pending"]) == ("failed", 2, 0)
 
-    monkeypatch.setattr(kg_answer_cli, "signed_in", lambda: (AppHub(client, review.headers["reader"]), None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (AppHub(client, review.headers["reader"]), None))
     status = dict(
         project=PROJECT, questions=None, out="x", batch=50, no_wait=False, job=None, reply=None, limit=20, stop=False
     )
-    assert kg_answer_cli.cmd_answer(argparse.Namespace(**status, status=True, json=False)) == 0
+    assert kg_answer_cli.KG_ANSWER(argparse.Namespace(**status, status=True, json=False)) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[0].startswith(f"#{second} failed questions 2 answered 0 errors 2")
     assert any(line.startswith(f"#{first} running questions 1") for line in out)
-    assert kg_answer_cli.cmd_answer(argparse.Namespace(**status, status=True, json=True)) == 0
+    assert kg_answer_cli.KG_ANSWER(argparse.Namespace(**status, status=True, json=True)) == 0
     assert [j["id"] for j in json.loads(capsys.readouterr().out)["jobs"]] == [second, first]
 
 
@@ -322,9 +326,9 @@ def test_a_stopped_job_cancels_its_run_fails_and_the_same_file_asks_the_rest_aga
     stop = f"{base()}/{job_id}/stop"
     assert client.post(stop, headers=review.headers["reader"]).status_code == 403
 
-    monkeypatch.setattr(kg_answer_cli, "signed_in", lambda: (AppHub(client, owner), None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (AppHub(client, owner), None))
     args = dict(project=PROJECT, questions=None, out="x", batch=2, no_wait=False, status=False, reply=None, limit=20)
-    assert kg_answer_cli.cmd_answer(argparse.Namespace(**args, job=job_id, stop=True, json=True)) == 0
+    assert kg_answer_cli.KG_ANSWER(argparse.Namespace(**args, job=job_id, stop=True, json=True)) == 0
     stopped = json.loads(capsys.readouterr().out)
     assert (stopped["state"], stopped["answered"], stopped["errors"], stopped["pending"]) == ("failed", 1, 2, 0)
     assert "stopped answer job" in stopped["error"]

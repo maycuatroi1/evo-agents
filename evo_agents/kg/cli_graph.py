@@ -122,14 +122,15 @@ def cmd_settings(args) -> int:
 def cmd_init(args) -> int:
     """``kg init``: ask the hub for a kg_init run of the project, in which the Curator configures its graph from its
     data profile (``evo-agents hub kg init``); the run, or the one already in flight."""
-    from evo_agents.hub.cli.kg.init import line_of, path_of
+    from evo_agents.hub.cli.kg.init import line_of
     from evo_agents.hub.client import Hub, HubError, load_credentials
+    from evo_agents.hub.kg_routes import InitRuns
     from evo_agents.kg.cli import print_json, project_of
 
     project = project_of(args)
     try:
         credentials = load_credentials()
-        found = Hub(credentials.url, credentials.token).call("POST", path_of(project.name), {})
+        found = InitRuns(Hub(credentials.url, credentials.token), project.name).start()
     except HubError as exc:
         print(f"error: the hub: {exc}", file=sys.stderr)
         return 1
@@ -219,7 +220,7 @@ def query_tool(args) -> None:
 
 
 def cmd_query(args) -> int:
-    from evo_agents.hub.cli.kg import open_session
+    from evo_agents.hub.kg_remote import open_session
 
     query_tool(args)
     session = open_session(args.backend, args.project, args.sink)
@@ -245,7 +246,7 @@ def cmd_query(args) -> int:
 
 
 def cmd_serve(args) -> int:
-    from evo_agents.hub.cli.kg import open_session
+    from evo_agents.hub.kg_remote import open_session
     from evo_agents.kg.serve import serve_stdio
 
     return serve_stdio(session=open_session(args.backend, args.project, args.sink))
@@ -262,7 +263,7 @@ def _repo_overrides(pairs: list[str] | None) -> dict[str, Path]:
 
 
 def cmd_eval(args) -> int:
-    from evo_agents.hub.cli.kg import open_session
+    from evo_agents.hub.kg_remote import open_session
     from evo_agents.kg.evaluate import METHODS, evaluate, load_set, project_checkouts, render
 
     try:

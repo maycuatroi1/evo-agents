@@ -93,7 +93,7 @@ def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
 def asked(monkeypatch, command: str) -> list:
     """The arguments ``kg <command>`` hands the hub's command, which is not run."""
     seen = []
-    monkeypatch.setattr(kg_cli, f"cmd_{command}", lambda args: seen.append(args) or 0)
+    monkeypatch.setattr(kg_cli, f"KG_{command.upper()}", lambda args: seen.append(args) or 0)
     return seen
 
 

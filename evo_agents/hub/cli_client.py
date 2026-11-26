@@ -682,9 +682,9 @@ def _register_other_groups(hsub) -> None:
 
     register_secrets(hsub)
 
-    from evo_agents.hub.cli.kg import register_kg
+    from evo_agents.hub.cli.kg import KG
 
-    register_kg(hsub)
+    KG.attach(hsub)
 
     from evo_agents.hub.mcp_proxy import register_mcp
 

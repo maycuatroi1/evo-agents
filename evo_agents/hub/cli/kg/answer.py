@@ -11,7 +11,8 @@ questions no agent answered. ``--no-wait`` returns once the hub kept the file; `
 follows job J and writes its answers. ``--status`` lists the project's jobs: questions, answered, errors, state.
 ``--job J --stop`` stops a running job: its run is cancelled and its questions without an answer get an error.
 ``--job J --reply FILE`` is the agent's: it sends the answers of its batch (``{"id", "answer", "evidence"}`` or
-``{"id", "error"}`` a line). ``--json`` prints the hub's answer. Standard library only.
+``{"id", "error"}`` a line). ``--json`` prints the hub's answer. The routes are those of
+``evo_agents.hub.kg_routes.AnswerJobs``. Standard library only.
 """
 
 from __future__ import annotations
@@ -19,13 +20,16 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
+from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import quote
+from typing import Any
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.client import Hub, HubError, transient
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Result, Text, returns_object
+from evo_agents.hub import kg_routes
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.kg_routes import AnswerJobs
+
+__all__ = ["KG_ANSWER", "follow", "progress_line", "read_lines", "write_answers"]
 
 JOB = (
     "id",
@@ -48,17 +52,7 @@ JOB = (
     "again",
 )
 WRITTEN = ("out", "written")  # the file written and its lines, null with --no-wait
-LINE = ("id", "question", "answer", "evidence", "model", "input_tokens", "output_tokens")
 POLL_SECONDS = 15.0  # between two reads of the job while it runs
-PAGE = 1000  # lines of one read of the answers
-
-
-def _base(project: str) -> str:
-    return f"/v1/kg/{quote(project, safe='')}/answers"
-
-
-def page_of(hub: Hub, project: str, job_id: int) -> str:
-    return f"{hub.url}/p/{quote(project, safe='')}/kg/answers/{job_id}"
 
 
 def read_lines(path: Path) -> list:
@@ -89,47 +83,25 @@ def progress_line(job: dict) -> str:
     return f"answer job {job['id']} done: {counts}"
 
 
-def follow(hub: Hub, project: str, job_id: int, say, *, poll: float | None = None, sleep=None) -> dict:
+def follow(
+    jobs: AnswerJobs,
+    job_id: int,
+    say: Callable[[str], Any],
+    *,
+    poll: float | None = None,
+    sleep: Callable[[float], Any] | None = None,
+) -> dict:
     """Read job ``job_id`` until it ends, calling ``say`` with each line that changed; its end. A read the hub did
     not answer (``client.transient``: a redeploy, a proxy's 502) is read again, not an end."""
-    last = None
-    while True:
-        try:
-            job = hub.call("GET", f"{_base(project)}/{job_id}") or {}
-        except HubError as exc:
-            if not transient(exc):
-                raise
-            line = f"the hub did not answer ({exc}); reading the job again in a moment"
-            if line != last:
-                say(line)
-                last = line
-            (sleep or time.sleep)(POLL_SECONDS if poll is None else poll)
-            continue
-        line = progress_line(job)
-        if line != last:
-            say(line)
-            last = line
-        if job["state"] != "running":
-            return job
-        (sleep or time.sleep)(POLL_SECONDS if poll is None else poll)
-
-
-def answer_lines(hub: Hub, project: str, job_id: int, ids: dict | None = None) -> list[dict]:
-    """The job's answers in the file's order, as answers.jsonl holds them; ``ids`` gives back the ids of the file
-    (an integer id stays one)."""
-    out: list[dict] = []
-    offset = 0
-    while True:
-        found = hub.call("GET", f"{_base(project)}/{job_id}/lines?offset={offset}&limit={PAGE}") or {}
-        for item in found["lines"]:
-            line = {key: item[key] for key in LINE}
-            line["id"] = (ids or {}).get(item["id"], item["id"])
-            if item.get("error"):
-                line["error"] = item["error"]
-            out.append(line)
-        offset += len(found["lines"])
-        if not found["lines"] or offset >= found["total"]:
-            return out
+    return kg_routes.follow(
+        lambda: jobs.get(job_id),
+        progress_line,
+        lambda job: job["state"] != "running",
+        say,
+        what="the job",
+        poll=POLL_SECONDS if poll is None else poll,
+        sleep=sleep,
+    )
 
 
 def write_answers(path: Path, lines: list[dict]) -> None:
@@ -141,127 +113,125 @@ def write_answers(path: Path, lines: list[dict]) -> None:
     os.replace(temporary, path)
 
 
-def _ask(hub: Hub, args) -> tuple[dict, dict]:
-    """(the job the hub keeps for the file of --questions, {id as sent: id of the file})."""
-    path = Path(args.questions)
-    if not path.is_file():
-        sys.exit(f"no file {args.questions}")
-    questions = read_lines(path)
-    ids = {str(q["id"]): q["id"] for q in questions if isinstance(q, dict) and isinstance(q.get("id"), int | str)}
-    job = hub.call("POST", _base(args.project), {"questions": questions, "batch": args.batch}) or {}
-    return job, ids
-
-
-@client_command
-def cmd_answer(args) -> int:
-    hub, _ = signed_in()
-    if args.status:
-        return _status(hub, args)
-    if args.reply:
-        return _reply(hub, args)
-    if args.stop:
-        return _stop(hub, args)
-    if args.questions:
-        job, ids = _ask(hub, args)
-        if not args.json:
-            asked = "sent before: asking again the questions with no answer" if job["again"] else "kept"
-            print(f"answer job {job['id']} of {job['questions']} questions {asked}, batches of {job['batch']}")
-    elif args.job:
-        job, ids = hub.call("GET", f"{_base(args.project)}/{args.job}") or {}, {}
-    else:
-        sys.exit("give --questions FILE, --job J or --status")
-    say = (lambda line: print(line, file=sys.stderr)) if args.json else (lambda line: print(line, flush=True))
-    say(f"progress: {page_of(hub, args.project, job['id'])}")
-    if args.no_wait:
-        if args.json:
-            print_json({**job, "out": None, "written": None})
-        return 0
-    job = follow(hub, args.project, job["id"], say)
-    lines = answer_lines(hub, args.project, job["id"], ids)
-    write_answers(Path(args.out), lines)
-    if args.json:
-        print_json({**job, "out": args.out, "written": len(lines)})
-    else:
-        print(f"wrote {len(lines)} answers to {args.out}")
-    return 1 if job["state"] == "failed" else 0
-
-
-def _status(hub: Hub, args) -> int:
-    found = hub.call("GET", f"{_base(args.project)}?limit={args.limit}") or {}
-    if args.json:
-        print_json(found)
-        return 0
-    if not found["jobs"]:
-        print(f"project {args.project} has no answer job yet")
-        return 0
-    for job in found["jobs"]:
-        print(
-            f"#{job['id']} {job['state']} questions {job['questions']} answered {job['answered']} "
-            f"errors {job['errors']} pending {job['pending'] + job['asking']} runs {job['runs']} {job['created_at']}"
-        )
-        if job.get("note") or job.get("error"):
-            print(f"  {job.get('error') or job.get('note')}")
-    return 0
-
-
-def _stop(hub: Hub, args) -> int:
-    if not args.job:
-        sys.exit("--stop needs --job J: the answer job to stop")
-    job = hub.call("POST", f"{_base(args.project)}/{args.job}/stop") or {}
-    if args.json:
-        print_json(job)
-    else:
-        print(progress_line(job))
-    return 0
-
-
-def _reply(hub: Hub, args) -> int:
-    if not args.job:
-        sys.exit("--reply needs --job J: the answer job your run asks")
-    path = Path(args.reply)
-    if not path.is_file():
-        sys.exit(f"no file {args.reply}")
-    found = hub.call("POST", f"{_base(args.project)}/{args.job}/replies", {"answers": read_lines(path)}) or {}
-    if args.json:
-        print_json(found)
-    else:
-        print(f"kept {found['kept']} answers")
-        for problem in found["problems"]:
-            print(f"  not kept: {problem}")
-    return 1 if found["problems"] else 0
-
-
-def register(ksub) -> None:
-    parser = ksub.add_parser("answer", help="ask a file of questions of the graph and write the agents' answers")
-    parser.add_argument("--project", required=True, help="project name on the hub")
-    parser.add_argument("--questions", metavar="FILE", help="JSON lines, each with id and question (at most 5,000)")
-    parser.add_argument("--out", default="answers.jsonl", help="where the answers go (default: answers.jsonl)")
-    parser.add_argument("--batch", type=int, default=50, help="questions asked of one agent run (1 to 200, default 50)")
-    parser.add_argument("--no-wait", action="store_true", help="return once the hub kept the questions")
-    parser.add_argument("--job", type=int, help="the answer job: follow it and write its answers, or --reply to it")
-    parser.add_argument("--status", action="store_true", help="list the project's answer jobs")
-    parser.add_argument("--limit", type=int, default=20, help="with --status, the newest jobs listed (1 to 50)")
-    parser.add_argument(
-        "--stop",
-        action="store_true",
-        help="with --job, stop a running job: its run is cancelled; the same file sent again asks the rest again",
+def _job_lines(job: dict) -> list[str]:
+    line = (
+        f"#{job['id']} {job['state']} questions {job['questions']} answered {job['answered']} "
+        f"errors {job['errors']} pending {job['pending'] + job['asking']} runs {job['runs']} {job['created_at']}"
     )
-    parser.add_argument(
-        "--reply", metavar="FILE", help="the agent of a run: send its answers, JSON lines of id with answer or error"
-    )
-    json_option(
-        parser,
-        returns_object(
-            *JOB,
-            *WRITTEN,
-            schema="KgAnswerJob",
-            added=WRITTEN,
-            variants=(
-                ("--status", returns_object("jobs", schema="KgAnswerJobs")),
-                ("--reply", returns_object("kept", "problems", schema="KgAnswerReplied")),
-                ("--stop", returns_object(*JOB, schema="KgAnswerJob")),
-            ),
+    return [line, f"  {job.get('error') or job.get('note')}"] if job.get("note") or job.get("error") else [line]
+
+
+class KgAnswer(HubCommand):
+    """Streams while it follows a job: the page and the job's lines are printed as they come."""
+
+    name = "answer"
+    help = "ask a file of questions of the graph and write the agents' answers"
+    arguments = (
+        Arg("--project", required=True, help="project name on the hub"),
+        Arg("--questions", metavar="FILE", help="JSON lines, each with id and question (at most 5,000)"),
+        Arg("--out", default="answers.jsonl", help="where the answers go (default: answers.jsonl)"),
+        Arg("--batch", type=int, default=50, help="questions asked of one agent run (1 to 200, default 50)"),
+        Arg("--no-wait", action="store_true", help="return once the hub kept the questions"),
+        Arg("--job", type=int, help="the answer job: follow it and write its answers, or --reply to it"),
+        Arg("--status", action="store_true", help="list the project's answer jobs"),
+        Arg("--limit", type=int, default=20, help="with --status, the newest jobs listed (1 to 50)"),
+        Arg(
+            "--stop",
+            action="store_true",
+            help="with --job, stop a running job: its run is cancelled; the same file sent again asks the rest again",
         ),
-        help="machine-readable output: the job, with the file written and its lines (null with --no-wait)",
+        Arg(
+            "--reply",
+            metavar="FILE",
+            help="the agent of a run: send its answers, JSON lines of id with answer or error",
+        ),
     )
-    parser.set_defaults(func=cmd_answer)
+    output = returns_object(
+        *JOB,
+        *WRITTEN,
+        schema="KgAnswerJob",
+        added=WRITTEN,
+        variants=(
+            ("--status", returns_object("jobs", schema="KgAnswerJobs")),
+            ("--reply", returns_object("kept", "problems", schema="KgAnswerReplied")),
+            ("--stop", returns_object(*JOB, schema="KgAnswerJob")),
+        ),
+    )
+    json_help = "machine-readable output: the job, with the file written and its lines (null with --no-wait)"
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        jobs = AnswerJobs(ctx.hub, args.project)  # signed in first, as before
+        if args.status:
+            return self.status(jobs, args)
+        if args.reply:
+            return self.reply(jobs, args)
+        if args.stop:
+            return self.stop(jobs, args)
+        if args.questions:
+            job, ids = self.ask(jobs, args)
+            if not args.json:
+                asked = "sent before: asking again the questions with no answer" if job["again"] else "kept"
+                line = f"answer job {job['id']} of {job['questions']} questions {asked}, batches of {job['batch']}"
+                print(line, file=ctx.out)
+        elif args.job:
+            job, ids = jobs.get(args.job), {}
+        else:
+            sys.exit("give --questions FILE, --job J or --status")
+        say = self.said(ctx)
+        say(f"progress: {jobs.web('answers', job['id'])}")
+        if args.no_wait:
+            return Result({**job, "out": None, "written": None})
+        job = follow(jobs, job["id"], say)
+        lines = jobs.answers(job["id"], ids)
+        write_answers(Path(args.out), lines)
+        return Result(
+            {**job, "out": args.out, "written": len(lines)},
+            Text(f"wrote {len(lines)} answers to {args.out}"),
+            1 if job["state"] == "failed" else 0,
+        )
+
+    @staticmethod
+    def said(ctx: HubContext) -> Callable[[str], None]:
+        """Where a line of progress goes: stderr under --json, else stdout as it comes."""
+        if ctx.args.json:
+            return lambda line: print(line, file=sys.stderr)
+        return lambda line: print(line, file=ctx.out, flush=True)
+
+    @staticmethod
+    def ask(jobs: AnswerJobs, args) -> tuple[dict, dict]:
+        """(the job the hub keeps for the file of --questions, {id as sent: id of the file})."""
+        path = Path(args.questions)
+        if not path.is_file():
+            sys.exit(f"no file {args.questions}")
+        questions = read_lines(path)
+        ids = {str(q["id"]): q["id"] for q in questions if isinstance(q, dict) and isinstance(q.get("id"), int | str)}
+        return jobs.ask(questions, args.batch), ids
+
+    @staticmethod
+    def status(jobs: AnswerJobs, args) -> Result:
+        found = jobs.list(args.limit)
+        if not found["jobs"]:
+            return Result(found, Text(f"project {args.project} has no answer job yet"))
+        return Result(found, Text(*(line for job in found["jobs"] for line in _job_lines(job))))
+
+    @staticmethod
+    def stop(jobs: AnswerJobs, args) -> Result:
+        if not args.job:
+            sys.exit("--stop needs --job J: the answer job to stop")
+        job = jobs.stop(args.job)
+        return Result(job, Text(progress_line(job)))
+
+    @staticmethod
+    def reply(jobs: AnswerJobs, args) -> Result:
+        if not args.job:
+            sys.exit("--reply needs --job J: the answer job your run asks")
+        path = Path(args.reply)
+        if not path.is_file():
+            sys.exit(f"no file {args.reply}")
+        found = jobs.reply(args.job, read_lines(path))
+        lines = [f"kept {found['kept']} answers", *(f"  not kept: {problem}" for problem in found["problems"])]
+        return Result(found, Text(*lines), 1 if found["problems"] else 0)
+
+
+KG_ANSWER = KgAnswer()

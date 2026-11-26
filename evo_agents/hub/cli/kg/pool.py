@@ -5,50 +5,50 @@ With no option it prints the pool named now, its owner and the projects it serve
 member's pool, in place of the one named before; ``--clear`` names none. Its ready nodes, which run evo-agents with the
 feature repoless_review, take the KG runs (lens kg_questions and kg_init) of a project with no repo whose default
 agent's pool has no ready node, when the project's creator owns the pool; the hub adds each such project to the pool.
-Standard library only, like the rest of the client.
+The command is :data:`KG_POOL`, which ``hub admin`` lists (``evo_agents.hub.cli_invites``). Standard library only, like
+the rest of the client.
 """
 
 from __future__ import annotations
 
-import sys
+from evo_agents.clikit import Arg, Result, Text, UsageError, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.kg_routes import KgAdmin
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.contract import json_option, returns_object
+__all__ = ["KG_POOL"]
 
 VIEW_KEYS = ("pool", "owner", "projects")
-PATH = "/v1/admin/kg-pool"
 
 
-@client_command
-def cmd_kg_pool(args) -> int:
-    if args.set and args.clear:
-        print("error: pass --set OWNER/POOL or --clear, not both", file=sys.stderr)
-        return 2
-    if args.set and args.set.count("/") != 1:
-        print(f"error: --set takes OWNER/POOL, the owner's login and the pool's name, not {args.set}", file=sys.stderr)
-        return 2
-    hub, _ = signed_in()
-    if args.set:
-        owner, pool = args.set.split("/")
-        view = hub.call("PUT", PATH, {"owner": owner, "pool": pool}) or {}
-    else:
-        view = hub.call("DELETE" if args.clear else "GET", PATH) or {}
-    if args.json:
-        print_json(view)
-    elif view["pool"] is None:
-        print("No shared KG pool: the KG runs of a project with no repo wait for a node of its agent's pool.")
-    else:
-        served = ", ".join(view["projects"]) or "none yet"
-        print(f"Shared KG pool: {view['owner']}/{view['pool']}; projects it serves: {served}.")
-    return 0
-
-
-def kg_pool_commands(asub) -> None:
-    """Add ``kg-pool`` to the ``hub admin`` subparsers ``asub``."""
-    kg_pool = asub.add_parser(
-        "kg-pool", help="the pool whose nodes take the KG runs of projects with no repo (hub admins only)"
+class KgPool(HubCommand):
+    name = "kg-pool"
+    help = "the pool whose nodes take the KG runs of projects with no repo (hub admins only)"
+    arguments = (
+        Arg("--set", metavar="OWNER/POOL", help="name this member's pool the shared KG pool"),
+        Arg("--clear", action="store_true", help="name no shared KG pool"),
     )
-    kg_pool.add_argument("--set", metavar="OWNER/POOL", help="name this member's pool the shared KG pool")
-    kg_pool.add_argument("--clear", action="store_true", help="name no shared KG pool")
-    json_option(kg_pool, returns_object(*VIEW_KEYS, schema="KgSharedPool"))
-    kg_pool.set_defaults(func=cmd_kg_pool)
+    output = returns_object(*VIEW_KEYS, schema="KgSharedPool")
+
+    def check(self, args) -> None:
+        if args.set and args.clear:
+            raise UsageError("pass --set OWNER/POOL or --clear, not both")
+        if args.set and args.set.count("/") != 1:
+            raise UsageError(f"--set takes OWNER/POOL, the owner's login and the pool's name, not {args.set}")
+
+    def run(self, ctx: HubContext) -> Result:
+        admin = KgAdmin(ctx.hub)
+        if ctx.args.set:
+            owner, pool = ctx.args.set.split("/")
+            view = admin.set_pool(owner, pool)
+        else:
+            view = admin.clear_pool() if ctx.args.clear else admin.pool()
+        if view["pool"] is None:
+            return Result(
+                view,
+                Text("No shared KG pool: the KG runs of a project with no repo wait for a node of its agent's pool."),
+            )
+        served = ", ".join(view["projects"]) or "none yet"
+        return Result(view, Text(f"Shared KG pool: {view['owner']}/{view['pool']}; projects it serves: {served}."))
+
+
+KG_POOL = KgPool()

@@ -16,6 +16,7 @@ from evo_agents import __version__
 from evo_agents.hub import (
     cli_market,
     contract,
+    kg_remote,
     local_send,
     memory,
     skill_sync,
@@ -49,7 +50,7 @@ BUILT_HERE = {
     "hub memory push": lambda: memory.Report("push", HUB_URL).as_json(),
     "hub memory pull": lambda: memory.Report("pull", HUB_URL).as_json(),
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
-    "hub kg push": lambda: kg_cli.push_json([]),
+    "hub kg push": lambda: kg_remote.push_json([]),
     "hub kg profile": lambda: kg_profile_cli.profile_json("demo", 1, {}),
     "hub kg semantic": lambda: kg_semantic_cli.semantic_json("demo", 1, {}),
     "hub kg measure": lambda: kg_settings_cli.measure_json("demo", {}),

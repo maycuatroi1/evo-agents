@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
 from evo_agents.hub import tables
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import init as kg_init_cli
 from evo_agents.hub.client import env_credentials
 from evo_agents.hub.kg_health_eval import AGENT_SINK
@@ -127,11 +128,11 @@ def test_hub_kg_init_decide_runs_on_the_token_alone(review, monkeypatch, tmp_pat
     monkeypatch.setenv("EVO_HUB_URL", AppHub.url)
     found = env_credentials()
     assert found is not None and found.token == token, "the CLI signs in with the run's variables, no login"
-    monkeypatch.setattr(kg_init_cli, "signed_in", lambda: (AppHub(review.client, bearer(found.token)), found))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (AppHub(review.client, bearer(found.token)), found))
     path = tmp_path / "decision.json"
     path.write_text(json.dumps(DECISION))
     args = dict(project=PROJECT, all=False, status=False, decide=str(path), questions=None, run=None, limit=10)
-    assert kg_init_cli.cmd_init(argparse.Namespace(**args, json=False)) == 0
+    assert kg_init_cli.KG_INIT(argparse.Namespace(**args, json=False)) == 0
     assert f"kg init run #{init_id} of project {PROJECT} decided" in capsys.readouterr().out
 
 

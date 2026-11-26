@@ -31,10 +31,9 @@ def _not_signed_in(tmp_path, monkeypatch):
 @pytest.fixture
 def hub_for(tmp_path, monkeypatch):
     """``hub_for(*names)``: this machine signed in to an in-memory hub of projects ``names`` (``KgHubs``)."""
-    from evo_agents.hub import client, kg_hub_sync, kg_push
-    from evo_agents.hub.cli import kg as kg_cli
+    from evo_agents.hub import client, kg_hub_sync, kg_push, kg_remote
 
-    assert kg_cli.Hub is client.Hub  # imported before the patch below, so it keeps the real Hub after the test
+    assert kg_remote.Hub is client.Hub  # imported before the patch below, so it keeps the real Hub after the test
 
     opened: list[KgHubs] = []
 

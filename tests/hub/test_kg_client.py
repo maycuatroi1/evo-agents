@@ -15,7 +15,6 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import kg_push
-from evo_agents.hub.cli.kg import RemoteSession, open_session
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.kg_ingest import (
     LogProblem,
@@ -28,6 +27,7 @@ from evo_agents.hub.kg_ingest import (
     without_names,
 )
 from evo_agents.hub.kg_push import Pusher, batches, commit_timeout, log_timeout, transient, unanswered
+from evo_agents.hub.kg_remote import RemoteSession, open_session
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
@@ -334,14 +334,14 @@ def forgotten(source: str, runs: int, declared: bool, build: dict | None = None)
 
 
 def test_forget_source_takes_each_source_off_once_and_asks_first_at_a_terminal(monkeypatch, capsys):
-    from evo_agents.hub.cli import kg as kg_cli
+    from evo_agents.hub.cli import base as cli_base
 
     answers = {
         "docs": forgotten("docs", 3, True, {"id": 7, "status": "queued"}),
         "old": forgotten("old", 0, False),
     }
     hub = ForgettingHub(answers)
-    monkeypatch.setattr(kg_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     command = ["hub", "kg", "forget-source", "--project", "alpha", "--source", "docs", "--source", "old"]
 
     assert main([*command, "--source", "docs", "--yes"]) == 0

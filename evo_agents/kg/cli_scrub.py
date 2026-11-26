@@ -36,7 +36,7 @@ def cmd_scrub(args) -> int:
     except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    return kg_cli.cmd_scrub(args)
+    return kg_cli.KG_SCRUB(args)
 
 
 def register(ksub) -> None:
