@@ -6,7 +6,7 @@ GET /v1/me/today is worked out at each call, over every project the caller holds
 GET /v1/me/overview (``overview.scope``): a decision, run or plan of a plan whose label the caller's grant does not
 reach is neither listed nor counted. It answers:
 
-- ``needs_you``: the open decisions asked of the caller (``decisions.asked_person``), the oldest first, at most
+- ``needs_you``: the open decisions asked of the caller (``decision_reads.asked_person``), the oldest first, at most
   MAX_NEEDS_YOU, each with when its run parks for want of an answer (``overview.parks_at``); ``needs_you_count``
   counts them all;
 - ``items``: at most MAX_ITEMS things that changed in the window, the first ones in the order they happened, each with
@@ -57,7 +57,7 @@ from evo_agents.hub import curator, problems, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server.decisions import asked_person
+from evo_agents.hub.server.decision_reads import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.loop.view import measure
 from evo_agents.hub.server.night_cost import usage_cost

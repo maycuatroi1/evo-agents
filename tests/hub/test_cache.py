@@ -157,7 +157,7 @@ def test_a_write_or_a_reconnection_drops_the_values_and_a_listener_down_bypasses
 
 def test_a_write_of_a_watched_table_names_its_areas_a_cte_and_a_cascade_included():
     import evo_agents.hub.guard  # noqa: F401  the areas are watched where they are read
-    import evo_agents.hub.server.notifications  # noqa: F401
+    import evo_agents.hub.server.notification_list  # noqa: F401
 
     def written(statement):
         return cache._written(statement, statement.compile(dialect=postgresql.dialect()))
@@ -371,7 +371,7 @@ def notice_client(hub_db, tmp_path, github, backend):
 def test_the_notification_count_is_cached_and_dropped_by_a_write_here_or_elsewhere(
     notice_client, github, hub_db, monkeypatch, backend
 ):
-    from evo_agents.hub.server import notifications
+    from evo_agents.hub.server import notification_list
     from tests.hub.live import sql
     from tests.hub.test_notifications import alert, count, read
     from tests.hub.test_plan_runs import plan_body, push, started
@@ -381,13 +381,13 @@ def test_the_notification_count_is_cached_and_dropped_by_a_write_here_or_elsewhe
     hub = members(client, github)
     push(client, hub["owner"], plan_body())
     worker, run_ = started(client, hub)
-    loads, real = [], notifications._counts
+    loads, real = [], notification_list._counts
 
     def counted(user_id):
         loads.append(user_id)
         return real(user_id)
 
-    monkeypatch.setattr(notifications, "_counts", counted)
+    monkeypatch.setattr(notification_list, "_counts", counted)
     count(client, hub["owner"])
     listening(client)
     loads.clear()

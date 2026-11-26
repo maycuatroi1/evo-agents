@@ -230,7 +230,7 @@ def audience_digest(audience: frozenset[str]) -> str:
     return hashlib.sha256("\n".join(sorted(audience)).encode()).hexdigest()
 
 
-def _snapshotted(loaded: Held | None, graphs, ceiling):
+def snapshot_of(loaded: Held | None, graphs, ceiling):
     """A view of ``loaded`` for ``kg_graph.reading`` as ``ceiling``'s audience reads it, with the one of ``graphs`` it
     was made of; None without it or when it is of none of them (no graph is read then)."""
     graph = next((g for g in graphs if loaded is not None and g.build_id == loaded.build_id), None)
@@ -256,7 +256,7 @@ def _evaluate(
     Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
     heard = audience_digest(audience)
-    with reading(project, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, snapshot_of(loaded, graphs, ceiling)) as (store, graph):
         b = store.latest_ready()
         if b is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
@@ -402,7 +402,7 @@ def _review(
     """The review of a measure (see the module), from ``loaded``, the snapshot of the hub's tables, when it is of one
     of ``graphs``, else from the graph file. Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink)
-    with reading(project, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, snapshot_of(loaded, graphs, ceiling)) as (store, graph):
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
         if session.error:
             return {"why": session.error}

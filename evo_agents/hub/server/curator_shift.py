@@ -168,6 +168,21 @@ async def writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
     return access
 
 
+async def _outside_window(conn: AsyncConnection, due, *, quiet: bool, any_hour: bool, beside: bool) -> str:
+    """Outside the window of ``due``, the night's queued runs cancelled: the word ``gate_of`` stops on, or "" when the
+    gate may still open (``beside``, or ``any_hour`` with the Curator's changes waiting). ``quiet`` is the charter's
+    quiet hours, which hold the changes too."""
+    if quiet:
+        why = f"the Curator of {due.project} keeps its quiet hours"
+        cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
+        return "" if beside else ("cancelled" if cancelled else "quiet")
+    why = f"the night shift of {due.project} is outside its window"
+    cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
+    if (cancelled and not beside) or not any_hour or not await changes_waiting(conn, due.project_id):
+        return "cancelled" if cancelled else "outside"
+    return ""
+
+
 async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=False, beside=False, on_demand=False):
     """(word, gate) for schedule ``due`` now, in the caller's transaction, under the schedule's row lock it takes: a
     ``collect.Gate`` when the night shift may queue a run now, else None and the word for the job's summary. Paused,
@@ -198,16 +213,10 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     if found.paused_at is not None:
         cancelled = await cancel_queued(conn, [due.id], f"the night shift of {due.project} is paused")
         return ("cancelled" if cancelled else "paused"), None
-    if not inside and not on_demand and pacing is not None:
-        why = f"the Curator of {due.project} keeps its quiet hours"
-        cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
-        if not beside:
-            return ("cancelled" if cancelled else "quiet"), None
-    elif not inside and not on_demand:
-        why = f"the night shift of {due.project} is outside its window"
-        cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
-        if (cancelled and not beside) or not any_hour or not await changes_waiting(conn, due.project_id):
-            return ("cancelled" if cancelled else "outside"), None
+    if not inside and not on_demand:
+        word = await _outside_window(conn, due, quiet=pacing is not None, any_hour=any_hour, beside=beside)
+        if word:
+            return word, None
     access = None
     if figures_first:
         access = await writer_access(conn, due)

@@ -70,7 +70,7 @@ from evo_agents.hub.plan_cli import ATTEMPTS, check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import (
     chat_read,
-    decisions,
+    decision_reads,
     digests,
     evolve,
     history_mcp,
@@ -843,7 +843,7 @@ class HubMcp(MCPServer):
     async def _decision_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)
         await self._readable(caller, project)
-        found = await decisions.list_decisions(
+        found = await decision_reads.list_decisions(
             caller.request,
             project,
             caller.user,

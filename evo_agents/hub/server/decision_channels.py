@@ -1,5 +1,5 @@
 """Where the message of each decision stands on the channels of core plugins: ``Decision.channel_deliveries``, which
-every view of a decision shows (``decisions.with_outputs``). ``docs/notifications.md`` (Decisions on channels) is the
+every view of a decision shows (``decision_reads.with_outputs``). ``docs/notifications.md`` (Decisions on channels) is the
 design.
 
 A decision the hub told the person asked of has one entry for each kind of channel: each channel that got a delivery
@@ -76,7 +76,7 @@ def _not_sent(kind: str, asked: str, channel) -> ChannelDelivery:
 
 async def fill(conn: AsyncConnection, decisions: list[Decision]) -> None:
     """Give each of ``decisions`` its ``channel_deliveries``."""
-    from evo_agents.hub.server.decisions import asked_person  # it fills its views through this module
+    from evo_agents.hub.server.decision_reads import asked_person  # it fills its views through this module
 
     if not decisions:
         return

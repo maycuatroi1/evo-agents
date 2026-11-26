@@ -35,7 +35,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.recover_kg_builds``, every 5 minutes: kg builds whose worker stopped sending heartbeats are failed, which
   frees their project's lock, and their projects get a new build; so are builds whose job ended without recording
   them, whose project gets a new build when no later one took their place. A project whose last DIED_IN_A_ROW builds
-  ended so gets none, and its admins are told (``kg_build._requeue``). The other jobs of a worker that stopped
+  ended so gets none, and its admins are told (``kg_build_queue._requeue``). The other jobs of a worker that stopped
   sending heartbeats are failed too (``jobs.fail_stalled``), which frees their locks.
 - ``hub.prune_kg_artifacts``, hourly: the artifacts of each project's graphs beyond its EVO_HUB_KG_KEEP_ARTIFACTS
   newest leave the bucket (``evo_agents.hub.kg_prune``).

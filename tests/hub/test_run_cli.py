@@ -29,9 +29,10 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import run_cli, run_cli_candidates
+from evo_agents.hub import run_cli, run_cli_candidates, run_cli_events
 from evo_agents.hub.client import Hub, HubError, Unreachable
-from evo_agents.hub.run_cli import follow, format_event, sse_messages
+from evo_agents.hub.run_cli_events import follow, format_event
+from evo_agents.hub.sse import sse_messages
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
 
@@ -221,7 +222,7 @@ def test_an_event_is_one_line_with_seq_time_kind_and_text():
     raw = {"seq": 7, "at": "not a time", "kind": "output", "body": {"type": "x" * 400}}
     line = format_event(raw)
     assert line.startswith('    7 --:--:-- output  {"type":"xxx') and line.endswith("...")
-    assert len(line) == len("    7 --:--:-- output  ") + run_cli.RAW_CHARS
+    assert len(line) == len("    7 --:--:-- output  ") + run_cli_events.RAW_CHARS
 
 
 # Following a stream, against a fake one
@@ -241,7 +242,7 @@ def chunk(seq: int, kind: str = "agent_message_chunk") -> dict:
 
 
 class FakeStreams:
-    """Stands for ``run_cli.open_stream``: each opening takes the next of ``answers``, a list of lines or an
+    """Stands for ``run_cli_events.open_stream``: each opening takes the next of ``answers``, a list of lines or an
     exception, and records the path and Last-Event-ID it was opened with."""
 
     def __init__(self, *answers):
@@ -301,7 +302,9 @@ def test_follow_shows_only_the_kinds_asked_for_but_reads_on_after_every_event():
 
 
 def test_follow_gives_up_after_tries_in_a_row_that_bring_nothing():
-    down = [Unreachable("cannot reach https://hub.example.org: refused", refused=True)] * (run_cli.RECONNECTS + 1)
+    down = [Unreachable("cannot reach https://hub.example.org: refused", refused=True)] * (
+        run_cli_events.RECONNECTS + 1
+    )
     with pytest.raises(HubError) as raised:
         run_follow(FakeStreams(sse(chunk(1)), *down))
     assert "stopped 6 times in a row without bringing anything" in str(raised.value)
@@ -311,7 +314,7 @@ def test_follow_gives_up_after_tries_in_a_row_that_bring_nothing():
 def test_follow_counts_again_after_a_stream_that_brought_a_ping():
     refused = Unreachable("cannot reach https://hub.example.org: refused", refused=True)
     ping = [b": ping\n", b"\n"]
-    tries = run_cli.RECONNECTS
+    tries = run_cli_events.RECONNECTS
     # the first opening and five more fail; the sixth brings a ping, then the stream breaks and four more fail
     streams = FakeStreams(
         *[refused] * tries, ping, *[refused] * (tries - 1), sse(end={"state": "cancelled", "last_seq": 0})
@@ -991,7 +994,7 @@ def test_logs_reads_every_page_of_events(hub, monkeypatch, capsys):
         "they come."
     )
 
-    monkeypatch.setattr(run_cli, "EVENTS_PAGE", 2)  # three pages
+    monkeypatch.setattr(run_cli_events, "EVENTS_PAGE", 2)  # three pages
     page = as_json(runs_of(hub, monkeypatch, capsys, "reader", "logs", str(run_id), "--json"))
     assert_json_keys("hub run logs", page)
     assert (page["run_id"], page["state"], page["last_seq"], page["more"]) == (run_id, "running", 5, False)

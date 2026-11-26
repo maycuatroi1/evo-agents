@@ -176,6 +176,18 @@ async def judge_inputs(
     )
 
 
+async def _held_or_judged(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
+    """(run row, change row) as ``_held_judge`` has them, or the change, a ``Change``, when its 409 is for a verdict
+    this judge run already gave: the worker sent it again."""
+    try:
+        return await _held_judge(conn, user, run_id, key)
+    except HTTPException as exc:
+        judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
+        if judged is None:
+            raise
+        return judged
+
+
 @worker_router.post("/runs/{run_id}/verdict", response_model=Change, responses=REFUSALS)
 async def record_verdict(
     request: Request, run_id: RunId, body: VerdictIn, user: CurrentUser, judge_key: JudgeKey = None
@@ -189,23 +201,17 @@ async def record_verdict(
     facts = None
     if body.paths and not body.signs:
         async with state.engine.begin() as conn:
-            try:
-                _, held = await _held_judge(conn, user, run_id, judge_key)
-            except HTTPException as exc:
-                judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
-                if judged is None:
-                    raise
-                return judged
+            held = await _held_or_judged(conn, user, run_id, judge_key)
+            if isinstance(held, Change):
+                return held
+            _, held = held
         reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
         facts = await change_tiers.verdict_facts(state.engine, held, body.paths, reader)
     async with state.engine.begin() as conn:
-        try:
-            row, change = await _held_judge(conn, user, run_id, judge_key)
-        except HTTPException as exc:
-            judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
-            if judged is None:
-                raise
-            return judged
+        held = await _held_or_judged(conn, user, run_id, judge_key)
+        if isinstance(held, Change):
+            return held
+        row, change = held
         expected = await _plan_verify(conn, row, change) + change_tiers.judge_checks(change)
         hidden_count = change.hidden_count
         if hidden_count is None:

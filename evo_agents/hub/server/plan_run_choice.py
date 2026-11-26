@@ -10,7 +10,7 @@ grant on the project, writing the writer role, as a dispatch does.
 A choice is checked when read, against the project as it is then. A field that names what can no longer be used goes
 back to its default, and ``defaulted`` lists it: ``system`` for a system deleted, or without an entry agent (the
 target is then worker); ``agent`` for an agent deleted or one a run of the project may not go under
-(``runs.service.profiles._named``); ``runtime`` for a runtime the project does not register or the agent does not
+(``runs.service.profiles.profile_named``); ``runtime`` for a runtime the project does not register or the agent does not
 allow; ``model`` for a model the agent does not allow; ``mode`` and ``timeout_h`` for a value the hub no longer takes.
 A member without a choice gets the defaults, with ``saved`` false. A dispatch still checks everything again.
 """
@@ -41,7 +41,7 @@ from evo_agents.hub.server.runs.models.limits import (
 )
 from evo_agents.hub.server.runs.service import plugin_runtimes
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
-from evo_agents.hub.server.runs.service.profiles import _named
+from evo_agents.hub.server.runs.service.profiles import profile_named
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.tables_push import SYSTEM, WORKER
 
@@ -126,7 +126,7 @@ async def checked(conn: AsyncConnection, user: Principal, access: ProjectAccess,
     profile = None
     if values["agent"] is not None:
         try:
-            profile = await _named(conn, user, access, values["agent"])
+            profile = await profile_named(conn, user, access, values["agent"])
         except HTTPException:
             values["agent"] = None
             defaulted.append("agent")

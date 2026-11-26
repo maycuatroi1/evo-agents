@@ -63,6 +63,8 @@ to a public function of `service`, which checks, queries and moves runs with SQL
 
 Each contract's `ignore_imports` only shrinks: the test fails a change that adds an entry main does not have. When
 you remove the import an entry names, remove the entry too (import-linter fails on an entry that matches nothing).
+An entry that names a module git sees renamed from main (`git mv`: a module of main gone and one of nearly the same
+content in its place) counts under the module's new name, so renaming the module and its entry adds nothing.
 
 ## Budgets
 
@@ -101,7 +103,10 @@ minutes.
 
 The baseline only shrinks. Against main, it may hold no more errors of a rule in a module than main's does. A module
 main's baseline does not name has no entry at all: a new module, and a module split off another, type-checks clean,
-so a split fixes the errors of the code it moves. `tighten-types` runs `basedpyright --writebaseline` and puts the old
+so a split fixes the errors of the code it moves. A module git sees renamed from main (`git diff --find-renames`
+against `origin/main`: a module of main gone and one of nearly the same content in its place, as `git mv` leaves it)
+is held to the errors main's baseline holds for its old path, rule by rule. A new file counts only once git tracks
+it. `tighten-types` runs `basedpyright --writebaseline` and puts the old
 file back when the code has an error the old one did not hold; do not run `--writebaseline` by hand to make a new
 error pass.
 

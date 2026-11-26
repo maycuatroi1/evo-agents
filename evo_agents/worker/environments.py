@@ -169,14 +169,14 @@ def remove_containers(engine: str, worker: str, run_id: int, env: Mapping[str, s
     """Remove every container of run ``run_id`` of the worker labelled ``worker`` that is left, running or not; how
     many. A failure of the engine is no failure of the caller: it removes none."""
     filters = ["--filter", f"label={WORKER_LABEL}={worker}", "--filter", f"label={RUN_LABEL}={int(run_id)}"]
-    listed = _engine(engine, ["ps", "-aq", *filters], env, RELEASE_TIMEOUT)
+    listed = run_engine(engine, ["ps", "-aq", *filters], env, RELEASE_TIMEOUT)
     ids = listed.stdout.split() if listed is not None and listed.returncode == 0 else []
     if ids:
-        _engine(engine, ["rm", "-f", *ids], env, RELEASE_TIMEOUT)
+        run_engine(engine, ["rm", "-f", *ids], env, RELEASE_TIMEOUT)
     return len(ids)
 
 
-def _engine(engine: str, args: list[str], env: Mapping[str, str] | None, timeout: float):
+def run_engine(engine: str, args: list[str], env: Mapping[str, str] | None, timeout: float):
     """``engine args`` with stdin /dev/null, or None when it did not run or answer within ``timeout``."""
     try:
         return subprocess.run(
@@ -428,15 +428,15 @@ class Container(Environment):
             return [f"{where} needs a container engine: {why}"]
         self.engine = engine
         name = Path(engine).name
-        answered = _engine(engine, ["info"], self.base, PROBE_TIMEOUT)
+        answered = run_engine(engine, ["info"], self.base, PROBE_TIMEOUT)
         if answered is None or answered.returncode != 0:
             said = "no answer in time" if answered is None else _tail(answered.stderr or answered.stdout)
             return [f"{where} needs a container engine, and `{name} info` failed: {said}"]
         image = self.declaration.image
-        present = _engine(engine, ["image", "inspect", image], self.base, PROBE_TIMEOUT)
+        present = run_engine(engine, ["image", "inspect", image], self.base, PROBE_TIMEOUT)
         if present is not None and present.returncode == 0:
             return []
-        pulled = _engine(engine, ["pull", image], self.base, PULL_TIMEOUT)
+        pulled = run_engine(engine, ["pull", image], self.base, PULL_TIMEOUT)
         if pulled is None or pulled.returncode != 0:
             said = f"no answer within {PULL_TIMEOUT:g}s" if pulled is None else _tail(pulled.stderr or pulled.stdout)
             return [f"{where}: `{name} pull {image}` failed: {said}"]
