@@ -174,6 +174,11 @@ class GroupMessage(BaseModel):
         description="the @handle of the agent that forwarded it verbatim from the run of its author "
         "(evo-agents worker agent forward); null when its author's run wrote it",
     )
+    repeats: int | None = Field(
+        None,
+        description="the message of the same work chat that this line of the hub repeats (the question of an "
+        "asked line, the answer of an answered line); null on every other message",
+    )
     work: WorkCard | None = Field(
         None,
         description="the work card of a trace of an agent system, on the hub's message that carries it in the trace's "
@@ -455,6 +460,7 @@ def message_select():
         cm.c.via,
         cm.c.from_output_id,
         cm.c.guest_name,
+        cm.c.repeats_id,
     ).select_from(cm.outerjoin(u, u.c.id == cm.c.author_user_id))
 
 
@@ -573,6 +579,7 @@ async def messages_view(
             bridged_to=bridged.get(row.id, []),
             from_answer=row.from_output_id,
             forwarded_by=forwarders.get(row.id),
+            repeats=row.repeats_id,
             work=work.get(row.id),
         )
         for row in shown

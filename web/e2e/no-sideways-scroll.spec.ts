@@ -34,6 +34,7 @@ import { putSecretByApi, secretValue } from "./support/secrets";
 import { CLEAN_REPORT, doctorReport, HIGH_REPORT, narrowByApi, otherMember, shareByApi } from "./support/sharing";
 import { documentPath, enableSrs, seedFindings } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
+import { seedWork, workSystem } from "./support/work";
 import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
@@ -314,6 +315,17 @@ test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page,
   await claimRun(step);
   await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
   await noSidewaysScroll(page, WIDTHS, [{ path: "/today", ready: shown("needs-you-item") }]);
+});
+
+test("home's rail and a task open on it never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const system = await workSystem(me, me.projects[0]);
+  // A long unbroken title in the rail's row, in the task's head and in its card.
+  const work = await seedWork(me, system, `${LONG}-refunds`);
+  await noSidewaysScroll(page, WIDTHS, [
+    { path: `/?agent=${system.lead}`, ready: shown("home-task") },
+    { path: `/?agent=${system.lead}&task=${work.workChat}`, ready: shown("chat-header") },
+  ]);
 });
 
 for (const width of WIDTHS) {

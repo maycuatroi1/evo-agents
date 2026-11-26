@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button";
 import type { Chat, GroupMessage } from "@/lib/chats";
 
 import { type Feed, replyCount, threadTail } from "./feed-model";
+import { useHomeTask } from "./home-task-context";
 import { lineMessages, quotes, runsOn } from "./line-model";
 import { type MessageActions, MessageItem, READING_COLUMN } from "./message-item";
+import { TaskCard } from "./task-card";
+import { type DirectItem, directTaskLine } from "./task-model";
 import { useFollow } from "./use-follow";
 
 type Props = MessageActions & {
@@ -28,13 +31,18 @@ type Props = MessageActions & {
  * run on under one face and name. A `role="log"` region (polite) that scrolls on its own and opens at the newest
  * message; it follows new ones while the visitor reads at the end, and offers Jump to the latest when they scrolled
  * up. Earlier messages load on demand, a page at a time. The messages sit in the reading column (`READING_COLUMN`),
- * centred in the log however wide the window is.
+ * centred in the log however wide the window is. On Home (`HomeTaskContext`) a direct chat's thread that opened work
+ * keeps the person's messages, one task card a task (`TaskCard`, which opens it beside the rail) and the coordinator's
+ * answer once the work ended: the rest is the task's (`directTaskLine`).
  */
 export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onThread, onReply, onQuote, reacting, under }: Props) {
   const t = useTranslations("chats.messages");
   const format = useFormatter();
   const direct = chat.kind === "direct";
-  const messages = lineMessages(feed, chat.kind);
+  const openTask = useHomeTask();
+  const all = lineMessages(feed, chat.kind);
+  const items: DirectItem[] = direct && openTask ? directTaskLine(all) : all.map((message) => ({ kind: "message", message }));
+  const messages = items.map((item) => item.message);
   const quoted = direct ? quotes(messages, feed) : null;
   const [older, setOlder] = useState<"idle" | "loading" | "failed">("idle");
   const { region, behind, toEnd } = useFollow(messages.length, messages[0]?.id ?? null, feed.lastSeq);
@@ -96,6 +104,7 @@ export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onT
               const day = dayOf(message);
               const newDay = !before || dayOf(before) !== day;
               const quote = quoted?.get(message.id) ?? null;
+              const item = items[index];
               return (
                 <Fragment key={message.id}>
                   {newDay ? (
@@ -105,21 +114,27 @@ export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onT
                       <span aria-hidden="true" className="h-px flex-1 bg-border" />
                     </li>
                   ) : null}
-                  <MessageItem
-                    message={message}
-                    chat={chat}
-                    me={me}
-                    thread={direct ? undefined : { count: replyCount(feed, message.id), ...threadTail(feed, message.id) }}
-                    runOn={!quote && runsOn(before, message, !newDay)}
-                    quote={quote}
-                    highlighted={highlight === message.id}
-                    onReact={onReact}
-                    onThread={direct ? undefined : onThread}
-                    onReply={direct ? onReply : undefined}
-                    onQuote={direct ? onQuote : undefined}
-                    reacting={reacting}
-                    under={under}
-                  />
+                  {item.kind === "task" && openTask ? (
+                    <li className="flex px-3 py-1.5 sm:pl-[3.25rem]" data-testid="chat-task">
+                      <TaskCard work={item.work} onOpen={openTask} />
+                    </li>
+                  ) : (
+                    <MessageItem
+                      message={message}
+                      chat={chat}
+                      me={me}
+                      thread={direct ? undefined : { count: replyCount(feed, message.id), ...threadTail(feed, message.id) }}
+                      runOn={!quote && runsOn(before, message, !newDay)}
+                      quote={quote}
+                      highlighted={highlight === message.id}
+                      onReact={onReact}
+                      onThread={direct ? undefined : onThread}
+                      onReply={direct ? onReply : undefined}
+                      onQuote={direct ? onQuote : undefined}
+                      reacting={reacting}
+                      under={under}
+                    />
+                  )}
                 </Fragment>
               );
             })}

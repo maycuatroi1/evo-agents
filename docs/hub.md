@@ -1175,7 +1175,11 @@ derived from the trace's runs, decisions and Orchestrator threads, with no model
 - `agent`: the handle of the latest run of the trace at work; `waiting`, what the work waits for, the first that holds:
   `{kind: "decision", decision_id, login, question}`, `{kind: "person", run_id, agent}` (a run a person drives or
   reviews), `{kind: "run", run_id, agent}` (the run an open wait awaits); else null.
-- `title`, `goal`, `done_when`: what the entry agent set; `system` `{id, slug, name, project}`; `coordinator`, the
+- `title`, `goal`, `done_when`: what the entry agent set; `outcome`, `met` or `not_met` as the entry agent recorded
+  it against the done-when before its final answer (null when it recorded none, and a `not_met` someone marked
+  handled reads null), and `left`, what it named as still to do (a merge, a credential, a person's answer), null for
+  nothing; `handled_by` (the login) and `handled_at`, who marked the work handled and when, null until someone does.
+  `status` keeps its four values: the outcome is a field of its own. `system` `{id, slug, name, project}`; `coordinator`, the
   handle of the system's entry agent; `trace_id`, `chat_id`,
   `message_id` (the trace's first message), `work_chat_id`.
 - `asks`: each ask, escalation and reassignment of the trace, `{kind: ask|escalate|reassign, from_agent, agent, brief,
@@ -1187,25 +1191,44 @@ derived from the trace's runs, decisions and Orchestrator threads, with no model
   revision, 0 for none);
   `started_at`, `ended_at` (null while a run is active or a person is asked) and `seconds`.
 
-A move that changes what the card shows (a run of the trace moving, a decision of one asked or answered, `work set`)
+A move that changes what the card shows (a run of the trace moving, a decision of one asked or answered, `work set`,
+Mark as handled)
 writes a `message_changed` event for the card's message in the root chat, so the chat's streams read it again. It is a
 chat event, woken through the hub's LISTEN as every chat event is, and needs no event bus.
 `system_traces.card_state` keeps a key of what the card last showed, so a move that changes nothing on it writes none.
 
-The entry agent names the work with `evo-agents worker work set --title --goal --done-when` (`POST
-/v1/worker/runs/{id}/work`, the hub runtime's tool `work_set`, `docs/workers.md`, The work of a trace): 409 for a run
-in no trace with a work chat, 403 for another agent, audited as `work.set`. The System section of the entry agent's
-prompt says that hand-offs open a work chat, to use `work set`, and that its final answer goes in the root thread.
+The entry agent names the work with `evo-agents worker work set --title --goal --done-when` and records its outcome
+with `--outcome met|not_met --left TEXT` (`POST /v1/worker/runs/{id}/work`, the hub runtime's tool `work_set`,
+`docs/workers.md`, The work of a trace): 409 for a run in no trace with a work chat, 403 for another agent, audited as
+`work.set`. An outcome given clears a mark of Mark as handled and replaces `left` (null when `--left` is not given).
+The System section of the entry agent's prompt says that hand-offs open a work chat, to use `work set`, to record the
+outcome before its final answer with what is left when the done-when is not met, and that its final answer goes in
+the root thread.
+
+Mark as handled: a member of the work chat with the writer role on the trace's project marks the work handled with
+`POST /v1/chats/{id}/work/handled`, for a `not_met` outcome whose rest someone took on. The hub stores who and when on
+the trace, refreshes the card, answers with it and audits `work.handled` (target `trace:ID chat:ID`); the work no
+longer reads `not_met` until the entry agent records an outcome again.
+
+In a work chat, the hub's lines "@A asked @B ... (run #N)" and "@B answered (run #N)" name the message they repeat:
+the chat API's messages carry `repeats`, the id of the question or of the answer in the same work chat, so a client
+can fold the copy into it. `repeats` is null on every other message, on the hub's lines in any other chat and on the
+lines written before schema 0270.
 
 | Route | What | Who |
 | --- | --- | --- |
 | `GET /v1/chats/{id}/work` | the card of the trace whose work chat this is | a member of the work chat (404 to anyone else and for a chat that is no work chat, 403 to a member who no longer clears its label) |
+| `POST /v1/chats/{id}/work/handled` | Mark as handled: the card, with `handled_by` and `handled_at` set | a member of the work chat with the writer role on the trace's project (404 to anyone else and for a chat that is no work chat, 403 to a reader or a member who no longer clears its label) |
 
 In the list of chats, a work chat's summary carries `work` `{trace_id, system: {id, slug, name, project}, title, status,
-agent, waiting, coordinator}`, null for every other chat.
+agent, waiting, coordinator, outcome, left}`, null for every other chat.
 
 Schema 0235 adds the nullable `system_traces.title`, `goal`, `done_when`, `card_message_id` (set to null when the
 message is deleted) and `card_state`. Going back drops them.
+
+Schema 0270 adds the nullable `system_traces.outcome` (`met` or `not_met`), `outcome_left`, `handled_by` (set to null
+when the person is deleted) and `handled_at`, and `chat_messages.repeats_id` (set to null when the message repeated is
+deleted), with no backfill. Going back drops them.
 
 ### Operations events
 
@@ -1951,19 +1974,32 @@ guesses at them (`chat_runs.reading_rule`). No schema change.
 
 ## Chat home
 
-Home (`/`) is a chat with an agent, for every member. The agent picker at the top lists the agents the visitor may give
-work to across the projects of their grants, from `GET /v1/me/chat-agents`: an agent of a project where they are a
-writer (an admin, for an agent type that takes work from the admins alone), that has a worker pool of its own. The
-list puts the agent they wrote to last first, and Home opens on it; `?agent=HANDLE` names another, and a pick writes it
-there, so a reload keeps it.
+Home (`/`) is the workspace of an agent, for every member: no top bar and no hub sidebar, but a rail of the agent's
+tasks beside a main pane. The agent picker at the top of the rail lists the agents the visitor may give work to across
+the projects of their grants, from `GET /v1/me/chat-agents`: an agent of a project where they are a writer (an admin,
+for an agent type that takes work from the admins alone), that has a worker pool of its own. The list puts the agent
+they wrote to last first, and Home opens on it; `?agent=HANDLE` names another, and a pick writes it there, so a reload
+keeps it. The button beside the picker opens the hub's menu (the sidebar of every other page) as a sheet, as Ctrl or
+Cmd + B does; the rail's foot has the command palette (Cmd K), the account, the Inbox with its count and Today.
 
-Until the visitor's direct chat with the agent has a message, the frame shows the agent's start: its face, name,
-project and what it does, the composer in the middle, and the agent's starters under it. A starter puts its words in
-the box and the focus there; nothing is sent until the visitor sends. Looking at an agent opens nothing: the first
-message opens the direct chat (`PUT /v1/chats/direct/{handle}`, as on Chats) and sends. From then on Home shows that
-chat with the components of a chat's own page: messages, live, their threads, their outputs and interactive answers,
-and the composer. A question one agent asks another with `worker agent ask` shows in the asking run's thread as "@a
-asked @b ..." and then "@b answered ..." ("Agents across projects", above).
+Under New task, the task search and Direct chat, the rail lists the agent's tasks: the work chats (Work chats, above)
+of the visitor's chat list (`GET /v1/chats`) that the agent is in, in four groups by the viewer's calendar and time
+zone. Needs you holds a task whose work needs a person, failed in the last 7 days, or is done with an outcome of not
+met that no member marked handled; Running the others under way; This week the others last active since Monday;
+Earlier the rest, the oldest behind "Show older tasks". A row shows the work's state, its title without the @mentions
+it starts with or the link it ends with, when it was last active, and what is left or what it waits for; a done task
+shows no unread count. The group and settle chats the agent is in follow the tasks. A task opens in the main pane as
+its chat's own page shows it (its work card, its decisions), and `?task=ID` keeps it over a reload. On a phone the
+rail is the first screen, and a task opens on a screen of its own with a back control.
+
+Until the visitor's direct chat with the agent has a message, Direct chat shows the agent's start: its face, name,
+project and what it does, the composer in the middle, and the agent's starters under it. New task opens it with the
+focus in the box. A starter puts its words in the box and the focus there; nothing is sent until the visitor sends.
+Looking at an agent opens nothing: the first message opens the direct chat (`PUT /v1/chats/direct/{handle}`, as on
+Chats) and sends. From then on Home shows that chat with the components of a chat's own page: messages, live, their
+threads, their outputs and interactive answers, and the composer. A question one agent asks another with `worker agent
+ask` shows in the asking run's thread as "@a asked @b ..." and then "@b answered ..." ("Agents across projects",
+above).
 
 With no agent to chat with, Home says why (no agent on a project they may give work to, or none with a worker pool) and
 leads to the Projects card of Today (`/today#projects`). With chats off for the hub it says so and leads to Today.

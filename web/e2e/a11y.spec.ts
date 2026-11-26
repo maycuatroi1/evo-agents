@@ -428,7 +428,7 @@ const PAGES: Entry[] = [
     name: "project picker open",
     deployed: true,
     open: async ({ page }) => {
-      await page.goto("/");
+      await page.goto("/today"); // Home has no sidebar: its rail opens the hub's menu as a sheet
       await page.getByTestId("project-switcher").click();
       await expect(page.getByTestId("project-switcher-menu")).toBeVisible();
     },
@@ -1869,7 +1869,7 @@ const PAGES: Entry[] = [
     name: "small screen with the sidebar open",
     open: async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 812 });
-      await page.goto("/");
+      await page.goto("/today"); // Home has no top bar: its rail's menu button opens the same sheet
       await page.locator('button[data-sidebar="trigger"]').click();
       await expect(page.getByRole("dialog")).toBeVisible();
     },

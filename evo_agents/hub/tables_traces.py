@@ -12,6 +12,10 @@ the agent, the node of the spec it is (``@handle`` for an agent the spec lacks),
 edge is off the design and why, its runtime, status and times; content stays where it is (the message, the run) and a
 span points at it. Tokens and cost are read from run_spend when a trace is shown. agent_ask_briefs holds the brief an
 ask gave the run it made (goal, output, bounds, done_when, refs), which heads that run's prompt.
+
+Revision 0270 gives system_traces the outcome of its work as the entry agent recorded it (``outcome``, met or not_met;
+``outcome_left``, what is still to do) and the member of its work chat who marked it handled (``handled_by``,
+``handled_at``), all NULL until set (``evo_agents.hub.server.work_cards``).
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 SPAN_NAMES = ("invoke_agent", "execute_tool")  # system_context.SPAN_NAMES; a test keeps the two equal
 SPAN_STATUSES = ("running", "ok", "error", "refused")  # system_context.SPAN_STATUSES
+OUTCOMES = ("met", "not_met")  # 0270: work_status.OUTCOMES, what the entry agent records of a trace's work
 
 
 def _stamp(name: str) -> Column:
@@ -69,6 +74,10 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("card_state", Text),  # 0235: what the card showed when the streams were last told
         Column("plan_id", Text),  # 0237: the plan a system dispatch gave it (``plan_systems``); NULL: none
         Column("plan_revision", Integer),  # 0237: that plan's revision then
+        Column("outcome", Text),  # 0270: met or not_met, as the entry agent recorded (``work_cards``); NULL: none
+        Column("outcome_left", Text),  # 0270: what it named as still to do; NULL: nothing
+        Column("handled_by", BigInteger),  # 0270: the member of the work chat who marked the work handled
+        Column("handled_at", DateTime(timezone=True)),  # 0270: when
         _stamp("started_at"),
         _stamp("last_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
@@ -80,6 +89,8 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         ForeignKeyConstraint(
             ["card_message_id"], ["chat_messages.id"], ondelete="SET NULL", name=f"{name}_card_message_id_fkey"
         ),
+        ForeignKeyConstraint(["handled_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_handled_by_fkey"),  # 0270
+        CheckConstraint(_in("outcome", OUTCOMES), name=f"{name}_outcome_check"),  # 0270
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
     )
     Index(f"{name}_system_idx", traces.c.project_id, traces.c.system_slug, traces.c.id.desc())
