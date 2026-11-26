@@ -30,7 +30,7 @@ from psycopg import errors
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import jobs, releases, runs, tables
-from evo_agents.hub.release_cli import CHECK_KEYS, STATUS_KEYS
+from evo_agents.hub.cli.curator.release import CHECK_KEYS, STATUS_KEYS
 from evo_agents.hub.server.app import create_app, loop_tick, memory_upkeep
 from evo_agents.hub.server.release_check import fire_release_schedules, release_pass
 from evo_agents.hub.server.release_github import ls_refs, parse_refs

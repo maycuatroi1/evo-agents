@@ -61,9 +61,9 @@ from evo_agents.clikit import (
     returns_array,
     returns_object,
 )
-from evo_agents.hub.attach_cli import describe as files_text
 from evo_agents.hub.author import MAX_REQUEST_BYTES
 from evo_agents.hub.chats import chat_link
+from evo_agents.hub.cli.attach import describe as files_text
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
 from evo_agents.hub.cli.run.access import RunAccess
 from evo_agents.hub.cli.run.candidates import RunCandidates

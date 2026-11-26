@@ -1,5 +1,5 @@
 """The kg_* tools over one project's graph (``Session``), the engine the hub answers them with, and the MCP loop over
-stdio (``serve_stdio``) of ``evo-agents kg serve``, which sends every call to the hub (``evo_agents.hub.kg_cli``).
+stdio (``serve_stdio``) of ``evo-agents kg serve``, which sends every call to the hub (``evo_agents.hub.kg_remote``).
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
 session's sink and whose audience is within the session's (``Session.audience``: none for kg serve, so an element with
@@ -340,7 +340,7 @@ def handle(session: Session, message) -> dict | None:
 
 def serve_stdio(session) -> int:
     """Answer MCP over stdin and stdout. ``session`` is anything with ``Session.call``: for ``kg serve`` the hub backend
-    of ``evo_agents.hub.kg_cli``, never a graph store left on this machine."""
+    of ``evo_agents.hub.cli.kg``, never a graph store left on this machine."""
     for line in sys.stdin:
         line = line.strip()
         if not line:

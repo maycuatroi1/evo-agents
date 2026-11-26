@@ -7,7 +7,7 @@ active first, with the messages of others they have not read. ``show`` prints a 
 latest messages (``--limit``, or one thread with ``--thread``), each with its mentions, reactions and the thread it is
 in. ``send`` sends a message, from the argument or from a file (``--file PATH``, ``-`` for stdin), in the thread of
 ``--reply-to``; a ``@name`` of a member mentions them. ``--attach FILE`` (repeated) uploads files the message
-carries (``evo_agents.hub.attach_cli``); with one, the text may be left out. ``react`` puts an emoji on a message,
+carries (``evo_agents.hub.cli.attach``); with one, the text may be left out. ``react`` puts an emoji on a message,
 ``--remove`` takes it off. ``label CHAT LEVEL`` sets the chat's level, at or below the default level of every project of
 its agents (the admin role on each), and ``label CHAT --default`` takes it off. ``show`` lists the groups the chat is
 bridged to (``docs/chat-bridges.md``), each message the kind of channel it came in by and the bridges it went out to;
@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub import attach_cli
 from evo_agents.hub.chats import MAX_MESSAGE_BYTES, emoji_problem
+from evo_agents.hub.cli import attach as attach_cli
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 

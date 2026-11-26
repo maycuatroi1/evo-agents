@@ -17,9 +17,9 @@ harness through ``registration``, and ``registry pull`` writes the registry thro
 ``cli.plan`` (over ``plans``; its harness copies in ``mirror``), ``hub run`` in ``cli.run`` (over the hub's runs),
 ``hub decision`` and ``hub notifications`` in ``cli.decision`` and ``cli.notifications`` (over the decisions and
 notifications of plan runs),
-``hub curator`` in ``curator_cli`` (over the night shift of a project's charter),
+``hub curator`` in ``cli.curator`` (over the night shift of a project's charter),
 ``hub memory`` in ``cli_memory`` (over ``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and
-``skills``), ``hub secret`` in ``cli_secrets`` (over the owner's secret routes), ``hub kg`` in ``kg_cli`` (over
+``skills``), ``hub secret`` in ``cli_secrets`` (over the owner's secret routes), ``hub kg`` in ``cli.kg`` (over
 ``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``), ``hub hook`` (the evo-hub plugin's hooks) in
 ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are registered by ``cli``.
 """
@@ -666,9 +666,9 @@ def _register_other_groups(hsub) -> None:
     DECISION.attach(hsub)
     NOTIFICATIONS.attach(hsub)
 
-    from evo_agents.hub.curator_cli import register_curator
+    from evo_agents.hub.cli.curator import CURATOR
 
-    register_curator(hsub)
+    CURATOR.attach(hsub)
 
     from evo_agents.hub.cli_memory import register_memory
 
@@ -682,9 +682,9 @@ def _register_other_groups(hsub) -> None:
 
     register_secrets(hsub)
 
-    from evo_agents.hub.kg_cli import register_kg
+    from evo_agents.hub.cli.kg import KG
 
-    register_kg(hsub)
+    KG.attach(hsub)
 
     from evo_agents.hub.mcp_proxy import register_mcp
 

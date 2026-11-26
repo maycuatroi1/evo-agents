@@ -17,7 +17,7 @@ import pytest
 
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub import kg_branches_cli
+from evo_agents.hub.cli.kg import branches as kg_branches_cli
 from evo_agents.kg import branch_ops, graph_model
 from evo_agents.kg.policy import Label
 from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row

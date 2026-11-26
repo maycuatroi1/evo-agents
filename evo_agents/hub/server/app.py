@@ -659,7 +659,7 @@ def _include_member_routes(app: FastAPI) -> None:
         plan_run_choice,
         plan_systems,
         plugin_chats_api,
-        plugin_cli,
+        plugin_command_list,
         plugin_docs_api,
         plugin_host,
         plugin_notify,
@@ -768,7 +768,7 @@ def _include_member_routes(app: FastAPI) -> None:
         project_archive.router,  # /v1/projects/{p}/archive and /unarchive
         project_plugins.router,
         plugin_ui.router,
-        plugin_cli.router,
+        plugin_command_list.router,
         plugin_host.router,
         branding.router,
         branding.admin_router,

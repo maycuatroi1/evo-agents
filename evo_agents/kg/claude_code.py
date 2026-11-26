@@ -23,7 +23,7 @@ build, which goes on from the memo. Any other failure exits 1.
 
 A machine without ``claude`` (the hub's build container) runs no call: the step defers the items its memo lacks
 (``entities.run`` with an outbox), and a run of the project's default agent answers them with ``answer`` through
-``evo-agents hub kg entities`` (``evo_agents.hub.kg_entities_cli``).
+``evo-agents hub kg entities`` (``evo_agents.hub.cli.kg.entities``).
 """
 
 from __future__ import annotations
