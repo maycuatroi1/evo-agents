@@ -161,17 +161,24 @@ plugin's route. The helpers commands share (`signed_in`, `when`, `call_object`) 
 of each. What a command calls but is not a command stays out of it: `hub kg`'s gateways are in
 `evo_agents/hub/kg_routes.py` and `cli/kg/resources.py`, the remote graph session `evo-agents kg` shares with it in
 `evo_agents/hub/kg_remote.py`, and `hub openapi` and `hub contract` call `evo_agents/hub/openapi.py` and
-`evo_agents/hub/contract.py`. The worker's and `evo-agents kg`'s commands are still functions.
+`evo_agents/hub/contract.py`. The other parts follow the same layout: `evo_agents/worker/cli/` (`worker step` in
+`step.py`, `worker chat` in `chat.py`), `evo_agents/kg/cli/` and `evo_agents/plugins/cli/` (`plugin test` in
+`conformance.py`), each with its `tree()` in `__init__.py` and its package base in `base.py`. `tree()` in
+`evo_agents/cli.py` puts them under one root `Group`, whose `parser()` is the program's parser, with the `harness`
+commands written there; `main` answers `kg hook ...` before it builds any parser. The worker's base
+(`evo_agents/worker/cli/base.py`) has `WorkerCommand` for the commands of the machine and `AgentCommand` for those of
+a run's agent, which run in an `AgentRunContext`: the run of `EVO_RUN_ID`, its record, the worker's state and token,
+checked once against the kinds of run the command serves.
 
 | Class | Pattern | What it does |
 | --- | --- | --- |
 | `Command` | Command, Template Method | `__call__` checks the options (`check`), builds the context, runs `run`, maps a failure the package knows to its exit status (`failed`) and shows the result. A command writes `run` and the hooks it needs. |
 | `ListCommand` | Template Method | `fetch` the items and turn each into a `row` under `columns`. |
-| `Group` | Composite | A command word holding commands and groups; it builds its argparse subtree. |
-| `Legacy` | Adapter | A `register_*(subparsers)` function as a node of a `Group`, while a package moves over; no `hub` command uses it any more. |
+| `Group` | Composite | A command word holding commands and groups; it builds its argparse subtree, and `parser()` the program's own parser (the root `evo-agents`). |
 | `Result`, `View` (`Text`, `Table`, `Views`, `Verbatim`, `Stderr`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. `Verbatim` writes a rendered document as it is, `Stderr` puts a view (a warning) on stderr in its place, and `Table(..., bare=True)` prints the header when there are no rows. A command that follows a stream (`hub run logs --follow`, `hub run watch`) writes what comes as it comes and returns the rest. |
 | `Arg` | Value Object | An argument as a value; options many commands share are constants (`PROJECT`), never mixins. |
 | `HubCommand`, `HubContext` (`evo_agents/hub/cli/base.py`) | Dependency injection | The signed-in hub client and the project, built on first use; a `HubError` becomes `error: ...` and the exit status `client.exit_status` gives it. Tests patch `base.signed_in` once. |
+| `WorkerCommand`, `AgentCommand`, `AgentRunContext` (`evo_agents/worker/cli/base.py`) | Dependency injection | A worker command's state on this machine, or the run of `EVO_RUN_ID` an agent's command acts for, read on first use and checked against the command's `kinds`; `MissingExtra`, a `HubError` and a `WorkerStateError` become one `error:` line. |
 | `ProjectResource` (same module) | Gateway | One collection of a project's API: the one place that quotes the project and the parts of a path. Commands ask their resource and never build `/v1/...` paths. |
 
 Keep inheritance to two levels below `Command` (a kind of command or a package's base, then the command), keep the
