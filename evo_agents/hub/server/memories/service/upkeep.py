@@ -12,13 +12,13 @@ audiences the index lists as shown to the run (``run_audience``), so what the ru
 without such a memory, and the default profile, leave the prompt as it was.
 
 The upkeep, the daily job ``hub.memory_upkeep`` (``upkeep``): an agent's memory nobody opened for EXPIRE_AFTER (the
-agent of a run opening it with memory_get, ``memory_state.opened``; a new revision counts too) is archived: out of the
-index and of the searches and listings of runs (``memory_agents.namespace_condition``), still shown to members, until a
+agent of a run opening it with memory_get, ``core.opened``; a new revision counts too) is archived: out of the
+index and of the searches and listings of runs (``repository.namespace_condition``), still shown to members, until a
 writer of its project restores it (POST /v1/memories/{id}/restore, ``evo-agents hub memory restore``). An agent's
 memory that cites code as the Reviewer's evidence does (``code:REPO:PATH[:LINE]``, ``review.parse_evidence``) is stale
 while the project's latest knowledge graph has no file at one of those paths, read as the person who owns the memory
 (``change_tiers.impact_as_owner``); a project without a graph, or whose graph cannot be read now, keeps the marks it
-had. A memory the Curator promoted into a shared one (``memory_promotion``) is out of the index, and the job leaves it
+had. A memory the Curator promoted into a shared one (``promotion``) is out of the index, and the job leaves it
 alone.
 """
 
@@ -29,73 +29,35 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import BigInteger, DateTime, bindparam, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.review import EvidenceProblem, parse_evidence
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
-from evo_agents.hub.server import memories, run_audience
-from evo_agents.hub.server.audit import record
+from evo_agents.hub.server import run_audience
+from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.errors import Forbidden, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.change_tiers import GraphReader, impact_as_owner
-from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.kg_health import owner_access
 from evo_agents.hub.server.mcp_text import memory_about
-from evo_agents.hub.server.memory_audience import label_audience
-from evo_agents.hub.server.memory_paging import BoundedRoute
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.memories import repository
+from evo_agents.hub.server.memories.models import INDEX_BYTES, RESTORE, Memory
+from evo_agents.hub.server.memories.service import core
+from evo_agents.hub.server.memories.service.audience import label_audience
+from evo_agents.hub.server.security import Principal
 from evo_agents.kg.policy import audience_below
 
 log = logging.getLogger(__name__)
 
-INDEX_BYTES = 4 * 1024  # the index of an agent's memories in a prompt, at most
-INDEX_ROWS = 200  # memories read for an index, newest first
 EXPIRE_AFTER = timedelta(days=30)  # an agent's memory nobody opened for this long is archived
-RESTORE = "memory.restore"  # audit action; the target is memory:<id>
 CITATION = re.compile(r"\bcode:[A-Za-z0-9][A-Za-z0-9._-]*:[^\s`'\"<>()\[\]{}|,;]+")
 TRAILING = ".:"  # punctuation a sentence leaves after a citation
 
 
 # The index
-
-
-_INDEX_RUN = (
-    select(
-        tables.agent_profiles.c.id.label("profile_id"),
-        tables.agent_profiles.c.handle,
-        tables.runs.c.kind,
-        tables.projects.c.name.label("project"),
-        tables.users.c.id.label("owner_id"),
-        tables.users.c.login,
-    )
-    .join_from(tables.runs, tables.agent_profiles, tables.agent_profiles.c.id == tables.runs.c.profile_id)
-    .join(tables.projects, tables.projects.c.id == tables.runs.c.project_id)
-    .join(tables.users, tables.users.c.id == tables.runs.c.dispatched_by)
-    .where(tables.runs.c.id == bindparam("run_id", type_=BigInteger), ~tables.agent_profiles.c.is_default)
-)  # the profile of run :run_id, when not its project's default, its project and the person who dispatched it
-
-_INDEXED = (
-    select(
-        tables.memories.c.id,
-        tables.memories.c.name,
-        tables.memories.c.type,
-        tables.memories.c.label,
-        tables.memories.c.body,
-        tables.memories.c.stale_at,
-    )
-    .where(
-        tables.memories.c.profile_id == bindparam("profile_id", type_=BigInteger),
-        ~tables.memories.c.deleted,
-        tables.memories.c.archived_at.is_(None),
-        tables.memories.c.promoted_at.is_(None),
-    )
-    .order_by(tables.memories.c.updated_at.desc(), tables.memories.c.id.desc())
-    .limit(INDEX_ROWS)
-)  # the memories of profile :profile_id an index may list, newest first
 
 
 def _size(lines: list[str]) -> int:
@@ -105,7 +67,7 @@ def _size(lines: list[str]) -> int:
 async def memory_index(conn: AsyncConnection, run_id: int, room: int = INDEX_BYTES) -> str:
     """The index of the memories of run ``run_id``'s agent profile, within ``room`` and INDEX_BYTES bytes; empty for a
     run under its project's default profile or none, and for a profile with no memory its agent could open."""
-    run = (await conn.execute(_INDEX_RUN, {"run_id": run_id})).one_or_none()
+    run = await repository.index_run(conn, run_id)
     if run is None:
         return ""
     access = await owner_access(conn, run.owner_id, run.login, run.project)
@@ -118,7 +80,7 @@ async def memory_index(conn: AsyncConnection, run_id: int, room: int = INDEX_BYT
         "longer has. A memory_write under your handle adds to them.",
     ]
     budget, lines, held, shown = min(room, INDEX_BYTES), [], None, set()
-    for memory in (await conn.execute(_INDEXED, {"profile_id": run.profile_id})).all():
+    for memory in await repository.indexed(conn, run.profile_id):
         if not access.visible(memory.label, AGENT_SINK):
             continue
         named = label_audience(memory.label)
@@ -158,43 +120,10 @@ def citations(body: str) -> set[str]:
     return found
 
 
-_LIVE = (
-    tables.memories.c.profile_id.is_not(None),
-    ~tables.memories.c.deleted,
-    tables.memories.c.promoted_at.is_(None),
-)  # the memories of agents, neither deleted nor promoted
-
-_ARCHIVED = (
-    update(tables.memories)
-    .values(archived_at=bindparam("now", type_=DateTime(timezone=True)))
-    .where(
-        *_LIVE,
-        tables.memories.c.archived_at.is_(None),
-        func.coalesce(tables.memories.c.read_at, tables.memories.c.created_at)
-        < bindparam("cutoff", type_=DateTime(timezone=True)),
-        tables.memories.c.updated_at < bindparam("cutoff", type_=DateTime(timezone=True)),
-    )
-)  # the memories of agents nobody opened or wrote since :cutoff, archived at :now
-
-_CITING = select(
-    tables.memories.c.id,
-    tables.memories.c.project_id,
-    tables.memories.c.owner_id,
-    tables.memories.c.body,
-    tables.memories.c.stale_at,
-).where(*_LIVE)
-
-_MARKED = (
-    update(tables.memories)
-    .values(stale_at=bindparam("stale", type_=DateTime(timezone=True)))
-    .where(tables.memories.c.id == bindparam("marked_id", type_=BigInteger))
-)
-
-
 async def _mark_stale(engine: AsyncEngine, reader: GraphReader, now: datetime) -> dict:
     """The stale marks of the agents' memories, by the graph of each project as each memory's owner reads it."""
-    async with engine.begin() as conn:
-        rows = (await conn.execute(_CITING)).all()
+    async with UnitOfWork(engine) as conn:
+        rows = await repository.citing(conn)
     groups: dict[tuple[int, int], list] = {}
     for row in rows:
         groups.setdefault((row.project_id, row.owner_id), []).append((row, citations(row.body)))
@@ -215,8 +144,8 @@ async def _mark_stale(engine: AsyncEngine, reader: GraphReader, now: datetime) -
                 marks.append({"marked_id": row.id, "stale": None})
                 counts["fresh"] += 1
         if marks:
-            async with engine.begin() as conn:
-                await conn.execute(_MARKED, marks)
+            async with UnitOfWork(engine) as conn:
+                await repository.mark_stale(conn, marks)
     return counts
 
 
@@ -224,8 +153,8 @@ async def upkeep(engine: AsyncEngine, blobs, data_dir: Path | None, *, now: date
     """The daily upkeep of the agents' memories: those nobody opened for EXPIRE_AFTER archived, and the stale marks of
     those that cite code set by the projects' graphs (``blobs`` and the cache under ``data_dir``)."""
     now = now or datetime.now(UTC)
-    async with engine.begin() as conn:
-        archived = (await conn.execute(_ARCHIVED, {"now": now, "cutoff": now - EXPIRE_AFTER})).rowcount
+    async with UnitOfWork(engine) as conn:
+        archived = await repository.archive(conn, now, now - EXPIRE_AFTER)
     counts = {"archived": archived, **await _mark_stale(engine, GraphReader.at(blobs, data_dir), now)}
     log.info("agent memories kept", extra=counts)
     return counts
@@ -233,37 +162,25 @@ async def upkeep(engine: AsyncEngine, blobs, data_dir: Path | None, *, now: date
 
 # Restoring an archived memory
 
-router = APIRouter(
-    prefix="/v1/memories", tags=["memories"], route_class=BoundedRoute, responses={401: {"model": ErrorBody}}
-)
 
-_RESTORED = (
-    update(tables.memories)
-    .values(archived_at=None, read_at=func.now())
-    .where(tables.memories.c.id == bindparam("restored_id", type_=BigInteger))
-)
-
-
-@router.post("/{memory_id}/restore", response_model=memories.Memory, responses=memories.REFUSALS)
-async def restore_memory(
-    request: Request, memory_id: memories.MemoryId, user: CurrentUser, sink: memories.Sink = AGENT_SINK
-) -> memories.Memory:
+async def restore(engine: AsyncEngine, user: Principal, memory_id: int, sink: str) -> Memory:
     """Bring back an agent's memory the daily upkeep archived: into the index and the searches of its agent's runs
     again, as if just opened, with the audit row ``memory.restore``. A writer of its project who reads it, never the
     agent of a run; a memory not archived is left as it is."""
-    async with request.app.state.engine.begin() as conn:
-        row, access = await memories._readable(conn, user, memory_id, sink, lock=True)
+    async with UnitOfWork(engine) as conn:
+        row, access = await core.readable(conn, user, memory_id, sink, lock=True)
         held = row.memory
         if user.scope is not None:
-            raise HTTPException(403, f"the agent of run {user.scope.run_id} restores no memory: a writer of it does")
+            raise Forbidden(f"the agent of run {user.scope.run_id} restores no memory: a writer of it does")
         if row.profile_id is None or access is None:
-            raise HTTPException(422, f"memory {memory_id} is no agent's: only an agent's memory is ever archived")
+            raise Unprocessable(f"memory {memory_id} is no agent's: only an agent's memory is ever archived")
         if not has_role(access.role, "writer"):
-            raise HTTPException(403, f"restoring a memory needs the writer role on project {held.project}")
+            raise Forbidden(f"restoring a memory needs the writer role on project {held.project}")
         if held.archived_at is None:
             return held
-        await conn.execute(_RESTORED, {"restored_id": memory_id})
-        await record(conn, actor_id=user.user_id, token_id=user.token_id, action=RESTORE, target=f"memory:{memory_id}")
-        restored = (await memories._load(conn, memory_id)).memory
+        await repository.restore(conn, memory_id)
+        await Auditor(conn, None, user).record(RESTORE, f"memory:{memory_id}")
+        restored = await repository.load(conn, memory_id)
+        assert restored is not None
     log.info("memory restored", extra={"memory_id": memory_id, "project": held.project, "login": user.login})
-    return restored
+    return restored.memory

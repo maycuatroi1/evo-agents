@@ -26,12 +26,13 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_404_NOT_FOUND
 
-from evo_agents.hub.server import cross_labels, kg, memories, run_audience
+from evo_agents.hub.server import cross_labels, kg, run_audience
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.chat_agents import agent_run
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.mcp_text import memory_about, memory_line
-from evo_agents.hub.server.memory_audience import label_audience
+from evo_agents.hub.server.memories.service import core as memories
+from evo_agents.hub.server.memories.service.audience import label_audience
 from evo_agents.hub.server.projects import ProjectAccess, access_of, not_found, project_access
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -138,8 +139,8 @@ async def _memories(request: Request, origin: Principal, gate: cross_labels.Gate
     if body.tool == "memory_search":
         if body.query is None:
             raise HTTPException(422, "memory_search needs a query")
-        found = await memories.search_memories(
-            request,
+        found = await memories.search(
+            request.app.state.engine,
             origin,
             q=body.query,
             scope="project",
@@ -161,7 +162,7 @@ async def _memories(request: Request, origin: Principal, gate: cross_labels.Gate
         return "\n".join(lines), len(kept), reasons, shown
     if body.memory_id is None:
         raise HTTPException(422, "memory_get needs memory_id")
-    memory = await memories.show(request, body.memory_id, origin, sink=sink)
+    memory = await memories.shown(request.app.state.engine, origin, body.memory_id, sink)
     if memory.project != project:  # a personal memory, or one of another project: not this read's
         raise HTTPException(HTTP_404_NOT_FOUND, f"no memory {body.memory_id} of project {project} that you can see")
     why = gate.why(memory.label)

@@ -12,7 +12,7 @@ audience, since most name none and the reads of memories run on every pull and p
 A write only keeps or raises an audience (``raised``): what the memory held, what the writer says it read (a Claude
 Code session's record, sent by ``evo-agents hub mcp`` and by ``hub memory push``), and for the agent of a run what the
 hub noted it was shown (``run_audience``). Lowering one is PUT /v1/memories/{id}/audience, an admin's of the memory's
-project alone (``memories.lower_audience``).
+project alone (``core.lower_audience``).
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ async def raised(conn: AsyncConnection, user: Principal, held, given: Iterable[s
 async def label_reaches(reader: Reader, access, label, through: str) -> bool:
     """Whether a row labelled ``label`` (a proposal of the Curator) reaches ``reader``'s caller through sink
     ``through`` of ``access`` (``projects.ProjectAccess``): the read rule, and the audience its label names, if any
-    (the memories its evidence names, ``memory_promotion.cited_audience``)."""
+    (the memories its evidence names, ``promotion.cited_audience``)."""
     if not access.visible(label, through):
         return False
     named = label_audience(label)

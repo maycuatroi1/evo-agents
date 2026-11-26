@@ -48,7 +48,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator import charter_row
 from evo_agents.hub.server.curator_shift import owner_access
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.memory_audience import Reader, label_reaches
+from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.probe_runs import probe_models

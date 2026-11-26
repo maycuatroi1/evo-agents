@@ -264,7 +264,7 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
     author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``, and a chat
     run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``. The prompt of a run
     under an agent profile that is not its project's default ends with the index of its memories
-    (``memory_upkeep.with_index``). The prompt of a run with a snapshot of autonomy opens with its card
+    (``memories.service.upkeep.with_index``). The prompt of a run with a snapshot of autonomy opens with its card
     (``principals.card``), which it carries as ``autonomy`` too, for the worker to build a step's prompt with."""
     view = await run_view(conn, run_id)
     card = await principals.card(conn, run_id)
@@ -320,7 +320,7 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
         verify = runs.verify_of(step)
         criteria = [key for key, _ in proofs.criteria(plan, step)] or None
     from evo_agents.hub.server.context_answers import with_answers
-    from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
+    from evo_agents.hub.server.memories.service.upkeep import with_index  # it reads memories through their package
 
     if view.kind != "command":  # a command run has no agent to read a prompt
         prompt = await with_answers(

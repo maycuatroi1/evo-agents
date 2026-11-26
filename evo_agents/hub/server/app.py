@@ -74,8 +74,8 @@ from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, PO
 # evo_agents.hub.worker imports no server module beyond its job list (docs/structure.md, section Package boundaries):
 # the hub worker command takes them from here and hands them down.
 from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
-from evo_agents.hub.server.memory_upkeep import router as restore_routes
-from evo_agents.hub.server.memory_upkeep import upkeep as memory_upkeep  # noqa: F401
+from evo_agents.hub.server.memories.routes import restore_router as restore_routes
+from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
@@ -342,9 +342,9 @@ def _include_account_routes(app: FastAPI) -> None:
 
     app.include_router(plans.router)
 
-    from evo_agents.hub.server import memories
+    from evo_agents.hub.server.memories import routes as memory_routes
 
-    app.include_router(memories.router)
+    app.include_router(memory_routes.router)
 
     from evo_agents.hub.server import skills
 

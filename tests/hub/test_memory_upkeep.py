@@ -1,6 +1,6 @@
 """The index of an agent's memories in the prompt of its runs, the reads the hub records, and the daily upkeep that
-archives and marks stale (plan agent-profile-workspace, criterion a3; ``evo_agents.hub.server.memory_upkeep``,
-``evo_agents.hub.server.memory_state``).
+archives and marks stale (plan agent-profile-workspace, criterion a3; ``evo_agents.hub.server.memories.service.upkeep``,
+``evo_agents.hub.server.memories.repository``).
 
 Checked on the hub and the profiles of ``tests.hub.test_memory_agents`` (project aud, @scout and @critic besides its
 default profile, alice a writer and carol a reader):
@@ -34,7 +34,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.cli import base
 from evo_agents.hub.cli.memory import MemoryRestore
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
-from evo_agents.hub.server import memory_upkeep, run_audience
+from evo_agents.hub.server import run_audience
+from evo_agents.hub.server.memories.service import upkeep as memory_upkeep
 from evo_agents.hub.server.change_tiers import GraphView
 from evo_agents.hub.server.runs.service import run_specs
 from tests.hub import live

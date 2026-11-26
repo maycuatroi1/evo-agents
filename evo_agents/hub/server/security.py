@@ -347,7 +347,7 @@ class RunScope:
     role: str  # the owner's role on the project when the request came, at most writer
     max_level: str  # the owner's grant's, when the request came
     kind: str = "step"  # the run's kind: a judge run's agent reads the code graph alone (``mcp_tools.JUDGE_TOOLS``)
-    # What the memories of a run need (``memory_agents``): the profile and version it runs under, the handle of that
+    # What the memories of a run need (``memories.service.agents``): the profile and version it runs under, the handle of that
     # profile when it is not its project's default (whose agent writes into its own namespace), and its chat and hop.
     profile_id: int | None = None
     profile_version: int | None = None

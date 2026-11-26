@@ -13,13 +13,14 @@ pytest.importorskip("sqlalchemy")
 
 from sqlalchemy.dialects import postgresql
 
-from evo_agents.hub.server import audit, memories, security
+from evo_agents.hub.server import audit, security
+from evo_agents.hub.server.memories import repository
 
 DIALECT = postgresql.psycopg.dialect()
 WRITES = {
     "token check": security.AUTHENTICATE,
-    "memory change": memories._CHANGED,
-    "memory revision": memories._REVISION,
+    "memory change": repository.CHANGED,
+    "memory revision": repository.REVISION,
     "audit row in a project by id": audit._IN_PROJECT,
     "audit row in a project by name": audit._IN_NAMED,
     "audit row of a memory": audit._OF_MEMORY,

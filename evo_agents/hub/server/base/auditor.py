@@ -15,7 +15,7 @@ from evo_agents.hub.server.security import Principal
 @dataclass(frozen=True)
 class Auditor:
     conn: AsyncConnection
-    project_id: int
+    project_id: int | None  # None: the project of the target, as audit.record works it out
     user: Principal | None = None
 
     @classmethod

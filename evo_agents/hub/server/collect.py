@@ -96,7 +96,6 @@ from evo_agents.hub.server import (
     kg_init,
     kg_optimize,
     kg_pipeline,
-    memory_promotion,
     product_figures,
     review_trigger,
     runtime_figures,
@@ -108,6 +107,7 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.goals import service as project_goals
+from evo_agents.hub.server.memories.service import promotion as memory_promotion
 from evo_agents.hub.server.night_duty import Duty
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -812,7 +812,7 @@ async def _assigned(conn: AsyncConnection, owner_id: int, project_id: int, night
 async def review_prompt(conn: AsyncConnection, view) -> str:
     """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the project's active goals
     (``goals.curator_goals``, those of the charter made goals first), what earlier nights found through the lenses,
-    the playbook of the Curator, the agents' memories it may promote (``memory_promotion.for_prompt``) and what the
+    the playbook of the Curator, the agents' memories it may promote (``memories.service.promotion.for_prompt``) and what the
     weekly probe report assigns it (``probe_fixes.assignments``)."""
 
     r, c = tables.runs, tables.charters

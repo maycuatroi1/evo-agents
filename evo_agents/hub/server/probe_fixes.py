@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import probes, review, runs, tables
 from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server.memory_audience import Reader, label_reaches
+from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 

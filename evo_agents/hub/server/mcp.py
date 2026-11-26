@@ -81,7 +81,6 @@ from evo_agents.hub.server import (
     kg_decisions,
     kg_optimize,
     local_runs,
-    memories,
     opportunity_mcp,
     plans,
     plugin_tools,
@@ -112,6 +111,8 @@ from evo_agents.hub.server.mcp_text import (
     problem_line,
     problem_lines,
 )
+from evo_agents.hub.server.memories import routes as memories
+from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
@@ -398,7 +399,7 @@ class HubMcp(MCPServer):
             location = arguments.get("location") or HARNESS
         body = arguments["body"]
         try:
-            memory = memories.MemoryIn(
+            memory = MemoryIn(
                 scope=scope,
                 project=project,
                 location=location,
