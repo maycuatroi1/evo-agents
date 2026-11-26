@@ -36,7 +36,7 @@ from evo_agents.hub.kg_routes import MEASURE_TIMEOUT
 # isort: split
 import sys
 
-from evo_agents.clikit import Arg, Group, Legacy, Result, Stderr, Table, Text, UsageError, View, Views, returns_object
+from evo_agents.clikit import Arg, Group, Result, Stderr, Table, Text, UsageError, View, Views, returns_object
 from evo_agents.hub.cli import positive
 from evo_agents.hub.cli.base import HubCommand, HubContext
 from evo_agents.hub.cli.kg import (
@@ -519,22 +519,22 @@ KG = Group(
         KG_FORGET_SOURCE,
         KG_PRUNE,
         KG_SCRUB,
-        Legacy(clusters.register),
-        Legacy(review.register),
-        Legacy(decisions.register),
-        Legacy(eval_set.register),
-        Legacy(optimize.register),
+        *clusters.NODES,
+        *review.NODES,
+        *decisions.NODES,
+        *eval_set.NODES,
+        *optimize.NODES,
         init.KG_INIT,
-        Legacy(profile.register),
-        Legacy(semantic.register),
-        Legacy(settings.register),
+        *profile.NODES,
+        *semantic.NODES,
+        *settings.NODES,
         upload.KG_UPLOAD,
         upload.KG_PIPELINE,
         upload.KG_UPLOADS,
-        Legacy(entities.register),
+        *entities.NODES,
         answer.KG_ANSWER,
-        Legacy(entity_map.register),
-        Legacy(graphs.register),
-        Legacy(branches.register),
+        *entity_map.NODES,
+        *graphs.NODES,
+        *branches.NODES,
     ),
 )

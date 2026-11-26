@@ -302,6 +302,26 @@ def test_renamed_files_follow_a_module_git_moved(tmp_path):
     assert structure.renamed_files("no-such-ref", tmp_path) == {}
 
 
+def test_renamed_files_follow_a_module_moved_in_a_commit_then_rewritten(tmp_path):
+    def run(*args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=tmp_path, check=True)
+
+    (tmp_path / "evo_agents").mkdir()
+    (tmp_path / "evo_agents" / "old.py").write_text("".join(f"def f{n}():\n    return {n}\n" for n in range(40)))
+    run("init", "-q", "-b", "main")
+    run("add", ".")
+    run("commit", "-qm", "start")
+    run("checkout", "-qb", "work")
+    (tmp_path / "evo_agents" / "pkg").mkdir()
+    run("mv", "evo_agents/old.py", "evo_agents/pkg/mid.py")
+    run("commit", "-qm", "move")
+    run("mv", "evo_agents/pkg/mid.py", "evo_agents/pkg/new.py")
+    run("commit", "-qm", "move again")
+    (tmp_path / "evo_agents" / "pkg" / "new.py").write_text("class Rewritten:\n    pass\n")
+    run("commit", "-qam", "rewrite")
+    assert structure.renamed_files("main", tmp_path) == {"evo_agents/old.py": "evo_agents/pkg/new.py"}
+
+
 def test_contract_exceptions_read_pyproject_by_contract_id():
     pyproject = """
 [[tool.importlinter.contracts]]
