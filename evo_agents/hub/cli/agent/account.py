@@ -19,23 +19,27 @@ The value never comes from the command line: it is read from stdin when stdin is
 without echo (``cli.secret.values.read_value``), checked for what the hub refuses, and never printed, not even in an error.
 Every check of the arguments comes before the value is read. ``--expires YYYY-MM-DD`` ends the account at 00:00 UTC of
 that day. Standard library only, like the rest of the client.
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`AgentAccounts`
+is the gateway to the accounts of a project's agents and :class:`ListedAccounts` to GET /v1/agent-accounts;
+:func:`change_body` turns the options of ``set`` into the change to write and :func:`account_line` and
+:func:`account_lines` say an account to a person.
 """
 
 from __future__ import annotations
 
-import sys
-from urllib.parse import quote, urlencode
+import argparse
+from typing import Any, ClassVar
+from urllib.parse import urlencode
 
-from evo_agents.clikit import Legacy
+from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, returns_array, returns_object
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
-from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import PROJECT, PROJECT_HELP, HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.cli.secret.values import Refused, check_name, check_value, expires_at, read_value
-from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
-from evo_agents.hub.contract import json_option, returns_array, returns_object
+from evo_agents.hub.client import Hub
 from evo_agents.hub.credentials import env_name_refusal
 from evo_agents.hub.curator import money
 
-EXIT_USAGE = 2
 # The keys of an account of an agent in --json (the contract, `evo-agents hub contract print`).
 ACCOUNT_KEYS = (
     "id",
@@ -64,28 +68,51 @@ ACCOUNT_KEYS = (
 )
 # The keys of an account of `agent account list --json`: an account with its project and agent.
 LISTED_KEYS = (*ACCOUNT_KEYS, "project", "handle", "agent_name", "color", "icon_url")
+NOTHING_TO_CHANGE = "give something to change: --weight, --priority, --worker, --expires or --no-expiry"
 
 
-def _path(project: str, handle: str, name: str) -> str:
-    agent = quote(handle.removeprefix("@"), safe="")
-    return f"/v1/projects/{quote(project, safe='')}/agents/{agent}/accounts/{quote(name, safe='')}"
+class AgentAccounts(ProjectResource):
+    """The accounts of a project's agents: GET, PUT, PATCH and DELETE /v1/projects/{p}/agents/{handle}/accounts/{name}
+    (Gateway)."""
+
+    collection = "agents"
+
+    def account(self, method: str, handle: str, name: str, body: dict | None = None):
+        return self.call(method, handle.removeprefix("@"), "accounts", name, body=body)
 
 
-def _usage(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
+class ListedAccounts:
+    """GET /v1/agent-accounts: the accounts of the agents of every project the member holds a grant on (Gateway)."""
+
+    path = "/v1/agent-accounts"
+
+    def __init__(self, hub: Hub):
+        self.hub = hub
+
+    def list(self, query: dict) -> Any:
+        return self.hub.call("GET", self.path + ("?" + urlencode(query) if query else ""))
 
 
-def _line(handle: str, account: dict, verb: str) -> str:
+def at(handle: str) -> str:
+    return f"@{handle.removeprefix('@')}"
+
+
+def account_line(handle: str, account: dict, verb: str) -> str:
+    """What a command that writes an account prints of it."""
     ends = f"; it ends {when(account['expires_at'])} UTC" if account["expires_at"] else ""
     workers = ", ".join(account["workers"])
     return (
-        f"{verb} account {account['name']} ({account['env_var']}) of @{handle.removeprefix('@')}: {account['state']}, "
+        f"{verb} account {account['name']} ({account['env_var']}) of {at(handle)}: {account['state']}, "
         f"weight {account['weight']}, priority {account['priority']}, on {workers}{ends}."
     )
 
 
-def _bounds(args) -> str | None:
+def refusal(args: argparse.Namespace) -> str | None:
+    """The refusal of the arguments every command on one account shares: its name, weight and priority."""
+    try:
+        check_name(args.name)
+    except Refused as exc:
+        return str(exc)
     for key, top in (("weight", MAX_WEIGHT), ("priority", MAX_PRIORITY)):
         given = getattr(args, key, None)
         if given is not None and not 0 <= given <= top:
@@ -93,157 +120,144 @@ def _bounds(args) -> str | None:
     return None
 
 
-def _done(args, account: dict, verb: str) -> int:
-    if args.json:
-        print_json(account)
-    else:
-        print(_line(args.handle, account, verb))
-    return 0
+def checked(args: argparse.Namespace) -> None:
+    if (why := refusal(args)) is not None:
+        raise UsageError(why)
 
 
-def _checked(args) -> str | None:
-    """The refusal of the arguments every command shares: the account's name, weight and priority."""
+def day(text: str) -> str:
+    """``--expires`` as the moment the account ends; UsageError when it is no day."""
     try:
-        check_name(args.name)
+        return expires_at(text)
     except Refused as exc:
-        return str(exc)
-    return _bounds(args)
+        raise UsageError(str(exc)) from None
 
 
-def _read(args) -> str:
-    value = read_value(
-        args.name, prompt=f"Value of account {args.name} of @{args.handle.removeprefix('@')} (not shown): "
-    )
-    check_value("env", value)
-    return value
+def weights(args: argparse.Namespace) -> dict:
+    return {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
 
 
-@client_command
-def cmd_add(args) -> int:
-    refusal = _checked(args) or env_name_refusal(args.env_var)
-    try:
-        if refusal is None and args.expires is not None:
-            args.expires = expires_at(args.expires)
-    except Refused as exc:
-        refusal = str(exc)
-    if refusal is not None:
-        return _usage(refusal)
-    hub, _ = signed_in()  # before the value is asked for: not signed in costs no paste
-    try:
-        value = _read(args)
-    except Refused as exc:
-        return _usage(str(exc))
-    body = {"env_var": args.env_var, "workers": args.worker, "value": value}
-    body |= {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
-    if args.expires is not None:
-        body["expires_at"] = args.expires
-    written = hub.call("PUT", _path(project_of(args), args.handle, args.name), body)
-    return _done(args, written, "Created" if written["created"] else "Replaced")
-
-
-@client_command
-def cmd_renew(args) -> int:
-    if (refusal := _checked(args)) is not None:
-        return _usage(refusal)
-    hub, _ = signed_in()
-    try:
-        value = _read(args)
-    except Refused as exc:
-        return _usage(str(exc))
-    body = {"value": value}
-    if args.expires is not None:
-        try:
-            body["expires_at"] = expires_at(args.expires)
-        except Refused as exc:
-            return _usage(str(exc))
-    renewed = hub.call("PATCH", _path(project_of(args), args.handle, args.name), body)
-    return _done(args, renewed, "Renewed")
-
-
-def _change(args, body: dict, verb: str) -> int:
-    hub, _ = signed_in()
-    changed = hub.call("PATCH", _path(project_of(args), args.handle, args.name), body)
-    return _done(args, changed, verb)
-
-
-@client_command
-def cmd_set(args) -> int:
-    if (refusal := _checked(args)) is not None:
-        return _usage(refusal)
-    body = {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
+def change_body(args: argparse.Namespace) -> dict:
+    """The PATCH body of ``set``; UsageError when it changes nothing or its end is no day."""
+    body = weights(args)
     if args.worker:
         body["workers"] = args.worker
-    try:
-        if args.expires is not None:
-            body["expires_at"] = expires_at(args.expires)
-    except Refused as exc:
-        return _usage(str(exc))
+    if args.expires is not None:
+        body["expires_at"] = day(args.expires)
     if args.no_expiry:
         body["expires_at"] = None
     if not body:
-        return _usage("give something to change: --weight, --priority, --worker, --expires or --no-expiry")
-    return _change(args, body, "Changed")
+        raise UsageError(NOTHING_TO_CHANGE)
+    return body
 
 
-@client_command
-def cmd_pause(args) -> int:
-    if (refusal := _checked(args)) is not None:
-        return _usage(refusal)
-    return _change(args, {"paused": True}, "Paused")
+def read(args: argparse.Namespace) -> str:
+    """The account's value, read and checked; UsageError, never with the value, when it cannot be one."""
+    try:
+        value = read_value(args.name, prompt=f"Value of account {args.name} of {at(args.handle)} (not shown): ")
+        check_value("env", value)
+    except Refused as exc:
+        raise UsageError(str(exc)) from None
+    return value
 
 
-@client_command
-def cmd_resume(args) -> int:
-    if (refusal := _checked(args)) is not None:
-        return _usage(refusal)
-    return _change(args, {"paused": False}, "Resumed")
-
-
-@client_command
-def cmd_remove(args) -> int:
-    if (refusal := _checked(args)) is not None:
-        return _usage(refusal)
-    hub, _ = signed_in()
-    hub.call("DELETE", _path(project_of(args), args.handle, args.name))
-    print(
-        f"Deleted account {args.name} of @{args.handle.removeprefix('@')}: its value and bindings are gone from the "
-        "hub, and its leases still out are revoked. Revoke it where it was made as well."
-    )
-    return 0
-
-
-# Reading
-
-
-def _usage_text(usage: dict | None) -> str:
+def usage_text(usage: dict | None) -> str:
     if not usage:
         return "-"
     used = usage.get("utilization")
     return usage["status"] if used is None else f"{usage['status']} {round(used * 100)}%"
 
 
-def _runs(account: dict) -> str:
+def runs_text(account: dict) -> str:
     runs = f"{account['runs_24h']}/{account['runs_7d']}"
     return runs if account["cost_7d_usd"] is None else f"{runs} ({money(account['cost_7d_usd'])})"
 
 
-@client_command
-def cmd_list(args) -> int:
-    query = {}
-    if args.handle is not None:
-        query = {"project": project_of(args), "handle": args.handle.removeprefix("@")}
-    elif args.project:
-        query = {"project": args.project}
-    hub, _ = signed_in()
-    found = hub.call("GET", "/v1/agent-accounts" + ("?" + urlencode(query) if query else ""))
-    if args.json:
-        print_json(found)
-        return 0
-    if not found:
-        print("No agent of a project you hold a grant on has an account; `hub agent account add` gives one.")
-        return 0
-    rows = [
-        (
+def account_lines(handle: str, a: dict) -> list[str]:
+    """What ``show`` prints of an account."""
+    held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
+    reported = f", reported {when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
+    lines = [
+        f"Account {a['name']} ({a['env_var']}, {a['provider']}) of {at(handle)}: {a['state']}.",
+        f"  Workers: {', '.join(a['workers'])}; expires: {when(a['expires_at']) if a['expires_at'] else 'never'}.",
+        f"  Weight {a['weight']}, priority {a['priority']}; last taken {when(a['last_leased_at'])} UTC.",
+        f"  Last usage: {usage_text(a['last_usage'])}{reported}.",
+    ]
+    if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
+        lines.append(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
+    else:
+        lines.append(
+            f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days"
+            f" ({money(a['cost_7d_usd'])}, estimated from their usage)."
+        )
+    lines.append(f"  Held by: {held}.")
+    return lines
+
+
+def written(ctx: HubContext, method: str, body: dict | None, verb: str) -> Result:
+    """Send ``body`` to the account and say what it is now."""
+    account = AgentAccounts.of(ctx).account(method, ctx.args.handle, ctx.args.name, body)
+    return Result(account, Text(account_line(ctx.args.handle, account, verb)))
+
+
+ONE = (
+    Arg("handle", metavar="HANDLE", help="the agent's handle, with or without @"),
+    Arg("name", metavar="NAME", help="the account's name, unique among the agent's accounts"),
+    PROJECT,
+)
+ACCOUNT = returns_object(*ACCOUNT_KEYS, schema="AgentAccount")
+WEIGHTS = (
+    Arg("--weight", type=int, metavar="N", help=f"0 to {MAX_WEIGHT}: its share in a weighted pool"),
+    Arg("--priority", type=int, metavar="N", help=f"0 to {MAX_PRIORITY}: the lower, the sooner"),
+)
+EXPIRES = Arg("--expires", metavar="YYYY-MM-DD", help="its new end, 00:00 UTC")
+
+
+def after_json(parser: argparse.ArgumentParser, *args: Arg) -> None:
+    """Options that come after --json in the help, as the command has always listed them."""
+    for arg in args:
+        arg.add_to(parser)
+
+
+# Reading
+
+
+class AccountList(HubCommand):
+    name = "list"
+    help = "the accounts of the agents of your projects, or of one agent: state, usage, runs, never a value"
+    arguments = (
+        Arg("handle", metavar="HANDLE", nargs="?", help="only this agent's, with or without @"),
+        Arg("--project", help="only this project's agents; with HANDLE, " + PROJECT_HELP),
+    )
+    output = returns_array(*LISTED_KEYS, schema="ListedAgentAccount")
+    columns: ClassVar[tuple[str, ...]] = (
+        "PROJECT",
+        "AGENT",
+        "NAME",
+        "VARIABLE",
+        "PROVIDER",
+        "STATE",
+        "WORKERS",
+        "WEIGHT/PRIO",
+        "USAGE",
+        "RUNS 24H/7D",
+        "HELD BY",
+        "LAST USED",
+    )
+    empty = "No agent of a project you hold a grant on has an account; `hub agent account add` gives one."
+
+    def run(self, ctx: HubContext) -> Result:
+        query = {}
+        if ctx.args.handle is not None:
+            query = {"project": ctx.project, "handle": ctx.args.handle.removeprefix("@")}
+        elif ctx.args.project:
+            query = {"project": ctx.args.project}
+        found = ListedAccounts(ctx.hub).list(query)
+        return Result(found, Table(self.columns, [self.row(a) for a in found], self.empty))
+
+    @staticmethod
+    def row(a: dict) -> tuple:
+        return (
             a["project"],
             f"@{a['handle']}",
             a["name"],
@@ -252,108 +266,170 @@ def cmd_list(args) -> int:
             a["state"],
             ", ".join(a["workers"]),
             f"{a['weight']}/{a['priority']}",
-            _usage_text(a["last_usage"]),
-            _runs(a),
+            usage_text(a["last_usage"]),
+            runs_text(a),
             " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
             when(a["last_leased_at"]),
         )
-        for a in found
-    ]
-    header = ("PROJECT", "AGENT", "NAME", "VARIABLE", "PROVIDER", "STATE", "WORKERS", "WEIGHT/PRIO", "USAGE")
-    table((*header, "RUNS 24H/7D", "HELD BY", "LAST USED"), rows)
-    return 0
 
 
-@client_command
-def cmd_show(args) -> int:
-    if (refusal := _checked(args)) is not None:
-        return _usage(refusal)
-    hub, _ = signed_in()
-    a = hub.call("GET", _path(project_of(args), args.handle, args.name))
-    if args.json:
-        print_json(a)
-        return 0
-    held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
-    reported = f", reported {when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
-    print(f"Account {a['name']} ({a['env_var']}, {a['provider']}) of @{args.handle.removeprefix('@')}: {a['state']}.")
-    print(f"  Workers: {', '.join(a['workers'])}; expires: {when(a['expires_at']) if a['expires_at'] else 'never'}.")
-    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {when(a['last_leased_at'])} UTC.")
-    print(f"  Last usage: {_usage_text(a['last_usage'])}{reported}.")
-    if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
-        print(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
-    else:
-        print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
-        print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
-    print(f"  Held by: {held}.")
-    return 0
+class AccountShow(HubCommand):
+    name = "show"
+    help = "one account of an agent: state, last usage, runs and cost, runs holding it"
+    arguments = ONE
+    output = ACCOUNT
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        found = AgentAccounts.of(ctx).account("GET", ctx.args.handle, ctx.args.name)
+        return Result(found, Text(*account_lines(ctx.args.handle, found)))
 
 
-# Registering
+# Writing
 
 
-def _named(sub, command: str, help: str, func, schema: str = "AgentAccount", added: tuple[str, ...] = ()):
-    parser = sub.add_parser(command, help=help)
-    parser.add_argument("handle", metavar="HANDLE", help="the agent's handle, with or without @")
-    parser.add_argument("name", metavar="NAME", help="the account's name, unique among the agent's accounts")
-    parser.add_argument("--project", help=PROJECT_HELP)
-    if command != "remove":
-        json_option(parser, returns_object(*ACCOUNT_KEYS, *added, schema=schema))
-    else:
+class AccountAdd(HubCommand):
+    name = "add"
+    help = "give an agent an account, or replace the one of that name (the value comes from stdin or a prompt)"
+    arguments = ONE
+    output = returns_object(*ACCOUNT_KEYS, "created", schema="AgentAccountWritten")
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        super().configure(parser)
+        after_json(
+            parser,
+            Arg("--env-var", required=True, metavar="VAR", help="the variable it sets in the agent's runs"),
+            Arg("--worker", action="append", required=True, metavar="NAME", help="a worker it is bound to; repeat it"),
+            Arg("--expires", metavar="YYYY-MM-DD", help="the day it ends, 00:00 UTC"),
+            *WEIGHTS,
+        )
+
+    def check(self, args: argparse.Namespace) -> None:
+        why = refusal(args) or env_name_refusal(args.env_var)
+        if why is not None:
+            raise UsageError(why)
+        if args.expires is not None:
+            day(args.expires)
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        hub = ctx.hub  # signed in before the value is asked for: not signed in costs no paste
+        body = {"env_var": args.env_var, "workers": args.worker, "value": read(args)} | weights(args)
+        if args.expires is not None:
+            body["expires_at"] = day(args.expires)
+        account = AgentAccounts(hub, ctx.project).account("PUT", args.handle, args.name, body)
+        verb = "Created" if account["created"] else "Replaced"
+        return Result(account, Text(account_line(args.handle, account, verb)))
+
+
+class AccountRenew(HubCommand):
+    name = "renew"
+    help = "write a new value for an account, which stays the same account"
+    arguments = ONE
+    output = ACCOUNT
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        super().configure(parser)
+        after_json(parser, EXPIRES)
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        hub = ctx.hub  # signed in before the value is asked for
+        body = {"value": read(ctx.args)}
+        if ctx.args.expires is not None:
+            body["expires_at"] = day(ctx.args.expires)  # checked after the value, as it always was
+        renewed = AgentAccounts(hub, ctx.project).account("PATCH", ctx.args.handle, ctx.args.name, body)
+        return Result(renewed, Text(account_line(ctx.args.handle, renewed, "Renewed")))
+
+
+class AccountSet(HubCommand):
+    name = "set"
+    help = "change the weight, priority, workers or end of an account"
+    arguments = ONE
+    output = ACCOUNT
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        super().configure(parser)
+        after_json(
+            parser,
+            *WEIGHTS,
+            Arg("--worker", action="append", metavar="NAME", help="the workers it is bound to; repeat it"),
+        )
+        ends = parser.add_mutually_exclusive_group()
+        ends.add_argument(*EXPIRES.flags, **EXPIRES.options)
+        ends.add_argument("--no-expiry", action="store_true", help="drop its end")
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args)
+        change_body(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        return written(ctx, "PATCH", change_body(ctx.args), "Changed")
+
+
+class AccountPause(HubCommand):
+    name = "pause"
+    help = "keep new runs off an account; a run that holds it keeps it"
+    arguments = ONE
+    output = ACCOUNT
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        return written(ctx, "PATCH", {"paused": True}, "Paused")
+
+
+class AccountResume(HubCommand):
+    name = "resume"
+    help = "let new runs take a paused account again"
+    arguments = ONE
+    output = ACCOUNT
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        return written(ctx, "PATCH", {"paused": False}, "Resumed")
+
+
+class AccountRemove(HubCommand):
+    name = "remove"
+    help = "delete an account: its value and bindings go, its leases out are revoked"
+    arguments = ONE
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        super().configure(parser)
         parser.set_defaults(json=False)
-    parser.set_defaults(func=func)
-    return parser
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        AgentAccounts.of(ctx).account("DELETE", args.handle, args.name)
+        said = (
+            f"Deleted account {args.name} of {at(args.handle)}: its value and bindings are gone from the "
+            "hub, and its leases still out are revoked. Revoke it where it was made as well."
+        )
+        return Result(None, Text(said))
 
 
-def _weights(parser) -> None:
-    parser.add_argument("--weight", type=int, metavar="N", help=f"0 to {MAX_WEIGHT}: its share in a weighted pool")
-    parser.add_argument("--priority", type=int, metavar="N", help=f"0 to {MAX_PRIORITY}: the lower, the sooner")
-
-
-def register_agent_accounts(asub) -> None:
-    """``agent account ...``, added to the subparsers ``asub`` of ``hub agent``."""
-    account = asub.add_parser(
-        "account", help="the accounts of an agent: env secrets its runs take on the workers bound"
-    )
-    csub = account.add_subparsers(dest="account_command", required=True)
-
-    listed = csub.add_parser(
-        "list", help="the accounts of the agents of your projects, or of one agent: state, usage, runs, never a value"
-    )
-    listed.add_argument("handle", metavar="HANDLE", nargs="?", help="only this agent's, with or without @")
-    listed.add_argument("--project", help="only this project's agents; with HANDLE, " + PROJECT_HELP)
-    json_option(listed, returns_array(*LISTED_KEYS, schema="ListedAgentAccount"))
-    listed.set_defaults(func=cmd_list)
-    _named(csub, "show", "one account of an agent: state, last usage, runs and cost, runs holding it", cmd_show)
-
-    add = _named(
-        csub,
-        "add",
-        "give an agent an account, or replace the one of that name (the value comes from stdin or a prompt)",
-        cmd_add,
-        "AgentAccountWritten",
-        ("created",),
-    )
-    add.add_argument("--env-var", required=True, metavar="VAR", help="the variable it sets in the agent's runs")
-    add.add_argument(
-        "--worker", action="append", required=True, metavar="NAME", help="a worker it is bound to; repeat it"
-    )
-    add.add_argument("--expires", metavar="YYYY-MM-DD", help="the day it ends, 00:00 UTC")
-    _weights(add)
-
-    renew = _named(csub, "renew", "write a new value for an account, which stays the same account", cmd_renew)
-    renew.add_argument("--expires", metavar="YYYY-MM-DD", help="its new end, 00:00 UTC")
-
-    changed = _named(csub, "set", "change the weight, priority, workers or end of an account", cmd_set)
-    _weights(changed)
-    changed.add_argument("--worker", action="append", metavar="NAME", help="the workers it is bound to; repeat it")
-    ends = changed.add_mutually_exclusive_group()
-    ends.add_argument("--expires", metavar="YYYY-MM-DD", help="its new end, 00:00 UTC")
-    ends.add_argument("--no-expiry", action="store_true", help="drop its end")
-
-    _named(csub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_pause)
-    _named(csub, "resume", "let new runs take a paused account again", cmd_resume)
-    _named(csub, "remove", "delete an account: its value and bindings go, its leases out are revoked", cmd_remove)
-
-
-# The node this module attaches, an adapter of its register function until its commands are classes.
-AGENT_ACCOUNT = Legacy(register_agent_accounts)  # hub agent account
+AGENT_ACCOUNT = Group(  # hub agent account
+    "account",
+    "the accounts of an agent: env secrets its runs take on the workers bound",
+    [
+        AccountList(),
+        AccountShow(),
+        AccountAdd(),
+        AccountRenew(),
+        AccountSet(),
+        AccountPause(),
+        AccountResume(),
+        AccountRemove(),
+    ],
+)
