@@ -41,7 +41,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plans import step_counts
+from evo_agents.hub.server.plan_listing import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.tables_signals import KEY_NAME, MAX_KEY_NAME_CHARS

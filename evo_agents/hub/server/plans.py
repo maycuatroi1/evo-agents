@@ -47,21 +47,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import Field
-from sqlalchemy import (
-    ColumnElement,
-    Label,
-    Select,
-    bindparam,
-    case,
-    cast,
-    column,
-    func,
-    insert,
-    literal,
-    select,
-    update,
-)
-from sqlalchemy.dialects.postgresql import JSONB, JSONPATH, aggregate_order_by
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -94,6 +80,7 @@ from evo_agents.hub.server import audit, plan_problems, plan_warnings, system_tr
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
+from evo_agents.hub.server.plan_listing import LISTED
 from evo_agents.hub.server.plan_models import (
     Plan,
     PlanAbandon,
@@ -241,87 +228,6 @@ async def _visible(
     return held
 
 
-def step_counts(body: ColumnElement) -> tuple[Label, Label]:
-    """Two columns over ``body``, the JSONB expression of a plan body: how many steps it has (``steps_total``), and
-    how many of them are done (``steps_done``), as GET .../plans and GET /v1/me/overview count them. Steps that are
-    not an array count as none."""
-    steps = body["steps"]
-    listed = func.jsonb_typeof(steps) == "array"
-    step = func.jsonb_array_elements(steps, type_=JSONB).column_valued("s")
-    done = (
-        select(func.count())
-        .where(func.jsonb_typeof(step) == "object", step["status"].astext.in_(["done", "descoped"]))
-        .scalar_subquery()
-    )
-    return (
-        case((listed, func.jsonb_array_length(steps)), else_=0).label("steps_total"),
-        case((listed, done), else_=0).label("steps_done"),
-    )
-
-
-STEP_WHAT_CHARS = 200  # of a step's what, the list's fallback for its title (plans.glance)
-GOAL_READ_CHARS = 1000  # of a plan's goal, which plans.glance cuts further
-REPO_NAMES = "$.repos[*].repo"  # the names of a plan's repos, those that are objects with one
-
-
-def step_glances(body: ColumnElement) -> Label:
-    """A column over ``body``, the JSONB expression of a plan body: each step's id, order, status, title and the start
-    of its what, in order, for ``plans.glance``, so a list never reads a step's evidence or verify. None when the steps
-    are not an array; a step that is not an object gives nulls."""
-    steps = body["steps"]
-    each = func.jsonb_array_elements(steps).table_valued(column("value", JSONB), with_ordinality="n").render_derived()
-    step = each.c.value
-    item = func.jsonb_build_object(
-        "id",
-        step["id"],
-        "order",
-        step["order"],
-        "status",
-        step["status"],
-        "title",
-        step["title"],
-        "what",
-        func.left(step["what"].astext, STEP_WHAT_CHARS),
-    )
-    projected = (
-        select(func.jsonb_agg(aggregate_order_by(item, each.c.n), type_=JSONB)).select_from(each).scalar_subquery()
-    )
-    return case((func.jsonb_typeof(steps) == "array", projected), else_=None).label("steps")
-
-
-def _listed(project_id, area) -> Select:
-    """The plans of project ``project_id`` with what PlanSummary shows, column by field name (goal, steps and repos
-    the way ``plans.glance`` reads them), and their label; those of ``area`` alone when given. Built once per
-    shape (_LISTED) with bind parameters for both."""
-    plans, users = tables.plans, tables.users
-    query = (
-        select(
-            plans.c.plan_id,
-            plans.c.area,
-            plans.c.label,
-            plans.c.revision,
-            plans.c.digest,
-            plans.c.body["title"].astext.label("title"),
-            plans.c.updated_at,
-            users.c.login.label("updated_by"),
-            *step_counts(plans.c.body),
-            plans.c.body["problems"].label("problems"),
-            func.left(plans.c.body["goal"].astext, GOAL_READ_CHARS).label("goal"),
-            step_glances(plans.c.body),
-            func.jsonb_path_query_array(plans.c.body, cast(literal(REPO_NAMES), JSONPATH), type_=JSONB).label("repos"),
-        )
-        .join_from(plans, users, users.c.id == plans.c.updated_by)
-        .where(plans.c.project_id == project_id)
-    )
-    if area is not None:
-        query = query.where(plans.c.area == area)
-    return query.order_by(plans.c.plan_id)
-
-
-# GET .../plans, with an area and without one: :project_id, :area
-_LISTED = {False: _listed(bindparam("project_id"), bindparam("area")), True: _listed(bindparam("project_id"), None)}
-
-
 @router.get("", response_model=list[PlanSummary], responses={**READ_REFUSALS, **PAGED})
 async def list_plans(
     request: Request,
@@ -335,7 +241,7 @@ async def list_plans(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        rows = (await conn.execute(_LISTED[area is None], {"project_id": access.project_id, "area": area})).all()
+        rows = (await conn.execute(LISTED[area is None], {"project_id": access.project_id, "area": area})).all()
         traces = await system_traces.plan_traces(conn, access.project_id) if area != "completed" else {}
     through = _sink(access, sink)
     return page.of(
