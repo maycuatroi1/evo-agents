@@ -19,8 +19,8 @@ import argparse
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, View, Views, returns_array, returns_object
 from evo_agents.hub.accounts import STRATEGIES
+from evo_agents.hub.cli.agent.keys import AGENT_KEYS
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_agents import AGENT_KEYS
 
 POOL_KEYS = (
     "id",

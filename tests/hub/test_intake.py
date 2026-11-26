@@ -1,5 +1,5 @@
 """The intakes of a project (plan problem-intake, criterion a2; ``evo_agents.hub.intakes``,
-``evo_agents.hub.server.intake`` and ``evo_agents.hub.cli_intake``): a writer starts an intake with the kinds and labels
+``evo_agents.hub.server.intake`` and ``evo_agents.hub.cli.intake``): a writer starts an intake with the kinds and labels
 of its sources, and puts its evo-intake/1 result once. Each candidate becomes a pending proposal of @builder (a new
 problem, or lines of evidence for the problem it matches); a candidate with one independent source that nobody
 confirmed is refused with 422 and the put writes nothing; each promise becomes a task of the plugin tasks, due when the

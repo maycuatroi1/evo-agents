@@ -24,6 +24,7 @@ from evo_agents.hub import (
 from evo_agents.hub.cli import inbox as inbox_command
 from evo_agents.hub.cli import kg as kg_cli
 from evo_agents.hub.cli import market as cli_market
+from evo_agents.hub.cli.contract import CONTRACT_PRINT
 from evo_agents.hub.cli.kg import entities as kg_entities_cli
 from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
 from evo_agents.hub.cli.kg import profile as kg_profile_cli
@@ -151,7 +152,7 @@ def test_print_without_the_server_extra_names_the_pip_command(monkeypatch, capsy
         raise ModuleNotFoundError("No module named 'fastapi'", name="fastapi")
 
     monkeypatch.setattr(contract, "build", missing)
-    assert contract.cmd_print(argparse.Namespace(hub_command="contract")) == 2
+    assert CONTRACT_PRINT(argparse.Namespace(hub_command="contract")) == 2
     assert capsys.readouterr().out == ""
 
 
@@ -271,7 +272,7 @@ def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_print
     """Criterion a2 of chat-bridges: ``hub chat label CHAT LEVEL``, ``--default`` to unset; ``hub chat show --json``
     has chat.label, as the Chat it prints."""
     pytest.importorskip("fastapi")
-    from evo_agents.hub import cli_chats
+    from evo_agents.hub.cli import chat as chat_cli
     from evo_agents.hub.openapi import document
 
     printed = commands()
@@ -283,7 +284,7 @@ def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_print
     schemas = document()["components"]["schemas"]
     assert schemas["ChatPage"]["properties"]["chat"]["$ref"].endswith("/Chat")
     assert {"label", "label_level"} <= set(schemas["Chat"]["properties"])
-    assert "label" in cli_chats.CHAT_KEYS
+    assert "label" in chat_cli.CHAT_KEYS
 
 
 def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():

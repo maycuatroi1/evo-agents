@@ -63,7 +63,7 @@ def _no_exploration(monkeypatch):
 @pytest.fixture(autouse=True)
 def _logging_as_found():
     """Put the root logger back as the test found it. ``configure_logging`` of a hub server command
-    (``cmd_migrate`` in tests/hub/test_plugin_migrations.py) and ``evo_agents.worker.logs.configure`` of the worker's
+    (``MIGRATE`` in tests/hub/test_plugin_migrations.py) and ``evo_agents.worker.logs.configure`` of the worker's
     CLI and daemon, called in the test's process, set the root logger's level to INFO and add a handler on the
     stderr of that moment: the test's capsys stream, closed when the test ends. Left so, every INFO record of a later
     test in the session, the access lines of a hub served from a thread among them, fails to write to the closed

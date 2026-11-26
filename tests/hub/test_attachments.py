@@ -26,7 +26,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from evo_agents.hub import attachment_prune, attachments, blob_gc, blobs, cli_chats, tables
+from evo_agents.hub import attachment_prune, attachments, blob_gc, blobs, tables
 from evo_agents.hub.cli import base
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
@@ -347,7 +347,7 @@ def test_attachment_cli_run_send_and_chat_send_upload_each_file_first(monkeypatc
         }
     )
     chat_hub.answer |= {"body": "see", "mentions": [], "reactions": [], "created_at": "2026-10-22T10:00:00+00:00"}
-    monkeypatch.setattr(cli_chats, "signed_in", lambda: (chat_hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (chat_hub, None))
     shown = cli(monkeypatch, capsys, home, "hub", "chat", "send", "4", "see", "--attach", str(tmp_path / "notes.txt"))
     assert shown.code == 0, shown.err
     assert chat_hub.calls == [("POST", "/v1/chats/4/messages", {"body": "see", "attachment_ids": [1]})]
@@ -358,7 +358,6 @@ def test_attachment_cli_refuses_a_missing_file_or_no_text_before_any_upload(monk
     home = write_credentials(tmp_path / "home", "https://hub.test", "owner", "evh_test")
     hub = FakeHub({})
     monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
-    monkeypatch.setattr(cli_chats, "signed_in", lambda: (hub, None))
     missing = cli(monkeypatch, capsys, home, "hub", "run", "send", "12", "--attach", "nope.txt", "--project", "demo")
     assert missing.code == 2 and "nope.txt: no such file" in missing.err
     bare = cli(monkeypatch, capsys, home, "hub", "run", "send", "12", "--project", "demo")

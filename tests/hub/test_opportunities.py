@@ -1,5 +1,5 @@
 """The opportunities of a project (plan opportunity-intake, criterion a1; ``evo_agents.hub.opportunities``,
-``evo_agents.hub.server.opportunities``, ``evo_agents.hub.cli_opportunities``, ``evo_agents.hub.kg_opportunities``):
+``evo_agents.hub.server.opportunities``, ``evo_agents.hub.cli.opportunity``, ``evo_agents.hub.kg_opportunities``):
 an opportunity has a statement, who benefits, the leverage, a window, the problems it answers, a metric, a rank, an
 owner and a status (open, captured, missed, dropped, the last three with a reason); its code O-<number> is unique in the
 project and never given again; a writer writes it whole as its next revision (409 on a stale ``if_revision``) and

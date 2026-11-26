@@ -11,7 +11,7 @@ plan that names none reads, writes and runs on the Loop as it did.
 | the model: codes, fields, statuses | `evo_agents/hub/problems.py` |
 | the routes and the writes | `evo_agents/hub/server/problems.py` |
 | the tables | `evo_agents/hub/tables_problems.py` (schema 0134) |
-| the commands | `evo_agents/hub/cli_problems.py` |
+| the commands | `evo_agents/hub/cli/problem.py` |
 | the MCP tools `problem_list` and `problem_show` | `evo_agents/hub/mcp_tools.py`, `evo_agents/hub/server/mcp.py` |
 | a goal's problem | `evo_agents/hub/goals.py`, `evo_agents/hub/server/goals.py` |
 | a claim's problems | `evo_agents/hub/server/canvas/links.py`, `content.py` (schema 0135) |
