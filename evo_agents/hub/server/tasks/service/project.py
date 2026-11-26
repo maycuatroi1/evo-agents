@@ -1,74 +1,28 @@
-"""The plugin's effective config in a project (``Settings``): the prefix of a task's number, the statuses with their
-groups, the types, and the status ``on_steps_done`` moves a task to; and the refusal every module raises
-(``TasksError``). A config whose statuses or types repeat a key, or whose ``on_steps_done`` names no status, is a 409:
-an admin of the project fixes it.
+"""The project a request about tasks is in: the plugin's effective config there (``settings``: the prefix of a task's
+number, the statuses with their groups, the types, and the status ``on_steps_done`` moves a task to), whether it
+enables srs too (``srs_enabled``), who may read and write its tasks (``reader``, ``writer``, ``opened``,
+``writer_of``), the members a task may name (``members``), and the build of its knowledge graph a write queues
+(``graph_changed``).
+
+A config whose statuses or types repeat a key, or whose ``on_steps_done`` names no status, is a 409: an admin of the
+project fixes it.
 """
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.hub.server.tasks import DEFAULT_STATUSES, DEFAULT_TYPES, FINISHED
+from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.tasks import DEFAULT_STATUSES, DEFAULT_TYPES
+from evo_agents.hub.server.tasks.models.values import PLUGIN, SRS, Settings, Status, TasksError, Writer
+from evo_agents.hub.server.tasks.repository import tasks as repository
 from evo_agents.plugins import config as plugin_config
-
-PLUGIN = "tasks"
-SRS = "srs"  # the plugin whose items a task links to, while the project enables it
-REF = re.compile(r"^(?:([A-Za-z][A-Za-z0-9]{0,9})-)?([1-9][0-9]{0,8})$")  # T-42, or 42
-
-
-class TasksError(Exception):
-    """Why the hub refuses a request about tasks, with the HTTP status a route answers and any detail (the problems
-    of an import); nothing was written."""
-
-    def __init__(self, status: int, message: str, detail: list | None = None):
-        super().__init__(message)
-        self.status = status
-        self.message = message
-        self.detail = detail
-
-
-@dataclass(frozen=True)
-class Status:
-    key: str
-    name: str
-    group: str
-
-
-@dataclass(frozen=True)
-class Settings:
-    """The plugin's effective config in a project."""
-
-    prefix: str
-    statuses: tuple[Status, ...]
-    types: tuple[str, ...]
-    on_steps_done: str | None = None
-
-    def status(self, key: str | None) -> Status | None:
-        return next((status for status in self.statuses if status.key == key), None)
-
-    def group(self, key: str | None) -> str | None:
-        found = self.status(key)
-        return found.group if found else None
-
-    def finished(self, key: str | None) -> bool:
-        return self.group(key) in FINISHED
-
-    def ref(self, number: int) -> str:
-        """A task's number as shown: T-42."""
-        return f"{self.prefix}-{number}"
-
-
-def number_of(ref: str) -> int:
-    """The number a task is named by: ``T-42`` (any prefix, the project's or one it had) or ``42``; 404 otherwise."""
-    found = REF.fullmatch(ref.strip())
-    if found is None:
-        raise TasksError(404, f"{ref!r} names no task: give its number, as T-42 or 42")
-    return int(found[2])
 
 
 def _statuses(values) -> tuple[Status, ...]:
@@ -98,7 +52,7 @@ async def settings(conn: AsyncConnection, project_id: int, project: str) -> Sett
         )
     stacks = await stored_stacks(conn, [row.id], project_id, None)
     merged = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, []))
-    values = {name: item.value for name, item in merged.fields.items() if not item.secret}
+    values: dict[str, Any] = {name: item.value for name, item in merged.fields.items() if not item.secret}
     statuses = _statuses(values.get("statuses"))
     types = tuple(values.get("types") or DEFAULT_TYPES)
     on_done = values.get("on_steps_done")
@@ -111,4 +65,59 @@ async def srs_enabled(conn: AsyncConnection, project_id: int) -> bool:
     return await enabled_in(conn, SRS, project_id) is not None
 
 
-__all__ = ["PLUGIN", "SRS", "Settings", "Status", "TasksError", "number_of", "settings", "srs_enabled"]
+def reader(access: ProjectAccess) -> None:
+    """Reading needs a grant on the project (a hub admin without one gets this far only)."""
+    if access.role is None:
+        raise TasksError(403, f"reading the tasks of project {access.name} needs a grant on it")
+
+
+def writer(access: ProjectAccess, what: str) -> None:
+    reader(access)
+    if not has_role(access.role, "writer"):
+        raise TasksError(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
+
+
+def missing(access: ProjectAccess, ref: str) -> TasksError:
+    return TasksError(404, f"no task {ref} in project {access.name} that you can see: see `evo-agents hub task list`")
+
+
+async def opened(conn: AsyncConnection, user, project: str) -> tuple[ProjectAccess, Settings]:
+    """The member's access to ``project``, which they read, and the plugin's config there."""
+    access = await project_access(conn, user, project)
+    reader(access)
+    return access, await settings(conn, access.project_id, access.name)
+
+
+def writer_of(access: ProjectAccess, user, sink: str | None, config: Settings, what: str) -> Writer:
+    """``user`` as they write in the project, once they hold the writer role there."""
+    writer(access, what)
+    return Writer(access, user.user_id, config, sink)
+
+
+async def members(conn: AsyncConnection, access: ProjectAccess, logins: set[str]) -> dict[str, int]:
+    """login -> user id of each of ``logins`` who holds a grant on the project; 422 naming those who hold none."""
+    if not logins:
+        return {}
+    found = await repository.members(conn, access.project_id, logins)
+    if set(found) != logins:
+        absent = ", ".join(sorted(logins - set(found)))
+        raise TasksError(422, f"a task names members of project {access.name} only; no grant there: {absent}")
+    return found
+
+
+async def graph_changed(jobs, conn: AsyncConnection, access: ProjectAccess) -> None:
+    """Queue a build of the project's knowledge graph, whose tickets are the tasks (``kg``)."""
+    await queue_if_configured(jobs, conn, access.project_id, access.name)
+
+
+__all__ = [
+    "graph_changed",
+    "members",
+    "missing",
+    "opened",
+    "reader",
+    "settings",
+    "srs_enabled",
+    "writer",
+    "writer_of",
+]

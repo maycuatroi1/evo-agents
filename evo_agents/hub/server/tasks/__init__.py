@@ -10,7 +10,7 @@ hub's ``plan.step`` event (granted ``plans:read``) writes it into the history of
 config's ``on_steps_done`` moves a task to a status once every step it links is done. Every change of a task is a row
 of its history, with who made it, or the hub and why.
 
-The routes are under /v1/x/tasks/<project>/ (``server``) for members with a grant on a project that enabled the
+The routes are under /v1/x/tasks/<project>/ (``routes``) for members with a grant on a project that enabled the
 plugin; readers read, writers write. The hub's web shows them on the plugin's native pages (``PAGES``): the board of
 a sprint by status, the backlog by sprint, the caller's own tasks, a task whole with its links, history and comments,
 and the import. ``evo-agents hub task list|show|create|edit|import`` is their client; an import reads ``evo-tasks/1``
@@ -25,12 +25,16 @@ member holds writer; and the run of @ba that splits the frame tasks of an approv
 (``parent``), for the member who approved it. The plugin srs makes those frame tasks itself, through the hub's tables,
 when a version is approved (``evo_agents.hub.server.srs.auto_tasks``).
 
-The hub imports this package for the manifest only: ``settings`` reads the config, ``store`` reads tasks, ``links``
-resolves and shows what they link to, ``writes`` keeps them, ``imports`` reads a file, ``events`` takes the plan
-steps, ``models`` and ``server`` are the API, ``kg`` gives the knowledge graph the tasks, ``agent`` is the tool.
+The hub imports this package for the manifest only. Its modules are in layers, each importing only those below it:
+``routes`` (the API), ``agent`` (the tool, its table ``TOOLS``), ``kg`` (the knowledge graph's tickets) and ``events``
+(the plan steps done) on top; then ``service``, which checks and decides (the config in ``service.project``, reads,
+writes, links, blockers, the import); then ``repository``, which holds every SQL statement; then ``models``, the API's
+Pydantic models, the rows and the values every layer shares. See docs/structure.md, section Package boundaries.
 """
 
-SERVER = "evo_agents.hub.server.tasks.server"
+from evo_agents.hub.server.base.tools import Tool, Tools
+
+SERVER = "evo_agents.hub.server.tasks.routes"
 AGENT = "evo_agents.hub.server.tasks.agent"
 EVENTS = "evo_agents.hub.server.tasks.events"
 KG = "evo_agents.hub.server.tasks.kg"
@@ -152,6 +156,18 @@ PAGES = {
     "import": {"title": "Import tasks", "icon": "kanban", "menu": False},
 }
 
+TOOLS = Tools(
+    AGENT,
+    Tool(
+        "create",
+        "Create a task",
+        "Create a task of the project for the member the agent works for (the person who mentioned it in a chat, or who "
+        "approved the SRS version whose frame tasks @ba's run splits), linked to the SRS items it names by code, under "
+        "parent when named; a child whose title another child of the same parent has is refused. That member must be a "
+        "writer of the project; name assignees only when they asked for them.",
+        CREATE_SCHEMA,
+    ),
+)
 MANIFEST = {
     "id": "tasks",
     "version": "1.0.0",
@@ -165,19 +181,7 @@ MANIFEST = {
     "config": CONFIG,
     "contributes": {
         "routes": [{"name": "tasks", "title": "The tasks of a project", "python": f"{SERVER}:router"}],
-        "mcp_tools": [
-            {
-                "name": "create",
-                "title": "Create a task",
-                "description": "Create a task of the project for the member the agent works for (the person who "
-                "mentioned it in a chat, or who approved the SRS version whose frame tasks @ba's run splits), linked "
-                "to the SRS items it names by code, under parent when named; a child whose title another child of "
-                "the same parent has is refused. That member must be a writer of the project; name assignees only "
-                "when they asked for them.",
-                "python": f"{AGENT}:create",
-                "input_schema": CREATE_SCHEMA,
-            }
-        ],
+        "mcp_tools": TOOLS.contributions(),
         "events": [{"name": "steps", "on": ["plan.step"], "python": f"{EVENTS}:on_plan_step"}],
         "kg_sources": [{"name": "backlog", "title": "The tasks of a project", "python": f"{KG}:kg_source"}],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
@@ -185,4 +189,4 @@ MANIFEST = {
     },
 }
 
-__all__ = ["DEFAULT_STATUSES", "DEFAULT_TYPES", "FINISHED", "GROUPS", "MANIFEST", "PRIORITIES"]
+__all__ = ["DEFAULT_STATUSES", "DEFAULT_TYPES", "FINISHED", "GROUPS", "MANIFEST", "PRIORITIES", "TOOLS"]

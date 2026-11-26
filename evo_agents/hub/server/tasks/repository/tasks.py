@@ -1,145 +1,18 @@
-"""Reading the tasks of a project: the tasks a member sees (``tasks``, with filters), one task (``task``), the people
-in each slot, a task's history and comments, the sprints, and the members a task may name (``project_members``).
-
-A task carries a label (the project's default, or one an admin set), and it is read under that label: through the
-sink X-Evo-Sink names, else the project's hub sink, as plans are read (``ProjectAccess.visible``). A task the member
-cannot see answers the 404 of one that does not exist.
+"""The queries of the tasks of a project (tasks_items, tasks_people): the tasks a list keeps (``tasks``, with
+``Filters``), every task (``all_tasks``), one task (``task``), the people in each slot (``people``), the members a task
+may name (``project_members``, ``members``), and a task kept or changed (``insert_task``, ``update_task``,
+``replace_people``). Whether a member sees a task is the service's to say: these read every row of the project.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date, datetime
-
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
-from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.tasks.blocker_queries import blocked
-from evo_agents.hub.server.tasks.settings import TasksError
-from evo_agents.hub.tables_tasks import PEOPLE_ROLES
-
-SINK_HEADER = "X-Evo-Sink"  # evo_agents.hub.server.plans.SINK_HEADER
-SLOTS = PEOPLE_ROLES[1:]  # the roles of a task beside its assignees: ba, qa, dev
-MAX_LISTED = 2_000
-
-
-@dataclass(frozen=True)
-class TaskRow:
-    """A task as its row and joins give it."""
-
-    id: int
-    number: int
-    type: str
-    title: str
-    description_md: str
-    outcome_md: str
-    status: str
-    priority: str
-    due_on: date | None
-    sprint: str | None
-    parent_number: int | None
-    label: dict
-    external_ref: dict | None
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
-
-
-@dataclass
-class People:
-    """Who stands in each slot of a task, by login."""
-
-    assignees: list[str] = field(default_factory=list)
-    roles: dict[str, list[str]] = field(default_factory=lambda: {slot: [] for slot in SLOTS})
-
-    def logins(self) -> set[str]:
-        return set(self.assignees).union(*self.roles.values())
-
-
-@dataclass(frozen=True)
-class EventRow:
-    actor: str | None
-    field: str
-    from_value: str | None
-    to_value: str | None
-    cause: str
-    at: datetime
-
-
-@dataclass(frozen=True)
-class CommentRow:
-    id: int
-    author: str
-    body: str
-    created_at: datetime
-
-
-@dataclass(frozen=True)
-class SprintRow:
-    id: int
-    name: str
-    goal: str
-    starts_on: date | None
-    ends_on: date | None
-    state: str
-    created_by: str
-    created_at: datetime
-    closed_at: datetime | None
-    activated_at: datetime | None
-    tasks: int
-
-
-@dataclass(frozen=True)
-class MemberRow:
-    """A member of the project, whom a task may name, with the role of their grant."""
-
-    login: str
-    role: str
-
-
-@dataclass(frozen=True)
-class Filters:
-    """What a list of tasks keeps: a status, a sprint by name (or the tasks of none), the tasks a member stands in a
-    slot of, the tasks an assignee has, the tasks that are blocked."""
-
-    status: str | None = None
-    sprint: str | None = None
-    backlog: bool = False
-    member_id: int | None = None
-    assignee: str | None = None
-    limit: int = 500
-    blocked: bool = False
-
-
-def sink_of(access: ProjectAccess, sink: str | None) -> str | None:
-    """The sink a read goes through: the one named, else the project's hub sink."""
-    if sink:
-        return sink
-    return access.rules.hub_sink.sink if access.rules.hub_sink else None
-
-
-def visible(access: ProjectAccess, label, sink: str | None) -> bool:
-    through = sink_of(access, sink)
-    return through is not None and access.visible(label, through)
-
-
-def reader(access: ProjectAccess) -> None:
-    """Reading needs a grant on the project (a hub admin without one gets this far only)."""
-    if access.role is None:
-        raise TasksError(403, f"reading the tasks of project {access.name} needs a grant on it")
-
-
-def writer(access: ProjectAccess, what: str) -> None:
-    reader(access)
-    if not has_role(access.role, "writer"):
-        raise TasksError(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
-
-
-def missing(access: ProjectAccess, ref: str) -> TasksError:
-    return TasksError(404, f"no task {ref} in project {access.name} that you can see: see `evo-agents hub task list`")
+from evo_agents.hub.server.tasks.models.rows import MemberRow, People, TaskRow
+from evo_agents.hub.server.tasks.models.values import Filters
+from evo_agents.hub.server.tasks.repository.blockers import blocked
 
 
 def _tasks_query(project_id: int):
@@ -192,34 +65,101 @@ def _filtered(query, filters: Filters):
 
 
 async def all_tasks(conn: AsyncConnection, project_id: int) -> list[TaskRow]:
-    """Every task of the project, by number, whoever reads: the knowledge graph reads them all and labels each by its
-    row (``kg``)."""
+    """Every task of the project, by number."""
     t = tables.tasks.items
     return [TaskRow(**row._mapping) for row in await conn.execute(_tasks_query(project_id).order_by(t.c.number))]
 
 
-async def tasks(conn: AsyncConnection, access: ProjectAccess, sink: str | None, filters: Filters) -> list[TaskRow]:
-    """The tasks of the project the member sees that ``filters`` keeps, by number, at most ``filters.limit``."""
-    reader(access)
-    query = _filtered(_tasks_query(access.project_id), filters).order_by(tables.tasks.items.c.number)
-    rows = [TaskRow(**row._mapping) for row in await conn.execute(query)]
-    return [row for row in rows if visible(access, row.label, sink)][: filters.limit]
+async def tasks(conn: AsyncConnection, project_id: int, filters: Filters) -> list[TaskRow]:
+    """Every task of the project that ``filters`` keeps, by number, whatever its label."""
+    query = _filtered(_tasks_query(project_id), filters).order_by(tables.tasks.items.c.number)
+    return [TaskRow(**row._mapping) for row in await conn.execute(query)]
 
 
-async def task(
-    conn: AsyncConnection, access: ProjectAccess, number: int, sink: str | None, *, lock: bool = False
-) -> TaskRow:
-    """Task ``number`` as the member sees it; 404 when there is none or they cannot see it. ``lock`` takes its row
-    lock first, for a write."""
-    reader(access)
+async def task(conn: AsyncConnection, project_id: int, number: int, *, lock: bool = False) -> TaskRow | None:
+    """Task ``number`` of the project, or None. ``lock`` takes its row lock first, for a write."""
     t = tables.tasks.items
     if lock:
-        held = select(t.c.id).where(t.c.project_id == access.project_id, t.c.number == number).with_for_update()
+        held = select(t.c.id).where(t.c.project_id == project_id, t.c.number == number).with_for_update()
         await conn.execute(held)
-    row = (await conn.execute(_tasks_query(access.project_id).where(t.c.number == number))).first()
-    if row is None or not visible(access, row.label, sink):
-        raise missing(access, str(number))
-    return TaskRow(**row._mapping)
+    row = (await conn.execute(_tasks_query(project_id).where(t.c.number == number))).first()
+    return TaskRow(**row._mapping) if row else None
+
+
+async def task_label(conn: AsyncConnection, project_id: int, number: int, *, lock: bool = False):
+    """(id, parent_id, label, external_key) of task ``number`` of the project, its row locked with ``lock``; None
+    when there is none."""
+    t = tables.tasks.items
+    query = select(t.c.id, t.c.parent_id, t.c.label, t.c.external_key).where(
+        t.c.project_id == project_id, t.c.number == number
+    )
+    return (await conn.execute(query.with_for_update() if lock else query)).first()
+
+
+async def parent_of(conn: AsyncConnection, task_id: int):
+    """(id, parent_id) of task ``task_id``, or None."""
+    t = tables.tasks.items
+    return (await conn.execute(select(t.c.id, t.c.parent_id).where(t.c.id == task_id))).first()
+
+
+async def children(conn: AsyncConnection, parent_id: int) -> list:
+    """(number, title) of every child of task ``parent_id``."""
+    t = tables.tasks.items
+    return list(await conn.execute(select(t.c.number, t.c.title).where(t.c.parent_id == parent_id)))
+
+
+async def task_id(conn: AsyncConnection, project_id: int, number: int) -> int:
+    t = tables.tasks.items
+    query = select(t.c.id).where(t.c.project_id == project_id, t.c.number == number)
+    return (await conn.execute(query)).scalar_one()
+
+
+async def imported_before(conn: AsyncConnection, project_id: int, keys: list[str]) -> dict[str, int]:
+    """external key -> the number of the task of the project that holds it, for each of ``keys`` one holds."""
+    if not keys:
+        return {}
+    t = tables.tasks.items
+    query = select(t.c.external_key, t.c.number).where(t.c.project_id == project_id, t.c.external_key.in_(keys))
+    return {row.external_key: row.number for row in await conn.execute(query)}
+
+
+async def next_number(conn: AsyncConnection, project_id: int) -> int:
+    t = tables.tasks.items
+    last = await conn.scalar(select(func.max(t.c.number)).where(t.c.project_id == project_id))
+    return (last or 0) + 1
+
+
+async def insert_task(conn: AsyncConnection, values: dict) -> int:
+    t = tables.tasks.items
+    return (await conn.execute(insert(t).values(**values).returning(t.c.id))).scalar_one()
+
+
+async def update_task(conn: AsyncConnection, task_id: int, columns: dict) -> None:
+    """Set ``columns`` of task ``task_id``, and the time it changed."""
+    t = tables.tasks.items
+    await conn.execute(update(t).where(t.c.id == task_id).values(**columns, updated_at=func.now()))
+
+
+async def set_parent(conn: AsyncConnection, project_id: int, number: int, parent_id: int) -> None:
+    t = tables.tasks.items
+    child = (t.c.project_id == project_id) & (t.c.number == number)
+    await conn.execute(update(t).where(child).values(parent_id=parent_id))
+
+
+async def linked_to_step(conn: AsyncConnection, project_id: int, plan_id: str, step: str) -> list:
+    """(id, number, status) of every task of the project that links step ``step`` of plan ``plan_id``, by number."""
+    t, k = tables.tasks.items, tables.tasks.links
+    query = (
+        select(t.c.id, t.c.number, t.c.status)
+        .join_from(k, t, t.c.id == k.c.task_id)
+        .where(t.c.project_id == project_id, k.c.kind == "plan_step", k.c.plan_id == plan_id, k.c.step_id == step)
+        .order_by(t.c.number)
+        .distinct()
+    )
+    return list(await conn.execute(query))
+
+
+# People
 
 
 async def people(conn: AsyncConnection, task_ids: list[int]) -> dict[int, People]:
@@ -238,123 +178,53 @@ async def people(conn: AsyncConnection, task_ids: list[int]) -> dict[int, People
     return found
 
 
-async def events(conn: AsyncConnection, task_id: int) -> list[EventRow]:
-    """The history of a task, oldest first."""
-    e, u = tables.tasks.events, tables.users
-    query = (
-        select(u.c.login.label("actor"), e.c.field, e.c.from_value, e.c.to_value, e.c.cause, e.c.at)
-        .select_from(e.outerjoin(u, u.c.id == e.c.actor_id))
-        .where(e.c.task_id == task_id)
-        .order_by(e.c.at, e.c.id)
-    )
-    return [EventRow(**row._mapping) for row in await conn.execute(query)]
+async def replace_people(conn: AsyncConnection, task_id: int, role: str, user_ids: list[int]) -> None:
+    """The people of slot ``role`` of task ``task_id`` are ``user_ids`` now."""
+    p = tables.tasks.people
+    await conn.execute(delete(p).where(p.c.task_id == task_id, p.c.role == role))
+    if user_ids:
+        await conn.execute(insert(p), [{"task_id": task_id, "role": role, "user_id": user_id} for user_id in user_ids])
 
 
-async def comments(conn: AsyncConnection, task_id: int) -> list[CommentRow]:
-    """The comments on a task, oldest first."""
-    c, u = tables.tasks.comments, tables.users
-    query = (
-        select(c.c.id, u.c.login.label("author"), c.c.body, c.c.created_at)
-        .join_from(c, u, u.c.id == c.c.author_id)
-        .where(c.c.task_id == task_id)
-        .order_by(c.c.id)
-    )
-    return [CommentRow(**row._mapping) for row in await conn.execute(query)]
-
-
-def _sprints_query(project_id: int):
-    s, t, u = tables.tasks.sprints, tables.tasks.items, tables.users
-    count = select(func.count()).where(t.c.sprint_id == s.c.id).scalar_subquery()
-    return (
-        select(
-            s.c.id,
-            s.c.name,
-            s.c.goal,
-            s.c.starts_on,
-            s.c.ends_on,
-            s.c.state,
-            u.c.login.label("created_by"),
-            s.c.created_at,
-            s.c.closed_at,
-            s.c.activated_at,
-            count.label("tasks"),
-        )
-        .join_from(s, u, u.c.id == s.c.created_by)
-        .where(s.c.project_id == project_id)
-    )
-
-
-async def sprints(conn: AsyncConnection, access: ProjectAccess) -> list[SprintRow]:
-    """The sprints of the project, the newest first, each with how many tasks it holds (whatever their labels)."""
-    reader(access)
-    s = tables.tasks.sprints
-    query = _sprints_query(access.project_id).order_by(s.c.starts_on.desc().nulls_first(), s.c.id.desc())
-    return [SprintRow(**row._mapping) for row in await conn.execute(query)]
-
-
-async def sprint(conn: AsyncConnection, project_id: int, name: str, *, lock: bool = False) -> SprintRow | None:
-    """The sprint of the project named ``name``, or None."""
-    s = tables.tasks.sprints
-    query = _sprints_query(project_id).where(s.c.name == name)
-    if lock:
-        query = query.with_for_update(of=s)
-    row = (await conn.execute(query)).first()
-    return SprintRow(**row._mapping) if row else None
-
-
-async def project_members(conn: AsyncConnection, access: ProjectAccess) -> list[MemberRow]:
-    """Everyone who holds a grant on the project, by login: whom a task may name (``members``)."""
-    reader(access)
+async def project_members(conn: AsyncConnection, project_id: int) -> list[MemberRow]:
+    """Everyone who holds a grant on the project, by login."""
     u, g = tables.users, tables.grants
     query = (
         select(u.c.login, g.c.role)
         .join_from(u, g, g.c.user_id == u.c.id)
-        .where(g.c.project_id == access.project_id)
+        .where(g.c.project_id == project_id)
         .order_by(u.c.login)
     )
     return [MemberRow(row.login, row.role) for row in await conn.execute(query)]
 
 
-async def members(conn: AsyncConnection, access: ProjectAccess, logins: set[str]) -> dict[str, int]:
-    """login -> user id of each of ``logins`` who holds a grant on the project; 422 naming those who hold none."""
-    if not logins:
-        return {}
+async def members(conn: AsyncConnection, project_id: int, logins: set[str]) -> dict[str, int]:
+    """login -> user id of each of ``logins`` who holds a grant on the project."""
     u, g = tables.users, tables.grants
     query = (
         select(u.c.login, u.c.id)
         .join_from(u, g, g.c.user_id == u.c.id)
-        .where(g.c.project_id == access.project_id, u.c.login.in_(sorted(logins)))
+        .where(g.c.project_id == project_id, u.c.login.in_(sorted(logins)))
     )
-    found = {row.login: row.id for row in await conn.execute(query)}
-    if set(found) != logins:
-        absent = ", ".join(sorted(logins - set(found)))
-        raise TasksError(422, f"a task names members of project {access.name} only; no grant there: {absent}")
-    return found
+    return {row.login: row.id for row in await conn.execute(query)}
 
 
 __all__ = [
-    "SINK_HEADER",
-    "SLOTS",
-    "CommentRow",
-    "EventRow",
-    "Filters",
-    "MemberRow",
-    "People",
-    "SprintRow",
-    "TaskRow",
     "all_tasks",
-    "comments",
-    "events",
+    "children",
+    "imported_before",
+    "insert_task",
+    "linked_to_step",
     "members",
-    "missing",
+    "next_number",
+    "parent_of",
     "people",
     "project_members",
-    "reader",
-    "sink_of",
-    "sprint",
-    "sprints",
+    "replace_people",
+    "set_parent",
     "task",
+    "task_id",
+    "task_label",
     "tasks",
-    "visible",
-    "writer",
+    "update_task",
 ]
