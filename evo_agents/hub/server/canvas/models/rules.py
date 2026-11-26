@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from evo_agents.hub.server.canvas.content import CanvasError, Content, code
+from evo_agents.hub.server.canvas.models.content import CanvasError, Content, code
 
 NOT_EVIDENCE_KINDS = ("doc", "simulation")  # kinds that never validate a claim
 HUB_KINDS = ("signal", "feedback")  # the kinds only the hub writes: value check and the judging of feedback

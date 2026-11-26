@@ -13,14 +13,14 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import signals, tables
+from evo_agents.hub import signals
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server.canvas import baselines, store
-from evo_agents.hub.server.canvas.baselines import BaselineRow, ItemRow
-from evo_agents.hub.server.canvas.store import CanvasRow
+from evo_agents.hub.server.canvas.models.baseline_rows import BaselineRow, ItemRow
+from evo_agents.hub.server.canvas.models.rows import CanvasRow
+from evo_agents.hub.server.canvas.repository import people
+from evo_agents.hub.server.canvas.service import baselines, reads
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.projects import ProjectAccess
 
@@ -42,14 +42,10 @@ async def tell_writers(
         return []
     rules = await signals.project_rules(conn, project_id)
     anyone = await baselines.self_approval(conn, project_id)
-    g = tables.grants
-    grants = await conn.execute(
-        select(g.c.user_id, g.c.role, g.c.max_level).where(g.c.project_id == project_id).order_by(g.c.user_id)
-    )
     told = []
-    for user_id, role, max_level in grants:
+    for user_id, role, max_level in await people.grants(conn, project_id):
         access = ProjectAccess(project_id, rules, role, max_level)
-        if not has_role(role, "writer") or not store.visible(access, canvas.label, None):
+        if not has_role(role, "writer") or not reads.visible(access, canvas.label, None):
             continue
         if all(user_id in item.barred(anyone) for item in waiting):
             continue

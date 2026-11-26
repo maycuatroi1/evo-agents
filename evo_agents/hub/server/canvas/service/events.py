@@ -10,11 +10,11 @@ canvas through the API with its grant. ``v`` is the version of its shape.
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import hub_events, plugin_events, tables
-from evo_agents.hub.server.canvas.content import code
+from evo_agents.hub import hub_events, plugin_events
+from evo_agents.hub.server.canvas.models.content import code
+from evo_agents.hub.server.canvas.repository import people
 
 CLAIM = hub_events.CLAIM
 BASELINE = hub_events.BASELINE
@@ -34,13 +34,10 @@ async def claim_rev(
     before: str | None,
     after: str,
 ) -> None:
-    """Emit ``canvas.claim`` of rev ``rev`` of a claim, which ``author`` (``writes.Author``) wrote, moving its status
+    """Emit ``canvas.claim`` of rev ``rev`` of a claim, which ``author`` (``writing.Author``) wrote, moving its status
     from ``before`` (None for a new claim) to ``after``."""
-    c, users = tables.canvas.canvases, tables.users
-    slug = await conn.scalar(select(c.c.slug).where(c.c.id == canvas_id))
-    login = None
-    if author.user_id is not None:
-        login = await conn.scalar(select(users.c.login).where(users.c.id == author.user_id))
+    slug = await people.canvas_slug(conn, canvas_id)
+    login = None if author.user_id is None else await people.login_of(conn, author.user_id)
     payload = {
         "v": hub_events.VERSION,
         "canvas": slug,

@@ -66,8 +66,8 @@ from evo_agents.hub.server import (
     worker_shares,
 )
 from evo_agents.hub.server import org as org_routes
-from evo_agents.hub.server.canvas import content as canvas_content
-from evo_agents.hub.server.canvas import server as canvas_server
+from evo_agents.hub.server.canvas import routes as canvas_routes
+from evo_agents.hub.server.canvas.models import content as canvas_content
 from evo_agents.hub.server.goals import service as goals
 from evo_agents.hub.server.loop import breaker as loop_breaker
 from evo_agents.hub.server.opportunities import service as opportunities
@@ -617,7 +617,7 @@ GUARDED = (
 RAISING = (
     ("builder answer", lambda user, access: builder_server.answer_as(None, user, PROJECT, 1, "approve", "0")),
     ("srs review", lambda user, access: srs_reviews._may_review(None, access, user, None, None, None)),
-    ("canvas decide", lambda user, access: canvas_server._no_run(user, "decides an item of a baseline")),
+    ("canvas decide", lambda user, access: canvas_routes._no_run(user, "decides an item of a baseline")),
     ("merge queue", lambda user, access: post_merge.admin_only(user, access)),
     ("loop breaker", lambda user, access: loop_breaker.resume(None, user, access)),
     ("org chart", lambda user, access: org_routes.actor(user)),

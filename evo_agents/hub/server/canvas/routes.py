@@ -27,19 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.canvas import baselines, decisions, judging, notices, proposals, store, transfer, writes
-from evo_agents.hub.server.canvas.baseline_models import (
-    CanvasBaseline,
-    CanvasBaselineDecisionIn,
-    CanvasBaselineOpenIn,
-    CanvasBaselineSummary,
-    CanvasSnapshotClaim,
-    item_model,
-)
-from evo_agents.hub.server.canvas.baseline_models import summary_values as baseline_values
-from evo_agents.hub.server.canvas.brainstorm import hand_brainstorm
-from evo_agents.hub.server.canvas.content import CanvasError, code, number_of
-from evo_agents.hub.server.canvas.models import (
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.canvas.models.api import (
     CanvasBrainstorm,
     CanvasBrainstormIn,
     CanvasClaim,
@@ -74,7 +63,31 @@ from evo_agents.hub.server.canvas.models import (
     rev_models,
     summary_values,
 )
-from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow
+from evo_agents.hub.server.canvas.models.baseline_rows import DECIDES, BaselineRow, ItemRow
+from evo_agents.hub.server.canvas.models.baselines import (
+    CanvasBaseline,
+    CanvasBaselineDecisionIn,
+    CanvasBaselineOpenIn,
+    CanvasBaselineSummary,
+    CanvasSnapshotClaim,
+    item_model,
+)
+from evo_agents.hub.server.canvas.models.baselines import summary_values as baseline_values
+from evo_agents.hub.server.canvas.models.content import CanvasError, code, number_of
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow
+from evo_agents.hub.server.canvas.models.writing import SINK_HEADER, Change, EvidenceInput
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import (
+    baselines,
+    decisions,
+    judging,
+    notices,
+    proposals,
+    reads,
+    transfer,
+    writes,
+)
+from evo_agents.hub.server.canvas.service.brainstorm import hand_brainstorm
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
@@ -91,7 +104,7 @@ Ref = Annotated[str, Path(min_length=1, max_length=20, description="the claim's 
 EvidenceId = Annotated[int, Path(ge=1)]
 ProposalId = Annotated[int, Path(ge=1)]
 BaselineNumber = Annotated[int, Path(ge=1, description="the baseline's number in the canvas")]
-Sink = Annotated[str | None, Header(alias=store.SINK_HEADER)]
+Sink = Annotated[str | None, Header(alias=SINK_HEADER)]
 Archived = Annotated[bool, Query(description="archived ones too")]
 
 router = APIRouter(tags=["plugins"], responses={401: {"model": ErrorBody}, **REFUSALS})
@@ -100,7 +113,7 @@ router = APIRouter(tags=["plugins"], responses={401: {"model": ErrorBody}, **REF
 async def _answer(request: Request, work):
     """``work(conn)`` in one transaction; a refusal as the hub's error body, nothing written."""
     try:
-        async with request.app.state.engine.begin() as conn:
+        async with UnitOfWork(request.app.state.engine) as conn:
             return await work(conn)
     except CanvasError as exc:
         return error_response(request, exc.status, exc.message, detail=exc.detail)
@@ -117,22 +130,22 @@ async def _graph_changed(request: Request, conn: AsyncConnection, access: Projec
 
 async def _opened(conn: AsyncConnection, user, project: str) -> ProjectAccess:
     access = await project_access(conn, user, project)
-    store.reader(access)
+    reads.reader(access)
     return access
 
 
 async def _writing(conn: AsyncConnection, user, project: str, slug: str, sink: str | None, what: str):
     """The access, the canvas ``slug`` locked and open to writes, and the writer, for a writer of the project."""
     access = await _opened(conn, user, project)
-    store.writer(access, what)
-    canvas = store.writable(access, await store.canvas(conn, access, slug, sink, lock=True))
+    reads.writer(access, what)
+    canvas = reads.writable(access, await reads.canvas(conn, access, slug, sink, lock=True))
     return access, canvas, writes.person(access, user.user_id, sink)
 
 
 async def _claim_models(conn, access: ProjectAccess, rows: list[ClaimRow], sink) -> list[CanvasClaim]:
     evidence = await store.evidence(conn, [row.id for row in rows])
     return [
-        claim_model(row, [item for item in evidence[row.id] if store.visible(access, item.label, sink)]) for row in rows
+        claim_model(row, [item for item in evidence[row.id] if reads.visible(access, item.label, sink)]) for row in rows
     ]
 
 
@@ -144,7 +157,7 @@ async def _detail(conn, access: ProjectAccess, canvas: CanvasRow, with_archived:
 
 async def _claim_detail(conn, access: ProjectAccess, canvas: CanvasRow, row: ClaimRow, sink) -> CanvasClaimDetail:
     evidence = (await store.evidence(conn, [row.id]))[row.id]
-    shown = [item for item in evidence if store.visible(access, item.label, sink)]
+    shown = [item for item in evidence if reads.visible(access, item.label, sink)]
     return CanvasClaimDetail(
         **claim_model(row, shown).model_dump(),
         canvas=canvas.slug,
@@ -155,7 +168,7 @@ async def _claim_detail(conn, access: ProjectAccess, canvas: CanvasRow, row: Cla
 
 
 async def _edited(conn, access: ProjectAccess, canvas: CanvasRow, outcomes, sink) -> CanvasEditResult:
-    rows = [await store.claim(conn, access, canvas, outcome.number) for outcome in outcomes]
+    rows = [await reads.claim(conn, access, canvas, outcome.number) for outcome in outcomes]
     written = [code(outcome.number) for outcome in outcomes if outcome.written]
     return CanvasEditResult(claims=await _claim_models(conn, access, rows, sink), written=written)
 
@@ -179,7 +192,7 @@ async def list_canvases(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        rows = await store.canvases(conn, access, sink, with_archived=archived)
+        rows = await reads.canvases(conn, access, sink, with_archived=archived)
         statuses = await store.counts(conn, [row.id for row in rows])
         return [CanvasSummary(**summary_values(row, statuses[row.id])) for row in rows]
 
@@ -194,7 +207,7 @@ async def show_canvas(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        canvas = await store.canvas(conn, access, slug, sink)
+        canvas = await reads.canvas(conn, access, slug, sink)
         return await _detail(conn, access, canvas, archived, sink)
 
     return await _answer(request, work)
@@ -209,8 +222,8 @@ async def show_claim(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        canvas = await store.canvas(conn, access, slug, sink)
-        row = await store.claim(conn, access, canvas, number_of(ref))
+        canvas = await reads.canvas(conn, access, slug, sink)
+        row = await reads.claim(conn, access, canvas, number_of(ref))
         return await _claim_detail(conn, access, canvas, row, sink)
 
     return await _answer(request, work)
@@ -225,10 +238,10 @@ async def list_judgings(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        canvas = await store.canvas(conn, access, slug, sink)
-        row = await store.claim(conn, access, canvas, number_of(ref))
+        canvas = await reads.canvas(conn, access, slug, sink)
+        row = await reads.claim(conn, access, canvas, number_of(ref))
         found = await judging.judgings(conn, row.id)
-        return [judging_model(item) for item in found if store.visible(access, item.label, sink)]
+        return [judging_model(item) for item in found if reads.visible(access, item.label, sink)]
 
     return await _answer(request, work)
 
@@ -248,7 +261,7 @@ async def diff_claim(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        row = await store.claim(conn, access, await store.canvas(conn, access, slug, sink), number_of(ref))
+        row = await reads.claim(conn, access, await reads.canvas(conn, access, slug, sink), number_of(ref))
         to = head or row.rev
         since = base or max(to - 1, 1)
         if since > to:
@@ -276,7 +289,7 @@ async def export_canvas(request: Request, project: ProjectName, slug: Slug, user
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        return await transfer.export(conn, access, await store.canvas(conn, access, slug, sink), sink)
+        return await transfer.export(conn, access, await reads.canvas(conn, access, slug, sink), sink)
 
     return await _answer(request, work)
 
@@ -290,11 +303,11 @@ async def create_canvas(request: Request, project: ProjectName, body: CanvasIn, 
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        store.writer(access, "making a canvas")
+        reads.writer(access, "making a canvas")
         writer = writes.person(access, user.user_id, sink)
         await writes.create_canvas(conn, writer, body.slug, body.name, body.description, _label(access, body.label))
         await _graph_changed(request, conn, access)
-        return await _detail(conn, access, await store.canvas(conn, access, body.slug, sink), False, sink)
+        return await _detail(conn, access, await reads.canvas(conn, access, body.slug, sink), False, sink)
 
     return await _answer(request, work)
 
@@ -302,11 +315,11 @@ async def create_canvas(request: Request, project: ProjectName, body: CanvasIn, 
 async def _archived(request: Request, project: str, slug: str, user, sink: str | None, archived: bool):
     async def work(conn):
         access = await _opened(conn, user, project)
-        store.admin(access, "archiving a canvas" if archived else "unarchiving a canvas")
-        canvas = await store.canvas(conn, access, slug, sink, lock=True)
+        reads.admin(access, "archiving a canvas" if archived else "unarchiving a canvas")
+        canvas = await reads.canvas(conn, access, slug, sink, lock=True)
         await writes.set_archived(conn, access, user.user_id, canvas, archived)
         await _graph_changed(request, conn, access)
-        row = await store.canvas(conn, access, slug, sink)
+        row = await reads.canvas(conn, access, slug, sink)
         return CanvasSummary(**summary_values(row, (await store.counts(conn, [row.id]))[row.id]))
 
     return await _answer(request, work)
@@ -336,7 +349,7 @@ async def edit_claims(
 
     async def work(conn):
         access, canvas, writer = await _writing(conn, user, project, slug, sink, "editing claims")
-        changes = [writes.Change(item.claim, item.base_rev, item.values()) for item in body.changes]
+        changes = [Change(item.claim, item.base_rev, item.values()) for item in body.changes]
         outcomes = await writes.edit(conn, writer, canvas, changes, body.reason)
         if any(outcome.written for outcome in outcomes):
             await _graph_changed(request, conn, access)
@@ -376,8 +389,8 @@ async def add_evidence(
 
     async def work(conn):
         access, canvas, writer = await _writing(conn, user, project, slug, sink, "adding evidence")
-        row = await store.claim(conn, access, canvas, number_of(ref))
-        given = writes.EvidenceInput(**body.model_dump())
+        row = await reads.claim(conn, access, canvas, number_of(ref))
+        given = EvidenceInput(**body.model_dump())
         evidence_id = await writes.add_evidence(conn, writer, row, given)
         [made] = [item for item in (await store.evidence(conn, [row.id]))[row.id] if item.id == evidence_id]
         return evidence_model(made)
@@ -388,7 +401,7 @@ async def add_evidence(
 async def _evidence_change(request: Request, project: str, slug: str, ref: str, evidence_id: int, user, sink, act):
     async def work(conn):
         access, canvas, writer = await _writing(conn, user, project, slug, sink, "changing evidence")
-        row = await store.claim(conn, access, canvas, number_of(ref))
+        row = await reads.claim(conn, access, canvas, number_of(ref))
         await act(conn, writer, row)
         [changed] = [item for item in (await store.evidence(conn, [row.id]))[row.id] if item.id == evidence_id]
         return evidence_model(changed)
@@ -451,7 +464,7 @@ async def list_proposals(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        canvas = await store.canvas(conn, access, slug, sink)
+        canvas = await reads.canvas(conn, access, slug, sink)
         rows = await proposals.proposals(conn, canvas, tuple(status or ("open",)))
         return [proposal_model(row, await proposals.changes_of(conn, row)) for row in rows]
 
@@ -544,7 +557,7 @@ async def import_canvas(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        store.writer(access, "importing a canvas")
+        reads.writer(access, "importing a canvas")
         writer = writes.person(access, user.user_id, sink)
         label = _label(access, body.label)
         report = await transfer.run_import(conn, writer, body.data, label=label, dry_run=body.dry_run)
@@ -563,13 +576,11 @@ def _no_run(user, what: str) -> None:
         raise CanvasError(403, f"the agent of a run never {what}: a member of the project does")
 
 
-def _may_decide(
-    access: ProjectAccess, user_id: int, row: baselines.BaselineRow, item: baselines.ItemRow, barred: list[int]
-) -> list[str]:
+def _may_decide(access: ProjectAccess, user_id: int, row: BaselineRow, item: ItemRow, barred: list[int]) -> list[str]:
     """What ``user_id`` may decide of ``item`` now: nothing once it is decided, nor while the member is ``barred``."""
     if row.status != "proposed" or not item.waiting or user_id in barred:
         return []
-    return list(baselines.DECIDES[item.kind]) if has_role(access.role, "writer") else []
+    return list(DECIDES[item.kind]) if has_role(access.role, "writer") else []
 
 
 async def _baseline_model(conn, access: ProjectAccess, user, canvas: CanvasRow, row, sink) -> CanvasBaseline:
@@ -582,7 +593,7 @@ async def _baseline_model(conn, access: ProjectAccess, user, canvas: CanvasRow, 
     for item in found:
         wanted = set(item.evidence_ids) | {piece.id for piece in evidence[item.claim_id] if piece.withdrawn_at is None}
         pieces = [piece for piece in evidence[item.claim_id] if piece.id in wanted]
-        shown = [piece for piece in pieces if store.visible(access, piece.label, sink)]
+        shown = [piece for piece in pieces if reads.visible(access, piece.label, sink)]
         decides = _may_decide(access, user.user_id, row, item, barred[item.id]) if user.acts_for_run is None else []
         models.append(item_model(item, shown, len(pieces) - len(shown), names, decides, barred[item.id]))
     snapshot = [CanvasSnapshotClaim(**entry) for entry in row.snapshot] if row.snapshot is not None else None
@@ -599,7 +610,7 @@ async def list_baselines(request: Request, project: ProjectName, slug: Slug, use
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        canvas = await store.canvas(conn, access, slug, sink)
+        canvas = await reads.canvas(conn, access, slug, sink)
         rows = await baselines.baselines(conn, canvas)
         return [CanvasBaselineSummary(**baseline_values(row, await baselines.items(conn, row.id))) for row in rows]
 
@@ -616,7 +627,7 @@ async def show_baseline(
 
     async def work(conn):
         access = await _opened(conn, user, project)
-        canvas = await store.canvas(conn, access, slug, sink)
+        canvas = await reads.canvas(conn, access, slug, sink)
         row = await baselines.baseline(conn, canvas, number)
         return await _baseline_model(conn, access, user, canvas, row, sink)
 
@@ -635,7 +646,7 @@ async def open_baseline(
     async def work(conn):
         _no_run(user, "opens a baseline")
         access, canvas, _ = await _writing(conn, user, project, slug, sink, "opening a baseline")
-        claim = await store.claim(conn, access, canvas, number_of(body.claim), lock=True)
+        claim = await reads.claim(conn, access, canvas, number_of(body.claim), lock=True)
         today = await baselines.today(conn)
         row = await baselines.open_now(conn, access.project_id, canvas, claim, user.user_id, today)
         if row.status == "proposed":

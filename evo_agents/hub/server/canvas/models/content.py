@@ -5,7 +5,7 @@ A rev keeps the whole content of its claim, so an undo writes the content of the
 contents field by field, the fields of the test card each on its own. A test card holds the four fields of a Test Card
 (hypothesis, test, metric, threshold) and how a value check compares a signal with it deterministically (aggregate,
 window_days, comparator, min_samples, tenant), with a deadline. Every field of it may be left out; a claim goes to
-testing only with a hypothesis, a test and a deadline (``evo_agents.hub.server.canvas.rules``).
+testing only with a hypothesis, a test and a deadline (``evo_agents.hub.server.canvas.models.rules``).
 
 A claim also links the use cases of the plugin srs that realize it, by code (``use_cases``), the keys of the
 project's registry of signals that measure it (``signal_keys``), and the problems of the project it answers, by code

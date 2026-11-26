@@ -15,15 +15,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.review import PRODUCT
 from evo_agents.hub.server.agent_types import enabled_type
-from evo_agents.hub.server.canvas import store, writes
-from evo_agents.hub.server.canvas.content import CanvasError
+from evo_agents.hub.server.canvas.models.content import CanvasError
+from evo_agents.hub.server.canvas.models.rows import CanvasRow
+from evo_agents.hub.server.canvas.models.writing import Author, Writer
+from evo_agents.hub.server.canvas.repository import people
+from evo_agents.hub.server.canvas.service import reads, writes
 from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -53,18 +54,16 @@ class Acting:
 
     def sees(self, label: dict) -> bool:
         """Whether the person, and the member whose worker runs the agent when another, see what carries ``label``."""
-        if not store.visible(self.access, label, self.sink):
+        if not reads.visible(self.access, label, self.sink):
             return False
-        return self.worker is None or store.visible(self.worker, label, self.sink)
+        return self.worker is None or reads.visible(self.worker, label, self.sink)
 
-    def writer(self) -> writes.Writer:
+    def writer(self) -> Writer:
         """The writer of what the tool writes: an agent for the person, with the run's provenance."""
         if self.run_id is None:
             return writes.person(self.access, self.person.user_id, self.sink)
-        author = writes.Author(
-            "agent", self.person.user_id, self.run_id, self.runtime, self.model, self.chat_message_id
-        )
-        return writes.Writer(self.access, author, self.sink)
+        author = Author("agent", self.person.user_id, self.run_id, self.runtime, self.model, self.chat_message_id)
+        return Writer(self.access, author, self.sink)
 
 
 async def _principal(conn: AsyncConnection, user_id: int, config) -> Principal:
@@ -99,16 +98,13 @@ async def is_strategist(conn: AsyncConnection, context: CoreContext, profile_id:
 async def acting(conn: AsyncConnection, params: dict, context: CoreContext) -> Acting:
     """Who the tool of ``params`` acts for (see the module)."""
     if context.run_id is None:
-        u = tables.users
         login = (params.get("caller") or {}).get("login") or ""
-        user_id = (await conn.execute(select(u.c.id).where(u.c.login == login))).scalar_one_or_none()
+        user_id = await people.user_id_of(conn, login)
         if user_id is None:
             raise CanvasError(403, f"no member {login} on the hub")
         person = await _principal(conn, user_id, context.config)
         return Acting(await _access(conn, person, context.project), person, context.sink)
-    r = tables.runs
-    columns = (r.c.kind, r.c.profile_id, r.c.dispatched_by, r.c.runtime, r.c.model, r.c.chat_message_id)
-    row = (await conn.execute(select(*columns).where(r.c.id == context.run_id))).one()
+    row = await people.run_of(conn, context.run_id)
     person_id = row.dispatched_by
     found = await chat_run(conn, context.run_id) if row.kind == "chat" else None
     if found is not None:
@@ -156,11 +152,11 @@ async def proposing_run(conn: AsyncConnection, who: Acting) -> None:
     strategist_run(who, "propose", ("chat", "task"))
 
 
-async def canvas(conn: AsyncConnection, who: Acting, slug: str, *, lock: bool = False) -> store.CanvasRow:
+async def canvas(conn: AsyncConnection, who: Acting, slug: str, *, lock: bool = False) -> CanvasRow:
     """Canvas ``slug`` as ``who`` sees it; the 404 of one that does not exist when they cannot."""
-    row = await store.canvas(conn, who.access, slug, who.sink, lock=lock)
+    row = await reads.canvas(conn, who.access, slug, who.sink, lock=lock)
     if not who.sees(row.label):
-        raise store.missing(who.access, slug)
+        raise reads.missing(who.access, slug)
     return row
 
 

@@ -29,20 +29,22 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import date
 
-from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.server.canvas import baselines, proposals, rules, store, writes
-from evo_agents.hub.server.canvas.baselines import DECIDES, BaselineRow, ItemRow
-from evo_agents.hub.server.canvas.content import CanvasError, changed, number_of
-from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.baseline_rows import DECIDES, BaselineRow, ItemRow
+from evo_agents.hub.server.canvas.models.content import CanvasError, changed, number_of
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow
+from evo_agents.hub.server.canvas.models.writing import Writer
+from evo_agents.hub.server.canvas.repository import baselines as baseline_rows
+from evo_agents.hub.server.canvas.repository import proposals as proposal_rows
+from evo_agents.hub.server.canvas.service import baselines, proposals, reads, writes
 from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
 
 
 @dataclass(frozen=True)
 class Decision:
-    """What a reviewer decides of the item of one claim: one of ``baselines.DECIDES`` of its kind, the new deadline an
+    """What a reviewer decides of the item of one claim: one of ``DECIDES`` of its kind, the new deadline an
     extension takes, and why."""
 
     claim: str
@@ -57,7 +59,7 @@ def _why(row: BaselineRow, item: ItemRow, decision: Decision) -> str:
 
 
 def _check(
-    writer: writes.Writer, row: BaselineRow, item: ItemRow, decision: Decision, today: date, self_approval: bool
+    writer: Writer, row: BaselineRow, item: ItemRow, decision: Decision, today: date, self_approval: bool
 ) -> None:
     if row.status != "proposed":
         raise CanvasError(409, f"baseline {row.number} is {row.status}: it takes no decision")
@@ -80,9 +82,9 @@ def _check(
         raise CanvasError(422, f"a reason takes at most {MAX_REASON_CHARS} characters")
 
 
-async def _claim(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, row: BaselineRow, item: ItemRow):
+async def _claim(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, row: BaselineRow, item: ItemRow):
     """The item's claim, locked, while it is at the status the item was proposed at; 409 otherwise."""
-    claim = await store.claim(conn, writer.access, canvas, item.number, lock=True)
+    claim = await reads.claim(conn, writer.access, canvas, item.number, lock=True)
     if claim.archived_at is not None or claim.status != item.at_status:
         now = "archived" if claim.archived_at is not None else f"at {claim.status}"
         raise CanvasError(
@@ -113,18 +115,15 @@ async def _accept(conn, writer, canvas: CanvasRow, claim: ClaimRow, item: ItemRo
             409, f"the value check's proposal {item.proposal_id} of {item.code} is {found.status}: defer it"
         )
     rev = await _write(conn, writer, claim, {"status": item.to_status}, why, row)
-    p = tables.canvas.proposals
-    decided = {"status": "accepted", "rev": rev, "decided_by": writer.author.user_id, "decided_at": func.now()}
-    await conn.execute(update(p).where(p.c.id == found.id).values(**decided))
+    await proposal_rows.decided(conn, found.id, writer.author.user_id, status="accepted", rev=rev)
     return rev
 
 
 async def _reject(conn, writer, claim: ClaimRow, item: ItemRow, decision: Decision, why: str, row) -> int | None:
     if item.kind == "value_check":
-        p = tables.canvas.proposals
-        closed = {"status": "rejected", "decided_by": writer.author.user_id, "decided_at": func.now()}
-        closed["decided_reason"] = decision.reason.strip() or None
-        await conn.execute(update(p).where(p.c.id == item.proposal_id, p.c.status == "open").values(**closed))
+        if item.proposal_id is not None:
+            reason = decision.reason.strip() or None
+            await proposal_rows.reject_open(conn, item.proposal_id, writer.author.user_id, reason)
     if claim.status == item.from_status:
         return None
     return await _write(conn, writer, claim, {"status": item.from_status}, why, row)
@@ -147,7 +146,7 @@ async def _apply(conn, writer, canvas: CanvasRow, row: BaselineRow, item: ItemRo
 
 
 async def decide(
-    conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, number: int, decision: Decision, today: date
+    conn: AsyncConnection, writer: Writer, canvas: CanvasRow, number: int, decision: Decision, today: date
 ) -> BaselineRow:
     """Record ``writer``'s decision on the item of one claim of baseline ``number`` of ``canvas``, and approve the
     baseline when no item waits any more; the baseline as it is then."""
@@ -160,16 +159,13 @@ async def decide(
         raise CanvasError(404, f"baseline {row.number} of canvas {canvas.slug} holds no item of {decision.claim}")
     _check(writer, row, item, decision, today, await baselines.self_approval(conn, writer.access.project_id))
     rev = await _apply(conn, writer, canvas, row, item, decision)
-    i = tables.canvas.baseline_items
     values = {
         "decision": decision.decision,
-        "decided_by": writer.author.user_id,
-        "decided_at": func.now(),
         "new_deadline": decision.deadline,
         "reason": decision.reason.strip() or None,
         "rev": rev,
     }
-    await conn.execute(update(i).where(i.c.id == item.id).values(**values))
+    await baseline_rows.decide_item(conn, item.id, writer.author.user_id, values)
     await writes.touch(conn, canvas)
     if not any(other.waiting for other in await baselines.items(conn, row.id)):
         await baselines.approve(conn, writer.access.project_id, canvas, row)

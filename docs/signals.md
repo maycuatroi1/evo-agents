@@ -147,8 +147,9 @@ node holds the key's name alone; no value of a signal goes into the graph.
 ## Value check
 
 The core plugin canvas compares its claims' test cards with the signals, as evidence and proposals; it never changes a
-claim's status itself. The code is `evo_agents/hub/server/canvas/value_check.py` (the job), `checks.py` (the
-comparison, the evidence and the proposals) and `judging.py` (the judging runs of @strategist).
+claim's status itself. The code is `evo_agents/hub/server/canvas/value_check.py` (the job), `service/checks.py` (the
+comparison, the evidence and the proposals) and `service/judging.py` (the judging runs of @strategist), with their
+queries in `repository/signals.py` and `repository/judging.py`.
 
 **When it runs.** A batch that stored any signal queues the job `hub.value_check` for its project, in the batch's
 transaction, when a plugin the project enables has a job named `value_check` (canvas's). The job runs those jobs for

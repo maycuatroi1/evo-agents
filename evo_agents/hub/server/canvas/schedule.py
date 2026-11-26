@@ -21,29 +21,23 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
-from sqlalchemy import Text, column, func, literal, select, table
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, tables
+from evo_agents.hub import curator
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.canvas import (
-    BASELINE_CRON,
-    BASELINE_DEFAULT,
-    BASELINE_JOB,
-    WEEKDAYS,
-    baselines,
-    notices,
-    store,
-)
-from evo_agents.hub.server.canvas.content import CanvasError
-from evo_agents.hub.server.canvas.store import CanvasRow
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.canvas import BASELINE_CRON, BASELINE_DEFAULT, BASELINE_JOB, WEEKDAYS
+from evo_agents.hub.server.canvas.models.content import CanvasError
+from evo_agents.hub.server.canvas.models.rows import CanvasRow
+from evo_agents.hub.server.canvas.repository import people, store
+from evo_agents.hub.server.canvas.repository import schedule as rows
+from evo_agents.hub.server.canvas.service import baselines, notices
 
 log = logging.getLogger(__name__)
 
 JOB = BASELINE_JOB
 CRON = BASELINE_CRON
 UTC_ZONE = "UTC"
-PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # evo_agents.hub.server.curator.PG_TIMEZONES
 
 
 @dataclass(frozen=True)
@@ -74,14 +68,11 @@ async def configured(conn: AsyncConnection, project_id: int) -> dict:
 async def _known(conn: AsyncConnection, zone) -> bool:
     if not isinstance(zone, str) or not zone:
         return False
-    return await conn.scalar(select(PG_TIMEZONES.c.name).where(PG_TIMEZONES.c.name == zone).limit(1)) is not None
+    return await rows.known_zone(conn, zone)
 
 
 async def _charter_zone(conn: AsyncConnection, project_id: int):
-    c = tables.charters
-    body = await conn.scalar(
-        select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
-    )
+    body = await rows.charter_body(conn, project_id)
     return curator.zone_of(body) if body else None
 
 
@@ -112,17 +103,15 @@ def week_of(local_now: datetime, schedule: Schedule) -> tuple[str, datetime] | N
 
 async def due(conn: AsyncConnection, schedule: Schedule) -> Due | None:
     """This week's baseline in ``schedule`` when its time has come, by Postgres's clock; None before."""
-    local_now = await conn.scalar(select(func.timezone(schedule.zone, func.now())))
-    found = week_of(local_now, schedule)
+    found = week_of(await rows.local_now(conn, schedule.zone), schedule)
     if found is None:
         return None
     week, moment = found
-    return Due(week, await conn.scalar(select(func.timezone(schedule.zone, literal(moment)))))
+    return Due(week, await rows.in_utc(conn, schedule.zone, moment))
 
 
 async def _has_week(conn: AsyncConnection, canvas: CanvasRow, week: str) -> bool:
-    b = tables.canvas.baselines
-    return await conn.scalar(select(b.c.id).where(b.c.canvas_id == canvas.id, b.c.week == week)) is not None
+    return await rows.has_week(conn, canvas.id, week)
 
 
 async def propose_week(conn: AsyncConnection, project_id: int, canvas: CanvasRow, when: Due, zone: str) -> Counter:
@@ -143,8 +132,8 @@ async def propose_week(conn: AsyncConnection, project_id: int, canvas: CanvasRow
 
 async def run_project(engine: AsyncEngine, project: str) -> dict:
     """One pass of the job over the canvases of ``project``; what it did, counted."""
-    async with engine.begin() as conn:
-        project_id = await conn.scalar(select(tables.projects.c.id).where(tables.projects.c.name == project))
+    async with UnitOfWork(engine) as conn:
+        project_id = await people.project_id_of(conn, project)
         if project_id is None:
             return {}
         schedule = await schedule_of(conn, project_id)
@@ -153,7 +142,7 @@ async def run_project(engine: AsyncEngine, project: str) -> dict:
     done = Counter()
     for found in canvases:
         try:
-            async with engine.begin() as conn:
+            async with UnitOfWork(engine) as conn:
                 canvas = await store.lock_canvas(conn, found.id)
                 if canvas is not None:
                     done += await propose_week(conn, project_id, canvas, when, schedule.zone)

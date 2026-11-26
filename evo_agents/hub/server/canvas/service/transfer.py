@@ -14,17 +14,19 @@ the import would do.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server.canvas import links, rules, store, writes
-from evo_agents.hub.server.canvas.content import CanvasError, changed, code, number_of
-from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow, EvidenceRow
-from evo_agents.hub.server.canvas.writes import Author, EvidenceInput, Writer
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.content import CanvasError, changed, code, number_of
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow, EvidenceRow
+from evo_agents.hub.server.canvas.models.writing import MAX_CLAIMS, MAX_EVIDENCE, Author, EvidenceInput, Report, Writer
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import links, reads, writes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_canvas import (
     ACTORS,
@@ -75,7 +77,7 @@ class FileClaim(BaseModel):
     opportunities: list = Field(
         default_factory=list, description="the codes of the opportunities of the project it links"
     )
-    evidence: list[FileEvidence] = Field(default_factory=list, max_length=store.MAX_EVIDENCE)
+    evidence: list[FileEvidence] = Field(default_factory=list, max_length=MAX_EVIDENCE)
 
 
 class FileCanvas(BaseModel):
@@ -91,7 +93,7 @@ class CanvasFile(BaseModel):
 
     format: Literal["evo-canvas/1"]
     canvas: FileCanvas
-    claims: list[FileClaim] = Field(default_factory=list, max_length=store.MAX_CLAIMS)
+    claims: list[FileClaim] = Field(default_factory=list, max_length=MAX_CLAIMS)
 
 
 # Export
@@ -119,7 +121,7 @@ async def export(conn: AsyncConnection, access: ProjectAccess, canvas: CanvasRow
     evidence = await store.evidence(conn, [row.id for row in rows])
     claims = []
     for row in rows:
-        shown = [_evidence_json(item) for item in evidence[row.id] if store.visible(access, item.label, sink)]
+        shown = [_evidence_json(item) for item in evidence[row.id] if reads.visible(access, item.label, sink)]
         claims.append({"code": row.code, "rev": row.rev, **row.content().as_json(), "evidence": shown})
     return {
         "format": FORMAT,
@@ -136,22 +138,6 @@ async def export(conn: AsyncConnection, access: ProjectAccess, canvas: CanvasRow
 
 
 # Import
-
-
-@dataclass
-class Report:
-    """What an import did, or would do."""
-
-    canvas: str
-    canvas_created: bool = False
-    created: list[str] = field(default_factory=list)
-    edited: list[str] = field(default_factory=list)
-    unchanged: list[str] = field(default_factory=list)
-    evidence: int = 0
-    problems: list[dict] = field(default_factory=list)
-
-    def warn(self, claim: str | None, message: str) -> None:
-        self.problems.append({"level": "warning", "claim": claim, "message": message})
 
 
 @dataclass(frozen=True)
@@ -178,13 +164,13 @@ def parse(data) -> CanvasFile:
 
 async def _canvas(conn: AsyncConnection, writer: Writer, given: FileCanvas, label: dict | None, report: Report):
     try:
-        return await store.canvas(conn, writer.access, given.slug, writer.sink, lock=True)
+        return await reads.canvas(conn, writer.access, given.slug, writer.sink, lock=True)
     except CanvasError as exc:
         if exc.status != 404:
             raise
     await writes.create_canvas(conn, writer, given.slug, given.name, given.description, label)
     report.canvas_created = True
-    return await store.canvas(conn, writer.access, given.slug, writer.sink, lock=True)
+    return await reads.canvas(conn, writer.access, given.slug, writer.sink, lock=True)
 
 
 async def _placed(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, file: CanvasFile) -> list[Placed]:
@@ -203,7 +189,7 @@ async def _placed(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, file
         elif where is not None and claim.rev is None:
             problems.append((code(number), f"canvas {canvas.slug} holds it: give the rev it was exported at"))
         elif where is not None:
-            placed.append(Placed(claim, number, await store.claim(conn, writer.access, canvas, number, lock=True)))
+            placed.append(Placed(claim, number, await reads.claim(conn, writer.access, canvas, number, lock=True)))
         else:
             placed.append(Placed(claim, number))
         seen.add(number)
@@ -271,7 +257,7 @@ async def _make(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, place:
     claim_id, number = await writes.insert_claim(
         conn, writer, canvas, content, "imported", "import", number=place.number
     )
-    row = await store.claim(conn, writer.access, canvas, number, lock=True)
+    row = await reads.claim(conn, writer.access, canvas, number, lock=True)
     for why in left_out:
         report.warn(row.code, why)
     await _add_evidence(conn, writer, row, place.claim, report)
@@ -282,10 +268,11 @@ async def _make(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, place:
 
 async def _apply(conn: AsyncConnection, writer: Writer, file: CanvasFile, label: dict | None) -> Report:
     report = Report(canvas=file.canvas.slug)
-    canvas = store.writable(writer.access, await _canvas(conn, writer, file.canvas, label, report))
+    canvas = reads.writable(writer.access, await _canvas(conn, writer, file.canvas, label, report))
     placed = await _placed(conn, writer, canvas, file)
-    held = {place.number: place.existing for place in placed if place.existing is not None}
-    await writes.check_revs(conn, held, {place.number: place.claim.rev for place in placed if place.existing})
+    held = {p.number: p.existing for p in placed if p.existing is not None and p.number is not None}
+    asked = {p.number: p.claim.rev for p in placed if p.existing is not None and p.number is not None}
+    await writes.check_revs(conn, writer, canvas, held, asked)
     await writes.room(conn, canvas, sum(1 for place in placed if place.existing is None))
     for place in placed:
         try:

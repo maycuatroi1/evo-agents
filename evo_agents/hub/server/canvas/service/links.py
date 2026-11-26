@@ -22,15 +22,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import opportunities as opportunity_model
 from evo_agents.hub import problems as problem_model
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.canvas import store
-from evo_agents.hub.server.canvas.content import (
+from evo_agents.hub.server.canvas.models.content import (
     CanvasError,
     Content,
     checked_opportunities,
@@ -38,6 +35,8 @@ from evo_agents.hub.server.canvas.content import (
     checked_signal_keys,
     checked_use_cases,
 )
+from evo_agents.hub.server.canvas.repository import links as link_rows
+from evo_agents.hub.server.canvas.service import reads
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_srs import code_key
 
@@ -59,17 +58,11 @@ async def _use_cases(
     if not await srs_enabled(conn, access.project_id):
         why = f"project {access.name} does not enable plugin srs: a claim links no use case there"
         return {}, dict.fromkeys(codes, why)
-    c, i, d = tables.srs.codes, tables.srs.items, tables.srs.documents
-    query = (
-        select(c.c.code_key, i.c.kind, i.c.code, i.c.retired_in, d.c.label)
-        .select_from(c.join(i, i.c.id == c.c.item_id).join(d, d.c.id == i.c.document_id))
-        .where(c.c.project_id == access.project_id, c.c.code_key.in_([code_key(code) for code in codes]))
-    )
-    rows = {row.code_key: row for row in await conn.execute(query)}
+    rows = await link_rows.use_cases(conn, access.project_id, [code_key(code) for code in codes])
     found, refused = {}, {}
     for given in codes:
         row = rows.get(code_key(given))
-        if row is None or not store.visible(access, row.label, sink):
+        if row is None or not reads.visible(access, row.label, sink):
             refused[given] = f"no use case {given} in the SRS of project {access.name} that you can see"
         elif row.kind != USE_CASE:
             refused[given] = f"{row.code} is a {row.kind.replace('_', ' ')} of the SRS, not a use case"
@@ -84,9 +77,7 @@ async def _signal_keys(conn: AsyncConnection, access: ProjectAccess, keys: list[
     """For each of ``keys`` the project's registry lacks or archived, why a claim cannot link it."""
     if not keys:
         return {}
-    k = tables.signal_keys
-    query = select(k.c.name, k.c.archived_at).where(k.c.project_id == access.project_id, k.c.name.in_(keys))
-    rows = {row.name: row for row in await conn.execute(query)}
+    rows = await link_rows.signal_keys(conn, access.project_id, keys)
     refused = {}
     for key in keys:
         if key not in rows:
@@ -103,14 +94,8 @@ async def _problems(conn: AsyncConnection, access: ProjectAccess, codes: list[st
     """For each of ``codes`` the project lacks or dropped, why a claim cannot link it."""
     if not codes:
         return {}
-    p, r = tables.problems, tables.problem_revisions
     numbers = {code: problem_model.number_of(code) for code in codes}
-    query = (
-        select(p.c.number, r.c.status)
-        .join_from(p, r, and_(r.c.problem_id == p.c.id, r.c.revision == p.c.revision))
-        .where(p.c.project_id == access.project_id, p.c.number.in_(list(numbers.values())))
-    )
-    held = {row.number: row.status for row in await conn.execute(query)}
+    held = await link_rows.problem_statuses(conn, access.project_id, list(numbers.values()))
     refused = {}
     for code, number in numbers.items():
         if number not in held:
@@ -124,14 +109,8 @@ async def _opportunities(conn: AsyncConnection, access: ProjectAccess, codes: li
     """For each of ``codes`` the project lacks or dropped, why a claim cannot link it."""
     if not codes:
         return {}
-    o, r = tables.opportunities, tables.opportunity_revisions
     numbers = {code: opportunity_model.number_of(code) for code in codes}
-    query = (
-        select(o.c.number, r.c.status)
-        .join_from(o, r, and_(r.c.opportunity_id == o.c.id, r.c.revision == o.c.revision))
-        .where(o.c.project_id == access.project_id, o.c.number.in_(list(numbers.values())))
-    )
-    held = {row.number: row.status for row in await conn.execute(query)}
+    held = await link_rows.opportunity_statuses(conn, access.project_id, list(numbers.values()))
     refused = {}
     for code, number in numbers.items():
         if number not in held:

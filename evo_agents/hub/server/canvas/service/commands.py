@@ -16,13 +16,15 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.server.canvas import rules, store, writes
-from evo_agents.hub.server.canvas.content import CanvasError, code
-from evo_agents.hub.server.canvas.store import CanvasRow
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.content import CanvasError, code
+from evo_agents.hub.server.canvas.models.rows import CanvasRow
+from evo_agents.hub.server.canvas.models.writing import Writer
+from evo_agents.hub.server.canvas.repository import claims, store
+from evo_agents.hub.server.canvas.repository.claims import ClaimStore
+from evo_agents.hub.server.canvas.service import reads, writes
 
 
 @dataclass(frozen=True)
@@ -43,19 +45,10 @@ class Undone:
     claims: list[tuple[int, int, int]]  # (number, rev it went back to, rev written)
 
 
-async def _revs(conn: AsyncConnection, canvas_id: int, user_id: int) -> dict[int, list[_Rev]]:
+async def _revs(conn: AsyncConnection, canvas_id: int, user_id: int | None) -> dict[int, list[_Rev]]:
     """By claim number, every rev of each claim of the canvas an agent wrote for ``user_id`` in a chat command."""
-    r, k = tables.canvas.revs, tables.canvas.claims
-    mine = (r.c.actor == "agent") & (r.c.user_id == user_id) & r.c.chat_message_id.is_not(None)
-    touched = select(r.c.claim_id).join_from(r, k, k.c.id == r.c.claim_id).where(k.c.canvas_id == canvas_id, mine)
-    query = (
-        select(k.c.number, r.c.rev, r.c.change, r.c.undo_of, mine.label("mine"), r.c.chat_message_id)
-        .join_from(r, k, k.c.id == r.c.claim_id)
-        .where(r.c.claim_id.in_(touched))
-        .order_by(k.c.number, r.c.rev)
-    )
     found: dict[int, list[_Rev]] = defaultdict(list)
-    for row in await conn.execute(query):
+    for row in await claims.command_revs(conn, canvas_id, user_id):
         found[row.number].append(_Rev(row.rev, row.change, row.undo_of, bool(row.mine), row.chat_message_id))
     return found
 
@@ -84,9 +77,9 @@ def _last_command(revs: dict[int, list[_Rev]]) -> tuple[int, dict[int, list[int]
     return message_id, dict(commands[message_id])
 
 
-async def undo_command(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, reason: str) -> Undone:
+async def undo_command(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, reason: str) -> Undone:
     """Take back the last command of the member ``writer`` writes for (see the module)."""
-    store.writable(writer.access, canvas)
+    reads.writable(writer.access, canvas)
     found = _last_command(await _revs(conn, canvas.id, writer.author.user_id))
     if found is None:
         raise CanvasError(
@@ -94,13 +87,13 @@ async def undo_command(conn: AsyncConnection, writer: writes.Writer, canvas: Can
         )
     message_id, spans = found
     held = await writes.locked(conn, writer, canvas, list(spans))
-    conflicts = []
+    stored, conflicts = ClaimStore(writer.access.project_id, canvas.id), []
     for number, written in spans.items():
         row = held[number]
         left = await store.rev(conn, row.id, written[-1])
         between = written != list(range(written[0], written[-1] + 1))  # another rev among the command's own
         if between or left is None or left.content != row.content():  # or the claim changed since the command
-            conflicts.append(await writes.conflict(conn, row, written[-1]))
+            conflicts.append(await stored.stale(conn, number, row, written[-1]))
     if conflicts:
         names = ", ".join(item["claim"] for item in conflicts)
         raise CanvasError(
