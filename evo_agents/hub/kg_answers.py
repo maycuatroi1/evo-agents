@@ -1,6 +1,6 @@
 """The answers of a file of questions asked of a project's graph (plan kg-zip-to-answers, criterion a6), without the
 database. ``evo_agents.hub.server.kg_answers`` holds the routes, the job that asks them, and ``evo_agents.hub.
-kg_answer_cli`` the command ``evo-agents hub kg answer``.
+cli.kg.answer`` the command ``evo-agents hub kg answer``.
 
 A writer sends a file of up to MAX_QUESTIONS questions, one JSON object a line with ``id`` and ``question``. The hub
 keeps them as a job and asks them in batches of ``batch`` (DEFAULT_BATCH), each batch a review run without a repo on

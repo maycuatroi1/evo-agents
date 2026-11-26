@@ -1,5 +1,5 @@
 """``evo-agents hub signal push|list``, ``hub signal keys list|add|archive`` and ``hub signal ingest
-create|list|revoke`` (``evo_agents.hub.cli_signals``), as members run them against a hub: the commands and their
+create|list|revoke`` (``evo_agents.hub.cli.signal``), as members run them against a hub: the commands and their
 ``--json`` keys are in the contract (seam hub-cli-v1), an admin declares keys and makes an ingest key whose token is
 printed once, a service sends a batch with it, a writer pushes one signal and a batch from a file, a reader lists them,
 and an archived key and a revoked ingest key take nothing more (criterion a3 of plan living-lean-canvas). The service,

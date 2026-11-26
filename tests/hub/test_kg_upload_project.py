@@ -24,9 +24,11 @@ if not pg.DSN:
 
 from sqlalchemy import insert, select
 
-from evo_agents.hub import kg_upload_cli, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.client import HubError
 from evo_agents.hub.kg_ingest import config_problems
+from evo_agents.hub.kg_routes import Uploads
 from evo_agents.hub.server import kg_upload_project
 from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
 from tests.hub import live
@@ -51,7 +53,7 @@ def notes(tmp_path: Path) -> Path:
 
 
 def send(hub, headers, path: Path, project: str = NEW, label: str | None = None) -> dict:
-    done, _, _ = kg_upload_cli.upload(InProcessHub(hub.client, headers), project, path, label=label, new_project=True)
+    done, _, _ = Uploads(InProcessHub(hub.client, headers), project).send(path, label=label, new_project=True)
     return done
 
 
@@ -151,7 +153,7 @@ def test_a_member_needs_a_register_right_and_spends_it(hub, tmp_path):
     assert again.value.status == 403 and project_row(hub, "lumen-other") is None
     # the founder keeps uploading into their project with --project, as its admin
     more = zip_of({"more.md": b"# More\n"}, tmp_path / "more.zip")
-    kept, _, _ = kg_upload_cli.upload(InProcessHub(hub.client, founder), NEW, more, label="public")
+    kept, _, _ = Uploads(InProcessHub(hub.client, founder), NEW).send(more, label="public")
     assert kept["state"] == "extracting"
 
 
@@ -203,7 +205,7 @@ def test_the_first_build_after_the_upload_queues_a_kg_init_run_with_first_build(
 
 def test_the_command_takes_project_or_new_project_never_both(monkeypatch):
     parser = argparse.ArgumentParser()
-    kg_upload_cli.register(parser.add_subparsers())
+    kg_upload_cli.KG_UPLOAD.attach(parser.add_subparsers())
     args = parser.parse_args(["upload", "a.zip", "--new-project", NEW, "--label", "public"])
     assert (args.new_project, args.project, args.label) == (NEW, None, "public")
     for wrong in (["upload", "a.zip"], ["upload", "a.zip", "--project", "x", "--new-project", "y"]):

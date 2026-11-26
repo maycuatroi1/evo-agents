@@ -58,7 +58,8 @@ output already cut to Codex's own limit, about 10,000 tokens.
 Like the other hooks of the plugin this one never fails the session: exit status 0, at most BUDGET seconds (hooks.json
 gives Claude Code's limit), and it prints the replacement or nothing. A failure is one line on stderr naming the type
 of the exception, never the output. It talks to no hub: a spool file never leaves this machine. Files older than
-EVO_SPOOL_DAYS days (DAYS by default) are deleted by the hook, at most once every PRUNE_EVERY seconds.
+EVO_SPOOL_DAYS days (DAYS by default) are deleted by the hook, at most once every PRUNE_EVERY seconds. The command is
+``evo_agents.hub.cli.hook.PostToolUse``; this module holds its work.
 """
 
 from __future__ import annotations
@@ -67,13 +68,10 @@ import contextlib
 import json
 import os
 import re
-import sys
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-
-from evo_agents.hub.hooks import OutOfTime, budget, read_payload
 
 THRESHOLD = 10_000  # characters of a result kept in context; a longer one goes to a file
 THRESHOLD_VARIABLE = "EVO_SPOOL_THRESHOLD"
@@ -387,27 +385,3 @@ def post_tool_use(payload: dict, env: Mapping[str, str], now: float) -> dict | N
     path = write_spool(spool_root(), session, _name(payload.get("tool_use_id"), str(time.time_ns())), long.text)
     output = long.render(note(long, path, head, keep_days(env)), head, tail)
     return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": output}}
-
-
-def _say(stream, text: str) -> None:
-    with contextlib.suppress(OSError, ValueError):  # a closed stdout or stderr must not fail the hook either
-        print(text, file=stream, flush=True)
-
-
-def cmd_hook_post_tool_use(args) -> int:
-    """Print the replacement of a long result, then clean up old spool files; a failure before the replacement is
-    printed leaves the result as it was and says why on stderr, by the exception's type alone."""
-    env, now, answer = os.environ, time.time(), None
-    try:
-        with budget(BUDGET):
-            answer = post_tool_use(read_payload(limit=MAX_PAYLOAD), env, now)
-            if answer is not None:
-                _say(sys.stdout, json.dumps(answer, ensure_ascii=False))
-                prune(spool_root(), keep_days(env) * 86400, now)
-    except OutOfTime:
-        if answer is None:
-            _say(sys.stderr, f"evo-hub: tool output left as it was, out of time after {BUDGET:g}s")
-    except BaseException as exc:  # a hook never fails the session
-        if answer is None:
-            _say(sys.stderr, f"evo-hub: tool output left as it was: unexpected {type(exc).__name__}")
-    return 0

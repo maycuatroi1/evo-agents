@@ -28,8 +28,9 @@ if not pg.DSN:
 
 from sqlalchemy import select
 
-from evo_agents.hub import jobs, kg_upload_cli, kg_upload_extract, tables
+from evo_agents.hub import jobs, kg_upload_extract, tables
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, items_key
+from evo_agents.hub.kg_routes import Uploads
 from evo_agents.hub.worker import HubContext, connector, queue
 from tests.hub.test_kg import (
     PROJECT,
@@ -82,9 +83,7 @@ def configure(hub, tmp_path: Path) -> Machine:
 
 
 def upload(hub, path: Path, *, source: str = SOURCE, member: str = "alice", label: str | None = None) -> dict:
-    done, _, _ = kg_upload_cli.upload(
-        InProcessHub(hub.client, getattr(hub, member)), PROJECT, path, source=source, label=label
-    )
+    done, _, _ = Uploads(InProcessHub(hub.client, getattr(hub, member)), PROJECT).send(path, source=source, label=label)
     assert done["state"] == "extracting", done
     return done
 

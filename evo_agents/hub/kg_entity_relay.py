@@ -8,7 +8,7 @@ one blob of kind REQUESTS_KIND, made by the hub (``kg_build.record``), named in 
 cleared, the node kinds and relations it may name, the model, and its key in the memo.
 
 The nightly review run of the project (``collect.review_prompt``) is told to answer them when the latest build has
-some: ``evo-agents hub kg entities --project P`` (``evo_agents.hub.kg_entities_cli``) reads them
+some: ``evo-agents hub kg entities --project P`` (``evo_agents.hub.cli.kg.entities``) reads them
 (GET /v1/kg/P/entities/requests), asks Claude Code for each on the run's login, never an API key, and posts the
 answers (POST /v1/kg/P/entities/answers, ``evo_agents.hub.server.kg_entities``), which the hub keeps as a blob of kind
 ANSWERS_KIND and follows with a build. That build reads every answers blob of the project (``read_answers``) and gives

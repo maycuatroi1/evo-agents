@@ -442,7 +442,8 @@ def test_hub_chat_show_lists_the_bridges_and_hub_chat_unbridge_takes_one_off(bri
     import argparse
     import json
 
-    from evo_agents.hub import cli_chats
+    from evo_agents.hub.cli import base
+    from evo_agents.hub.cli.chat import ChatShow, ChatUnbridge
     from evo_agents.hub.client import HubError
 
     client, chat = bridged.client, bridged.chat
@@ -454,14 +455,14 @@ def test_hub_chat_show_lists_the_bridges_and_hub_chat_unbridge_takes_one_off(bri
                 raise HubError(answer.json()["message"], answer.status_code, answer.json()["error"])
             return answer.json()
 
-    monkeypatch.setattr(cli_chats, "signed_in", lambda: (Hub(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (Hub(), None))
     assert core.said(client, text("from the group", group_id=ROOM, message_id="n-1")) == "bridged_in"
-    assert cli_chats.cmd_show(argparse.Namespace(chat=chat["id"], thread=None, limit=5, json=False)) == 0
+    assert ChatShow()(argparse.Namespace(chat=chat["id"], thread=None, limit=5, json=False)) == 0
     shown = capsys.readouterr().out
     assert f"bridged to: #{bridged.bridge_id} {KIND} {ROOM}" in shown and f"from {KIND}" in shown, shown
-    assert cli_chats.cmd_unbridge(argparse.Namespace(chat=chat["id"], bridge=bridged.bridge_id, json=True)) == 0
+    assert ChatUnbridge()(argparse.Namespace(chat=chat["id"], bridge=bridged.bridge_id, json=True)) == 0
     assert json.loads(capsys.readouterr().out)["bridges"] == []
-    assert cli_chats.cmd_unbridge(argparse.Namespace(chat=chat["id"], bridge=bridged.bridge_id, json=True)) != 0
+    assert ChatUnbridge()(argparse.Namespace(chat=chat["id"], bridge=bridged.bridge_id, json=True)) != 0
     assert f"has no bridge {bridged.bridge_id}" in capsys.readouterr().err
     assert bridge_rows(bridged.db) == [(KIND, ROOM, "cli")]
 

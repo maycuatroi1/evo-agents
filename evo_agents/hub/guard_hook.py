@@ -15,7 +15,6 @@ import json
 import os
 import re
 import shlex
-import sys
 from pathlib import Path
 
 from evo_agents import guard_check
@@ -119,18 +118,9 @@ def check_command(policy: Policy, command: str, cwd: str) -> str | None:
     return None
 
 
-def cmd_hook_pre_tool_use(args) -> int:
-    """PreToolUse of Bash: deny a command that would put a private name in a guarded repo; always exit 0."""
-    try:
-        payload = json.loads(sys.stdin.read() or "{}")
-        tool_input = payload.get("tool_input") or {}
-        command = tool_input.get("command") if payload.get("tool_name") == "Bash" else None
-        policy = guard_check.load(policy_path()) if isinstance(command, str) else None
-        reason = check_command(policy, command, str(payload.get("cwd") or os.getcwd())) if policy else None
-    except Exception as exc:  # the hook never blocks a session for its own failure
-        print(f"evo-hub: the guard of private names did not run: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 0
-    if reason:
-        decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}
-        print(json.dumps({"hookSpecificOutput": decision}, ensure_ascii=False))
-    return 0
+def reason_to_deny(payload: dict) -> str | None:
+    """Why the PreToolUse hook of Bash denies the call ``payload`` names; None lets it run."""
+    tool_input = payload.get("tool_input") or {}
+    command = tool_input.get("command") if payload.get("tool_name") == "Bash" else None
+    policy = guard_check.load(policy_path()) if isinstance(command, str) else None
+    return check_command(policy, command, str(payload.get("cwd") or os.getcwd())) if policy else None

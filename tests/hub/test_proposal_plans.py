@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.curator_cli import CHANGE_KEYS
+from evo_agents.hub.cli.curator import CHANGE_KEYS
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql

@@ -30,7 +30,9 @@ if not pg.DSN:
 
 from sqlalchemy import select, update
 
-from evo_agents.hub import cli_memory, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli import base
+from evo_agents.hub.cli.memory import MemoryRestore
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
 from evo_agents.hub.server import memory_upkeep, run_audience
 from evo_agents.hub.server.change_tiers import GraphView
@@ -201,8 +203,8 @@ def test_the_daily_upkeep_archives_an_agent_memory_nobody_opened_for_30_days_and
     not_agent = hub.client.post(f"/v1/memories/{shared}/restore", headers=hub.alice)
     assert not_agent.status_code == 422, not_agent.text
     member = InProcessHub(hub.client, hub.alice)
-    monkeypatch.setattr(cli_memory, "signed_in", lambda: (member, None))
-    assert cli_memory.cmd_memory_restore(SimpleNamespace(id=old["id"], json=False)) == 0
+    monkeypatch.setattr(base, "signed_in", lambda: (member, None))
+    assert MemoryRestore()(SimpleNamespace(id=old["id"], json=False)) == 0
     assert "is active" in capsys.readouterr().out
     restored = state(hub, old["id"])
     assert restored.archived_at is None and restored.read_at is not None

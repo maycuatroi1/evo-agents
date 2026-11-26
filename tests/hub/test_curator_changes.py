@@ -31,7 +31,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select, update
 
 from evo_agents.hub import judge, runs, tables
-from evo_agents.hub.curator_cli import CHANGE_KEYS
+from evo_agents.hub.cli.curator import CHANGE_KEYS
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.change_views import JudgeInputs
 from evo_agents.hub.server.changes import advance

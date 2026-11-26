@@ -16,7 +16,8 @@ if not pg.DSN:
 
 from sqlalchemy import func, insert, select, update
 
-from evo_agents.hub import cli_client, kg_build, loop_jobs, plugin_jobs, tables
+from evo_agents.hub import kg_build, loop_jobs, plugin_jobs, tables
+from evo_agents.hub.cli.project import archive_lines
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.server import autonomy_hold, project_archive
 from evo_agents.hub.server.curator_shift import due_schedules
@@ -170,9 +171,9 @@ def test_project_archive_check_keeps_archived_at_and_archived_by_together(client
 
 def test_project_archive_cli_lines():
     live = {"name": "demo", "archived_at": None, "archived_by": None}
-    assert cli_client.archive_lines(live) == [
+    assert archive_lines(live) == [
         "Project demo is live: runs, kg pushes and builds, its night shift, Loop and plugins' jobs go on."
     ]
-    lines = cli_client.archive_lines({**live, "archived_at": "2026-11-04T08:00:00Z", "archived_by": "ivan"})
+    lines = archive_lines({**live, "archived_at": "2026-11-04T08:00:00Z", "archived_by": "ivan"})
     assert lines[0].startswith("Project demo is archived since 2026-11-04 08:00 UTC, by ivan: it takes no new run")
     assert lines[1] == "Make it live again with `evo-agents hub project unarchive demo`."

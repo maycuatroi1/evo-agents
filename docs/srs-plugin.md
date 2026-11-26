@@ -528,7 +528,7 @@ up to trailing whitespace and runs of blank lines. `--no-anchors` leaves out the
 
 ## Commands
 
-`evo-agents hub srs` is the client of the routes below (`evo_agents/hub/cli_srs.py`). `--json` prints what the hub
+`evo-agents hub srs` is the client of the routes below (`evo_agents/hub/cli/srs/`). `--json` prints what the hub
 answered, and a refusal prints the hub's reason and each problem it listed.
 
 ```sh

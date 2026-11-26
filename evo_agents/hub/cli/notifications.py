@@ -17,9 +17,8 @@ from typing import ClassVar
 from urllib.parse import urlencode
 
 from evo_agents.clikit import Arg, Result, Table, Text, UsageError, Views, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.base import HubCommand, HubContext, call_object, when
 from evo_agents.hub.cli.decision import MAX_LIST, one_line
-from evo_agents.hub.cli_client import call_object, when
 from evo_agents.hub.client import Hub
 from evo_agents.hub.runs import NOTIFICATION_KINDS
 

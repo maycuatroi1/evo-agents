@@ -1,22 +1,19 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, Bot, Brain, ChevronRight } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { memo, type ReactNode, type RefObject, useDeferredValue, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { SafeMarkdown } from "@/components/memories/markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { LinkedText } from "./links";
+import { DelegationRow } from "./agent-delegation";
+import { AgentRow } from "./trace-agent-row";
 import type { RunEvent } from "./queries";
 import { TraceTyping } from "./chat-parts";
-import { holdsStepReport } from "./step-report-start";
-import { buildTrace, openByDefault, TRACE_VIRTUAL_THRESHOLD, type TraceItem } from "./trace-model";
-import { useTraceDuration } from "./trace-look";
-import { StepReportMessage } from "./trace-report-lazy";
-import { Row, Who } from "./trace-row";
+import { eventsOfAgent, type RunTask, runTasks, taskOf } from "./run-tasks";
+import { buildTrace, openByDefault, TRACE_VIRTUAL_THRESHOLD } from "./trace-model";
 import { AskRow, MoveRow, PlanRow, SystemRow, type TraceContext, UserRow } from "./trace-rows";
 import { callRunning, groupByIntent, type NormalItem } from "./trace-groups";
 import { GroupRow } from "./trace-tools";
@@ -48,48 +45,19 @@ const END_SLACK = 32;
 /** An item's height before it is measured. */
 const ITEM_ESTIMATE = 64;
 
-const reportProse = (text: string) => <SafeMarkdown className="text-[13px] leading-5" testId="trace-report-text">{text}</SafeMarkdown>;
-const message = (text: string) => <SafeMarkdown className="leading-[21px]" testId="trace-message">{text}</SafeMarkdown>;
-
-function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" }>; context: TraceContext }) {
-  const t = useTranslations("runs.detail.trace");
-  const short = useTraceDuration();
-  const thought = item.thought;
-  return (
-    <Row icon={Bot} look="agent" at={item.at} head={<Who>{t("agent")}</Who>}>
-      <div className="flex min-w-0 flex-col gap-2">
-        {thought ? (
-          <details className="group/thought min-w-0 text-[13px] leading-[19px] text-muted-foreground" data-testid="trace-thought">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-fg-subtle select-none hover:text-foreground max-md:min-h-11 [&::-webkit-details-marker]:hidden">
-              <Brain className="size-3.5" aria-hidden="true" />
-              {thought.ms >= 1000 ? t("thought", { duration: short(thought.ms) }) : t("thoughtBrief")}
-              <ChevronRight className="size-3 transition-transform duration-[var(--transition-duration-base)] group-open/thought:rotate-90" aria-hidden="true" />
-            </summary>
-            <div className="mt-2 border-l-2 border-border pl-3 break-words whitespace-pre-wrap">
-              <LinkedText text={thought.text} />
-            </div>
-          </details>
-        ) : null}
-        {/* A step's report, which Markdown would fold into one paragraph, shows as a card between the words around it. */}
-        {holdsStepReport(item.text) ? (
-          <StepReportMessage text={item.text} message={message} prose={reportProse} webOf={(branch) => context.webOfBranch?.(branch) ?? null} />
-        ) : item.text ? (
-          message(item.text)
-        ) : null}
-      </div>
-    </Row>
-  );
-}
+const NO_TASKS: readonly RunTask[] = [];
 
 const Item = memo(
   function Item({
     item,
     context,
+    tasks,
     open,
     onToggle,
   }: {
     item: NormalItem;
     context: TraceContext;
+    tasks: readonly RunTask[];
     /** A group of tool calls': "1:a,b", whether it is open and the keys of its open calls. */
     open: string;
     onToggle: (key: string, open: boolean) => void;
@@ -100,6 +68,8 @@ const Item = memo(
         return <GroupRow group={item} open={open} onToggle={onToggle} active={context.active} />;
       case "agent":
         return <AgentRow item={item} context={context} />;
+      case "delegation":
+        return <DelegationRow item={item} tasks={tasks} context={context} />;
       case "plan":
         return <PlanRow item={item} />;
       case "ask":
@@ -114,11 +84,19 @@ const Item = memo(
   },
   (before, after) =>
     before.signature === after.signature && before.open === after.open && before.context === after.context && before.onToggle === after.onToggle,
+  // `tasks` is left out: what a delegation shows of its tasks is in its signature.
 );
 
 /** What makes an item look different: the memo of a row re-renders only when it changes. */
-function signature(item: NormalItem): string {
+function signature(item: NormalItem, tasks: readonly RunTask[]): string {
   switch (item.type) {
+    case "delegation":
+      return item.calls
+        .map(({ key, tool }) => {
+          const task = taskOf(tasks, tool.id);
+          return `${key}:${tool.status}:${tool.endedAt}:${task?.id}:${task?.status}:${task?.endedAt}:${task?.activity}:${task?.prompt?.length ?? -1}:${task?.result?.length ?? -1}`;
+        })
+        .join("|");
     case "agent":
       return `${item.key}:${item.text.length}:${item.thought?.text.length ?? -1}:${item.thought?.ms ?? -1}`;
     case "group":
@@ -198,8 +176,10 @@ function revealTarget(items: readonly NormalItem[], reveal: TraceReveal) {
     const item = items[index];
     if (item.type === "group") {
       const call = reveal.call === null ? undefined : item.calls.find((entry) => entry.tool.id === reveal.call);
-      if (call) return { index, item, call };
-    } else if (reveal.seq !== null && item.seq === reveal.seq) return { index, item, call: null };
+      if (call) return { index, item, call, id: null };
+    } else if (item.type === "delegation") {
+      if (reveal.call !== null && item.calls.some((entry) => entry.tool.id === reveal.call)) return { index, item, call: null, id: reveal.call };
+    } else if (reveal.seq !== null && item.seq === reveal.seq) return { index, item, call: null, id: null };
   }
   return null;
 }
@@ -211,8 +191,17 @@ export function AgentTrace({
   shown = true,
   fill = false,
   reveal = null,
+  agent = null,
+  tasks: given,
 }: {
   events: readonly RunEvent[];
+  /**
+   * Whose trace this is: the main agent's (null), whose events name no subagent, or a subagent's, by the id of the
+   * `Agent` call that started it (its profile's Activity). Events of a run before subagents were named are the main's.
+   */
+  agent?: string | null;
+  /** The run's tasks (run-tasks.ts), when the page has them already; else read from `events`. */
+  tasks?: readonly RunTask[];
   status: LogStatus;
   context: TraceContext;
   shown?: boolean;
@@ -227,7 +216,10 @@ export function AgentTrace({
   const t = useTranslations("runs.detail.trace");
   const tLog = useTranslations("runs.detail.log");
   const deferred = useDeferredValue(events);
-  const built = useMemo(() => buildTrace(deferred), [deferred]);
+  const own = useMemo(() => eventsOfAgent(deferred, agent), [deferred, agent]);
+  const built = useMemo(() => buildTrace(own), [own]);
+  const read = useMemo(() => (given ? null : runTasks(deferred)), [given, deferred]);
+  const tasks = given ?? read ?? NO_TASKS;
   // Calls that did the same kind of work are one row; the runtime's bookkeeping events are left to the Raw log, and the
   // hub's lines of files its calls show already are left out (output-index.ts).
   const hidden = useTraceOutputs()?.index?.hiddenSystem;
@@ -263,7 +255,7 @@ export function AgentTrace({
           .map((entry) => entry.key)
           .join(",")}`
       : "";
-  const render = (item: NormalItem) => <Item item={item} context={context} open={isOpen(item)} onToggle={onToggle} signature={signature(item)} />;
+  const render = (item: NormalItem) => <Item item={item} context={context} tasks={tasks} open={isOpen(item)} onToggle={onToggle} signature={signature(item, tasks)} />;
 
   // A row asked for opens with its group, and the trace stops following so it stays in view.
   const [revealed, setRevealed] = useState<number | null>(null);
@@ -282,7 +274,8 @@ export function AgentTrace({
     if (virtual) virtualRef.current?.scrollToIndex(target.index, { align: "center" });
     const show = () => {
       const row = scrollRef.current?.querySelector<HTMLElement>(`[data-testid="trace-item"][data-seq="${target.item.seq}"]`);
-      const call = target.call?.tool.id ? row?.querySelector<HTMLElement>(`[data-tool-call-id="${CSS.escape(target.call.tool.id)}"] > summary`) : null;
+      const id = target.call?.tool.id ?? target.id ?? null;
+      const call = id ? row?.querySelector<HTMLElement>(`[data-tool-call-id="${CSS.escape(id)}"] > summary, [data-tool-call-id="${CSS.escape(id)}"] button`) : null;
       const goal = call ?? row?.querySelector<HTMLElement>("button, summary, a") ?? null;
       (goal ?? row)?.scrollIntoView({ block: "center" });
       goal?.focus({ preventScroll: true });
@@ -349,7 +342,7 @@ export function AgentTrace({
         ) : null}
         {empty ? (
           <p className="py-2 text-sm text-muted-foreground" data-testid="trace-empty">
-            {events.length > 0 ? t("nothing") : context.active || status === "connecting" ? tLog("waiting") : tLog("none")}
+            {own.length > 0 ? t("nothing") : context.active || status === "connecting" ? tLog("waiting") : tLog("none")}
           </p>
         ) : virtual ? (
           <VirtualItems items={items} render={render} scrollRef={scrollRef} virtualRef={virtualRef} />

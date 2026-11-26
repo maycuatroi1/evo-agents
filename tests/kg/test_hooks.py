@@ -354,7 +354,7 @@ def test_session_start_says_nothing_when_the_hub_cannot_be_asked_in_time(
     tmp_path, kg_env, monkeypatch, capsys, unbound
 ):
     from evo_agents.hub import client
-    from evo_agents.hub.kg_cli import PROBE_TIMEOUT
+    from evo_agents.hub.kg_remote import PROBE_TIMEOUT
 
     project = make_project(tmp_path, kg_env)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))

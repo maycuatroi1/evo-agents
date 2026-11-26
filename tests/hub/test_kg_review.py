@@ -32,7 +32,9 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, select
 
-from evo_agents.hub import kg_review_cli, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli import base as cli_base
+from evo_agents.hub.cli.kg import review as kg_review_cli
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.kg_review import Rule
@@ -218,28 +220,29 @@ def test_a_writer_dismisses_an_item_it_stays_dismissed_after_the_next_build_and_
     assert still["dismissal"]["build_id"] == body["build_id"]  # the build the writer saw it in
 
 
-def test_the_command_line_prints_the_queue_and_dismisses(hub, capsys):
+def test_the_command_line_prints_the_queue_and_dismisses(hub, capsys, monkeypatch):
     client = InProcessHub(hub.client, hub.wendy)
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (client, None))
     args = SimpleNamespace(
         project=PROJECT, action=None, fingerprint=None, rule=None, cluster=None, state="all", reason=None, json=True
     )
-    assert kg_review_cli._list(client, args) == 0
+    assert kg_review_cli.REVIEW(args) == 0
     printed = json.loads(capsys.readouterr().out)
     assert set(printed) == set(kg_review_cli.REVIEW_QUEUE) and printed["items"]
 
     args.json = False
-    assert kg_review_cli._list(client, args) == 0
+    assert kg_review_cli.REVIEW(args) == 0
     text = capsys.readouterr().out
     assert "RULE" in text and printed["items"][0]["fingerprint"] in text and "open" in text
 
     fp = printed["items"][-1]["fingerprint"]
     done = SimpleNamespace(project=PROJECT, action="dismiss", fingerprint=fp, reason="checked by hand", json=True)
-    assert kg_review_cli._dismiss(client, done) == 0
+    assert kg_review_cli.REVIEW(done) == 0
     shown = json.loads(capsys.readouterr().out)
     assert set(shown) == set(kg_review_cli.DISMISSAL) and shown["reason"] == "checked by hand"
 
 
-def test_a_writer_takes_back_a_dismissal_a_core_plugin_made_and_the_item_is_open_again(hub, capsys):
+def test_a_writer_takes_back_a_dismissal_a_core_plugin_made_and_the_item_is_open_again(hub, capsys, monkeypatch):
     from sqlalchemy import insert
 
     target = next(i for i in queue(hub, "wendy")["items"] if CONTRACT not in json.dumps(i))
@@ -271,8 +274,9 @@ def test_a_writer_takes_back_a_dismissal_a_core_plugin_made_and_the_item_is_open
 
     assert dismiss(hub, "wendy", fp, "dismissed again by a member").status_code == 200
     client = InProcessHub(hub.client, hub.wendy)
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (client, None))
     args = SimpleNamespace(project=PROJECT, action="undismiss", fingerprint=fp, json=True)
-    assert kg_review_cli._undismiss(client, args) == 0
+    assert kg_review_cli.REVIEW(args) == 0
     assert json.loads(capsys.readouterr().out) == {"fingerprint": fp, "was_by": "wendy"}
 
 
@@ -395,6 +399,7 @@ def found_rule(found: dict, hub, fingerprint: str) -> str:
 def test_the_command_line_applies_the_fixes(hub, monkeypatch, capsys):
     fixed_queue(monkeypatch, hub)
     client = InProcessHub(hub.client, hub.wendy)
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (client, None))
     args = SimpleNamespace(
         project=PROJECT,
         action="apply",
@@ -406,10 +411,10 @@ def test_the_command_line_applies_the_fixes(hub, monkeypatch, capsys):
         dry_run=True,
         json=True,
     )
-    assert kg_review_cli._apply(client, args) == 0
+    assert kg_review_cli.REVIEW(args) == 0
     printed = json.loads(capsys.readouterr().out)
     assert set(printed) == set(kg_review_cli.APPLY_RESULT) and printed["dry_run"] is True and printed["decided"] == 2
     args.json = False
-    assert kg_review_cli._apply(client, args) == 0
+    assert kg_review_cli.REVIEW(args) == 0
     text = capsys.readouterr().out
     assert "would take 2 decisions (at most 2)" in text and "deprecate" in text and "report: " in text

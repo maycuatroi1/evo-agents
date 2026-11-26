@@ -586,23 +586,50 @@ def file_at(ref: str, path: str, root: Path = ROOT) -> str | None:
 def renamed_files(ref: str, root: Path = ROOT) -> dict[str, str]:
     """The modules of the package that git finds renamed from ``ref`` to the working tree, old path to new: a module
     of ``ref`` gone and one of the same or nearly the same content in its place (``git diff --find-renames``, its
-    default similarity of 50%), as `git mv` leaves it. A new file git does not track yet is not seen; `git mv` and
-    `git add` make it tracked."""
+    default similarity of 50%), as `git mv` leaves it. A rename a commit since ``ref`` made counts too, so a module
+    moved in a commit of its own and rewritten after (move first, change after) still follows its old path. A new file
+    git does not track yet is not seen; `git mv` and `git add` make it tracked."""
+    renamed: dict[str, str] = {}
+    done = git(
+        "log",
+        "--reverse",
+        "--format=",
+        "--name-status",
+        "--find-renames",
+        "-z",
+        f"{ref}..HEAD",
+        "--",
+        PACKAGE,
+        root=root,
+    )
+    if done is not None and done.returncode == 0:
+        for old, new in _renames(done.stdout):
+            first = next((key for key, value in renamed.items() if value == old), old)
+            renamed[first] = new
     done = git("diff", "--name-status", "--find-renames", "-z", ref, "--", PACKAGE, root=root)
     if done is None or done.returncode != 0:
         return {}
-    fields, renamed = done.stdout.split("\0"), {}
+    for old, new in _renames(done.stdout):
+        renamed.setdefault(old, new)
+    return {old: new for old, new in renamed.items() if old != new}
+
+
+def _renames(output: str) -> list[tuple[str, str]]:
+    """The renames of .py files in ``--name-status -z`` output, old path to new, in their order."""
+    fields, renames = [field.strip("\n") for field in output.split("\0")], []
     at = 0
-    while at < len(fields) and fields[at]:
+    while at < len(fields):
         status = fields[at]
-        if status.startswith(("R", "C")):
+        if not status:
+            at += 1
+        elif status.startswith(("R", "C")):
             old, new = fields[at + 1], fields[at + 2]
             if status.startswith("R") and old.endswith(".py") and new.endswith(".py"):
-                renamed[old] = new
+                renames.append((old, new))
             at += 3
         else:
             at += 2
-    return renamed
+    return renames
 
 
 def recent_commits(since: str = RECENT, root: Path = ROOT) -> Counter:

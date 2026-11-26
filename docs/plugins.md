@@ -274,7 +274,7 @@ release of the CLI. `GET /v1/cli/plugins` answers any member signed in with `{"v
 an `ETag` (the SHA-256 of the answer) and 304 for a matching `If-None-Match`. The CLI keeps the answer in
 `cli-plugins.json` of its login directory (`~/.evo/hub`, `EVO_HUB_HOME`) and builds a parser for each plugin from it;
 a `hub` command it has no parser for (a plugin, or a command of a plugin it knows, added since) makes it ask the hub
-again before it parses, and a hub it cannot ask leaves the list it kept (`evo_agents.hub.cli_plugin_commands`). A
+again before it parses, and a hub it cannot ask leaves the list it kept (`evo_agents.hub.cli.extensions`). A
 plugin whose id is a command of the CLI's own is left out. A command is a call of one route of the plugin with the
 member's own token: `http.path` below `/v1/x/<id>/`, or below `/v1/x/<id>/<project>/` with `project` true, which adds
 `--project`; each argument goes in the path (`{name}`), the query or the JSON body as `in` says, a `file` argument as

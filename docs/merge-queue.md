@@ -15,7 +15,7 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | Part | Where |
 | --- | --- |
 | the policy's keys, defaults and checks | `evo_agents/hub/autonomy.py` |
-| the policy's revisions and routes | `evo_agents/hub/server/autonomy_policies.py`, `evo_agents/hub/cli_policy.py` |
+| the policy's revisions and routes | `evo_agents/hub/server/autonomy_policies.py`, `evo_agents/hub/cli/policy.py` |
 | the forge secret and the GitLab client | `evo_agents/hub/server/forge.py`, `evo_agents/hub/server/gitlab.py` |
 | scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge_gate.py`, `evo_agents/hub/server/merge_judge.py` |
 | the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge_turn.py` |
@@ -23,7 +23,7 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
 | an admin's pass of a hold for a person | `evo_agents/hub/server/merge_pass.py` |
 | the merge check of a pull request on GitHub | `evo_agents/hub/server/merge_check.py`, `evo_agents/worker/merge_check_cli.py` |
-| the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli_merge.py` |
+| the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli/merge.py` |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
 | the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`); `merge_checks` (schema 0187, `tables_merge.py`) |
 

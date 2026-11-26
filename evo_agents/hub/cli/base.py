@@ -3,9 +3,13 @@
 - :class:`HubContext` gives a command the signed-in hub client and the project, each built on first use: from
   ``--project``, or from ``hub.project`` in the harness.yaml around the current directory.
 - :class:`HubCommand` runs in a :class:`HubContext` and turns a :class:`HubError` into ``error: <message>`` and the
-  exit status ``client.exit_status`` gives it, as ``cli_client.client_command`` does for a function.
+  exit status ``client.exit_status`` gives it.
 - :class:`ProjectResource` is the gateway to one collection of a project's API (``/v1/projects/<p>/<collection>``):
   the one place that quotes the project and the parts of a path. A command asks its resource, never builds a path.
+  :class:`HubRoutes` is the base of a gateway to routes outside a project (``/v1/tokens``, ``/v1/admin``).
+
+The helpers commands share live here too, the one copy of each: :func:`call_object` and :func:`when`;
+``signed_in`` and ``EXIT_FAILED`` are the client's, taken from here.
 
 Tests give commands a fake hub by patching :func:`signed_in` here once, for every class command.
 """
@@ -14,18 +18,41 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import UTC, datetime
 from functools import cached_property
 from typing import Any, ClassVar, Self
 from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg, Command, Context
-from evo_agents.hub.cli_client import signed_in
+from evo_agents.hub.client import EXIT_FAILED as EXIT_FAILED
 from evo_agents.hub.client import Credentials, Hub, HubError, exit_status
+from evo_agents.hub.client import signed_in as signed_in  # every hub command takes it from here
 from evo_agents.hub.mirror import harness_project, harness_root
 
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 PROJECT = Arg("--project", help=PROJECT_HELP)
 NO_PROJECT = "which project? pass --project, or run this inside a harness whose harness.yaml has hub.project"
+
+
+def call_object(hub: Hub, method: str, path: str, body: dict | None = None) -> dict:
+    """The hub's answer to ``method path``, for a route that answers a JSON object; HubError when it did not."""
+    found = hub.call(method, path, body)
+    if not isinstance(found, dict):
+        raise HubError(f"the hub answered {method} {path} with no JSON object")
+    return found
+
+
+def when(value: str | None) -> str:
+    """An ISO timestamp from the hub as ``YYYY-MM-DD HH:MM`` UTC; ``-`` for none."""
+    if not value:
+        return "-"
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(UTC)
+    return moment.strftime("%Y-%m-%d %H:%M")
 
 
 def project_of(args: argparse.Namespace) -> str:
@@ -99,3 +126,19 @@ class ProjectResource:
 
     def call(self, method: str, *parts: Any, body: dict | None = None, **query: Any) -> Any:
         return self.hub.call(method, self.path(*parts, **query), body)
+
+
+class HubRoutes:
+    """Routes of the hub outside a project, under ``path`` (Gateway): the base of a small gateway such as the tokens'
+    or the emails'. ``call`` sends a body only when there is one."""
+
+    path: ClassVar[str]
+
+    def __init__(self, hub: Hub):
+        self.hub = hub
+
+    def call(self, method: str, tail: str = "", body: dict | None = None) -> Any:
+        """The hub's answer to ``method <path><tail>``; ``tail`` is quoted by the caller."""
+        if body is None:
+            return self.hub.call(method, self.path + tail)
+        return self.hub.call(method, self.path + tail, body)

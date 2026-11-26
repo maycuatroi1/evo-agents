@@ -124,7 +124,7 @@ function Phase({ phase, last, ended }: { phase: TimelinePhase; last: boolean; en
       {gapText && !last ? (
         <span
           className={cn(
-            "mt-0.5 block font-mono text-[11px] leading-4 text-muted-foreground tabular-nums md:absolute md:-top-px md:left-[calc(50%+4px)] md:mt-0 md:-translate-x-1/2 md:bg-card md:px-1 md:whitespace-nowrap",
+            "mt-0.5 block font-mono text-xs leading-4 text-muted-foreground tabular-nums md:absolute md:-top-px md:left-[calc(50%+4px)] md:mt-0 md:-translate-x-1/2 md:bg-card md:px-1 md:whitespace-nowrap",
             phase.tone === "current" && "text-running",
             phase.tone === "waiting" && "text-attention",
           )}

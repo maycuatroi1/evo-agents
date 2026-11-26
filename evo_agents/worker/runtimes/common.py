@@ -18,6 +18,8 @@
   the budget's ``max_seconds``, and its outcome says the run stopped at its time cap (``cap`` ``time``). Codex reports
   no cost, so this is the cap that stops a Codex run.
 - The bodies of the events, in the shapes of the Agent Client Protocol's ``session/update`` (``docs/workers.md``).
+  An event of a subagent names the tool call that started it in its body's ``_meta``, ACP's place for what the
+  protocol does not define (``with_parent``, PARENT_TOOL_CALL); an event of the main agent names none.
 - The peak context of a run (``with_peak``): its usage holds PEAK_CONTEXT, the largest context one request of the
   model read in the run's main thread, as each runtime reports a request's tokens; null, never 0, when the runtime
   reported none. It holds FIRST_REQUEST too: the tokens the first request of the model in the main thread read from
@@ -296,6 +298,20 @@ def tool_update(call_id: str, status: str, text: str | None = None, raw_output=N
     if raw_output is not None:
         body["rawOutput"] = raw_output
     return AgentEvent("tool_call_update", body)
+
+
+# The key of an event's ``_meta`` that names the tool call (Claude Code's Agent or Task) whose subagent the event is of.
+PARENT_TOOL_CALL = "parentToolCallId"
+
+
+def with_parent(event: AgentEvent, parent: str | None) -> AgentEvent:
+    """``event`` as an event of the subagent that tool call ``parent`` started: its body's ``_meta`` names the call
+    (PARENT_TOOL_CALL), beside what it held. ``event`` itself when ``parent`` is None, an event of the main agent."""
+    if not parent:
+        return event
+    meta = event.body.get("_meta") if isinstance(event.body.get("_meta"), dict) else {}
+    body = {**event.body, "_meta": {**meta, PARENT_TOOL_CALL: parent}}
+    return AgentEvent(event.kind, body, event.at, event.files)
 
 
 def plan_status(value) -> str:

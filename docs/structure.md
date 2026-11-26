@@ -49,6 +49,7 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
+| `hub-server-not-cli` | `evo_agents.hub.server` does not import `evo_agents.hub.cli`, directly or through another module: a command imports what it shares with the server from a module outside the CLI | none |
 | `hub-runs-layers` | in `evo_agents.hub.server.runs`, `routes` imports `service` and `models`, `service` imports `models`, never the reverse; every module of the package is in one of the three | none |
 
 Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `plugins`, `schema`. import-linter reads imports inside
@@ -70,7 +71,8 @@ to a public function of `service`, which checks, queries and moves runs with SQL
 Each contract's `ignore_imports` only shrinks: the test fails a change that adds an entry main does not have. When
 you remove the import an entry names, remove the entry too (import-linter fails on an entry that matches nothing).
 An entry that names a module git sees renamed from main (`git mv`: a module of main gone and one of nearly the same
-content in its place) counts under the module's new name, so renaming the module and its entry adds nothing.
+content in its place, or a rename a commit of the branch made) counts under the module's new name, so renaming the
+module and its entry adds nothing.
 
 ## Budgets
 
@@ -110,8 +112,9 @@ minutes.
 The baseline only shrinks. Against main, it may hold no more errors of a rule in a module than main's does. A module
 main's baseline does not name has no entry at all: a new module, and a module split off another, type-checks clean,
 so a split fixes the errors of the code it moves. A module git sees renamed from main (`git diff --find-renames`
-against `origin/main`: a module of main gone and one of nearly the same content in its place, as `git mv` leaves it)
-is held to the errors main's baseline holds for its old path, rule by rule. A new file counts only once git tracks
+against `origin/main`: a module of main gone and one of nearly the same content in its place, as `git mv` leaves it;
+or a rename a commit since `origin/main` made, so a module moved in a commit of its own and rewritten after still
+counts) is held to the errors main's baseline holds for its old path, rule by rule. A new file counts only once git tracks
 it. `tighten-types` runs `basedpyright --writebaseline` and puts the old
 file back when the code has an error the old one did not hold; do not run `--writebaseline` by hand to make a new
 error pass.
@@ -147,17 +150,25 @@ its module (drop the underscore and update the callers), or move it into a modul
 ## Command classes
 
 New commands are classes of `evo_agents.clikit`, the command kit every package shares (standard library only, it
-imports no other package of evo_agents). The commands written as `cmd_*` functions with a `register_*` function move
-over one group at a time: `hub goal`, `hub plan`, `hub run`, `hub decision`, `hub notifications`, `hub inbox`,
-`hub stop` and `hub run-cause` so far, each in `evo_agents/hub/cli/` at the path of its command (`hub run` is the
-package `cli/run/`, `hub run-cause` the module `cli/run_cause.py`).
+imports no other package of evo_agents). Every `hub` command is a class in `evo_agents/hub/cli/`, at the path of its
+command word (`hub run` is the package `cli/run/`, `hub run-cause` the module `cli/run_cause.py`, `hub agent` the
+package `cli/agent/`); `hub release` lives with the Curator's commands in `cli/curator/`. Each module exports one node
+per command word, and `tree()` in `evo_agents/hub/cli/__init__.py` builds the whole `hub` tree as one `Group`. The
+server commands (`hub serve`, `worker`, `deliver`, `migrate`, `plugin-host`, `storage`) are `ServerCommand`s in
+`cli/__init__.py` itself, the one module of the CLI that imports the server's app (`evo_agents.hub.server.app`),
+and they need the hub-server extra. `cli/extensions.py` builds one `Group` per plugin of the hub's list, each command a `PluginCommand` over the
+plugin's route. The helpers commands share (`signed_in`, `when`, `call_object`) live in `cli/base.py`, the one copy
+of each. What a command calls but is not a command stays out of it: `hub kg`'s gateways are in
+`evo_agents/hub/kg_routes.py` and `cli/kg/resources.py`, the remote graph session `evo-agents kg` shares with it in
+`evo_agents/hub/kg_remote.py`, and `hub openapi` and `hub contract` call `evo_agents/hub/openapi.py` and
+`evo_agents/hub/contract.py`. The worker's and `evo-agents kg`'s commands are still functions.
 
 | Class | Pattern | What it does |
 | --- | --- | --- |
 | `Command` | Command, Template Method | `__call__` checks the options (`check`), builds the context, runs `run`, maps a failure the package knows to its exit status (`failed`) and shows the result. A command writes `run` and the hooks it needs. |
 | `ListCommand` | Template Method | `fetch` the items and turn each into a `row` under `columns`. |
 | `Group` | Composite | A command word holding commands and groups; it builds its argparse subtree. |
-| `Legacy` | Adapter | A `register_*(subparsers)` function as a node of a `Group`, while a package moves over. |
+| `Legacy` | Adapter | A `register_*(subparsers)` function as a node of a `Group`, while a package moves over; no `hub` command uses it any more. |
 | `Result`, `View` (`Text`, `Table`, `Views`, `Verbatim`, `Stderr`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. `Verbatim` writes a rendered document as it is, `Stderr` puts a view (a warning) on stderr in its place, and `Table(..., bare=True)` prints the header when there are no rows. A command that follows a stream (`hub run logs --follow`, `hub run watch`) writes what comes as it comes and returns the rest. |
 | `Arg` | Value Object | An argument as a value; options many commands share are constants (`PROJECT`), never mixins. |
 | `HubCommand`, `HubContext` (`evo_agents/hub/cli/base.py`) | Dependency injection | The signed-in hub client and the project, built on first use; a `HubError` becomes `error: ...` and the exit status `client.exit_status` gives it. Tests patch `base.signed_in` once. |

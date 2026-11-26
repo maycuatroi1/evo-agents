@@ -18,7 +18,7 @@ from sqlalchemy import func, insert, select
 
 from evo_agents.hub import plugin_calls, plugin_schema
 from evo_agents.hub import tables as hub_tables
-from evo_agents.hub.cli import cmd_migrate
+from evo_agents.hub.cli import MIGRATE
 from evo_agents.hub.migrate import MigrationError, migrate, status
 from evo_agents.hub.plugin_schema import PluginChain, PluginSchemaError
 from evo_agents.plugins import core
@@ -126,17 +126,17 @@ def test_a_plugin_chain_that_does_not_read_is_left_out_and_the_others_still_run(
 
 def test_plugin_status_changes_nothing_and_migrate_plugin_runs_one_chain(hub_db, ledger, capsys):
     args = Namespace(dsn=hub_db.dsn, status=True, plugin=None)
-    assert cmd_migrate(args) == 1  # the plugin's chain is behind
+    assert MIGRATE(args) == 1  # the plugin's chain is behind
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].startswith("hub\talembic_version\t") and lines[0].endswith("\tat head")
     assert lines[1] == f"northwind-ledger\t{VERSION_TABLE}\t-\tbehind, head {HEAD}"
     assert not exists(hub_db, VERSION_TABLE)
 
-    assert cmd_migrate(Namespace(dsn=hub_db.dsn, status=False, plugin="northwind-ledger")) == 0
+    assert MIGRATE(Namespace(dsn=hub_db.dsn, status=False, plugin="northwind-ledger")) == 0
     assert recorded(hub_db) == [HEAD]
-    assert cmd_migrate(args) == 0
+    assert MIGRATE(args) == 0
     assert capsys.readouterr().out.splitlines()[1] == f"northwind-ledger\t{VERSION_TABLE}\t{HEAD}\tat head"
-    assert cmd_migrate(Namespace(dsn=hub_db.dsn, status=False, plugin="lumen-none")) == 1
+    assert MIGRATE(Namespace(dsn=hub_db.dsn, status=False, plugin="lumen-none")) == 1
 
 
 def test_plugin_metadata_keeps_its_prefix_and_points_only_at_the_hubs_keys(ledger):

@@ -16,7 +16,7 @@ from evo_agents.kg.project import ProjectError
 
 
 def cmd_prune(args) -> int:
-    from evo_agents.hub import kg_cli
+    from evo_agents.hub.cli import kg as kg_cli
 
     if args.all and args.project:
         print("error: --all goes without --project", file=sys.stderr)
@@ -27,7 +27,7 @@ def cmd_prune(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     args.dry_run, args.graph_files = not args.delete, False
-    return kg_cli.cmd_prune(args)
+    return kg_cli.KG_PRUNE(args)
 
 
 def register(ksub) -> None:

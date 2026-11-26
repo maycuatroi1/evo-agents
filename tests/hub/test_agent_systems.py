@@ -22,7 +22,8 @@ import pytest
 
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub import cli_agents, cli_systems, system_spec, tables_kg, tables_systems
+from evo_agents.hub import system_spec, tables_kg, tables_systems
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.client import HubError
 from tests.hub import pg
 
@@ -228,7 +229,7 @@ class FakeHub:
 @pytest.fixture
 def fake_hub(monkeypatch):
     hub = FakeHub()
-    monkeypatch.setattr(cli_systems, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     return hub
 
 
@@ -267,7 +268,7 @@ def test_validate_and_delete_call_the_routes(fake_hub, tmp_path, capsys):
 def test_a_refused_put_prints_each_problem(monkeypatch, tmp_path, capsys):
     detail = [{"level": "error", "path": "edges[0]", "message": "uses_kg goes from agent to kg", "edge": 0}]
     refusal = HubError("agent system support has 1 error", 422, "invalid_request", {"detail": detail})
-    monkeypatch.setattr(cli_systems, "signed_in", lambda: (FakeHub(refusal), None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (FakeHub(refusal), None))
     path = tmp_path / "s.yaml"
     path.write_text(system_spec.to_yaml("support", SPEC))
     assert run_cli("system", "put", str(path), "--project", "northwind") == 1
@@ -287,11 +288,10 @@ def test_agent_create_and_edit_send_runs_on(monkeypatch):
     class Hub:
         def call(self, method, path, body=None):
             calls.append((method, body))
-            agent = {"handle": "lumen-triage", "version": 1, "permissions": {}}
+            agent = {"handle": "lumen-triage", "project": "northwind", "version": 1, "permissions": {}}
             return agent
 
-    monkeypatch.setattr(cli_agents, "signed_in", lambda: (Hub(), None))
-    monkeypatch.setattr(cli_agents, "_done", lambda args, agent, verb: 0)
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (Hub(), None))
     assert run_cli("agent", "create", "lumen-triage", "--name", "Triage", "--project", "northwind") == 0
     assert "runs_on" not in calls[-1][1]
     assert run_cli("agent", "create", "lumen-hub", "--name", "Hub", "--project", "northwind", "--runs-on", "hub") == 0

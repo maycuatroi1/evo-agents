@@ -1196,7 +1196,7 @@ def test_hub_tools_give_the_local_server_s_answers(hub, tmp_path):
 
 
 def test_kg_status_reports_the_vectors_the_hub_recorded_of_a_build_that_embedded(hub, tmp_path, monkeypatch):
-    from evo_agents.hub import kg_semantic_cli
+    from evo_agents.hub.cli.kg import semantic as kg_semantic_cli
     from evo_agents.kg import semantic
     from tests.kg.test_hybrid import FAKE, Words
 

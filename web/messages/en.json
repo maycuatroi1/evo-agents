@@ -6061,11 +6061,30 @@
           "checks": "{count, plural, one {Ran a check} other {Ran checks # times}}",
           "git": "{count, plural, one {Ran git} other {Ran git # times}}",
           "github": "{count, plural, one {Ran gh} other {Ran gh # times}}",
+          "hubRead": "{count, plural, one {Read from the hub} other {Read from the hub # times}}",
           "hub": "{count, plural, one {Reported to the hub} other {Reported to the hub # times}}",
           "commands": "{count, plural, one {Ran a command} other {Ran # commands}}",
           "tools": "Used {names}",
           "tool": "a tool",
           "failed": "{count} failed"
+        },
+        "delegation": {
+          "head": "{count, plural, one {Handed work to # sub-agent} other {Handed work to # sub-agents}}",
+          "label": "{count, plural, one {The sub-agent the agent handed work to} other {The # sub-agents the agent handed work to}}",
+          "unnamed": "Sub-agent",
+          "background": "in the background",
+          "status": {
+            "running": "Running:",
+            "completed": "Completed:",
+            "failed": "Failed:",
+            "stopped": "Stopped:"
+          },
+          "reported": "Reported:",
+          "doing": "Working: {activity}",
+          "working": "Working",
+          "noReport": "No report.",
+          "open": "Open",
+          "openLabel": "Open the profile of {name}"
         }
       },
       "tasks": {
@@ -6085,7 +6104,50 @@
           "completed": "Completed:",
           "failed": "Failed:",
           "stopped": "Stopped:"
-        }
+        },
+        "open": ", open its profile",
+        "agentsTitle": "Sub-agents",
+        "commandsTitle": "Background commands"
+      },
+      "agents": {
+        "title": "Agents",
+        "range": "Time range",
+        "thisStep": "This step",
+        "wholeRun": "Whole run",
+        "main": "Main agent",
+        "commands": "Background commands",
+        "lanes": "Agents on a timeline",
+        "open": ", open",
+        "openMain": ", open its trace",
+        "openCommand": ", show in trace",
+        "status": {
+          "working": "Working",
+          "waiting": "Waiting for a sub-agent",
+          "running": "Running",
+          "completed": "Completed",
+          "failed": "Failed",
+          "stopped": "Stopped",
+          "idle": "Not running"
+        },
+        "commandCount": "{live, plural, =0 {{count, plural, one {# command} other {# commands}}, none running} other {# of {count} running}}",
+        "waitingFor": "Waiting for {names}",
+        "track": "{name}: {work} working, {wait} waiting for sub-agents",
+        "trackAgent": "{name}: {work} of work",
+        "trackCommands": "{name}: {count, plural, one {# command} other {# commands}}",
+        "handoff": "Handed work to {agent}",
+        "returned": "{agent} reported back",
+        "legendWork": "Working",
+        "legendWait": "Waiting for a sub-agent",
+        "legendHandoff": "Handed work over",
+        "legendReturn": "Report came back",
+        "legend": "Key",
+        "now": "now",
+        "finished": "{count, plural, one {# finished sub-agent} other {# finished sub-agents}}",
+        "hideFinished": "Hide finished sub-agents",
+        "tokens": "{tokens} tokens",
+        "calls": "{count, plural, one {# tool call} other {# tool calls}}",
+        "stepDone": "Step {step} reported done",
+        "legendStep": "A step reported done"
       },
       "usage": {
         "title": "Usage",
@@ -6143,7 +6205,34 @@
         "leftOut": "{count, plural, one {# earlier session is} other {# earlier sessions are}} left out of this list.",
         "note": "The log notes each step's session as it starts."
       },
+      "soFar": {
+        "title": "Step {step} so far",
+        "line": "From {sources}, updated {time}",
+        "from": {
+          "checklist": "the agent's checklist",
+          "subagent": "the sub-agents' results",
+          "done_when": "the step's done-when"
+        },
+        "source": {
+          "checklist": "Checklist",
+          "subagent": "Sub-agent",
+          "done_when": "Done when"
+        },
+        "column": {
+          "done": "Done",
+          "now": "Now",
+          "next": "Next"
+        },
+        "none": "Nothing yet.",
+        "failed": "Failed",
+        "empty": "The agent has not written a checklist, no sub-agent has reported and the step has no done-when, so there is nothing to build this from yet.",
+        "openAgent": "Open the profile of {name}"
+      },
       "planSteps": {
+        "doneWhen": "Done when",
+        "criteria": "{met} of {total} criteria met",
+        "criterionMet": "Met",
+        "criterionOpen": "Not yet",
         "title": "Steps of the plan",
         "count": "{done} of {total} done ({percent}%)",
         "failed": "The plan could not be loaded.",
@@ -6354,7 +6443,12 @@
         "headlessOn": "Headless run on {worker}.",
         "interactiveOn": "Interactive run on {worker}.",
         "headless": "Headless run.",
-        "interactive": "Interactive run."
+        "interactive": "Interactive run.",
+        "labelMain": "Message the main agent",
+        "placeholderMain": "Message the main agent. {name} does not read this.",
+        "toMain": "You are viewing {name}: a message goes to the main agent, not to it.",
+        "toMainAgent": "A message goes to the main agent.",
+        "placeholderToMain": "Message the main agent. It reads this on its next turn."
       },
       "facts": {
         "title": "Details",
@@ -6816,6 +6910,78 @@
         "weeklyLeft": "{percent}% of the week left",
         "fiveHourUsed": "{percent}% of the five-hour window used",
         "error": "Problem"
+      },
+      "agent": {
+        "back": "Back to the main agent",
+        "tabs": "Profile of {name}",
+        "brief": "Brief",
+        "activity": "Activity",
+        "result": "Result",
+        "status": {
+          "running": "Running",
+          "completed": "Completed",
+          "failed": "Failed",
+          "stopped": "Stopped"
+        },
+        "noBrief": "The run's events do not hold this sub-agent's brief.",
+        "showRaw": "Show the raw tool call",
+        "hideRaw": "Hide the raw tool call",
+        "noActivity": "This sub-agent has no events of its own yet.",
+        "noActivityId": "The run's events do not say which call started this sub-agent, so its own events cannot be told apart.",
+        "noResultYet": "No report yet: the sub-agent is still working.",
+        "noResult": "The sub-agent ended without a report.",
+        "askedFor": "The brief asks it to report"
+      },
+      "views": {
+        "label": "Views of this run",
+        "live": "Live",
+        "progress": "Progress",
+        "diff": "Diff"
+      },
+      "progress": {
+        "title": "Progress",
+        "steps": "Steps of the run, newest first",
+        "loading": "Reading the plan.",
+        "noPlan": "The plan of this run could not be read, so there are no steps to show.",
+        "so": {
+          "title": "Run so far",
+          "steps": "{done} of {total} steps are done.",
+          "now": "Step {step}, {title}, is in progress.",
+          "nowBare": "Step {step} is in progress.",
+          "allDone": "Every step is done.",
+          "agents": "{count, plural, one {# sub-agent has} other {# sub-agents have}} worked on it{running, plural, =0 {} other {, # still running}}.",
+          "agentsFailed": "{count, plural, one {# sub-agent ended in failure.} other {# sub-agents ended in failure.}}",
+          "commits": "{count, plural, one {# commit} other {# commits}} so far.",
+          "empty": "Nothing to summarise yet: the plan has no steps this run reported and no sub-agent has started.",
+          "from": "Built from the plan, its evidence and the run's events. No model wrote it."
+        },
+        "pending": {
+          "title": "Not started",
+          "more": "{count, plural, one {and # more step} other {and # more steps}}"
+        },
+        "card": {
+          "step": "Step {step}",
+          "untitled": "Untitled step",
+          "running": "Running",
+          "took": "Took",
+          "for": "{time} so far",
+          "finished": "Finished {time}",
+          "agents": "Agents that took part",
+          "main": "Main agent",
+          "openAgent": "Open the profile of {name}",
+          "commits": "Commits",
+          "verify": "Verify",
+          "verifyPassed": "Verify passed",
+          "verifyFailed": "Verify failed",
+          "noEvidence": "The plan records no commit or verify for this step.",
+          "reached": "Done when, reached",
+          "toReach": "Done when, not yet reached",
+          "criteria": "{met} of {total} criteria met",
+          "trace": "Trace of this step",
+          "diff": "Diff",
+          "openStep": "Step page",
+          "openLive": "Open in Live"
+        }
       }
     },
     "diff": {

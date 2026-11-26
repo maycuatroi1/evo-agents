@@ -137,7 +137,7 @@ On the web, the Secrets page (`/secrets`) lists the visitor's secrets and adds, 
 field is a password field the page never fills: a replace asks for the value again, and the field is emptied as soon
 as the form is sent, whatever the hub answers.
 
-From the command line (`evo_agents/hub/cli_secrets.py`):
+From the command line (`evo_agents/hub/cli/secret.py`):
 
 ```sh
 pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
@@ -494,7 +494,7 @@ evo-agents hub account login claude-b --paste                         # asks for
 ```
 
 `account login NAME [--project P ...] [--worker W ... | --pool NAME ...] [--expires YYYY-MM-DD] [--paste] [--json]`
-(`evo_agents/hub/cli_secrets.py`) first does every check that needs no token: the name, the day, that the machine is
+(`evo_agents/hub/cli/secret.py`) first does every check that needs no token: the name, the day, that the machine is
 signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each worker is one of the caller's
 (`GET /v1/workers`), or each pool (`GET /v1/worker-pools`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
 unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and

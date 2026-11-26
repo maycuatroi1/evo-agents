@@ -16,7 +16,8 @@ import pytest
 
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub import cli_systems, system_spec
+from evo_agents.hub import system_spec
+from evo_agents.hub.cli import base as cli_base
 from tests.hub import pg
 from tests.hub.test_agent_systems import SPEC, run_cli
 
@@ -82,7 +83,7 @@ class FakeHub:
 
 def test_default_and_ops_call_their_routes(monkeypatch, capsys):
     hub = FakeHub()
-    monkeypatch.setattr(cli_systems, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     assert run_cli("system", "default", "--project", "northwind", "--json") == 0
     assert {"slug", "name", "ops", "limits"} <= set(json.loads(capsys.readouterr().out))
     assert run_cli("system", "default", "dev", "--project", "northwind") == 0

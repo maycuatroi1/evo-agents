@@ -1,4 +1,4 @@
-"""``evo-agents hub secret share|unshare`` and ``hub account share|unshare`` (``evo_agents.hub.cli_shares``), as
+"""``evo-agents hub secret share|unshare`` and ``hub account share|unshare`` (``evo_agents.hub.cli.secret.shares``), as
 criterion a2 of plan credential-sharing names them: the commands and their options are in the contract, ``--json``
 prints the keys of CredentialShare, ``hub secret list --json`` and ``hub account show --json`` gain ``shares``, a
 subscription token without ``--ack-terms`` prints TERMS_WARNING whole and exits non-zero, and no command prints a

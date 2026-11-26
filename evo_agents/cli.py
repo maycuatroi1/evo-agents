@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         parser = build_parser()
         if argv[:1] == ["hub"]:
-            from evo_agents.hub.cli_plugin_commands import refreshed
+            from evo_agents.hub.cli.extensions import refreshed
 
             if refreshed(argv):  # a command a plugin added since the list was kept: read the hub's list again
                 parser = build_parser()

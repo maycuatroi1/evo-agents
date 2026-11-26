@@ -1,5 +1,5 @@
 """The autonomy policy of a project (``evo_agents.hub.autonomy``, ``evo_agents.hub.server.autonomy_policies`` and
-``evo_agents.hub.cli_policy``), as criterion a2 of plan gitlab-merge-queue names it: an admin of the project writes
+``evo_agents.hub.cli.policy``), as criterion a2 of plan gitlab-merge-queue names it: an admin of the project writes
 the policy whole as its next revision, with the keys and defaults the member approved on 2026-10-21 (no key caps a
 diff or the merges of a day); every revision is kept, audited, read back and compared; a key a revision leaves out
 reads as its default; a project with no policy has every repo off. Its proposals by @builder are in
@@ -16,7 +16,7 @@ import pytest
 
 from evo_agents.hub import autonomy
 from evo_agents.hub.autonomy import Key, RepoFacts
-from evo_agents.hub.cli_policy import read_policy
+from evo_agents.hub.cli.policy import read_policy
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys

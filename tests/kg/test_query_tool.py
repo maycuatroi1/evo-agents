@@ -17,7 +17,7 @@ class FakeSession:
 @pytest.fixture
 def calls(monkeypatch):
     found = []
-    monkeypatch.setattr("evo_agents.hub.kg_cli.open_session", lambda backend, project, sink: FakeSession(found))
+    monkeypatch.setattr("evo_agents.hub.kg_remote.open_session", lambda backend, project, sink: FakeSession(found))
     return found
 
 

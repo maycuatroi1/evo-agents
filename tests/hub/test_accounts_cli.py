@@ -73,8 +73,8 @@ def test_a_number_out_of_bounds_is_refused_before_the_hub_is_asked(monkeypatch, 
     assert result.err == f"error: {problem}\n"
 
 
-def test_show_tells_an_oauth_account_that_needs_a_new_sign_in_and_which_command_renews_it(capsys):
-    from evo_agents.hub.cli_secrets import _print_account
+def test_show_tells_an_oauth_account_that_needs_a_new_sign_in_and_which_command_renews_it():
+    from evo_agents.hub.cli.account.views import account_lines
 
     account = {
         "name": "oauth-a",
@@ -100,8 +100,7 @@ def test_show_tells_an_oauth_account_that_needs_a_new_sign_in_and_which_command_
         "cost_7d_usd": 0,
         "held_by": [],
     }
-    _print_account(account)
-    out = capsys.readouterr().out
+    out = "".join(f"{line}\n" for line in account_lines(account))
     assert out.startswith(
         f"Account oauth-a ({VAR}): needs a new sign-in: run `evo-agents hub account oauth-login oauth-a`.\n"
     )
@@ -119,8 +118,8 @@ if pg.DSN:
 
 
 @needs_pg
-def test_a_service_account_shows_no_cost(capsys):
-    from evo_agents.hub.cli_secrets import _print_account
+def test_a_service_account_shows_no_cost():
+    from evo_agents.hub.cli.account.views import account_lines
 
     account = {
         "name": "gitlab-a",
@@ -146,8 +145,7 @@ def test_a_service_account_shows_no_cost(capsys):
         "cost_7d_usd": None,
         "held_by": [],
     }
-    _print_account(account)
-    out = capsys.readouterr().out
+    out = "".join(f"{line}\n" for line in account_lines(account))
     assert "  Runs: 2 in 24 hours, 3 in 7 days.\n" in out and "$" not in out
 
 

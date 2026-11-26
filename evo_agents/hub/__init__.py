@@ -8,10 +8,10 @@ print``). ``kg_graph`` and ``kg_web`` (the graph cache and the reads from it) ne
 Postgres query that lists the built graphs is ``built_graphs`` in ``server.kg``.
 
 Every other module needs only the core package, so ``evo-agents`` and the client commands work on a core install:
-``cli`` and ``cli_client`` (the ``hub`` commands and sign-in), ``client`` (HTTP to the hub), ``config`` and ``log``,
+``cli`` and ``cli.session`` (the ``hub`` commands and sign-in), ``client`` (HTTP to the hub), ``config`` and ``log``,
 ``access``, ``registration`` and ``registry`` (projects), ``plans``, ``plan_writes``, ``cli.plan``, ``plan_diff`` and
-``mirror`` (plans and their copies in a harness), ``memory`` and ``cli_memory``, ``skills``, ``skill_sync`` and
-``cli_skills``, ``kg_cli``, ``kg_push`` and ``kg_ingest`` (knowledge graphs), ``mcp_proxy`` and ``mcp_tools`` (``hub mcp``),
+``mirror`` (plans and their copies in a harness), ``memory`` and ``cli.memory``, ``skills``, ``skill_sync`` and
+``cli.skills``, ``cli.kg``, ``kg_push`` and ``kg_ingest`` (knowledge graphs), ``mcp_proxy`` and ``mcp_tools`` (``hub mcp``),
 ``hooks`` (the evo-hub plugin's hooks), ``openapi`` and ``contract`` (the API document and the command line
 contract, ``hub contract check`` included).
 

@@ -152,10 +152,12 @@ them; each family has a fallback face with next/font's metrics, so the swap move
 | `small` | 13 / 18 px | 400 | `text-[13px] leading-[18px]` | secondary lines, descriptions, chip labels |
 | `caption` | 12 / 16 px | 400 | `text-xs` | timestamps, column headers, helper text |
 | `overline` | 11 / 16 px, 0.06em, uppercase | 600 | `text-[11px] leading-4 font-semibold tracking-[0.06em] uppercase` | sidebar and palette group labels only |
+| `prose` | 15 / 24 px | 400 | `max-w-[80ch] text-[15px] leading-6` | what a person wrote or reads as text: an agent's words and thinking, a prompt, a sub-agent's report, a step report; about 80 characters a line |
 | `metric` | 24 / 30 px, -0.01em | 600 | `text-2xl leading-[30px] font-semibold tabular-nums` | the metric strip, progress headers |
 | `code` | 13 / 20 px | 400 | `font-mono text-[13px] leading-5` | log lines, commands, inline code, the terminal |
 | `code-small` | 12 / 16 px | 400 | `font-mono text-xs` | identifiers in chips and cells |
 
+- Nothing is set under 12 px on the run page: the `overline` and `kbd` 11 px stay in the sidebar and palette. Mono on the run page is for commands, paths, ids and figures (`code` 13 px, times and durations `caption` 12 px); a tool's output keeps its dark block in `code`.
 - Mono is for values, never for titles: a plan's title is `page-title`; its id sits in the breadcrumb and details.
 - A number that lines up in a column, a count or a duration uses `tabular-nums`.
 - Inputs, text areas and selects use 16 px below 768 px (`text-base md:text-sm`, `max-md:text-base` on
@@ -1392,7 +1394,7 @@ Shared pieces built on them:
   by default whose line says what the agent gets (the owner's access on every project, hub admin when they have it)
   and never gets (their secrets, tokens and workers), and that it ends with the run; checked, a warning on
   `attention-soft` says the risk (what the agent reads may steer it with that access) and where to revoke it. The body
-  sends `as_me` either way. A run that runs as its owner shows, first in the side column, a Hub access card
+  sends `as_me` either way. A run that runs as its owner shows, in the side column after Usage, a Hub access card
   (`runs/run-access.tsx`) to everyone who reads the run: "Runs as octo" as an `info` pill ("Ran as octo", neutral,
   once it ended), what the agent may do, who let it (the owner, the one member who may), since when
   (`as_owner_since`) and when it ends; the owner alone gets Revoke (`quiet-danger`, `ShieldOff`) while the run is
@@ -1750,7 +1752,10 @@ Shared pieces built on them:
   what they did rather than by tool: Explored (reads, searches, `cat`, `sed -n`, `grep`, `ls`, `git status` and
   `diff`; "Explored 7 files" when the calls name their files), Edited ("Edited 2 files" with the lines added and
   removed), Ran tests (`pytest`, `vitest`, `playwright`, `pnpm test`), Ran checks (`ruff`, `mypy`, `eslint`, `tsc`,
-  `lint-imports`, `pnpm typecheck`), git, gh, the hub's CLI, other commands, other tools. A row (`GroupRow`,
+  `lint-imports`, `pnpm typecheck`), git, gh, the hub's CLI named by what it does (Read from the hub for `hub plan
+  handoff`, `hub plan show`, `hub run show`, `worker plan` and the other reads; Reported to the hub for `worker step`,
+  `worker output`, `worker chat post`, a decision and the other writes; `hubAccess`, `trace-groups.ts`), other commands,
+  other tools. A row (`GroupRow`,
   `trace-tools.tsx`) is the work's 16 px Lucide icon, its words in 14 px (15 px under 768 px), how many failed in
   `danger`, its files, programs or last command in mono 12 px `fg-subtle` under them, and its time from the first
   call's start to the last call's end on the right (a clock in `running` while its last call runs, the trace's one
@@ -1761,19 +1766,80 @@ Shared pieces built on them:
   are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
   group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
   caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
-- Running now (`run-tasks-panel.tsx`, `run-tasks.ts`): over the Trace, and on a phone between the decision and the
-  trace's preview, a box on `card` lists what the run has going besides its main thread, read from the task events
-  Claude Code sends and the worker logs as `output` events (`task_started`, `task_progress`, `task_updated`,
-  `task_notification`): each subagent with its type in mono, "in the background" when it is, what it does now (its
-  last call, `Bash: Wait for verify run`) and its tool calls and tokens so far, the commands it runs indented under
-  it; then the main agent's commands in the background. Each row has its 16 px icon (`Bot`, `SquareTerminal`) in
-  `running` and its time so far on the right in `running` mono; the head carries the live dot, "Running now" and how
-  many sub-agents and commands run. A row is a button that shows the call that started it in the Trace (Show in
-  trace, `ListTree` under the pointer). The ones that ended fold under "5 finished", each with its end (`CircleCheck`
-  `success`, `CircleX` `danger`, `CircleSlash` muted), the first line of what it reported and its duration, eight
-  shown before "Show all". A command the main agent runs in the foreground is left out (the Trace shows it running),
-  and so is a subagent's command once it ended. The box shows only while something runs on a running run; Codex and
-  opencode send no task events, so their runs never show it. Past 40 % of the window its list scrolls.
+- Live, Progress and Diff (`run-view-tabs.tsx`, `progress-view.tsx`, `progress-step-card.tsx`, `progress-model.ts`): a
+  plan run, or a run of a plan step, has three tabs under its head, a `muted/60` pill row of 36 px tabs (44 px and
+  equal widths on a phone, `aria-current="page"` on the one shown). Live is the page as described below (Step N so far,
+  the Agents section, the session); Progress is `?view=progress`; Diff is a link to the run's diff route, shown once the
+  worker uploaded one. Live stays mounted, hidden, while Progress shows, so the terminal and the trace keep their
+  state; opening an agent or a call in the trace from Progress goes to Live first. Progress shows the whole run step by
+  step with no model call and no request of its own, from the plan the page holds and the run's events, in one column
+  from the top: "Run so far", a `card` with a paragraph built from figures (steps done of the total, the step the run
+  works on, sub-agents and how many still run, commits), 15/24 px in the reading measure, and a 12 px line naming the
+  sources; the Agents section in Whole run mode (no range switch, a "Whole run" label), where each step's end is a
+  vertical tick with its key on the main agent's lane (the main agent has a lane even when no sub-agent started);
+  then one card per step, newest first, the running step on top. Step boundaries are read from the main agent's
+  `evo-agents worker step <id> done` calls and the plan's `doneAt`: a step began where the one before ended. A card
+  has the step's state icon, number and title (a link to its page), its status and how long it took, the agents that
+  took part (the main agent and each sub-agent that started in its span, each opening its profile), the commits and the
+  verify its evidence names (a commit links to the forge), what it reached (its `done_when` with a check, and "2 of 3
+  criteria met"), and three actions: Trace (the call that ended the step, in Live), Diff and Open step. The running
+  step's card holds Step N so far (Done, Now and Next, without its own frame) and "Open in Live". Steps not started
+  fold into one dashed box of at most three lines and "and N more". On a phone every part is one column with no
+  sideways scroll, every action and sub-agent chip is 44 px, and the message box is pinned to the bottom of the window
+  (`sticky bottom-2`, over the safe area), saying "A message goes to the main agent."
+- Step N so far (`step-so-far-card.tsx`, `step-so-far.ts`): a card under the head of a plan run, over the session and
+  under the decision, for the step the run works on ("Step 2 so far"). Three columns, Done, Now and Next (stacked on a
+  phone, hairlines between), built with no model call from three sources in order of preference: the main
+  agent's latest checklist (its `plan` event, TodoWrite; a subagent's own list is left out), the subagents' state and
+  reports (running ones in Now, ended ones in Done with their report, a failed one marked), and the step's `done_when`
+  from the plan (in Next when the checklist has nothing left to do). Each item is 15/24 px prose with a 12 px source
+  label under it (Checklist, Sub-agent, Done when); an item of Now wears the face of whoever does it (the run's agent
+  for the main agent, a letter on slate for a subagent, which opens that subagent's profile). The line at the head's
+  end names the sources and the time they last changed ("From the agent's checklist, updated 10:42"). With no source
+  the card says so in one sentence instead of making something up.
+- The Plan card of the side column (`run-plan-steps.tsx`, `step-focus.tsx`): after the decision a run waits on, before
+  Details, Usage and Hub access. The step in progress is open under its row on its `done_when` and the criteria its
+  `acceptance` names (looked up in the plan's `acceptance`), "1 of 3 criteria met", each with a check or an empty circle
+  and an sr-only "Met" or "Not yet".
+- Agents (`agent-lanes.tsx`, `agent-lanes-model.ts`; `run-tasks.ts` reads the tasks): over the Trace, and on a phone
+  between the decision and the trace's preview, a box on `card` with one lane per agent on one shared time axis, built
+  from the events and task events the page already has (no API of its own): the main agent, each sub-agent (newest
+  first) and one lane for the background commands. The head is the 14 px "Agents" title that folds the box and a
+  two-button range switch, "This step" and "Whole run" (`aria-pressed`, `foreground` fill when on, 44 px on a phone):
+  "This step" starts after the last `worker step <id> done` the main agent ran, "Whole run" at the run's first event;
+  the axis ends at now while the run works, and its two times sit under the lanes. A lane has the avatar on the left
+  (a 32 px `muted` circle with a 16 px `Brain`, `Bot` or `SquareTerminal`), the name (14 px, `foreground`, a
+  sub-agent's type in mono and "in the background" after it), its status (12 px `muted-foreground`, with the figures
+  of a sub-agent: tool calls and tokens; `CircleCheck`, `CircleX` and `CircleSlash` mark the ones that ended, never
+  color alone) and what it does now (12 px `fg-subtle`; mono for a running sub-agent's last call and a command, which
+  is named by rule G1). On the right the track is a 24 px bar on `muted`: a stretch of work is a solid segment
+  (`running` while it goes on, `fg-subtle` or `muted-foreground` once it ended, `danger` when it failed), and the main
+  agent's time waiting on a sub-agent it did not send to the background is a dashed, empty segment (so it differs by
+  shape, not color); a filled `brand` diamond marks where the main agent handed work over and a hollow one where the
+  sub-agent's report came back (a title each, and the track's `aria-label` sums the work and the wait). A key between the two times of the
+  axis names the four. Picking a lane opens its agent: the main agent's, its trace; a sub-agent's, its profile on the
+  Trace tab (below); the commands', the call of the newest one in the trace (Show in trace). The box shows whenever the
+  run has a sub-agent or a background command, running or not; a run with many sub-agents does not grow the page: past
+  three that ended they fold under one line ("6 finished sub-agents", `aria-expanded`), and the list scrolls past 30 %
+  of the window. The one moving thing on the page stays the StatusBadge dot: the lanes have no pulse, a running stretch
+  is drawn in `running` and its end moves with the clock. Under 768 px a lane is a 64 px row, the track under its text
+  at 20 px. Codex and opencode send no task events and start no sub-agent, so their runs never show it.
+- The main agent's trace holds only the main agent's work: an event whose body carries `_meta.parentToolCallId` is a
+  subagent's and shows in that subagent's profile; an event without it stays as before. Where the main agent hands
+  work to subagents (`Agent`, `Task` before, calls one after the other), the trace shows one delegation card
+  (`agent-delegation.tsx`, `Users` icon, "Handed work to 2 sub-agents"): a hairline list on `card`, a line per
+  subagent with its status icon, name, type in mono, time, the first lines of its brief, then what it reported, what
+  it does now (`running`) or "No report", and an Open button (44 px on a phone) to its profile. A phone's trace
+  preview shows the card as one row with the subagents' names.
+- A subagent's profile (`agent-profile.tsx`, `use-run-agents.ts`) takes the place of the main agent's trace in the
+  Trace tab at `?agent=<task id>&tab=brief|activity|result` (the address keeps it, Back to the main agent drops it, the
+  main trace stays mounted under it): Back to the main agent, the subagent's name (`Bot`), its status, type in mono and
+  figures, then three tabs. Brief is what the main agent asked of it, as Markdown in the reading measure, with the raw
+  `Agent` call (its input as JSON in a TermBlock) behind "Show the raw tool call". Activity is its own events, read by the
+  trace's rules (groups, words, failures), with its own typing dots while it works. Result is its whole final report
+  (a step report as the trace renders one), or, until it has one, "No report yet" and what its brief asks it to
+  report. With no tab named it opens on Result once there is one, else Activity, else Brief. Under 768 px the profile
+  fills the session's screen and the screen's back button closes it first.
 - `usage-meter.tsx`, the kit's UsageMeter, and `usage-model.ts`: the tokens the runtime reported as one total, a bar of
   cache read, input, output and reasoning in `chart-5`, `chart-1`, `chart-3` and `chart-4` (each part at least 3 px),
   a row per part with its share ("under 0.1%" for a part that rounds to nothing), cache writes said under it, and the
@@ -1793,7 +1859,8 @@ Shared pieces built on them:
   itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
 - The composer (`run-composer.tsx`), the kit's Composer: one bordered box with the focus ring on the box, the textarea
   without an edge of its own, and a bar that says what the run is ("Headless run on laptop.") beside Send and its key
-  (Cmd or Ctrl with Enter, as the DecisionCard's).
+  (Cmd or Ctrl with Enter, as the DecisionCard's). While a subagent's profile is open, its label, placeholder and bar
+  say that a message goes to the main agent, not to the subagent being viewed.
 - The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows after the Raw log tab in the
   session card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while
   the run is leased, running or interactive, and stays for the rest of the visit once shown. Every tab stays mounted

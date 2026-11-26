@@ -1,3 +1,4 @@
+import { AGENT_TOOLS } from "./run-tasks";
 import { commandGist } from "./shell-command";
 import type { ToolCall, ToolItem, TraceItem } from "./trace-model";
 
@@ -6,10 +7,11 @@ import type { ToolCall, ToolItem, TraceItem } from "./trace-model";
  * ("Explored 9 files", "Ran tests 3 times, 1 failed") rather than by tool ("Bash"), as Codex and Claude Code fold theirs.
  * The runtime's bookkeeping events (`raw` items) neither show nor cut a group; the agent's words, a decision, a person's
  * message, a checklist, a move and a system line do cut it. A failed call stays in its group's count and shows under its
- * row, open; a search that finds nothing (exit 1 of grep or rg) is not a failure.
+ * row, open; a search that finds nothing (exit 1 of grep or rg) is not a failure. The `Agent` calls the main agent makes
+ * one after the other, the subagents it hands work to at once, are one delegation instead (agent-delegation.tsx).
  */
 
-export const INTENTS = ["explore", "edit", "test", "check", "git", "github", "hub", "run", "tool"] as const;
+export const INTENTS = ["explore", "edit", "test", "check", "git", "github", "hub-read", "hub", "run", "tool"] as const;
 export type Intent = (typeof INTENTS)[number];
 
 export type ToolGroup = {
@@ -22,7 +24,22 @@ export type ToolGroup = {
   calls: ToolItem[];
 };
 
-export type NormalItem = Exclude<TraceItem, { type: "tool" } | { type: "raw" }> | ToolGroup;
+/** One handing of work to subagents: the `Agent` calls made one after the other, each a subagent. */
+export type Delegation = {
+  type: "delegation";
+  /** The first call's key, as a group's. */
+  key: string;
+  seq: number;
+  at: string;
+  calls: ToolItem[];
+};
+
+export type NormalItem = Exclude<TraceItem, { type: "tool" } | { type: "raw" }> | ToolGroup | Delegation;
+
+/** A call that starts a subagent: Claude Code's `Agent` (`Task` before). */
+export function isAgentCall(tool: Pick<ToolCall, "title">): boolean {
+  return tool.title !== null && AGENT_TOOLS.has(tool.title);
+}
 
 /** Wrappers before the program a command runs: `timeout 580`, `env A=1`, `uv run`, `time`, assignments. */
 const PREFIX = /^(?:(?:timeout\s+\S+|env|time|nice|uv\s+run|poetry\s+run|[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*))\s+)+/;
@@ -34,6 +51,22 @@ const CHECK = /^(?:ruff|mypy|pyright|eslint|tsc|lint-imports|prettier|biome|blac
 /** The program a shell line runs once its setup and wrappers are off: `cd x && timeout 9 pytest -q` as `pytest -q`. */
 export function programOf(command: string): string {
   return commandGist(command).replace(PREFIX, "").trim();
+}
+
+const HUB_PROGRAM = /^(?:evo-agents|evo-ak|evo)\b/;
+/** A word of a hub command that only reads: `hub plan handoff`, `hub run show`, `hub decision list`. */
+const HUB_READ_WORDS = new Set(["show", "list", "get", "handoff", "read", "search", "status", "events", "inbox", "tail", "logs", "info", "whoami"]);
+
+/**
+ * Whether a hub command reads or reports. `evo-agents hub plan handoff`, `hub plan show`, `hub run show`, `worker plan`
+ * and `harness show` read from the hub; `worker step`, `worker output`, `worker chat post`, a decision asked or answered,
+ * `plan patch` and every command that is not known to read report to it.
+ */
+export function hubAccess(command: string): "read" | "write" {
+  const words = programOf(command).split(/\s+/).slice(1);
+  if (words[0] === "worker" && words[1] === "plan") return "read";
+  const head = words.filter((word) => !word.startsWith("-")).slice(0, 4);
+  return head.some((word) => HUB_READ_WORDS.has(word)) ? "read" : "write";
 }
 
 /** What kind of work a call does. */
@@ -54,7 +87,7 @@ export function intentOf(tool: Pick<ToolCall, "kind" | "arg" | "title">): Intent
       if (CHECK.test(program)) return "check";
       if (/^git\b/.test(program)) return "git";
       if (/^gh\b/.test(program)) return "github";
-      if (/^(?:evo-agents|evo-ak|evo)\b/.test(program)) return "hub";
+      if (HUB_PROGRAM.test(program)) return hubAccess(program) === "read" ? "hub-read" : "hub";
       return "run";
     }
     default:
@@ -76,8 +109,19 @@ export function callRunning(tool: ToolCall): boolean {
 export function groupByIntent(items: readonly TraceItem[]): NormalItem[] {
   const shown: NormalItem[] = [];
   let group: ToolGroup | null = null;
+  let delegation: Delegation | null = null;
   for (const item of items) {
     if (item.type === "raw") continue;
+    if (item.type === "tool" && isAgentCall(item.tool)) {
+      group = null;
+      if (delegation) delegation.calls.push(item);
+      else {
+        delegation = { type: "delegation", key: `d${item.key}`, seq: item.seq, at: item.at, calls: [item] };
+        shown.push(delegation);
+      }
+      continue;
+    }
+    delegation = null;
     if (item.type === "tool") {
       const intent = intentOf(item.tool);
       if (group && group.intent === intent) {
@@ -160,5 +204,5 @@ export function groupDiff(group: Pick<ToolGroup, "calls">): { added: number; rem
 
 /** All tool calls of the trace, for "121 tool calls". */
 export function countCalls(items: readonly NormalItem[]): number {
-  return items.reduce((sum, item) => sum + (item.type === "group" ? item.calls.length : 0), 0);
+  return items.reduce((sum, item) => sum + (item.type === "group" || item.type === "delegation" ? item.calls.length : 0), 0);
 }

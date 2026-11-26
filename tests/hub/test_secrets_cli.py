@@ -21,9 +21,9 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import cli_secrets
-from evo_agents.hub.cli_bindings import rebinding
-from evo_agents.hub.cli_secrets import Refused, expires_at, read_value
+from evo_agents.hub.cli.secret import values
+from evo_agents.hub.cli.secret.bindings import rebinding
+from evo_agents.hub.cli.secret.values import Refused, expires_at, read_value
 from evo_agents.hub.contract import commands, own_parser
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
@@ -74,7 +74,7 @@ def asked(monkeypatch):
         prompts.append(prompt)
         return answer.value
 
-    monkeypatch.setattr(cli_secrets.getpass, "getpass", getpass)
+    monkeypatch.setattr(values.getpass, "getpass", getpass)
     return SimpleNamespace(prompts=prompts, answer=answer)
 
 

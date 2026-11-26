@@ -1,6 +1,6 @@
 """``evo-agents hub run send RUN [TEXT] [--attach FILE]...``, for ``evo_agents.hub.cli.run``: a message for a run's
 agent, which its worker hands over (POST /v1/projects/{p}/runs/{id}/messages); to an author run, the owner's reply in
-its chat. ``--attach`` uploads each file first (``evo_agents.hub.attach_cli``), and the message names them; with one,
+its chat. ``--attach`` uploads each file first (``evo_agents.hub.cli.attach``), and the message names them; with one,
 TEXT may be left out. ``-`` as TEXT reads it from stdin. Standard library only, like the rest of the client.
 """
 
@@ -10,7 +10,7 @@ import argparse
 import sys
 
 from evo_agents.clikit import Arg, Result, Text, UsageError, returns_object
-from evo_agents.hub import attach_cli
+from evo_agents.hub.cli import attach as attach_cli
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
 from evo_agents.hub.cli.run.options import RUN_ID
 from evo_agents.hub.cli.run.resources import Runs
