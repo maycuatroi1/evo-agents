@@ -2,8 +2,8 @@
 hub rather than shipped with the CLI, so a plugin adds one without a release of evo-agents.
 
 The hub lists them at ``GET /v1/cli/plugins`` (``evo_agents.hub.server.plugin_command_list``); the CLI keeps the answer in
-``cli-plugins.json`` of the login directory (``~/.evo/hub``), and registers a parser for each plugin from
-it when it builds its own. A ``hub`` command it does not know, or a command of a plugin it does not know, makes it ask
+``cli-plugins.json`` of the login directory (``~/.evo/hub``), and builds the commands of each plugin from
+it when it builds its own parser. A ``hub`` command it does not know, or a command of a plugin it does not know, makes it ask
 the hub again before it parses: the first run of a new command fetches it. A plugin whose id is a
 command of the CLI's own is left out.
 
@@ -19,21 +19,29 @@ switches to, ``confirm`` a switch without which the command calls nothing, and `
 The core plugins installed with the CLI (entry point group ``evo_agents.plugins``) ship their commands too: ``cli.json``
 beside the package's ``__init__``, read without importing the plugin. They need no hub to be listed, and over the
 list kept they win, so the commands of the plugins the CLI ships are the same on every machine (the CLI's contract,
-``evo_agents.hub.contract``). Standard library only, like the rest of the client.
+``evo_agents.hub.contract``).
+
+The commands are objects of ``evo_agents.clikit`` (docs/structure.md, section Command classes) built from the list:
+:class:`Extensions` (:data:`EXTENSIONS`, which ``evo_agents.hub.cli`` attaches last) attaches a ``Group`` for each
+plugin, each child a :class:`PluginCommand` made from one entry of the list, its arguments ``Arg`` values
+(:func:`plugin_args`), which calls the plugin's route through :class:`PluginRoutes`. Standard library only, like the
+rest of the client.
 """
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import importlib.util
 import re
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urlencode
 
-from evo_agents.clikit import Legacy
-from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
-from evo_agents.hub.client import HubError
+from evo_agents.clikit import NOTHING, Arg, Group, JsonOutput, Result, Table, Text, View, json_text
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.plugin_commands import (  # noqa: F401 (moved there; the callers take them from here)
     BUNDLED_FILE,
     BUNDLED_ONLY,
@@ -57,26 +65,13 @@ CLIENTS = {
     "browser_post": ("evo_agents.hub.browser_post_client", "post_command"),
     "browser_login": ("evo_agents.hub.browser_post_client", "login_command"),
 }
+EXIT_UNCONFIRMED = 2
 
 
-# The parsers
+# The arguments of a command, from its entry of the list
 
 
-def register_plugin_commands(hsub, plugins: list[dict] | None = None) -> None:
-    """A parser for each plugin of ``known_plugins``, under ``hub``, its commands below it."""
-    plugins = known_plugins() if plugins is None else plugins
-    taken = set(hsub.choices)
-    for plugin in plugins:
-        name = plugin.get("id")
-        if not isinstance(name, str) or name in taken or not plugin.get("commands"):
-            continue
-        group = hsub.add_parser(name, help=f"commands of plugin {name} {plugin.get('version', '')}".rstrip())
-        gsub = group.add_subparsers(dest="plugin_command", required=True)
-        for command in plugin["commands"]:
-            _command(gsub, name, command)
-
-
-def _options(arg: dict) -> dict:
+def arg_options(arg: dict) -> dict:
     """The options of ``add_argument`` that argument ``arg`` of a command gives whether it is positional or a flag."""
     options: dict = {"help": arg.get("help")}
     if arg["type"] == "boolean":
@@ -92,49 +87,50 @@ def _options(arg: dict) -> dict:
     return options
 
 
-def _command(gsub, plugin: str, command: dict) -> None:
-    parser = gsub.add_parser(command["name"], help=command.get("help"))
+def arg_of(arg: dict) -> Arg:
+    """Argument ``arg`` of a command's entry as an :class:`Arg`."""
+    options = arg_options(arg)
+    metavar = arg.get("metavar") or arg["name"].upper()
+    if arg.get("positional"):
+        if arg.get("repeatable"):
+            options.pop("action", None)
+            options["nargs"] = "+" if arg.get("required") else "*"
+        elif not arg.get("required"):
+            options["nargs"] = "?"
+        return Arg(arg["name"], metavar=metavar, **options)
+    if arg["type"] != "boolean":
+        options["metavar"] = metavar
+        options["required"] = bool(arg.get("required"))
+    if arg.get("values"):
+        options["nargs"] = len(arg["values"])
+        options["metavar"] = tuple(name.upper() for name in arg["values"])
+    return Arg(arg.get("flag") or "--" + arg["name"].replace("_", "-"), dest=arg["name"], **options)
+
+
+def plugin_args(plugin: str, command: dict) -> list[tuple[str | None, Arg]]:
+    """The arguments of ``command`` of ``plugin`` in their order, each with the group of flags that exclude each
+    other it belongs to (None for none): ``--project``, those of the entry, the switch of ``confirm`` and ``--json``."""
+    found: list[tuple[str | None, Arg]] = []
     if command.get("project"):
-        parser.add_argument(
-            "--project", required=True, metavar="PROJECT", help=f"the project that enabled plugin {plugin}"
+        found.append(
+            (None, Arg("--project", required=True, metavar="PROJECT", help=f"the project that enabled plugin {plugin}"))
         )
-    groups: dict = {}
-    for arg in command.get("args") or []:
-        kind = arg["type"]
-        options = _options(arg)
-        metavar = arg.get("metavar") or arg["name"].upper()
-        if arg.get("positional"):
-            if arg.get("repeatable"):
-                options.pop("action", None)
-                options["nargs"] = "+" if arg.get("required") else "*"
-            elif not arg.get("required"):
-                options["nargs"] = "?"
-            parser.add_argument(arg["name"], metavar=metavar, **options)
-        else:
-            flag = arg.get("flag") or "--" + arg["name"].replace("_", "-")
-            if kind != "boolean":
-                options["metavar"] = metavar
-                options["required"] = bool(arg.get("required"))
-            if arg.get("values"):
-                options["nargs"] = len(arg["values"])
-                options["metavar"] = tuple(name.upper() for name in arg["values"])
-            target = parser
-            if arg.get("group"):
-                if arg["group"] not in groups:
-                    groups[arg["group"]] = parser.add_mutually_exclusive_group()
-                target = groups[arg["group"]]
-            target.add_argument(flag, dest=arg["name"], **options)
+    found += [(None if arg.get("positional") else arg.get("group"), arg_of(arg)) for arg in command.get("args") or []]
     confirm = command.get("confirm")
     if confirm:
-        parser.add_argument(confirm["flag"], dest="plugin_confirmed", action="store_true", help="act without asking")
-    parser.add_argument("--json", action="store_true", help="print what the hub answered")
-    parser.set_defaults(func=run_command, plugin_id=plugin, plugin_spec=command)
-    output = command.get("output") or {}
-    if output.get("keys") is not None:
-        from evo_agents.hub.contract import JsonOutput
+        found.append(
+            (None, Arg(confirm["flag"], dest="plugin_confirmed", action="store_true", help="act without asking"))
+        )
+    found.append((None, Arg("--json", action="store_true", help="print what the hub answered")))
+    return found
 
-        kind = output.get("json") or "object"
-        parser.set_defaults(json_output=JsonOutput(kind, tuple(output["keys"]), output.get("schema")))
+
+def json_output_of(command: dict) -> JsonOutput | None:
+    """What ``--json`` of ``command`` prints, when its entry declares the keys (the contract)."""
+    output = command.get("output") or {}
+    if output.get("keys") is None:
+        return None
+    return JsonOutput(output.get("json") or "object", tuple(output["keys"]), output.get("schema"))
 
 
 # Running a command
@@ -187,24 +183,20 @@ def request_of(plugin: str, command: dict, values: dict, render: str | None = No
     return method, full, (body if method in ("POST", "PUT", "PATCH") else None)
 
 
-def _print(found, output: dict) -> None:
+def answer_view(found, output: dict) -> View:
+    """How a person reads the answer ``found`` of a route, as ``output`` of the command's entry says."""
     if output.get("render") == "text" and isinstance(found, dict) and isinstance(found.get("text"), str):
-        if found["text"]:
-            print(found["text"])
-        return
+        return Text(found["text"]) if found["text"] else NOTHING
     rows = found
     if isinstance(found, dict) and output.get("json") == "array":
         rows = next((value for value in found.values() if isinstance(value, list)), found)
     columns = output.get("table")
     if columns and isinstance(rows, list) and all(isinstance(row, dict) for row in rows):
-        if rows:
-            table(tuple(columns), [tuple("" if row.get(c) is None else row.get(c) for c in columns) for row in rows])
-        return
+        return Table(tuple(columns), [tuple("" if row.get(c) is None else row.get(c) for c in columns) for row in rows])
     key = output.get("text")
     if key and isinstance(found, dict) and key in found:
-        print(found[key])
-        return
-    print_json(found)
+        return Text(str(found[key]))
+    return Text(json_text(found))
 
 
 class _Words(dict):
@@ -212,36 +204,99 @@ class _Words(dict):
         return "{" + key + "}"
 
 
-@client_command
-def run_command(args) -> int:
-    command = args.plugin_spec
-    values = vars(args)
-    confirm = command.get("confirm")
-    if confirm and not values.get("plugin_confirmed"):
-        words = _Words({key: "" if value is None else value for key, value in values.items()})
-        print(confirm["text"].format_map(words), file=sys.stderr)
-        return 2
-    output = command.get("output") or {}
-    client = CLIENTS.get(command.get("client") or "")
-    if client is not None:
-        module, name = client
-        found, said = getattr(importlib.import_module(module), name)(args, args.plugin_id)
-        if args.json:
-            print_json(found)
-        elif said:
-            print(said)
-        return 0
-    if command.get("client"):
-        raise HubError(f"this CLI has no client {command['client']}: update evo-agents")
-    render = None if args.json else output.get("render")
-    method, path, body = request_of(args.plugin_id, command, values, render)
-    hub, _ = signed_in()
-    found = hub.call(method, path, body)
-    if args.json:
-        print_json(found)
-    else:
-        _print(found, output)
-    return 0
+class Unconfirmed(Exception):
+    """A command whose entry has ``confirm`` was run without its switch: ``str`` is what to tell the person."""
+
+
+class PluginRoutes:
+    """The routes of one plugin's command below ``/v1/x/<id>/`` (Gateway): the request its arguments make, and the
+    call of it with the member's token."""
+
+    def __init__(self, plugin: str, command: dict):
+        self.plugin, self.command = plugin, command
+
+    def request(self, values: dict, render: str | None = None) -> tuple[str, str, dict | None]:
+        return request_of(self.plugin, self.command, values, render)
+
+    def call(self, hub: Hub, request: tuple[str, str, dict | None]) -> Any:
+        method, path, body = request
+        return hub.call(method, path, body)
+
+
+class PluginCommand(HubCommand):
+    """One command of a plugin, built from its entry of the hub's list."""
+
+    def __init__(self, plugin: str, entry: dict):
+        self.plugin, self.entry = plugin, entry
+
+    def attach(self, subparsers: argparse._SubParsersAction) -> None:
+        self.configure(subparsers.add_parser(self.entry["name"], help=self.entry.get("help")))
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        groups: dict[str, argparse._MutuallyExclusiveGroup] = {}
+        for group, arg in plugin_args(self.plugin, self.entry):
+            target: argparse.ArgumentParser | argparse._MutuallyExclusiveGroup = parser
+            if group:
+                if group not in groups:
+                    groups[group] = parser.add_mutually_exclusive_group()
+                target = groups[group]
+            target.add_argument(*arg.flags, **arg.options)
+        parser.set_defaults(plugin_id=self.plugin, plugin_spec=self.entry)
+        output = json_output_of(self.entry)
+        if output is not None:
+            parser.set_defaults(json_output=output)
+
+    def check(self, args: argparse.Namespace) -> None:
+        confirm = self.entry.get("confirm")
+        if confirm and not getattr(args, "plugin_confirmed", False):
+            words = _Words({key: "" if value is None else value for key, value in vars(args).items()})
+            raise Unconfirmed(confirm["text"].format_map(words))
+
+    def failed(self, exc: Exception) -> int | None:
+        if isinstance(exc, Unconfirmed):
+            print(exc, file=sys.stderr)
+            return EXIT_UNCONFIRMED
+        return super().failed(exc)
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        client = CLIENTS.get(self.entry.get("client") or "")
+        if client is not None:
+            module, name = client
+            found, said = getattr(importlib.import_module(module), name)(args, self.plugin)
+            return Result(found, Text(said) if said else NOTHING)
+        if self.entry.get("client"):
+            raise HubError(f"this CLI has no client {self.entry['client']}: update evo-agents")
+        output = self.entry.get("output") or {}
+        routes = PluginRoutes(self.plugin, self.entry)
+        request = routes.request(vars(args), None if args.json else output.get("render"))
+        found = routes.call(ctx.hub, request)
+        return Result(found, answer_view(found, output))
+
+
+class Extensions:
+    """The commands of the plugins under ``hub`` (a node of ``evo_agents.hub.cli``): a ``Group`` for each plugin of
+    ``plugins``, of the list kept (``known_plugins``) when none is given, its commands below it. A plugin whose id is a
+    command attached already is left out."""
+
+    def __init__(self, plugins: list[dict] | None = None):
+        self.plugins = plugins
+
+    def groups(self, taken: set[str]) -> list[Group]:
+        plugins = known_plugins() if self.plugins is None else self.plugins
+        found = []
+        for plugin in plugins:
+            name = plugin.get("id")
+            if not isinstance(name, str) or name in taken or not plugin.get("commands"):
+                continue
+            commands = [PluginCommand(name, command) for command in plugin["commands"]]
+            help = f"commands of plugin {name} {plugin.get('version', '')}".rstrip()
+            found.append(Group(name, help, commands, dest="plugin_command"))
+        return found
+
+    def attach(self, subparsers: argparse._SubParsersAction) -> None:
+        for group in self.groups(set(subparsers.choices)):
+            group.attach(subparsers)
 
 
 def refreshed(argv: list[str]) -> bool:
@@ -255,5 +310,4 @@ def refreshed(argv: list[str]) -> bool:
     return True
 
 
-# The node this module attaches, an adapter of its register function until its commands are classes.
-EXTENSIONS = Legacy(register_plugin_commands)  # hub <plugin> <command>, from the hub's list
+EXTENSIONS = Extensions()  # hub <plugin> <command>, from the hub's list
