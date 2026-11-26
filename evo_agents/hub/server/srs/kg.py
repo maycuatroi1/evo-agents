@@ -43,6 +43,7 @@ from urllib.parse import quote
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.srs.models.doc import Document, Item
 from evo_agents.hub.server.srs.models.markdown import block_text
 from evo_agents.hub.server.srs.models.template import Template, heading_text
@@ -390,7 +391,7 @@ async def kg_source(params: dict, context: CoreContext) -> dict:
         return {"items": [], "identifiers": []}
     base_url = getattr(context.config, "public_url", None)
     base_url = base_url if isinstance(base_url, str) else None
-    async with context.engine.begin() as conn:
+    async with UnitOfWork(context.engine) as conn:
         project = context.project or params["project"]
         return await read(conn, params["source"], context.project_id, project, base_url)
 

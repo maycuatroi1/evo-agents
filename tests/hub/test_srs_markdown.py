@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-# srs.template imports code_key from evo_agents.hub.tables_srs, whose tables need SQLAlchemy.
+# srs.models.template imports code_key from evo_agents.hub.tables_srs, whose tables need SQLAlchemy.
 pytest.importorskip("sqlalchemy", reason="the core plugin srs needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub.server.srs import USE_CASE_FIELDS

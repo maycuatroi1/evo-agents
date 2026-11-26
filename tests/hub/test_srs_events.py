@@ -26,7 +26,7 @@ from sqlalchemy import func, select, update
 
 from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.srs.service.events import on_version_approved
+from evo_agents.hub.server.srs.handlers import on_version_approved
 from evo_agents.plugins import protocol
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, members and srs_core are fixtures)

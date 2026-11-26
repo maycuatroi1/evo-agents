@@ -380,7 +380,7 @@ message of its chat; once settled, the message that settled it.
 
 Each use case is approved on its own, and its tasks follow: the plugin srs takes `srs.use_case.approved` itself, with
 no grant, through its events contribution `releases`, and when the project enables the plugin tasks, does to the tasks
-what the release did to the use case (`evo_agents/hub/server/srs/auto_tasks.py`, `released`): a frame task when the use
+what the release did to the use case (`evo_agents/hub/server/srs/service/auto_tasks.py`, `released`): a frame task when the use
 case is new to the baseline, as below (a use case with an open frame task of the document already gets a comment on
 it instead), a comment of the approver on the open tasks of a use case that changed, with the comparison of the version
 of its previous release and this one, and the cancellation of the open tasks of a use case removed. The releases one
@@ -389,7 +389,7 @@ approver. It is idempotent by release (`srs_use_case_releases.tasks`, claimed fi
 the approval of each use case it needs reviewed, so it touches no task any more: its row of `srs_approval_tasks` says
 so. What follows describes how a version's approval kept the tasks before, which a release now does for one use case.
 
-An approval emits the event `srs.version.approved` in its transaction (`evo_agents/hub/server/srs/events.py`): the
+An approval emits the event `srs.version.approved` in its transaction (`evo_agents/hub/server/srs/service/events.py`): the
 document's slug and id, the version's number and id, the version approved before it (null the first time), the
 approver's login and id, and the codes of the items the version added, changed and dropped since that one, by kind.
 Plugins the project granted `srs:read` get it, at least once, and the hub keeps it in `hub_events`, where the Loop
@@ -408,7 +408,7 @@ cases are approved ahead of their version (`docs/loop.md`, SRS là nguồn).
 
 When the project enables the plugin tasks, whether its Loop is on or off, that handler compares the version with the
 version approved before it (none the first time) and keeps the project's tasks in step with its use cases, in the
-delivery's transaction (`evo_agents/hub/server/srs/auto_tasks.py`):
+delivery's transaction (`evo_agents/hub/server/srs/service/auto_tasks.py`):
 
 - **A new use case** gets one frame task: `UC ORD-1: Place an order`, linked to the use case, of type `story` when the
   project has it (its first type otherwise), in the first status, carrying the document's label, made by the approver.

@@ -37,13 +37,14 @@ on, is past its cap, or no frame task waits, there is no run and the outcome say
 Everything goes through ``approved``, which takes (the document, the version approved, the version approved before,
 the approver): the data the event ``srs.version.approved`` carries (plan loop-engine, criterion a3). The approval
 emits that event (``events.version_approved``) and no longer calls ``approved``: the plugin's events contribution
-``approvals`` (``events.on_version_approved``) calls it with the event's payload when the hub delivers it, in the
+``approvals`` (``handlers.on_version_approved``) calls it with the event's payload when the hub delivers it, in the
 delivery's transaction, in every project that enables the plugin tasks, whether its Loop is on or off. It is
 idempotent by (document, version approved): srs_approval_tasks holds one row a version, claimed first, so a second
 call, an event delivered twice included, makes no task, comment or run.
 
 The plugin srs imports no other core plugin: it reads the config of the plugin tasks with the hub's config layers and
-writes the rows of its tasks through the hub's tables (``tables.tasks``), as the plugin tasks reads srs's items.
+writes the rows of its tasks through the hub's tables (``tables.tasks``, in ``repository.tasks``), as the plugin tasks
+reads srs's items.
 """
 
 from __future__ import annotations
@@ -52,20 +53,19 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from sqlalchemy import exists, func, insert, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import feature_rule, tables, task_status
+from evo_agents.hub import feature_rule, task_status
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.server.srs import BA
 from evo_agents.hub.server.srs.models.diff import diff
 from evo_agents.hub.server.srs.models.doc import Document, Item
 from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository import tasks as rows
 from evo_agents.hub.server.srs.repository.store import PLUGIN, DocumentRow, Snapshot
-from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX, PENDING_SPLIT, frame_task_key
-from evo_agents.hub.tables_tasks import MAX_CAUSE_CHARS, MAX_TITLE_CHARS, MAX_VALUE_CHARS
+from evo_agents.hub.tables_srs import PENDING_SPLIT, frame_task_key
+from evo_agents.hub.tables_tasks import MAX_TITLE_CHARS
 from evo_agents.plugins import config as plugin_config
 
 log = logging.getLogger(__name__)
@@ -223,19 +223,6 @@ def use_case_changes(old: Document | None, new: Document) -> UseCases:
 # Writing tasks
 
 
-async def _history(conn: AsyncConnection, task_id: int, name: str, old: str | None, new: str | None, cause: str):
-    """A row of the hub (no actor) in the history of task ``task_id``."""
-    values = {
-        "task_id": task_id,
-        "actor_id": None,
-        "field": name,
-        "from_value": old[:MAX_VALUE_CHARS] if old else old,
-        "to_value": new[:MAX_VALUE_CHARS] if new else new,
-        "cause": cause[:MAX_CAUSE_CHARS],
-    }
-    await conn.execute(insert(tables.tasks.events).values(**values))
-
-
 def _frame_text(work: _Approval, item: Item, code: str) -> str:
     page = store.item_path(work.project, work.doc.slug, code)
     if work.release is not None:
@@ -250,12 +237,11 @@ def _frame_text(work: _Approval, item: Item, code: str) -> str:
 
 async def _frame(conn: AsyncConnection, work: _Approval, item: Item, outcome: Outcome) -> None:
     """The frame task of use case ``item``, new in the version, unless a call made it before."""
-    t, k = tables.tasks.items, tables.tasks.links
     project_id, code = work.project_id, item.code or item.key
     key = frame_task_key(work.doc.slug, work.number, code)
-    if await conn.scalar(select(t.c.id).where(t.c.project_id == project_id, t.c.external_key == key)) is not None:
+    if await rows.task_by_key(conn, project_id, key) is not None:
         return
-    number = (await conn.scalar(select(func.max(t.c.number)).where(t.c.project_id == project_id)) or 0) + 1
+    number = await rows.next_number(conn, project_id)
     values = {
         "project_id": project_id,
         "number": number,
@@ -268,33 +254,24 @@ async def _frame(conn: AsyncConnection, work: _Approval, item: Item, outcome: Ou
         "external_ref": {"source": PLUGIN, "document": work.doc.slug, "version": work.number, "use_case": code},
         "created_by": work.approver_id,
     }
-    task_id = await conn.scalar(insert(t).values(**values).returning(t.c.id))
+    task_id = await rows.insert_task(conn, values)
     cause = work.because(f"use case {code} is new")
-    await _history(conn, task_id, "created", None, work.config.ref(number), cause)
+    await rows.history(conn, task_id, "created", None, work.config.ref(number), cause)
     link = {"task_id": task_id, "kind": "srs_item", "srs_item_id": work.version.ids[item.key]}
-    await conn.execute(insert(k).values(**link, created_by=work.approver_id))
-    await _history(conn, task_id, "link", None, f"srs_item {code}", cause)
+    await rows.insert_link(conn, {**link, "created_by": work.approver_id})
+    await rows.history(conn, task_id, "link", None, f"srs_item {code}", cause)
     await work.announce(conn, task_id, None, work.config.first)
     outcome.created.append(number)
 
 
 async def _open_tasks(conn: AsyncConnection, work: _Approval, item_id: int) -> list:
     """The open tasks of the project linked to SRS item ``item_id``, by number."""
-    t, k = tables.tasks.items, tables.tasks.links
-    query = (
-        select(t.c.id, t.c.number, t.c.status)
-        .join_from(k, t, t.c.id == k.c.task_id)
-        .where(k.c.kind == "srs_item", k.c.srs_item_id == item_id, t.c.project_id == work.project_id)
-        .where(t.c.status.not_in(work.config.finished))
-        .distinct()
-        .order_by(t.c.number)
-    )
-    return list(await conn.execute(query))
+    return await rows.open_tasks(conn, work.project_id, item_id, work.config.finished)
 
 
 async def _comment(conn: AsyncConnection, work: _Approval, task_id: int, body: str) -> None:
     values = {"task_id": task_id, "author_id": work.approver_id, "body": body}
-    await conn.execute(insert(tables.tasks.comments).values(**values))
+    await rows.insert_comment(conn, values)
 
 
 async def _changed(
@@ -315,7 +292,6 @@ async def _changed(
 async def _dropped(conn: AsyncConnection, work: _Approval, item_id: int, code: str, outcome: Outcome) -> None:
     """Each open task linked to use case ``item_id`` (``code``), which was dropped, to the first status of group
     cancelled, its history naming the hub and why; a comment when the project has no such status."""
-    t = tables.tasks.items
     cause = work.because(f"use case {code} was dropped")
     for task in await _open_tasks(conn, work, item_id):
         if work.config.cancelled is None:
@@ -325,10 +301,8 @@ async def _dropped(conn: AsyncConnection, work: _Approval, item_id: int, code: s
             await _comment(conn, work, task.id, body)
             outcome.commented.append(task.number)
             continue
-        await conn.execute(
-            update(t).where(t.c.id == task.id).values(status=work.config.cancelled, updated_at=func.now())
-        )
-        await _history(conn, task.id, "status", task.status, work.config.cancelled, cause)
+        await rows.set_status(conn, task.id, work.config.cancelled)
+        await rows.history(conn, task.id, "status", task.status, work.config.cancelled, cause)
         await work.announce(conn, task.id, task.status, work.config.cancelled)
         outcome.cancelled.append(task.number)
 
@@ -341,22 +315,8 @@ async def _frames_to_split(
 ) -> dict[int, tuple[str, list[str]]]:
     """number -> (title, the codes of the SRS items it links) of each open frame task of the document with no child
     task, the first MAX_FRAMES by number; those numbered ``only`` alone when given."""
-    t, k, i = tables.tasks.items, tables.tasks.links, tables.srs.items
-    child = t.alias("child")
-    prefix = f"{FRAME_TASK_PREFIX}{work.doc.slug}:"
-    query = (
-        select(t.c.number, t.c.title, i.c.code)
-        .select_from(
-            t.outerjoin(k, (k.c.task_id == t.c.id) & (k.c.kind == "srs_item")).outerjoin(i, i.c.id == k.c.srs_item_id)
-        )
-        .where(t.c.project_id == work.project_id, t.c.external_key.startswith(prefix, autoescape=True))
-        .where(t.c.status.not_in(work.config.finished), ~exists().where(child.c.parent_id == t.c.id))
-        .order_by(t.c.number, k.c.id)
-    )
-    if only is not None:
-        query = query.where(t.c.number.in_(only or [0]))
     found: dict[int, tuple[str, list[str]]] = {}
-    for row in await conn.execute(query):
+    for row in await rows.frames(conn, work.project_id, work.doc.slug, work.config.finished, only):
         title, codes = found.setdefault(row.number, (row.title, []))
         if row.code and row.code not in codes:
             codes.append(row.code)
@@ -445,8 +405,7 @@ async def _split(
 
 
 async def _done_before(conn: AsyncConnection, version_id: int) -> Outcome:
-    a = tables.srs.approval_tasks
-    row = (await conn.execute(select(a.c.split_run_id, a.c.outcome).where(a.c.version_id == version_id))).one()
+    row = await rows.approval_done(conn, version_id)
     kept = row.outcome or {}
     return Outcome(
         created=list(kept.get("created") or []),
@@ -458,13 +417,6 @@ async def _done_before(conn: AsyncConnection, version_id: int) -> Outcome:
     )
 
 
-async def _names(conn: AsyncConnection, project_id: int, user_id: int) -> tuple[str, str]:
-    """(the project's name, the member's login)."""
-    p, u = tables.projects, tables.users
-    project = await conn.scalar(select(p.c.name).where(p.c.id == project_id))
-    return project, await conn.scalar(select(u.c.login).where(u.c.id == user_id))
-
-
 async def approved(
     conn: AsyncConnection, document_id: int, version: int, previous: int | None, approver_id: int
 ) -> Outcome | None:
@@ -473,21 +425,18 @@ async def approved(
     transaction (see the module). What was done; None when the project does not enable the plugin tasks or the
     version was never approved. A second call for the same version does nothing and answers the first's outcome,
     ``again``."""
-    d = tables.srs.documents
-    project_id = await conn.scalar(select(d.c.project_id).where(d.c.id == document_id))
+    project_id = await store.project_of_document(conn, document_id)
     plugin = await enabled_in(conn, TASKS, project_id) if project_id is not None else None
     doc = await store.document_by_id(conn, project_id, document_id) if plugin is not None else None
     row = await store.version(conn, doc, version) if doc is not None else None
     if row is None or row.state not in APPROVED_STATES:
         return None
-    a = tables.srs.approval_tasks
-    claim = pg_insert(a).values(version_id=row.id, previous_version=previous, approved_by=approver_id)
-    claimed = await conn.scalar(claim.on_conflict_do_nothing(index_elements=[a.c.version_id]).returning(a.c.id))
+    claimed = await rows.claim_approval(conn, row.id, previous, approver_id)
     if claimed is None:
         return await _done_before(conn, row.id)
     outcome = Outcome(no_split=BY_USE_CASE)
     values = {"split_run_id": outcome.split_run_id, "outcome": outcome.as_json()}
-    await conn.execute(update(a).where(a.c.id == claimed).values(**values))
+    await rows.keep_approval(conn, claimed, values)
     extra = {"document_id": document_id, "version": version, "run_id": outcome.split_run_id, "why": outcome.no_split}
     extra |= {"frames": outcome.created, "commented": outcome.commented, "cancelled": outcome.cancelled}
     log.info("srs approval kept the tasks", extra=extra)
@@ -499,32 +448,21 @@ async def approved(
 
 async def _framed(conn: AsyncConnection, work: _Approval, item_id: int) -> bool:
     """Whether use case ``item_id`` has an open frame task of the document: an earlier approval made it."""
-    t, k = tables.tasks.items, tables.tasks.links
-    query = (
-        select(t.c.id)
-        .join_from(k, t, t.c.id == k.c.task_id)
-        .where(k.c.kind == "srs_item", k.c.srs_item_id == item_id, t.c.project_id == work.project_id)
-        .where(t.c.status.not_in(work.config.finished))
-        .where(t.c.external_key.startswith(f"{FRAME_TASK_PREFIX}{work.doc.slug}:", autoescape=True))
-        .limit(1)
-    )
-    return await conn.scalar(query) is not None
+    return await rows.framed(conn, work.project_id, item_id, work.config.finished, work.doc.slug)
 
 
 async def _save(conn: AsyncConnection, release_id: int, outcome: Outcome) -> Outcome:
-    e = tables.srs.use_case_releases
     kept = {**outcome.as_json(), "split_run_id": outcome.split_run_id}
-    await conn.execute(update(e).where(e.c.id == release_id).values(tasks=kept))
+    await rows.keep_release(conn, release_id, kept)
     return outcome
 
 
 async def _batch_frames(conn: AsyncConnection, batch: list[int]) -> list[int] | None:
     """The frame tasks the releases ``batch`` made, once every one of them was handled; None while one was not."""
-    e = tables.srs.use_case_releases
-    rows = list(await conn.execute(select(e.c.id, e.c.tasks).where(e.c.id.in_(batch or [0]))))
-    if len(rows) < len(set(batch)) or any(row.tasks is None for row in rows):
+    found = await rows.release_tasks(conn, batch)
+    if len(found) < len(set(batch)) or any(row.tasks is None for row in found):
         return None
-    return [number for row in rows for number in (row.tasks or {}).get("created") or []]
+    return [number for row in found for number in (row.tasks or {}).get("created") or []]
 
 
 async def released(conn: AsyncConnection, release_id: int, batch: list[int] | None = None) -> Outcome | None:
@@ -533,20 +471,11 @@ async def released(conn: AsyncConnection, release_id: int, batch: list[int] | No
     run that splits the frame tasks they made. None when the release was handled before or is not there; an outcome
     that says why when the project does not enable the plugin tasks, turned them on after the release, or its config
     names no status or no type."""
-    s = tables.srs
-    e, v = s.use_case_releases, s.versions
-    claim = (
-        update(e)
-        .where(e.c.id == release_id, e.c.tasks.is_(None))
-        .values(tasks={})
-        .returning(e.c.document_id, e.c.item_id, e.c.rev, e.c.version_id, e.c.change, e.c.released_by, e.c.released_at)
-    )
-    row = (await conn.execute(claim)).first()
+    row = await rows.claim_release(conn, release_id)
     if row is None:
         return None
     outcome = Outcome()
-    d = s.documents
-    project_id = await conn.scalar(select(d.c.project_id).where(d.c.id == row.document_id))
+    project_id = await store.project_of_document(conn, row.document_id)
     if project_id is None:
         return await _save(conn, release_id, outcome)
     plugin = await enabled_in(conn, TASKS, project_id)
@@ -559,21 +488,14 @@ async def released(conn: AsyncConnection, release_id: int, batch: list[int] | No
         outcome.no_split = f"the config of plugin {TASKS} names no status or no type: no task was made"
         return await _save(conn, release_id, outcome)
     doc = await store.document_by_id(conn, project_id, row.document_id)
-    number = await conn.scalar(select(v.c.number).where(v.c.id == row.version_id))
+    number = await rows.version_number(conn, row.version_id)
     if doc is None or number is None:
         return await _save(conn, release_id, outcome)
-    project, approver = await _names(conn, project_id, row.released_by)
-    i = s.items
-    code = str(await conn.scalar(select(func.coalesce(i.c.code, i.c.key)).where(i.c.id == row.item_id)))
+    project, approver = await rows.names(conn, project_id, row.released_by)
+    code = await rows.item_code(conn, row.item_id)
     now = await store.snapshot(conn, await store.version(conn, doc, number))
     work = _Approval(doc, project_id, project, now, None, row.released_by, approver, config, (code, row.rev))
-    before = await conn.scalar(
-        select(v.c.number)
-        .join_from(e, v, v.c.id == e.c.version_id)
-        .where(e.c.item_id == row.item_id, e.c.rev < row.rev)
-        .order_by(e.c.rev.desc())
-        .limit(1)
-    )
+    before = await rows.released_before(conn, row.item_id, row.rev)
     item = next((item for item in now.doc.items if item.key in now.ids and now.ids[item.key] == row.item_id), None)
     if row.change == revisions.REMOVED:
         await _dropped(conn, work, row.item_id, code, outcome)
@@ -592,7 +514,7 @@ async def released(conn: AsyncConnection, release_id: int, batch: list[int] | No
         outcome.split_run_id, outcome.no_split = await _split(conn, work, frames)
         split = {"split_run_id": outcome.split_run_id, "no_split": outcome.no_split}
         for other in set(batch or []) - {release_id}:  # the batch's split run, on each release that made a frame
-            await conn.execute(update(e).where(e.c.id == other).values(tasks=e.c.tasks.op("||")(split)))
+            await rows.add_to_release(conn, other, split)
     elif frames is None:
         outcome.no_split = PENDING_SPLIT
     log.info(

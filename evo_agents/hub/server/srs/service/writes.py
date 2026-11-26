@@ -9,46 +9,26 @@ none, the checks only the tables tell, and writing the version with its items, c
   had changed, a coded item dropped by a member who is not an admin of the project.
 - ``unheld_problems`` says why no item of the latest version holds a code an admin asked to retire.
 - ``write_version`` writes the next version of a document, under its row lock, as one straight line: the version
-  built on the latest one. A dropped item keeps its codes, so no item gets them again. Each use case the version adds,
-  changes or drops takes its next revision (``revisions.record``).
+  built on the latest one, through ``repository.versions.VersionStore``. A dropped item keeps its codes, so no item
+  gets them again. Each use case the version adds, changes or drops takes its next revision (``revisions.record``).
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
-from dataclasses import dataclass
 
-from sqlalchemy import insert, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.server.srs import CODED_KINDS
 from evo_agents.hub.server.srs.models import checks
 from evo_agents.hub.server.srs.models.doc import ERROR, Document, Item, Problem, SrsError
 from evo_agents.hub.server.srs.models.template import SCREEN_PREFIX, Template, code_key, screen_number
-from evo_agents.hub.server.srs.repository import revisions
+from evo_agents.hub.server.srs.repository import versions
 from evo_agents.hub.server.srs.repository.store import Snapshot
+from evo_agents.hub.server.srs.repository.versions import HeldCode, Writer, held_codes, sha256
 
 KEY_BYTES = 6  # an item's key: 12 hex characters, unique in its document
-
-
-@dataclass(frozen=True)
-class Writer:
-    """Who writes a version, where: the project, the document, the author, whether they are an admin of the project,
-    and the run of the agent that drafted it."""
-
-    project_id: int
-    document_id: int
-    author_id: int
-    admin: bool
-    run_id: int | None = None
-
-
-def sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def new_key() -> str:
@@ -98,11 +78,8 @@ async def give_screen_codes(conn: AsyncConnection, project_id: int, doc: Documen
     """Give each screen of ``doc`` without a code the next ``SCR-<n>`` of the project, in place."""
     if not any(item.kind == "screen" and not item.code for item in doc.items):
         return
-    c = tables.srs.codes
-    held = await conn.execute(
-        select(c.c.code_key).where(c.c.project_id == project_id, c.c.code_key.like(f"{SCREEN_PREFIX.lower()}%"))
-    )
-    numbers = [screen_number(row.code_key) for row in held]
+    held = await versions.code_keys_like(conn, project_id, SCREEN_PREFIX.lower())
+    numbers = [screen_number(key) for key in held]
     numbers += [screen_number(code) for item in doc.items for code in item.codes()]
     last = max([number for number in numbers if number is not None], default=0)
     for item in doc.items:
@@ -112,24 +89,6 @@ async def give_screen_codes(conn: AsyncConnection, project_id: int, doc: Documen
 
 
 # The checks the tables tell
-
-
-@dataclass(frozen=True)
-class HeldCode:
-    item_id: int
-    document_id: int
-    retired_in: int | None
-
-
-async def held_codes(conn: AsyncConnection, project_id: int, keys: list[str]) -> dict[str, HeldCode]:
-    """Code key -> the item that holds or held it, for the codes of ``keys`` the project gave."""
-    c, i = tables.srs.codes, tables.srs.items
-    query = (
-        select(c.c.code_key, c.c.item_id, i.c.document_id, i.c.retired_in)
-        .join_from(c, i, i.c.id == c.c.item_id)
-        .where(c.c.project_id == project_id, c.c.code_key.in_(keys or [""]))
-    )
-    return {row.code_key: HeldCode(row.item_id, row.document_id, row.retired_in) for row in await conn.execute(query)}
 
 
 def _taken(code: str, held: HeldCode, writer: Writer) -> str:
@@ -219,131 +178,44 @@ def content_sha256(doc: Document) -> str:
     return sha256(canonical)
 
 
-async def _texts(conn: AsyncConnection, bodies: list[str]) -> None:
-    rows = {sha256(body): body for body in bodies}
-    t = tables.srs.texts
-    values = [{"sha256": key, "body": body} for key, body in rows.items()]
-    await conn.execute(pg_insert(t).values(values).on_conflict_do_nothing(index_elements=[t.c.sha256]))
-
-
-async def _new_items(conn: AsyncConnection, writer: Writer, fresh: list[Item], number: int) -> dict[str, int]:
-    """Insert the items of ``fresh``, new in version ``number``; key -> id of each."""
-    if not fresh:
-        return {}
-    i = tables.srs.items
-    values = [
-        {
-            "project_id": writer.project_id,
-            "document_id": writer.document_id,
-            "key": item.key,
-            "kind": item.kind,
-            "code": item.code,
-            "created_in": number,
-        }
-        for item in fresh
-    ]
-    rows = await conn.execute(insert(i).values(values).returning(i.c.id, i.c.key))
-    return {row.key: row.id for row in rows}
-
-
-async def _codes(conn: AsyncConnection, writer: Writer, doc: Document, ids: dict[str, int]) -> None:
-    keys = sorted({code_key(code) for item in doc.items for code in item.codes()})
-    held = await held_codes(conn, writer.project_id, keys)
-    values, seen = [], set(held)
-    for item in doc.items:
-        for code in item.codes():
-            if code_key(code) not in seen:
-                seen.add(code_key(code))
-                values.append(
-                    {
-                        "project_id": writer.project_id,
-                        "code_key": code_key(code),
-                        "item_id": ids[item.key],
-                        "code": code,
-                        "is_primary": code == item.code,
-                    }
-                )
-    if values:
-        await conn.execute(insert(tables.srs.codes).values(values))
-
-
-async def _item_rows(conn: AsyncConnection, version_id: int, doc: Document, ids: dict[str, int]) -> None:
-    s = tables.srs
-    rows = [
-        {
-            "version_id": version_id,
-            "item_id": ids[item.key],
-            "parent_item_id": ids[doc.items[item.parent].key] if item.parent is not None else None,
-            "position": position,
-            "heading_level": item.level,
-            "title": item.title,
-            "fields": item.fields,
-            "body_sha256": sha256(item.body),
-        }
-        for position, item in enumerate(doc.items)
-    ]
-    if rows:
-        await conn.execute(insert(s.item_versions).values(rows))
-    refs = [
-        {"version_id": version_id, "from_item": ids[item.key], "rel": rel, "to_item": ids[target]}
-        for item in doc.items
-        for rel, target in dict.fromkeys(item.refs)
-        if target in ids
-    ]
-    if refs:
-        await conn.execute(insert(s.refs).values(refs))
-
-
 async def write_version(
-    conn: AsyncConnection, writer: Writer, doc: Document, base: Snapshot | None, template: Template, summary: str = ""
+    conn: AsyncConnection,
+    writer: Writer,
+    doc: Document,
+    base: Snapshot | None,
+    template: Template,
+    summary: str = "",
+    made_on: int | None = None,
 ) -> int:
     """Write ``doc`` as the version after ``base`` (the document's latest; None for its first), under the document's
-    row lock the caller holds; the new version's number. SrsError 422 with the problems that refuse it (codes that do
-    not match ``template``, codes twice, and what the tables tell), 409 when it changes nothing."""
-    found = checks.code_problems(doc, template) + await store_problems(conn, writer, doc, base)
-    refused = [problem for problem in found if problem.refuses_save()]
-    if refused:
-        raise SrsError(422, f"the version is not saved: {refused[0].message}", refused)
-    fresh = [item for item in doc.items if not item.key]
-    for item in fresh:  # keys first: the content's SHA-256 names every item by its key
-        item.key = new_key()
-    content = content_sha256(doc)
-    if base is not None and content == base.version.content_sha256:
-        raise SrsError(409, f"nothing changed since version {base.version.number}: no version is saved")
-    number = base.version.number + 1 if base else 1
-    await _texts(conn, [doc.preamble, *(item.body for item in doc.items)])
-    v = tables.srs.versions
-    values = {
-        "document_id": writer.document_id,
-        "number": number,
-        "parent_number": base.version.number if base else None,
-        "author_id": writer.author_id,
-        "drafted_by_run": writer.run_id,
-        "summary": summary,
-        "preamble_sha256": sha256(doc.preamble) if doc.preamble else None,
-        "content_sha256": content,
-    }
-    version_id = (await conn.execute(insert(v).values(values).returning(v.c.id))).scalar_one()
-    ids = {**(base.ids if base else {}), **await _new_items(conn, writer, fresh, number)}
-    await _codes(conn, writer, doc, ids)
-    gone = [base.ids[item.key] for item in dropped(doc, base)] if base else []
-    if gone:
-        i = tables.srs.items
-        await conn.execute(update(i).where(i.c.id.in_(gone)).values(retired_in=number))
-    await _item_rows(conn, version_id, doc, ids)
-    await revisions.record(conn, writer.document_id, version_id, writer.author_id, doc, ids)
-    return number
+    row lock the caller holds, for a save made on version ``made_on`` (``base``'s when None) and merged into the
+    latest; the new version's number. SrsError 422 with the problems that refuse it (codes that do not match
+    ``template``, codes twice, and what the tables tell), 409 when it changes nothing."""
+
+    async def values_of(latest: Snapshot | None) -> versions.NewVersion:
+        found = checks.code_problems(doc, template) + await store_problems(conn, writer, doc, latest)
+        refused = [problem for problem in found if problem.refuses_save()]
+        if refused:
+            raise SrsError(422, f"the version is not saved: {refused[0].message}", refused)
+        fresh = [item for item in doc.items if not item.key]
+        for item in fresh:  # keys first: the content's SHA-256 names every item by its key
+            item.key = new_key()
+        gone = [latest.ids[item.key or ""] for item in dropped(doc, latest)] if latest else []
+        return versions.NewVersion(writer, doc, content_sha256(doc), summary, fresh, gone)
+
+    on = made_on if made_on is not None else base.version.number if base else None
+    saved = await versions.VersionStore(base).save(conn, writer.document_id, on, values_of)
+    if not saved.changed:
+        raise SrsError(409, f"nothing changed since version {saved.version}: no version is saved")
+    return saved.version
 
 
 __all__ = [
-    "Writer",
     "content_sha256",
     "dropped",
     "give_screen_codes",
-    "held_codes",
     "match_keys",
     "new_key",
-    "sha256",
     "store_problems",
     "unheld_problems",
     "write_version",

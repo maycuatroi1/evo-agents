@@ -37,7 +37,7 @@
   of documents (unless asked for), of @ba's search and of the knowledge graph, still read by its slug, and takes no
   write (``store.writable``); its codes stay held and its slug taken. The agent of a run never archives one.
 - ``admin``: what only an admin of the project does, never the agent of a run: archiving, unarchiving, and retiring
-  coded items by their codes (``server``, ``retire_items``).
+  coded items by their codes (``routes``, ``retire_items``).
 - ``comments``, ``comment``, ``resolve``: threads on a document, a version or an item; writers write them and close
   them, readers read them.
 """
@@ -46,19 +46,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
 
-from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.srs import ROLES
 from evo_agents.hub.server.srs.models import checks
 from evo_agents.hub.server.srs.models.doc import Document, SrsError
+from evo_agents.hub.server.srs.repository import reviews as rows
 from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.reviews import CommentRow
 from evo_agents.hub.server.srs.repository.store import DocumentRow, ReviewRow, Settings, VersionRow
 from evo_agents.hub.server.srs.service import events, findings, notices, use_case_reviews
 from evo_agents.hub.server.srs.service.use_case_reviews import (
@@ -71,9 +70,6 @@ from evo_agents.hub.server.srs.service.use_case_reviews import (
     approved_by,
     case_name,
 )
-
-WITHDRAWN = "withdrawn"
-LAST_STATES = ("superseded", WITHDRAWN)  # a version in one never changes state again
 
 
 def writer(access: ProjectAccess, what: str) -> None:
@@ -90,9 +86,7 @@ async def submit(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow,
     errors = checks.blocking(checks.problems((await store.snapshot(conn, held)).doc, settings.template))
     if errors:
         raise SrsError(422, f"version {number} is not submitted: {errors[0].message}", errors)
-    v = tables.srs.versions
-    changed = {"state": "in_review", "round": v.c.round + 1, "submitted_at": func.now(), "review_run_id": None}
-    await conn.execute(update(v).where(v.c.id == held.id).values(changed))
+    await rows.submit_version(conn, held.id)
     return await store.version(conn, doc, number)
 
 
@@ -111,15 +105,6 @@ def role_for(
     required = (settings.policy.get(kind) or {}).get("required") or []
     filled = {review.role for review in approvals}
     return next((role for role in required if role in held and role not in filled), held[0])
-
-
-async def _approve(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) -> None:
-    s = tables.srs
-    v, d = s.versions, s.documents
-    await conn.execute(update(v).where(v.c.id == held.id).values(state="approved", decided_at=func.now()))
-    older = and_(v.c.document_id == doc.id, v.c.number < held.number, v.c.state.not_in(LAST_STATES))
-    await conn.execute(update(v).where(older).values(state="superseded"))
-    await conn.execute(update(d).where(d.c.id == doc.id).values(approved_version=held.number))
 
 
 async def _may_review(
@@ -173,7 +158,6 @@ async def review(
         await findings.approval_hold(conn, access, doc, held)
     approvals = [r for r in held.reviews if r.round == held.round and r.decision == APPROVE]
     role = role_for(settings, user.login, request.role, doc.kind, approvals)
-    s = tables.srs
     values = {
         "version_id": held.id,
         "round": held.round,
@@ -182,17 +166,17 @@ async def review(
         "decision": request.decision,
         "body": request.body,
     }
-    await conn.execute(insert(s.reviews).values(values))
+    await rows.insert_review(conn, values)
     reviewer = (user.user_id, user.login)
     if request.decision == REQUEST_CHANGES:
-        await conn.execute(update(s.versions).where(s.versions.c.id == held.id).values(state="draft"))
+        await rows.back_to_draft(conn, held.id)
         await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.CHANGES, note=request.body)
     else:
         mine = ReviewRow(user.login, user.user_id, role, APPROVE, request.body, held.round, held.created_at)
         approves, cases = await _approves(conn, access, doc, held, settings, [*approvals, mine])
         await _released(conn, access, doc, held, user, cases)
         if approves:
-            await _approve(conn, doc, held)
+            await rows.approve_version(conn, doc, held)
             await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
             await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.APPROVED)
     return await store.version(conn, doc, number)
@@ -354,7 +338,7 @@ async def review_use_case(
         and use_case_reviews.ready(after)
         and not (settings.wait_for_ba and await findings.held_now(conn, doc, held))
     ):
-        await _approve(conn, doc, held)
+        await rows.approve_version(conn, doc, held)
         await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
         await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.APPROVED)
     return await store.version(conn, doc, number), after
@@ -422,8 +406,7 @@ async def withdraw(
         )
     if held.state != "in_review":
         raise SrsError(409, f"version {number} of {doc.slug} is {held.state}: only a version in review is withdrawn")
-    v = tables.srs.versions
-    await conn.execute(update(v).where(v.c.id == held.id).values(state=WITHDRAWN, decided_at=func.now()))
+    await rows.withdraw_version(conn, held.id)
     if reason:
         await comment(conn, access, user, doc, CommentRequest(reason, version=number))
     return await store.version(conn, doc, number)
@@ -445,74 +428,15 @@ async def archive(conn: AsyncConnection, access: ProjectAccess, user: Principal,
     if (doc.archived_at is not None) == archived:
         state = "archived already" if archived else "not archived"
         raise SrsError(409, f"document {doc.slug} of project {access.name} is {state}")
-    d = tables.srs.documents
-    await conn.execute(update(d).where(d.c.id == doc.id).values(archived_at=func.now() if archived else None))
+    await rows.set_archived(conn, doc.id, archived)
 
 
 # Comments
 
 
-@dataclass(frozen=True)
-class CommentRow:
-    id: int
-    version: int | None
-    item: str | None
-    item_code: str | None
-    parent_id: int | None
-    author: str
-    run_id: int | None
-    body: str
-    created_at: datetime
-    resolved_by: str | None
-    resolved_at: datetime | None
-    field: str | None = None
-    quote: str | None = None
-    prefix: str | None = None
-    suffix: str | None = None
-    start_offset: int | None = None
-    ask_run_id: int | None = None
-    author_id: int | None = None
-
-
-def _comments_query(document_id: int):
-    s, u = tables.srs, tables.users
-    c, v, i = s.comments, s.versions, s.items
-    author, resolver = u.alias("author"), u.alias("resolver")
-    return (
-        select(
-            c.c.id,
-            v.c.number.label("version"),
-            i.c.key.label("item"),
-            i.c.code.label("item_code"),
-            c.c.parent_id,
-            author.c.login.label("author"),
-            c.c.run_id,
-            c.c.body,
-            c.c.created_at,
-            resolver.c.login.label("resolved_by"),
-            c.c.resolved_at,
-            c.c.field,
-            c.c.quote,
-            c.c.prefix,
-            c.c.suffix,
-            c.c.start_offset,
-            c.c.ask_run_id,
-            c.c.author_id,
-        )
-        .select_from(
-            c.join(author, author.c.id == c.c.author_id)
-            .outerjoin(v, v.c.id == c.c.version_id)
-            .outerjoin(i, i.c.id == c.c.item_id)
-            .outerjoin(resolver, resolver.c.id == c.c.resolved_by)
-        )
-        .where(c.c.document_id == document_id)
-    )
-
-
 async def comments(conn: AsyncConnection, doc: DocumentRow) -> list[CommentRow]:
     """The comments of ``doc``, oldest first."""
-    query = _comments_query(doc.id).order_by(tables.srs.comments.c.id)
-    return [CommentRow(**row._mapping) for row in await conn.execute(query)]
+    return await rows.comments(conn, doc)
 
 
 @dataclass(frozen=True)
@@ -536,12 +460,10 @@ async def _parent_checked(conn: AsyncConnection, doc: DocumentRow, parent_id: in
     such comment."""
     if parent_id is None:
         return None
-    c = tables.srs.comments
-    held = select(c.c.id, c.c.parent_id).where(c.c.id == parent_id, c.c.document_id == doc.id)
-    row = (await conn.execute(held)).first()
-    if row is None:
+    root = await rows.thread_root(conn, doc, parent_id)
+    if root is None:
         raise SrsError(422, f"document {doc.slug} has no comment {parent_id}")
-    return row.parent_id or row.id
+    return root
 
 
 async def comment(
@@ -562,7 +484,6 @@ async def comment(
     version_id = (await store.version(conn, doc, number)).id if number is not None else None
     item_id = await store.item_id(conn, access, doc, request.item) if request.item else None
     root = await _parent_checked(conn, doc, request.parent_id)
-    c = tables.srs.comments
     values = {
         "document_id": doc.id,
         "version_id": version_id,
@@ -577,8 +498,7 @@ async def comment(
         "suffix": (request.suffix or None) if quote else None,
         "start_offset": request.start_offset if quote else None,
     }
-    comment_id = (await conn.execute(insert(c).values(values).returning(c.c.id))).scalar_one()
-    return CommentRow(**(await conn.execute(_comments_query(doc.id).where(c.c.id == comment_id))).one()._mapping)
+    return await rows.insert_comment(conn, doc, values)
 
 
 async def resolve(
@@ -595,31 +515,16 @@ async def resolve(
     if user.acts_for_run is not None:
         raise SrsError(403, "the agent of a run never resolves or reopens a thread: a member of the project does")
     writer(access, "reopening a thread of comments" if reopen else "closing a thread of comments")
-    c = tables.srs.comments
-    held = and_(c.c.id == comment_id, c.c.document_id == doc.id)
-    above = (await conn.execute(select(c.c.parent_id).where(held))).scalar()
-    if above is not None:  # an answer: its thread is its root's
-        comment_id = above
-        held = and_(c.c.id == comment_id, c.c.document_id == doc.id)
-    if reopen:
-        change = update(c).where(held, c.c.resolved_at.is_not(None)).values(resolved_by=None, resolved_at=None)
-    else:
-        values = {"resolved_by": user.user_id, "resolved_at": func.now()}
-        change = update(c).where(held, c.c.resolved_at.is_(None)).values(values)
-    done = await conn.execute(change)
-    row = (await conn.execute(_comments_query(doc.id).where(c.c.id == comment_id))).first()
-    if row is None:
-        raise SrsError(404, f"document {doc.slug} has no comment {comment_id}")
-    if not done.rowcount and (row.resolved_at is None) != reopen:
+    changed, row = await rows.resolve_thread(conn, doc, comment_id, user.user_id, reopen)
+    if not changed and (row.resolved_at is None) != reopen:
         raise SrsError(409, f"comment {comment_id} could not be {'reopened' if reopen else 'resolved'}")
-    return CommentRow(**row._mapping)
+    return row
 
 
 __all__ = [
     "APPROVE",
     "REQUEST_CHANGES",
     "CommentRequest",
-    "CommentRow",
     "ReviewRequest",
     "admin",
     "approved_by",

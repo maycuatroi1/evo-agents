@@ -18,8 +18,9 @@ decide, or @ba's review of the version's round is queued or running (``findings.
 ``wait_for_ba`` is off; a request for changes is never held. With the config's ``owners``, a use case of a group named
 there is reviewed by its owners and the project's admins alone. Approving a version emits ``srs.version.approved`` in the same transaction (``events``); in a project
 that enables the plugin tasks, the plugin's handler of that event keeps its tasks in step when the hub delivers it
-(``auto_tasks.approved``, with the version approved before it and the approver): frame tasks of its new use cases,
-comments and cancellations, and @ba's split run. A writer sends one use case to review on its own (POST
+(``handlers.on_version_approved``, then ``auto_tasks.approved``, with the version approved before it and the
+approver): frame tasks of its new use cases, comments and cancellations, and @ba's split run. A writer sends one
+use case to review on its own (POST
 .../documents/{slug}/use-cases/{ref}/submit): the revision it has in the latest version, which @ba reviews alone and
 reviewers approve into the approved baseline without waiting for the rest of the version. Every use case answered
 carries its revision (``rev``), the revision the baseline holds (``released``) and the link of its review. Reads go
@@ -32,18 +33,12 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Path, Query, Request
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
-from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.errors import ErrorBody, error_response
-from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.srs.models import checks, markdown
 from evo_agents.hub.server.srs.models.api import (
     SrsComment,
     SrsCommentIn,
@@ -55,13 +50,10 @@ from evo_agents.hub.server.srs.models.api import (
     SrsImport,
     SrsImportResult,
     SrsItemDetail,
-    SrsQueuedUseCase,
     SrsQueuedVersion,
     SrsRetireIn,
     SrsRetireResult,
     SrsReviewIn,
-    SrsReviewRun,
-    SrsRevision,
     SrsSave,
     SrsSettleIn,
     SrsUseCaseSubmitted,
@@ -70,26 +62,11 @@ from evo_agents.hub.server.srs.models.api import (
     SrsVersionDetail,
     SrsWaiveIn,
     SrsWithdrawIn,
-    cases_model,
-    comment_model,
-    detail_model,
-    diff_model,
-    edit_changes,
-    finding_model,
-    item_detail_model,
-    preview_model,
-    retire_model,
-    summary_model,
-    use_case_model,
-    version_model,
 )
-from evo_agents.hub.server.srs.models.diff import diff, lines_between
 from evo_agents.hub.server.srs.models.doc import SrsError
-from evo_agents.hub.server.srs.repository import revisions, store
-from evo_agents.hub.server.srs.service import edits, findings, imports, notices, reviews, threads, use_case_reviews
-from evo_agents.hub.server.srs.service.auto_review import case_entered, review_entered
-from evo_agents.hub.server.srs.service.writes import Writer, dropped, give_screen_codes, unheld_problems, write_version
-from evo_agents.hub.tables_srs import FINDING_STATUSES, MAX_SUMMARY_CHARS, SLUG
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.service import reading, writing
+from evo_agents.hub.tables_srs import FINDING_STATUSES, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
 RACE = "another save in the project took a code or a version number at the same moment: nothing was written; try again"
@@ -105,35 +82,13 @@ router = APIRouter(tags=["plugins"], responses={401: {"model": ErrorBody}, **REF
 async def _answer(request: Request, work):
     """``work(conn)`` in one transaction; a refusal as the hub's error body, nothing written."""
     try:
-        async with request.app.state.engine.begin() as conn:
+        async with UnitOfWork(request.app.state.engine) as conn:
             return await work(conn)
     except SrsError as exc:
         detail = [problem.as_json() for problem in exc.problems] or exc.detail
         return error_response(request, exc.status, exc.message, detail=detail)
     except IntegrityError:
         return error_response(request, 409, RACE)
-
-
-def _revs(known: revisions.History, number: int) -> dict[str, int]:
-    """The revision each use case has in version ``number``, by key."""
-    found = {}
-    for key in known.revisions:
-        revision = known.at(key, number)
-        if revision is not None and not revision.dropped:
-            found[key] = revision.rev
-    return found
-
-
-async def _detail(conn: AsyncConnection, access: ProjectAccess, doc: store.DocumentRow, number: int | None):
-    row = await store.version(conn, doc, number)
-    snap = await store.snapshot(conn, row)
-    settings = await store.settings(conn, access)
-    wide = use_case_reviews.round_approvals(row)
-    known = await revisions.history(conn, doc.id)
-    cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide, known)
-    problems = checks.problems(snap.doc, settings.template)
-    released = {key: rev for key in known.releases if (rev := known.baseline(key)) is not None}
-    return detail_model(doc.slug, row, snap.doc, problems, cases, access.name, _revs(known, row.number), released)
 
 
 # Reading
@@ -151,67 +106,9 @@ async def list_documents(
     with ``all``."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        found = await store.documents(conn, access, sink, with_archived=with_archived)
-        return [summary_model(row) for row in found]
+        return await reading.list_documents(conn, user, project, sink, with_archived)
 
     return await _answer(request, work)
-
-
-def _held_by(settings: store.Settings, running, deciding) -> Literal["ba_review", "findings"] | None:
-    """What holds an approval now: @ba's review of the round, else open findings to decide; nothing of @ba holds one
-    with the config's ``wait_for_ba`` off."""
-    if not settings.wait_for_ba:
-        return None
-    return "ba_review" if running is not None else "findings" if deciding else None
-
-
-async def _queued_cases(
-    conn: AsyncConnection,
-    access: ProjectAccess,
-    doc: store.DocumentRow,
-    row: store.VersionRow,
-    content,
-    cases,
-    reviewer: Principal | None,
-    settings: store.Settings,
-) -> list[SrsQueuedUseCase]:
-    """The use cases to review of version ``row``, whose content is ``content``, each with its intent as the version
-    reads, the open findings of the document about it or a business rule under it, by level, what holds its approval
-    (nothing of @ba with ``wait_for_ba`` off) and whether ``reviewer`` (None: nobody, the caller is no writer) may
-    review it."""
-    admin = has_role(access.role, "admin")
-    under = findings.use_case_of(content)
-    intents = {  # Intent, or the Objective it replaced in older use cases
-        item.key: item.fields.get("intent") or item.fields.get("objective")
-        for item in content.items
-        if item.kind == "use_case"
-    }
-    counts: dict[str, list[int]] = {}
-    for found in await findings.findings(conn, doc, findings.OPEN):
-        case = under.get(found.item or "")
-        if case is not None:
-            counts.setdefault(case, [0, 0])[0 if found.level == findings.DECIDE else 1] += 1
-    queued = []
-    for case in cases:
-        hold = findings.Case(case.key, use_case_reviews.case_name(case), content, case.review_run_id)
-        deciding, running = await findings.holds(conn, doc, row, hold)
-        link = store.case_path(access.name, doc.slug, row.number, case.key)
-        queued.append(
-            SrsQueuedUseCase(
-                **use_case_model(case, link).model_dump(),
-                intent=intents.get(case.key) or None,
-                deciding=counts.get(case.key, [0, 0])[0],
-                noted=counts.get(case.key, [0, 0])[1],
-                held_by=_held_by(settings, running, deciding),
-                may_review=reviewer is not None
-                and case.state not in use_case_reviews.DONE
-                and reviewer.user_id not in case.authors
-                and use_case_reviews.may_decide(case.owners, reviewer.login, admin)
-                and (row.state == "in_review" or case.submitted),
-            )
-        )
-    return queued
 
 
 @router.get("/{project}/reviews", response_model=list[SrsQueuedVersion])
@@ -221,46 +118,7 @@ async def review_queue(request: Request, project: ProjectName, user: CurrentUser
     then open findings of level decide) and whether the caller may review it."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        settings = await store.settings(conn, access)
-        writer = has_role(access.role, "writer") and user.acts_for_run is None
-        queued = []
-        for doc in await store.documents(conn, access, sink):
-            for row in await store.versions(conn, doc.id):
-                latest_draft = row.state == "draft" and row.number == doc.latest_version
-                if row.state != "in_review" and not latest_draft:
-                    continue
-                snap = await store.snapshot(conn, row)
-                wide = use_case_reviews.round_approvals(row)
-                cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide)
-                if row.state != "in_review":  # a draft lists the use cases sent to review on their own alone
-                    cases = [case for case in cases if case.submitted]
-                    if not cases:
-                        continue
-                deciding, running = await findings.holds(conn, doc, row)
-                reviewer = user if writer else None
-                use_cases = await _queued_cases(conn, access, doc, row, snap.doc, cases, reviewer, settings)
-                if cases:
-                    may = any(case.may_review for case in use_cases)
-                else:
-                    authors = await use_case_reviews.authors_since(conn, doc, row.number)
-                    may = writer and (settings.self_approval or user.user_id not in authors)
-                held_by = _held_by(settings, running, deciding)
-                version = cases_model(row, cases).model_dump(exclude={"use_cases"})
-                queued.append(
-                    SrsQueuedVersion(
-                        **version,
-                        use_cases=use_cases,
-                        document=doc.slug,
-                        document_title=doc.title,
-                        held_by=held_by,
-                        deciding=len(deciding),
-                        may_review=may,
-                    )
-                )
-        return sorted(
-            queued, key=lambda version: (version.submitted_at is None, version.submitted_at, version.document)
-        )
+        return await reading.review_queue(conn, user, project, sink)
 
     return await _answer(request, work)
 
@@ -272,11 +130,7 @@ async def show_document(
     """A document with every version, the newest first, and one version whole: the latest, or ``version``."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        shown = await _detail(conn, access, doc, version) if doc.latest_version else None
-        versions = [version_model(row) for row in await store.versions(conn, doc.id)]
-        return SrsDocument(**summary_model(doc).model_dump(), versions=versions, shown=shown)
+        return await reading.show_document(conn, user, project, slug, version, sink)
 
     return await _answer(request, work)
 
@@ -286,9 +140,7 @@ async def list_versions(request: Request, project: ProjectName, slug: Slug, user
     """Every version of a document, the newest first, with its reviews."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        return [version_model(row) for row in await store.versions(conn, doc.id)]
+        return await reading.list_versions(conn, user, project, slug, sink)
 
     return await _answer(request, work)
 
@@ -300,8 +152,7 @@ async def show_version(
     """A version whole: its items and what is wrong with it."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        return await _detail(conn, access, await store.document(conn, access, slug, sink), number)
+        return await reading.show_version(conn, user, project, slug, number, sink)
 
     return await _answer(request, work)
 
@@ -319,27 +170,7 @@ async def show_item(
     """An item of a version (the latest unless asked), by code, alias or key, with its children."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        row = await store.version(conn, doc, version)
-        snap = await store.snapshot(conn, row)
-        found = snap.doc.item_index(ref, f"version {row.number} of {slug}")
-        known = await revisions.history(conn, doc.id)
-        key = snap.doc.items[found].key or ""
-        history = [
-            SrsRevision(
-                rev=one.rev,
-                version=one.version,
-                author=one.author,
-                created_at=one.created_at,
-                dropped=one.dropped,
-                submitted_at=one.submitted_at,
-                submitted_by=one.submitted_by,
-            )
-            for one in known.revisions.get(key, ())
-        ]
-        released = known.baseline(key)
-        return item_detail_model(slug, row.number, snap.doc, found, _revs(known, row.number), released, history)
+        return await reading.show_item(conn, user, project, slug, ref, version, sink)
 
     return await _answer(request, work)
 
@@ -357,12 +188,7 @@ async def compare_versions(
     """What changed from version ``from`` to version ``to``, item by item."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        old = await store.snapshot(conn, await store.version(conn, doc, low))
-        new = await store.snapshot(conn, await store.version(conn, doc, high))
-        preamble = lines_between(old.doc.preamble, new.doc.preamble) if old.doc.preamble != new.doc.preamble else []
-        return diff_model(slug, low, high, preamble, diff(old.doc, new.doc))
+        return await reading.compare_versions(conn, user, project, slug, low, high, sink)
 
     return await _answer(request, work)
 
@@ -380,11 +206,7 @@ async def export_version(
     """A version (the latest unless asked) as Markdown, in the template's structure, with the same codes."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        row = await store.version(conn, doc, version)
-        snap = await store.snapshot(conn, row)
-        return SrsExport(document=slug, version=row.number, markdown=markdown.render(snap.doc, anchors=anchors))
+        return await reading.export_version(conn, user, project, slug, version, anchors, sink)
 
     return await _answer(request, work)
 
@@ -400,19 +222,7 @@ async def import_document(
     at the preview."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        given = body.model_dump(exclude={"label"})
-        label = body.label.model_dump(exclude_none=True) if body.label else None
-        done = await imports.import_markdown(
-            conn, access, user.user_id, imports.ImportRequest(**given, label=label), sink
-        )
-        return SrsImportResult(
-            document=done.document,
-            created=done.created,
-            version=done.version,
-            dry_run=body.dry_run,
-            preview=preview_model(done.preview),
-        )
+        return await writing.import_document(conn, user, project, body, sink)
 
     return await _answer(request, work)
 
@@ -425,26 +235,9 @@ async def save_version(
     both texts of an item that changed since ``base_version``."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        reviews.writer(access, "saving a version")
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        latest = await store.snapshot(conn, await store.version(conn, doc))
-        base = latest if body.base_version == latest.version.number else None
-        base = base or await store.snapshot(conn, await store.version(conn, doc, body.base_version))
-        content = edits.edited(latest, base, edit_changes(body.changes), body.preamble)
-        await give_screen_codes(conn, access.project_id, content)
-        writer = Writer(access.project_id, doc.id, user.user_id, has_role(access.role, "admin"))
-        template = (await store.settings(conn, access)).template
-        number = await write_version(conn, writer, content, latest, template, body.summary)
-        return await _detail(conn, access, await store.document(conn, access, slug, sink), number)
+        return await writing.save_version(conn, user, project, slug, body, sink)
 
     return await _answer(request, work)
-
-
-def _retired_summary(changes: list[edits.Change], latest: store.Snapshot) -> str:
-    keys = {change.key for change in changes}
-    named = [item.code or item.title for item in latest.doc.items if item.key in keys]
-    return f"Retired {', '.join(named)}"[:MAX_SUMMARY_CHARS]
 
 
 @router.post("/{project}/documents/{slug}/retire", response_model=SrsRetireResult)
@@ -458,24 +251,7 @@ async def retire_items(
     nothing."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        reviews.admin(access, user, "retires items by their codes")
-        doc = store.writable(access, await store.document(conn, access, slug, sink, lock=not body.dry_run))
-        latest = await store.snapshot(conn, await store.version(conn, doc))
-        writer = Writer(access.project_id, doc.id, user.user_id, admin=True)
-        changes, unknown = edits.retiring(latest.doc, body.codes)
-        if unknown:
-            where = f"version {latest.version.number} of {slug}"
-            found = await unheld_problems(conn, writer, where, unknown)
-            raise SrsError(422, f"nothing is retired: {found[0].message}", found)
-        content = edits.edited(latest, latest, changes)
-        gone = dropped(content, latest)
-        if body.dry_run:
-            return retire_model(slug, None, True, gone)
-        await give_screen_codes(conn, access.project_id, content)
-        template = (await store.settings(conn, access)).template
-        summary = body.summary or _retired_summary(changes, latest)
-        return retire_model(slug, await write_version(conn, writer, content, latest, template, summary), False, gone)
+        return await writing.retire_items(conn, user, project, slug, body, sink)
 
     return await _answer(request, work)
 
@@ -490,19 +266,7 @@ async def submit_version(
     reviews nothing or the config's wait_for_ba is off, else when its review ends (``notices``)."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        settings = await store.settings(conn, access)
-        sent = await reviews.submit(conn, access, doc, number, settings)
-        if await review_entered(conn, access, doc, sent) is not None:
-            sent = await store.version(conn, doc, number)  # with @ba's review run of the round
-            if not settings.wait_for_ba:  # @ba's review is advice: the reviewers need not wait for it
-                await notices.tell_reviewers(conn, access.project_id, doc, sent)
-        else:
-            await notices.tell_reviewers(conn, access.project_id, doc, sent)
-        content = (await store.snapshot(conn, sent)).doc
-        cases = await use_case_reviews.states(conn, access.project_id, doc, sent, content, settings, [])
-        return cases_model(sent, cases, (access.name, slug))
+        return await writing.submit_version(conn, user, project, slug, number, sink)
 
     return await _answer(request, work)
 
@@ -523,21 +287,7 @@ async def submit_use_case(
     holds its approval, with the link of its review. Answers the latest version with its use cases and this one."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        settings = await store.settings(conn, access)
-        latest, cases, case, revision = await reviews.submit_use_case(conn, access, user, doc, ref, settings)
-        run_id = await case_entered(conn, access, doc, latest, case, revision, user.login)
-        if run_id is None or not settings.wait_for_ba:
-            await notices.tell_case_reviewers(conn, access.project_id, doc, latest, case.key)
-        run = None
-        if run_id is not None:
-            state = await conn.scalar(select(tables.runs.c.state).where(tables.runs.c.id == run_id))
-            run = SrsReviewRun(id=run_id, state=state)
-        where = (access.name, slug)
-        found = cases_model(latest, cases, where)
-        mine = next(model for model in found.use_cases if model.key == case.key)
-        return SrsUseCaseSubmitted(**found.model_dump(), use_case=mine, use_case_review_run=run)
+        return await writing.submit_use_case(conn, user, project, slug, ref, sink)
 
     return await _answer(request, work)
 
@@ -560,14 +310,7 @@ async def review_version(
     are cancelled, and @ba splits the frame tasks into child tasks."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        settings = await store.settings(conn, access)  # with self_approval on, the author reviews it too
-        asked = reviews.ReviewRequest(body.decision, body.role, body.body)
-        decided = await reviews.review(conn, access, user, doc, number, asked, settings)
-        if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
-            await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
-        return version_model(decided)
+        return await writing.review_version(conn, request.app.state.jobs, user, project, slug, number, body, sink)
 
     return await _answer(request, work)
 
@@ -593,14 +336,7 @@ async def review_use_case(
     cases."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        settings = await store.settings(conn, access)
-        asked = reviews.ReviewRequest(body.decision, body.role, body.body)
-        decided, cases = await reviews.review_use_case(conn, access, user, doc, number, ref, asked, settings)
-        if body.decision == "approve":  # the knowledge graph reads the approved baseline (``kg``)
-            await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
-        return cases_model(decided, cases, (access.name, slug))
+        return await writing.review_use_case(conn, request.app.state.jobs, user, project, slug, number, ref, body, sink)
 
     return await _answer(request, work)
 
@@ -620,10 +356,9 @@ async def withdraw_version(
     it withdrawn. The agent of a run never withdraws one."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        reason = body.comment if body is not None else None
-        return version_model(await reviews.withdraw(conn, access, user, doc, number, reason))
+        return await writing.withdraw_version(
+            conn, user, project, slug, number, body.comment if body is not None else None, sink
+        )
 
     return await _answer(request, work)
 
@@ -633,11 +368,7 @@ async def _archived(request: Request, project: str, slug: str, user: Principal, 
     archived documents out, and answer the document."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True, even_archived=True)
-        await reviews.archive(conn, access, user, doc, archived)
-        await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
-        return summary_model(await store.document(conn, access, slug, sink))
+        return await writing.archive(conn, request.app.state.jobs, user, project, slug, sink, archived)
 
     return await _answer(request, work)
 
@@ -679,18 +410,7 @@ async def list_comments(
     asked."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        content = (
-            (await store.snapshot(conn, await store.version(conn, doc, version))).doc if doc.latest_version else None
-        )
-        keys = None
-        if item is not None:
-            at = content.item_index(item, f"{slug}") if content is not None else None
-            keys = threads.under(content, content.items[at].key or "") if at is not None and content else {item}
-        chosen = threads.chosen(threads.threads(await reviews.comments(conn, doc)), keys, status)
-        rows = sorted((row for one in chosen for row in (one.root, *one.replies)), key=lambda row: row.id)
-        return [comment_model(row, threads.anchor(content, row.item, row.quote)) for row in rows]
+        return await reading.list_comments(conn, user, project, slug, version, item, status, sink)
 
     return await _answer(request, work)
 
@@ -702,29 +422,14 @@ async def add_comment(
     """Comment on a document, a version of it or an item, or answer a comment."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        asked = reviews.CommentRequest(**body.model_dump())
-        row = await reviews.comment(conn, access, user, doc, asked)
-        thread = next(
-            one
-            for one in threads.threads(await reviews.comments(conn, doc))
-            if one.root.id == (row.parent_id or row.id)
-        )
-        await threads.told(conn, access, doc, thread, row)
-        if await threads.asked(conn, access, doc, thread, row) is not None:
-            row = next(one for one in await reviews.comments(conn, doc) if one.id == row.id)  # with the run it asked
-        content = (await store.snapshot(conn, await store.version(conn, doc))).doc
-        return comment_model(row, threads.anchor(content, row.item, row.quote))
+        return await writing.add_comment(conn, user, project, slug, body, sink)
 
     return await _answer(request, work)
 
 
 async def _resolved(request: Request, project: str, slug: str, comment_id: int, user, sink, *, reopen: bool):
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        return comment_model(await reviews.resolve(conn, access, user, doc, comment_id, reopen=reopen))
+        return await writing.resolve_comment(conn, user, project, slug, comment_id, sink, reopen=reopen)
 
     return await _answer(request, work)
 
@@ -771,11 +476,7 @@ async def list_findings(
     them names the document whose item holds it, when the member sees that document."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        rows = await findings.findings(conn, doc, status)
-        held = await findings.code_documents(conn, access, sink, rows)
-        return [finding_model(row, held) for row in rows]
+        return await reading.list_findings(conn, user, project, slug, status, sink)
 
     return await _answer(request, work)
 
@@ -796,19 +497,7 @@ async def settle_finding(
     review that nothing holds it any more (``notices``). 409 when it is not open, or the document is archived."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        if user.acts_for_run is not None:
-            raise SrsError(403, "the agent of a run settles a finding with srs__finding, in its settle chat")
-        reviews.writer(access, "settling a finding")
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        held = await findings.finding(conn, doc, finding_id)
-        resolution = findings.chosen(held, body.option, body.note)
-        row = await findings.settle(
-            conn, access, doc, finding_id, findings.Settling(findings.RESOLVED, resolution, user.user_id)
-        )
-        if row.level == findings.DECIDE:
-            await notices.findings_settled(conn, access.project_id, doc)
-        return finding_model(row, await findings.code_documents(conn, access, sink, [row]))
+        return await writing.settle_finding(conn, user, project, slug, finding_id, body, sink)
 
     return await _answer(request, work)
 
@@ -827,14 +516,7 @@ async def waive_finding(
     ``reason`` is kept as its resolution. 409 when it is not open, or the document is archived."""
 
     async def work(conn):
-        access = await project_access(conn, user, project)
-        reviews.admin(access, user, "waives a finding")
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        waived = findings.Settling(findings.WAIVED, body.reason, user.user_id)
-        row = await findings.settle(conn, access, doc, finding_id, waived)
-        if row.level == findings.DECIDE:  # the last one waived lets the reviewers know (``notices``)
-            await notices.findings_settled(conn, access.project_id, doc)
-        return finding_model(row, await findings.code_documents(conn, access, sink, [row]))
+        return await writing.waive_finding(conn, user, project, slug, finding_id, body, sink)
 
     return await _answer(request, work)
 

@@ -6,7 +6,7 @@ a version @ba is still reviewing or whose findings to decide are still open:
 
 - when it enters review and the hub handed @ba no review of its round (the agent type is off or past its cap, or the
   project has none; ``auto_review``);
-- when @ba's review of its round ends, whatever it ended as (``settle.review_ended``), and the document has no open
+- when @ba's review of its round ends, whatever it ended as (``handlers.review_ended``), and the document has no open
   finding of level decide;
 - when the last open finding of level decide of the document is settled or waived (``findings_settled``) while the
   version is in review and @ba's review of its round is no longer queued or running.
@@ -39,15 +39,14 @@ with the link of its review. A reviewer who is the author (``self_approval``) is
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import signals, tables
+from evo_agents.hub import signals
 from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.repository import people, store
 from evo_agents.hub.server.srs.repository.store import DocumentRow, Settings, VersionRow
 from evo_agents.hub.server.srs.service import findings, use_case_reviews
 from evo_agents.hub.server.srs.service.use_case_reviews import CaseState, case_name
@@ -73,25 +72,12 @@ def _details(doc: DocumentRow, held: VersionRow, event: str, **more) -> dict:
 
 async def _told(conn: AsyncConnection, user_id: int, held: VersionRow) -> bool:
     """Whether member ``user_id`` was told already that the current round of ``held`` waits for them."""
-    n = tables.notifications
-    query = (
-        select(n.c.id)
-        .where(
-            n.c.user_id == user_id,
-            n.c.notice_kind == REVIEW,
-            n.c.details["version_id"].astext == str(held.id),
-            n.c.details["round"].astext == str(held.round),
-        )
-        .limit(1)
-    )
-    return (await conn.execute(query)).first() is not None
+    return await people.noticed(conn, user_id, REVIEW, {"version_id": str(held.id), "round": str(held.round)})
 
 
 async def _named(conn: AsyncConnection, logins: tuple[str, ...]) -> set[int]:
     """The ids of the members ``logins`` names (logins are case-insensitive), those with an account."""
-    u = tables.users
-    rows = await conn.execute(select(u.c.id).where(func.lower(u.c.login).in_([login.lower() for login in logins])))
-    return set(rows.scalars())
+    return await people.named(conn, logins)
 
 
 async def reviewers(
@@ -105,10 +91,7 @@ async def reviewers(
     """The members to tell that ``held`` of ``doc`` waits for them (see the module), by id: of its use cases ``cases``
     when given, those who may review one of them."""
     rules = await signals.project_rules(conn, project_id)
-    g = tables.grants
-    grants = await conn.execute(
-        select(g.c.user_id, g.c.role, g.c.max_level).where(g.c.project_id == project_id).order_by(g.c.user_id)
-    )
+    grants = await people.grants(conn, project_id)
     seen = {}  # the writers who read the document, by id, with their role
     for user_id, role, max_level in grants:
         if not has_role(role, "writer"):
@@ -187,13 +170,8 @@ async def _shares(
 
 async def _people(conn: AsyncConnection, project_id: int, ids: set[int]) -> dict[int, tuple[str, bool]]:
     """The login of each member ``ids`` names, and whether they are an admin of project ``project_id``."""
-    u, g = tables.users, tables.grants
-    query = (
-        select(u.c.id, u.c.login, g.c.role)
-        .join_from(u, g, (g.c.user_id == u.c.id) & (g.c.project_id == project_id), isouter=True)
-        .where(u.c.id.in_(ids or [0]))
-    )
-    return {row.id: (row.login, has_role(row.role, "admin")) for row in await conn.execute(query)}
+    found = await people.logins_and_roles(conn, project_id, ids)
+    return {row.id: (row.login, has_role(row.role, "admin")) for row in found}
 
 
 def _body(project: str, doc: DocumentRow, held: VersionRow, cases: list[CaseState], run, deciding_settled: bool) -> str:
@@ -280,20 +258,8 @@ async def tell_reviewers(
 async def _told_case(conn: AsyncConnection, user_id: int, doc: DocumentRow, case: CaseState) -> bool:
     """Whether member ``user_id`` was told already that the current round of the revision of ``case`` waits for
     them."""
-    n = tables.notifications
-    query = (
-        select(n.c.id)
-        .where(
-            n.c.user_id == user_id,
-            n.c.notice_kind == REVIEW,
-            n.c.details["document_id"].astext == str(doc.id),
-            n.c.details["case_key"].astext == case.key,
-            n.c.details["rev"].astext == str(case.rev),
-            n.c.details["case_round"].astext == str(case.round),
-        )
-        .limit(1)
-    )
-    return (await conn.execute(query)).first() is not None
+    details = {"document_id": str(doc.id), "case_key": case.key, "rev": str(case.rev), "case_round": str(case.round)}
+    return await people.noticed(conn, user_id, REVIEW, details)
 
 
 async def tell_case_reviewers(

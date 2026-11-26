@@ -22,17 +22,17 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import signals, tables
+from evo_agents.hub import signals
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.srs import BA
 from evo_agents.hub.server.srs.models.doc import Document, Item
-from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository import people, revisions, store
+from evo_agents.hub.server.srs.repository import reviews as comment_rows
+from evo_agents.hub.server.srs.repository.reviews import CommentRow
 from evo_agents.hub.server.srs.repository.store import PLUGIN, DocumentRow
-from evo_agents.hub.server.srs.service.reviews import CommentRow
 
 log = logging.getLogger(__name__)
 
@@ -155,8 +155,7 @@ async def _revision_author(conn: AsyncConnection, doc: DocumentRow, content: Doc
         revision = (await revisions.history(conn, doc.id)).latest(above)
         if revision is not None:
             return revision.author_id
-    v = tables.srs.versions
-    return await conn.scalar(select(v.c.author_id).where(v.c.document_id == doc.id, v.c.number == doc.latest_version))
+    return await store.version_author(conn, doc.id, doc.latest_version)
 
 
 async def _members(conn: AsyncConnection, project_id: int, logins: Iterable[str]) -> set[int]:
@@ -164,13 +163,7 @@ async def _members(conn: AsyncConnection, project_id: int, logins: Iterable[str]
     wanted = {login.lower() for login in logins}
     if not wanted:
         return set()
-    u, g = tables.users, tables.grants
-    query = (
-        select(u.c.id)
-        .join_from(u, g, g.c.user_id == u.c.id)
-        .where(g.c.project_id == project_id, func.lower(u.c.login).in_(sorted(wanted)))
-    )
-    return set((await conn.execute(query)).scalars())
+    return await people.members(conn, project_id, wanted)
 
 
 async def told(
@@ -179,8 +172,7 @@ async def told(
     """Send ``srs_comment`` of ``comment`` (in ``thread``) to whom the module names; their ids."""
     content = (await store.snapshot(conn, await store.version(conn, doc))).doc if doc.latest_version else None
     people = {row.author_id for row in (thread.root, *thread.replies) if row.run_id is None and row.author_id}
-    c = tables.srs.comments
-    resolver = await conn.scalar(select(c.c.resolved_by).where(c.c.id == thread.root.id))
+    resolver = await comment_rows.resolver(conn, thread.root.id)
     people |= {resolver} if resolver else set()
     people |= await _members(conn, access.project_id, NAMED.findall(comment.body))
     if thread.root.item and content is not None:
@@ -259,8 +251,7 @@ async def asked(
     if run_id is None:
         log.info("no answer by @ba", extra={"project": access.name, "document": doc.slug, "why": why})
     if run_id is not None:
-        c = tables.srs.comments
-        await conn.execute(update(c).where(c.c.id == comment.id).values(ask_run_id=run_id))
+        await comment_rows.set_ask_run(conn, comment.id, run_id)
     return run_id
 
 
