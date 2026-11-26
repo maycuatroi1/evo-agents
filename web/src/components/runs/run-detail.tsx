@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import type { Route } from "next";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -24,7 +24,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { chatHref } from "@/lib/chat-keys";
 import { cn } from "@/lib/utils";
 
-import { AgentTrace, type TraceContext, type TraceReveal } from "./agent-trace";
+import type { TraceContext, TraceReveal } from "./agent-trace";
 import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
 import { CHAT_TAB, chatKey, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
@@ -39,15 +39,17 @@ import { DetailsToggle, RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
 import { taskBranch } from "./model";
 import { runControls } from "./run-model";
-import { useDescribeMove, useSessionTab, useShowDecision, useShowSession, useTraceScreen } from "./run-page-state";
+import { AGENT_PARAM, useDescribeMove, useSessionTab, useShowDecision, useShowSession, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
 import { RunTasksPanel } from "./run-tasks-panel";
 import { RunTimeline } from "./run-timeline";
+import { RunTraceView, ScreenHead } from "./run-trace-view";
 import { TracePreview } from "./trace-preview";
 import { RunBrowserPanel } from "./run-browser-lazy";
 import { browserAccess, useLiveTab } from "./run-live-tabs";
 import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
+import { useRunAgents } from "./use-run-agents";
 import { logSignal, useRunLog } from "./use-run-log";
 import { OutputsPreview } from "./run-outputs-preview";
 import { TraceOutputsContext, useRunOutputs } from "./use-run-outputs";
@@ -102,7 +104,9 @@ function RunPage({ run }: { run: Run }) {
   const outputs = useRunOutputs({ run, viewer, events: log.events, onShowInTrace: showInTrace });
   const traceOutputs = useMemo(() => ({ index: outputs.index, open: outputs.open }), [outputs.index, outputs.open]);
   const working = run.state === "running" && log.status !== "ended";
-  const tasks = <RunTasksPanel events={log.events} working={working} onShow={(call) => showInTrace({ call, seq: null })} />;
+  // The run's subagents and background commands, read once for the panel, the trace and a subagent's profile.
+  const { tasks: runTaskList, profile, viewed, openAgent, showCall } = useRunAgents(log.events, showSession, setReveal);
+  const tasks = <RunTasksPanel tasks={runTaskList} working={working} onShow={showCall} onOpen={openAgent} />;
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   // While the stream (or its fallback) carries the run, it is what the top bar's LiveIndicator follows; before it opens
   // and once it ended, the run's own query (every 5 seconds while active) does.
@@ -149,8 +153,9 @@ function RunPage({ run }: { run: Run }) {
       active,
       webOfBranch,
       showDecision: authoring ? showDecision : undefined,
+      openAgent,
     }),
-    [run.id, run.project, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
+    [run.id, run.project, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision, openAgent],
   );
 
   // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.
@@ -242,7 +247,7 @@ function RunPage({ run }: { run: Run }) {
   const detailsToggle = <DetailsToggle open={details} controls={detailsId} onToggle={() => setDetails((open) => !open)} />;
   // On a phone the session is a screen of its own: opened from the preview, on a tab other than the first, or asked for
   // by the address (`?view=`, an author run's `?tab=chat`) until the person leaves it.
-  const [asked, setAsked] = useState(() => params.has(RUN_VIEW_PARAM) || params.get("tab") === CHAT_TAB);
+  const [asked, setAsked] = useState(() => params.has(RUN_VIEW_PARAM) || params.has(AGENT_PARAM) || params.get("tab") === CHAT_TAB);
   const screen = mobile && (screenOpen || sessionTab !== firstTab || asked);
   const leaveScreen = () => {
     setAsked(false);
@@ -260,14 +265,13 @@ function RunPage({ run }: { run: Run }) {
         log={log}
         frozen={{ at: frozenAt, set: setFrozenAt }}
         active={active}
-        composer={controls.message && !authoring ? <RunComposer run={run} /> : null}
+        composer={controls.message && !authoring ? <RunComposer run={run} to={viewed?.name ?? null} /> : null}
         chat={authoring ? (shown) => <RunChatPanel run={run} owner={controls.owner} shown={shown} fill /> : null}
         tab={sessionTab}
         onTabChange={setSessionTab}
         trace={(shown) => (
           <TraceOutputsContext value={traceOutputs}>
-            {tasks}
-            <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill={fill} reveal={reveal} />
+            <RunTraceView viewed={viewed} profile={profile} panel={tasks} events={log.events} status={log.status} context={traceContext} tasks={runTaskList} shown={shown} fill={fill} reveal={reveal} />
           </TraceOutputsContext>
         )}
         outputs={outputs.data?.count ? { count: outputs.data.count, panel: () => <RunOutputsPanel state={outputs} runId={run.id} fill={fill} /> } : null}
@@ -306,14 +310,7 @@ function RunPage({ run }: { run: Run }) {
       data-screen={screen ? "session" : undefined}
     >
       {screen ? (
-        <div className="-ml-2 flex items-center gap-2">
-          <Button type="button" variant="ghost" size="icon" onClick={leaveScreen} aria-label={tPreview("back", { id: run.id })} data-testid="run-screen-back">
-            <ChevronLeft aria-hidden="true" />
-          </Button>
-          <h1 className="text-[15px] leading-[22px] font-semibold">
-            {t("title")} <span className="tabular-nums">#{run.id}</span>
-          </h1>
-        </div>
+        <ScreenHead runId={run.id} agent={viewed?.name ?? null} onBack={viewed ? profile.close : leaveScreen} />
       ) : (
         <RunActions run={run} controls={controls}>
           {({ buttons, menu }) => (

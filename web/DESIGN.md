@@ -1694,19 +1694,38 @@ Shared pieces built on them:
   are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
   group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
   caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
-- Running now (`run-tasks-panel.tsx`, `run-tasks.ts`): over the Trace, and on a phone between the decision and the
-  trace's preview, a box on `card` lists what the run has going besides its main thread, read from the task events
-  Claude Code sends and the worker logs as `output` events (`task_started`, `task_progress`, `task_updated`,
-  `task_notification`): each subagent with its type in mono, "in the background" when it is, what it does now (its
-  last call, `Bash: Wait for verify run`) and its tool calls and tokens so far, the commands it runs indented under
-  it; then the main agent's commands in the background. Each row has its 16 px icon (`Bot`, `SquareTerminal`) in
-  `running` and its time so far on the right in `running` mono; the head carries the live dot, "Running now" and how
-  many sub-agents and commands run. A row is a button that shows the call that started it in the Trace (Show in
-  trace, `ListTree` under the pointer). The ones that ended fold under "5 finished", each with its end (`CircleCheck`
-  `success`, `CircleX` `danger`, `CircleSlash` muted), the first line of what it reported and its duration, eight
-  shown before "Show all". A command the main agent runs in the foreground is left out (the Trace shows it running),
-  and so is a subagent's command once it ended. The box shows only while something runs on a running run; Codex and
-  opencode send no task events, so their runs never show it. Past 40 % of the window its list scrolls.
+- Running now (`run-tasks-panel.tsx`, `run-tasks.ts`, `run-task-board.ts`): over the Trace, and on a phone between
+  the decision and the trace's preview, a box on `card` lists what the run has going besides its main thread, read
+  from the task events Claude Code sends and the worker logs as `output` events (`task_started`, `task_progress`,
+  `task_updated`, `task_notification`), in two lists apart. Sub-agents: each subagent with its type in mono, "in the
+  background" when it is, what it does now (its last call, `Bash: Wait for verify run`) and its tool calls and tokens
+  so far, the commands it runs indented under it; its row opens its profile. Background commands: the main agent's
+  commands in the background, each named by rule G1 (the command itself in mono, its setup `cd x &&` and wrappers
+  off, a command that is only setup kept whole) with its description under it; its row shows the call that started it
+  in the Trace (Show in trace, `ListTree` under the pointer). Each row has its 16 px icon (`Bot`, `SquareTerminal`)
+  in `running` and its time so far on the right in `running` mono; the head carries the live dot, "Running now" and
+  how many sub-agents and commands run. The ones that ended fold under "5 finished", in the same two lists, each with
+  its end (`CircleCheck` `success`, `CircleX` `danger`, `CircleSlash` muted), the first line of what it reported and
+  its duration, eight shown before "Show all". A command the main agent runs in the foreground is left out (the Trace
+  shows it running), and so is a subagent's command once it ended. The box shows only while something runs on a
+  running run; Codex and opencode send no task events, so their runs never show it. Past 40 % of the window its list
+  scrolls.
+- The main agent's trace holds only the main agent's work: an event whose body carries `_meta.parentToolCallId` is a
+  subagent's and shows in that subagent's profile; an event without it stays as before. Where the main agent hands
+  work to subagents (`Agent`, `Task` before, calls one after the other), the trace shows one delegation card
+  (`agent-delegation.tsx`, `Users` icon, "Handed work to 2 sub-agents"): a hairline list on `card`, a line per
+  subagent with its status icon, name, type in mono, time, the first lines of its brief, then what it reported, what
+  it does now (`running`) or "No report", and an Open button (44 px on a phone) to its profile. A phone's trace
+  preview shows the card as one row with the subagents' names.
+- A subagent's profile (`agent-profile.tsx`, `use-run-agents.ts`) takes the place of the main agent's trace in the
+  Trace tab at `?agent=<task id>&tab=brief|activity|result` (the address keeps it, Back to the main agent drops it, the
+  main trace stays mounted under it): Back to the main agent, the subagent's name (`Bot`), its status, type in mono and
+  figures, then three tabs. Brief is what the main agent asked of it, as Markdown in the reading measure, with the raw
+  `Agent` call (its input as JSON in a TermBlock) behind "Show the raw tool call". Activity is its own events, read by the
+  trace's rules (groups, words, failures), with its own typing dots while it works. Result is its whole final report
+  (a step report as the trace renders one), or, until it has one, "No report yet" and what its brief asks it to
+  report. With no tab named it opens on Result once there is one, else Activity, else Brief. Under 768 px the profile
+  fills the session's screen and the screen's back button closes it first.
 - `usage-meter.tsx`, the kit's UsageMeter, and `usage-model.ts`: the tokens the runtime reported as one total, a bar of
   cache read, input, output and reasoning in `chart-5`, `chart-1`, `chart-3` and `chart-4` (each part at least 3 px),
   a row per part with its share ("under 0.1%" for a part that rounds to nothing), cache writes said under it, and the
@@ -1726,7 +1745,8 @@ Shared pieces built on them:
   itself, `proxy.ts` asks for the stream unencoded: Next.js would gzip it and hold the events back.
 - The composer (`run-composer.tsx`), the kit's Composer: one bordered box with the focus ring on the box, the textarea
   without an edge of its own, and a bar that says what the run is ("Headless run on laptop.") beside Send and its key
-  (Cmd or Ctrl with Enter, as the DecisionCard's).
+  (Cmd or Ctrl with Enter, as the DecisionCard's). While a subagent's profile is open, its label, placeholder and bar
+  say that a message goes to the main agent, not to the subagent being viewed.
 - The Terminal tab (`run-terminal.tsx`, `use-run-terminal.ts`, `terminal-model.ts`) shows after the Raw log tab in the
   session card only for the run's owner on a worker of theirs registered with `--allow-web-terminal` (`terminalAccess`), while
   the run is leased, running or interactive, and stays for the rest of the visit once shown. Every tab stays mounted

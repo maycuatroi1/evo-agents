@@ -1,3 +1,4 @@
+import { AGENT_TOOLS } from "./run-tasks";
 import { commandGist } from "./shell-command";
 import type { ToolCall, ToolItem, TraceItem } from "./trace-model";
 
@@ -6,7 +7,8 @@ import type { ToolCall, ToolItem, TraceItem } from "./trace-model";
  * ("Explored 9 files", "Ran tests 3 times, 1 failed") rather than by tool ("Bash"), as Codex and Claude Code fold theirs.
  * The runtime's bookkeeping events (`raw` items) neither show nor cut a group; the agent's words, a decision, a person's
  * message, a checklist, a move and a system line do cut it. A failed call stays in its group's count and shows under its
- * row, open; a search that finds nothing (exit 1 of grep or rg) is not a failure.
+ * row, open; a search that finds nothing (exit 1 of grep or rg) is not a failure. The `Agent` calls the main agent makes
+ * one after the other, the subagents it hands work to at once, are one delegation instead (agent-delegation.tsx).
  */
 
 export const INTENTS = ["explore", "edit", "test", "check", "git", "github", "hub", "run", "tool"] as const;
@@ -22,7 +24,22 @@ export type ToolGroup = {
   calls: ToolItem[];
 };
 
-export type NormalItem = Exclude<TraceItem, { type: "tool" } | { type: "raw" }> | ToolGroup;
+/** One handing of work to subagents: the `Agent` calls made one after the other, each a subagent. */
+export type Delegation = {
+  type: "delegation";
+  /** The first call's key, as a group's. */
+  key: string;
+  seq: number;
+  at: string;
+  calls: ToolItem[];
+};
+
+export type NormalItem = Exclude<TraceItem, { type: "tool" } | { type: "raw" }> | ToolGroup | Delegation;
+
+/** A call that starts a subagent: Claude Code's `Agent` (`Task` before). */
+export function isAgentCall(tool: Pick<ToolCall, "title">): boolean {
+  return tool.title !== null && AGENT_TOOLS.has(tool.title);
+}
 
 /** Wrappers before the program a command runs: `timeout 580`, `env A=1`, `uv run`, `time`, assignments. */
 const PREFIX = /^(?:(?:timeout\s+\S+|env|time|nice|uv\s+run|poetry\s+run|[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*))\s+)+/;
@@ -76,8 +93,19 @@ export function callRunning(tool: ToolCall): boolean {
 export function groupByIntent(items: readonly TraceItem[]): NormalItem[] {
   const shown: NormalItem[] = [];
   let group: ToolGroup | null = null;
+  let delegation: Delegation | null = null;
   for (const item of items) {
     if (item.type === "raw") continue;
+    if (item.type === "tool" && isAgentCall(item.tool)) {
+      group = null;
+      if (delegation) delegation.calls.push(item);
+      else {
+        delegation = { type: "delegation", key: `d${item.key}`, seq: item.seq, at: item.at, calls: [item] };
+        shown.push(delegation);
+      }
+      continue;
+    }
+    delegation = null;
     if (item.type === "tool") {
       const intent = intentOf(item.tool);
       if (group && group.intent === intent) {
@@ -160,5 +188,5 @@ export function groupDiff(group: Pick<ToolGroup, "calls">): { added: number; rem
 
 /** All tool calls of the trace, for "121 tool calls". */
 export function countCalls(items: readonly NormalItem[]): number {
-  return items.reduce((sum, item) => sum + (item.type === "group" ? item.calls.length : 0), 0);
+  return items.reduce((sum, item) => sum + (item.type === "group" || item.type === "delegation" ? item.calls.length : 0), 0);
 }

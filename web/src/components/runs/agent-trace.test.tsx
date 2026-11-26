@@ -191,6 +191,63 @@ describe("AgentTrace", () => {
     expect(screen.queryByTestId("trace-message")).toBeNull();
   });
 
+  it("shows one delegation card for the subagents handed work at once, their own events left to their profiles", async () => {
+    const meta = (parent: string) => ({ _meta: { parentToolCallId: parent } });
+    const text = (words: string) => ({ content: { type: "text", text: words } });
+    const out = (words: string) => [{ type: "content", content: { type: "text", text: words } }];
+    const events = [
+      ev("agent_message_chunk", text("Chia việc cho hai sub-agent."), 0),
+      ev("tool_call", { toolCallId: "toolu_s2", title: "Agent", kind: "other", rawInput: { description: "Step 2", subagent_type: "plan-step", prompt: "plan: org-chart\nstep: 2\nRun the step." } }, 1),
+      ev("tool_call", { toolCallId: "toolu_s3", title: "Agent", kind: "other", rawInput: { description: "Step 3", subagent_type: "plan-step", run_in_background: true, prompt: "plan: org-chart\nstep: 3" } }, 2),
+      // The subagents' own words and calls: in their profiles, not in the main agent's trace.
+      ev("agent_message_chunk", { ...text("SUBAGENT WORDS"), ...meta("toolu_s2") }, 3),
+      ev("tool_call", { toolCallId: "c9", title: "Bash", kind: "execute", rawInput: { command: "uv run pytest -q" }, ...meta("toolu_s2") }, 4),
+      ev("tool_call_update", { toolCallId: "c9", status: "completed", content: out("12 passed"), ...meta("toolu_s2") }, 5),
+      ev("tool_call_update", { toolCallId: "toolu_s2", status: "completed", content: out("step: 2\nresult: pass\n\nagentId: a1b2 <usage>total_tokens: 9</usage>") }, 6),
+    ];
+    const opened: string[] = [];
+    show(events, { active: true, working: true, openAgent: (id) => opened.push(id) });
+    const log = screen.getByRole("log");
+    expect(log).not.toHaveTextContent("SUBAGENT WORDS");
+    expect(within(log).queryByText(/uv run pytest/)).toBeNull();
+
+    const cards = within(log).getAllByTestId("trace-delegation");
+    expect(cards).toHaveLength(1);
+    expect(log).toHaveTextContent("Giao việc cho 2 sub-agent");
+    const agents = within(cards[0]).getAllByTestId("trace-delegation-agent");
+    expect(agents.map((agent) => agent.getAttribute("data-tool-call-id"))).toEqual(["toolu_s2", "toolu_s3"]);
+    expect(within(agents[0]).getByTestId("trace-delegation-name")).toHaveTextContent("Step 2");
+    expect(agents[0]).toHaveTextContent("plan-step");
+    expect(within(agents[0]).getByTestId("trace-delegation-brief")).toHaveTextContent("plan: org-chart step: 2 Run the step.");
+    // Its report without the runtime's trailer; the one still at work says so.
+    expect(agents[0]).toHaveAttribute("data-status", "completed");
+    expect(within(agents[0]).getByTestId("trace-delegation-outcome")).toHaveTextContent("step: 2 result: pass");
+    expect(within(agents[0]).getByTestId("trace-delegation-outcome")).not.toHaveTextContent("agentId");
+    expect(agents[1]).toHaveAttribute("data-status", "running");
+    expect(agents[1]).toHaveTextContent("chạy nền");
+    expect(within(agents[1]).getByTestId("trace-delegation-outcome")).toHaveTextContent("Đang làm việc");
+
+    await userEvent.setup().click(within(agents[1]).getByTestId("trace-delegation-open"));
+    expect(opened).toEqual(["toolu_s3"]);
+  });
+
+  it("keeps a run whose events name no subagent as it was, each delegation's subagent's events in its profile's trace", () => {
+    const events = [
+      ev("tool_call", { toolCallId: "toolu_old", title: "Agent", kind: "other", rawInput: { description: "Old step", prompt: "Do it." } }, 1),
+      ev("tool_call", { toolCallId: "c1", title: "Bash", kind: "execute", rawInput: { command: "ls" } }, 2),
+      ev("tool_call", { toolCallId: "c2", title: "Bash", kind: "execute", rawInput: { command: "ls -la" }, _meta: { parentToolCallId: "toolu_x" } }, 3),
+    ];
+    const { unmount } = show(events);
+    // No id: the call stays in the main agent's trace, next to the delegation card of the call that started a subagent.
+    expect(screen.getAllByTestId("trace-delegation")).toHaveLength(1);
+    expect(screen.getAllByTestId("trace-group")).toHaveLength(1);
+    expect(screen.getByRole("log")).toHaveTextContent("ls");
+    unmount();
+    renderVi(<AgentTrace events={events as RunEvent[]} status="ended" context={context} agent="toolu_x" />);
+    expect(screen.queryByTestId("trace-delegation")).toBeNull();
+    expect(screen.getAllByTestId("trace-group")).toHaveLength(1);
+  });
+
   it("says why it is empty", () => {
     show([], { active: true });
     expect(screen.getByTestId("trace-empty")).toHaveTextContent("Đang chờ sự kiện đầu tiên của run…");

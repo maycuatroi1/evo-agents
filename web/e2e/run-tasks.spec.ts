@@ -12,7 +12,9 @@ import { claimRun, dispatch, liveWorker, runPath, seedRunPlan, sendEvents, start
  * The subagents and background commands of a running run, over its Trace, as Claude Code reports them through the
  * worker (task_started, task_progress, task_updated and task_notification, logged as `output` events): each subagent
  * with what it does now and the commands it runs, the main agent's background commands, the ones that ended folded
- * under them; a row shows the call that started it in the trace; once nothing runs the panel goes. Axe finds nothing
+ * under them, subagents apart from commands; a subagent's row opens its profile, a command's shows the call that
+ * started it in the trace; once nothing runs the panel goes. A subagent's profile (`?agent=`, `&tab=`) has its brief,
+ * its own activity and its report, and the composer under it says a message goes to the main agent. Axe finds nothing
  * serious in it, light and dark, at 1440 and 375 px. With
  * E2E_SCREENSHOT_DIR set it also writes review screenshots, light and dark, desktop and 375 px.
  */
@@ -125,11 +127,24 @@ test("the subagents and background commands running show over the trace, lead to
     await open(page, runPath(project, run.id));
   }
 
-  // A row shows the call that started it in the trace, opened and focused.
-  await panelOf(page).locator('[data-testid="run-task"][data-task-id="a5"] [data-testid="run-task-show"]').first().click();
-  const agentCall = page.locator('#main [data-testid="trace"] [data-tool-call-id="toolu_agent5"]');
-  await expect(agentCall).toBeInViewport();
-  await expect(agentCall).toHaveAttribute("open", "");
+  // Subagents and background commands are listed apart, a command named by what it runs.
+  await expect(panel.getByTestId("run-tasks-agents").locator('[data-testid="run-task"]')).toHaveCount(2);
+  await expect(panel.getByTestId("run-tasks-commands").locator('[data-testid="run-task"][data-task-id="m4"] [data-testid="run-task-name"]')).toHaveText(
+    "evo-agents worker step 4 done",
+  );
+
+  // A command's row shows the call that started it in the trace, opened and focused.
+  await panelOf(page).locator('[data-testid="run-task"][data-task-id="m4"] [data-testid="run-task-show"]').click();
+  const commandCall = page.locator('#main [data-testid="trace"] [data-tool-call-id="toolu_record"]');
+  await expect(commandCall).toBeInViewport();
+  await expect(commandCall).toHaveAttribute("open", "");
+  // A subagent's row opens its profile in the trace's place; Back returns to the main agent.
+  await panelOf(page).locator('[data-testid="run-task"][data-task-id="a5"] [data-testid="run-task-open"]').first().click();
+  await expect(page.getByTestId("agent-profile")).toHaveAttribute("data-task-id", "a5");
+  await expect(page).toHaveURL(/[?&]agent=a5/);
+  await page.goBack();
+  await expect(page.getByTestId("agent-profile")).toHaveCount(0);
+  await expect(panelOf(page)).toBeVisible();
 
   // Once they end, nothing runs and the panel goes.
   await sendEvents(live, run.id, [
@@ -139,6 +154,85 @@ test("the subagents and background commands running show over the trace, lead to
     task("task_notification", { task_id: "a5", status: "completed", summary: "step: 5\nresult: pass", tool_use_id: "toolu_agent5" }),
   ]);
   await expect(panelOf(page)).toHaveCount(0, { timeout: 5_000 });
+});
+
+const BRIEF = "plan: org-chart\nstep: 5\n\nRun step 5 of the plan.\n\n## Report\nstep: <id>\nresult: pass | fail";
+const sub = (event: WorkerEvent): WorkerEvent => ({ ...event, body: { ...event.body, _meta: { parentToolCallId: "toolu_agent5" } } });
+
+/** A foreground subagent whose events name it (`_meta.parentToolCallId`), at work on step 5. */
+const PROFILE_EVENTS: WorkerEvent[] = [
+  { kind: "agent_message_chunk", body: { content: { type: "text", text: "Handing step 5 to a plan-step subagent." } } },
+  call("toolu_agent5", "Agent", { description: "Org-chart step 5", subagent_type: "plan-step", prompt: BRIEF }),
+  task("task_started", { task_id: "a5", task_type: "local_agent", description: "Org-chart step 5", subagent_type: "plan-step", tool_use_id: "toolu_agent5", is_backgrounded: false, prompt: BRIEF }),
+  sub({ kind: "agent_message_chunk", body: { content: { type: "text", text: "Reading the step before I edit anything." } } }),
+  sub(call("toolu_sub_read", "Bash", { command: "cd /srv/app && export CI=1 && uv run pytest -q tests/test_org.py" })),
+];
+
+test("a sub-agent profile opens from the address and the delegation card, on its brief, activity and result", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, live, run } = await runningRun(me);
+  await sendEvents(live, run.id, PROFILE_EVENTS);
+
+  // The main agent's trace: one card for the handing, the subagent's own words left to its profile.
+  await open(page, runPath(project, run.id));
+  const trace = page.locator('#main [data-testid="trace"]');
+  const card = trace.getByTestId("trace-delegation");
+  await expect(card.getByTestId("trace-delegation-agent")).toHaveAttribute("data-task-id", "a5");
+  await expect(card.getByTestId("trace-delegation-brief")).toContainText("Run step 5 of the plan.");
+  await expect(card.getByTestId("trace-delegation-outcome")).toContainText("Working");
+  await expect(trace).not.toContainText("Reading the step before I edit anything.");
+
+  // `?agent=a5&tab=brief`: the brief as Markdown, the raw tool call behind a button.
+  await open(page, `${runPath(project, run.id)}?agent=a5&tab=brief`);
+  const profile = page.getByTestId("agent-profile");
+  await expect(profile).toHaveAttribute("data-tab", "brief");
+  await expect(profile.getByTestId("agent-profile-name")).toHaveText("Org-chart step 5");
+  await expect(profile.getByTestId("agent-profile-brief-text")).toContainText("Run step 5 of the plan.");
+  await profile.getByTestId("agent-profile-raw-toggle").click();
+  await expect(profile.getByTestId("agent-profile-raw")).toContainText('"subagent_type": "plan-step"');
+  // A message while a subagent is shown goes to the main agent.
+  await expect(page.getByTestId("run-composer-hint")).toContainText("a message goes to the main agent");
+
+  // Activity: its own events, by the trace's rules; the tab is in the address.
+  await profile.getByTestId("agent-profile-tab-activity").click();
+  await expect(page).toHaveURL(/[?&]tab=activity/);
+  const activity = profile.getByTestId("agent-profile-activity");
+  await expect(activity).toContainText("Reading the step before I edit anything.");
+  await expect(activity.getByTestId("trace-group")).toBeVisible();
+
+  // Result: none yet, with what the brief asks it to report; then its whole report once it ends.
+  await profile.getByTestId("agent-profile-tab-result").click();
+  await expect(profile.getByTestId("agent-profile-no-result")).toHaveText("No report yet: the sub-agent is still working.");
+  await expect(profile.getByTestId("agent-profile-ask")).toContainText("result: pass | fail");
+  await sendEvents(live, run.id, [
+    task("task_notification", { task_id: "a5", status: "completed", summary: "Step 5 is done.\n\nAll 12 tests pass on the branch.", tool_use_id: "toolu_agent5" }),
+  ]);
+  await expect(profile.getByTestId("agent-profile-result-text")).toContainText("All 12 tests pass on the branch.");
+  await expect(profile.getByTestId("agent-profile-status")).toHaveText("Completed");
+
+  // Back to the main agent, then the card's Open button.
+  await profile.getByTestId("agent-profile-back").click();
+  await expect(page.getByTestId("agent-profile")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/[?&]agent=/);
+  await trace.getByTestId("trace-delegation-open").click();
+  await expect(page.getByTestId("agent-profile")).toHaveAttribute("data-tab", "result");
+  await expectNoSeriousViolations(page, "a sub-agent profile at 1440 px");
+  if (dir) await page.screenshot({ path: path.join(dir, "agent-profile.png") });
+
+  // At 375 px the profile fills the session's screen; its Back steps back to the main agent's trace.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await open(page, `${runPath(project, run.id)}?agent=a5&tab=activity`);
+  await expect(page.getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
+  await expect(page.getByTestId("agent-profile")).toBeVisible();
+  await expect(page.getByTestId("agent-profile-activity")).toContainText("Reading the step before I edit anything.");
+  const box = await page.getByTestId("agent-profile").boundingBox();
+  expect(box?.width ?? 0).toBeGreaterThan(330);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await expectNoSeriousViolations(page, "a sub-agent profile at 375 px");
+  if (dir) await page.screenshot({ path: path.join(dir, "agent-profile-375.png") });
+  await page.getByTestId("run-screen-back").click();
+  await expect(page.getByTestId("agent-profile")).toHaveCount(0);
+  await expect(page.locator('#main [data-testid="trace"]')).toBeVisible();
 });
 
 for (const scheme of ["light", "dark"] as const) {

@@ -6018,6 +6018,24 @@
           "tools": "Used {names}",
           "tool": "a tool",
           "failed": "{count} failed"
+        },
+        "delegation": {
+          "head": "{count, plural, one {Handed work to # sub-agent} other {Handed work to # sub-agents}}",
+          "label": "{count, plural, one {The sub-agent the agent handed work to} other {The # sub-agents the agent handed work to}}",
+          "unnamed": "Sub-agent",
+          "background": "in the background",
+          "status": {
+            "running": "Running:",
+            "completed": "Completed:",
+            "failed": "Failed:",
+            "stopped": "Stopped:"
+          },
+          "reported": "Reported:",
+          "doing": "Working: {activity}",
+          "working": "Working",
+          "noReport": "No report.",
+          "open": "Open",
+          "openLabel": "Open the profile of {name}"
         }
       },
       "tasks": {
@@ -6037,7 +6055,10 @@
           "completed": "Completed:",
           "failed": "Failed:",
           "stopped": "Stopped:"
-        }
+        },
+        "open": ", open its profile",
+        "agentsTitle": "Sub-agents",
+        "commandsTitle": "Background commands"
       },
       "usage": {
         "title": "Usage",
@@ -6306,7 +6327,10 @@
         "headlessOn": "Headless run on {worker}.",
         "interactiveOn": "Interactive run on {worker}.",
         "headless": "Headless run.",
-        "interactive": "Interactive run."
+        "interactive": "Interactive run.",
+        "labelMain": "Message the main agent",
+        "placeholderMain": "Message the main agent. {name} does not read this.",
+        "toMain": "You are viewing {name}: a message goes to the main agent, not to it."
       },
       "facts": {
         "title": "Details",
@@ -6768,6 +6792,27 @@
         "weeklyLeft": "{percent}% of the week left",
         "fiveHourUsed": "{percent}% of the five-hour window used",
         "error": "Problem"
+      },
+      "agent": {
+        "back": "Back to the main agent",
+        "tabs": "Profile of {name}",
+        "brief": "Brief",
+        "activity": "Activity",
+        "result": "Result",
+        "status": {
+          "running": "Running",
+          "completed": "Completed",
+          "failed": "Failed",
+          "stopped": "Stopped"
+        },
+        "noBrief": "The run's events do not hold this sub-agent's brief.",
+        "showRaw": "Show the raw tool call",
+        "hideRaw": "Hide the raw tool call",
+        "noActivity": "This sub-agent has no events of its own yet.",
+        "noActivityId": "The run's events do not say which call started this sub-agent, so its own events cannot be told apart.",
+        "noResultYet": "No report yet: the sub-agent is still working.",
+        "noResult": "The sub-agent ended without a report.",
+        "askedFor": "The brief asks it to report"
       }
     },
     "diff": {
