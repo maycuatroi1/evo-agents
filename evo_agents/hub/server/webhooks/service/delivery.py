@@ -2,9 +2,9 @@
 ``docs/hub.md``, section "Outbound webhooks").
 
 ``deliver`` is a pass. It claims one due delivery with ``FOR UPDATE SKIP LOCKED`` and moves it CLAIM_SECONDS ahead in
-a short transaction, tries it with no transaction open, writes the try, and claims the next, up to BATCH a pass; it
-starts no try after PASS_SECONDS. A try takes TIMEOUT at most, so a delivery claimed is not due again before its try
-is written, and two passes at once never send it twice.
+a short transaction (``repository.claim``), tries it with no transaction open, writes the try, and claims the next, up
+to BATCH a pass; it starts no try after PASS_SECONDS. A try takes TIMEOUT at most, so a delivery claimed is not due
+again before its try is written, and two passes at once never send it twice.
 
 A try checks the webhook's URL again (``public_endpoint.host_refusal``), resolves its host and refuses it unless every
 address it resolves to is public (``public_endpoint.public_addresses``), as DNS may change after the write. The POST
@@ -18,16 +18,16 @@ import asyncio
 import json
 import logging
 import time
-from datetime import timedelta
 from urllib.parse import urlsplit
 
 import httpx
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import tables
 from evo_agents.hub.server.provider_probe import pinned_url
 from evo_agents.hub.server.public_endpoint import EndpointRefused, Resolver, host_refusal, public_addresses
+from evo_agents.hub.server.webhooks import repository
+from evo_agents.hub.server.webhooks.models import BATCH, PASS_SECONDS, TIMEOUT
 from evo_agents.hub.webhook_events import (
     DELIVERY_HEADER,
     EVENT_HEADER,
@@ -44,45 +44,10 @@ from evo_agents.hub.webhook_events import (
 
 log = logging.getLogger(__name__)
 
-TIMEOUT = 10.0  # a try, from resolving the host to the end of the answer
-CLAIM_SECONDS = TIMEOUT + 60  # a claimed delivery is not due again for this long, unless its try is written first
-PASS_SECONDS = 40.0  # a pass starts no try after this
-BATCH = 200  # a pass tries this many at most
-
 
 async def _claim(engine: AsyncEngine):
-    d, h, p = tables.webhook_deliveries, tables.project_webhooks, tables.projects
-    due = (
-        select(d.c.id)
-        .where(d.c.state == "pending", d.c.next_at <= func.now())
-        .order_by(d.c.next_at, d.c.id)
-        .limit(1)
-        .with_for_update(skip_locked=True)
-    )
     async with engine.begin() as conn:
-        delivery_id = (await conn.execute(due)).scalar()
-        if delivery_id is None:
-            return None
-        later = func.now() + timedelta(seconds=CLAIM_SECONDS)
-        await conn.execute(update(d).values(next_at=later).where(d.c.id == delivery_id))
-        query = (
-            select(
-                d.c.id,
-                d.c.event,
-                d.c.payload,
-                d.c.attempts,
-                d.c.created_at,
-                h.c.id.label("webhook_id"),
-                h.c.url,
-                h.c.sealed_secret,
-                h.c.active,
-                p.c.name.label("project"),
-            )
-            .join_from(d, h, h.c.id == d.c.webhook_id)
-            .join(p, p.c.id == h.c.project_id)
-            .where(d.c.id == delivery_id)
-        )
-        return (await conn.execute(query)).first()
+        return await repository.claim(conn)
 
 
 def _body(row) -> bytes:
@@ -152,7 +117,6 @@ async def _try(
 
 
 async def _settle(engine: AsyncEngine, row, status: int | None, error: str | None, final: bool) -> str:
-    d = tables.webhook_deliveries
     attempts = row.attempts + 1
     if error is None:
         values = {"state": "delivered", "delivered_at": func.now(), "last_error": None}
@@ -161,11 +125,7 @@ async def _settle(engine: AsyncEngine, row, status: int | None, error: str | Non
     else:
         values = {"next_at": func.now() + backoff(attempts), "last_error": error[:MAX_ERROR_CHARS]}
     async with engine.begin() as conn:
-        await conn.execute(
-            update(d)
-            .values(attempts=attempts, last_status=status, **values)
-            .where(d.c.id == row.id, d.c.state == "pending")
-        )
+        await repository.settle(conn, row.id, {"attempts": attempts, "last_status": status, **values})
     return values.get("state", "retry")
 
 
@@ -193,8 +153,6 @@ async def deliver(
                     "webhook not delivered",
                     extra={"delivery_id": row.id, "webhook_id": row.webhook_id, "status": status, "why": error},
                 )
-    d = tables.webhook_deliveries
     async with engine.begin() as conn:
-        old = func.now() - timedelta(days=KEEP_DAYS)
-        await conn.execute(delete(d).where(d.c.state != "pending", d.c.created_at < old))
+        await repository.purge(conn, KEEP_DAYS)
     return done

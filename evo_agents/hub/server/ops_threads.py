@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, ops_queue, runs, system_spec, tables, triage_rules
 from evo_agents.hub.server import ops_rules, orchestrator, system_store, system_traces
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.runs.service import priority
 
@@ -145,7 +145,7 @@ async def _tell_cap(conn: AsyncConnection, system: OpsSystem, used: float, cap: 
     project_id = system.ref.project_id
     if await _told(conn, system.owner, CAP_NOTICE, project_id, func.now() - timedelta(hours=CAP_HOURS)):
         return
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=system.owner,
         kind="notice",
@@ -403,7 +403,7 @@ async def trip(conn: AsyncConnection, system: OpsSystem, run_id: int) -> None:
     await system_store.set_paused(conn, system.ref.id, reason)
     s = tables.agent_systems
     await conn.execute(update(s).values(ops_failures=0).where(s.c.id == system.ref.id))
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=system.owner,
         kind="notice",
@@ -553,7 +553,7 @@ async def digest(conn: AsyncConnection, system: OpsSystem) -> bool:
         f"The Orchestrator read {found.threads} batches in ops threads and handled {found.orchestrator} items.",
     ]
     body += ["Waits on you:", *(f"- {line}" for line in found.waiting)] if found.waiting else ["Nothing waits on you."]
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=system.owner,
         kind="notice",

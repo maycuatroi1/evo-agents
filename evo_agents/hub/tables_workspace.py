@@ -5,7 +5,7 @@ member_tasks holds what a member handed a task run with no agent type (``evo_age
 JSON input and the external assets' URIs, keyed by the task's id, the id of its first run. Its retries read the same
 row. One row a task, which goes with the run or the project.
 
-project_webhooks holds the outbound webhooks a project's admin set (``evo_agents.hub.server.project_webhooks``): the
+project_webhooks holds the outbound webhooks a project's admin set (``evo_agents.hub.server.webhooks``): the
 https URL, the events it takes, and its signing secret sealed under EVO_HUB_SECRETS_KEY (``sealing.webhook_aad``).
 webhook_deliveries is their outbox (``evo_agents.hub.webhook_events``): one row an event and webhook, stored in the
 transaction that made the event, delivered at least once and retried with a backoff.

@@ -100,7 +100,7 @@ async def escalate(engine: AsyncEngine) -> int:
     """Tell the leads of an intern's unit of each decision of the intern's runs open ESCALATE_AFTER, once each (a
     notification of the decision to them is the mark); how many were told."""
     # notifications reaches the run service, which builds a claim's card from this module
-    from evo_agents.hub.server.notifications import decision_link, notify, one_line
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     d, r, n = tables.decisions, tables.runs, tables.notifications
     told = 0
@@ -131,18 +131,18 @@ async def escalate(engine: AsyncEngine) -> int:
                 seen = exists().where(and_(n.c.decision_id == row.id, n.c.user_id == lead))
                 if lead == row.asked_of or (await conn.execute(select(seen))).scalar_one():
                     continue
-                await notify(
+                await NOTIFIER.notify(
                     conn,
                     user_id=lead,
                     kind="decision",
                     project_id=row.project_id,
                     run_id=row.run_id,
                     decision_id=row.id,
-                    title=one_line(f"Run #{row.run_id} of {intern} still asks: {row.question}"),
+                    title=NOTIFIER.one_line(f"Run #{row.run_id} of {intern} still asks: {row.question}"),
                     body=f"{row.question.strip()}\n\n{row.category} decision of a run of {intern}, an intern, asked "
                     f"of {mentor} more than 24 hours ago and not answered yet: you lead their unit, so you may answer "
                     "it too.",
-                    link=decision_link(row.id),
+                    link=NOTIFIER.decision_link(row.id),
                 )
                 told += 1
     return told

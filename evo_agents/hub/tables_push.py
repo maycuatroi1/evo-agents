@@ -8,14 +8,15 @@ topic and environment), the member's label for it, when it was added and when a 
 bound to the token that added it (``token_id``): it lives no longer than that sign-in, as a Telegram channel lives no
 longer than the web session that linked it. An address speaks for one member: adding it again moves it. Each delivery
 of a notification to a device is a row of notification_deliveries with its ``device_id``
-(``evo_agents.hub.server.push_store``), which goes with the device.
+(``evo_agents.hub.server.push.repository``), which goes with the device.
 
 notification_preferences holds what a member chose for their notifications beyond the notices they turned off
 (notification_mutes): ``hide_details``, push notifications that carry only the kind of thing, the project and the
 link, as one of a restricted project does; and (0157) ``tiers``, the tier they chose for kinds of notification (a JSON
-object of kind to TIERS, ``evo_agents.hub.server.push_tiers``), their quiet hours (``quiet_start`` to ``quiet_end``,
-HH:MM, both or neither), their ``time_zone`` (an IANA name; none: the hub's web time zone) and ``digest_at``, the
-local time of their summary push (HH:MM; none: DEFAULT_DIGEST_AT). A member without a row has the defaults.
+object of kind to TIERS, ``evo_agents.hub.server.push.service.tiers``), their quiet hours (``quiet_start`` to
+``quiet_end``, HH:MM, both or neither), their ``time_zone`` (an IANA name; none: the hub's web time zone) and
+``digest_at``, the local time of their summary push (HH:MM; none: DEFAULT_DIGEST_AT). A member without a row has the
+defaults.
 
 today_marks (0158) holds what Today (``evo_agents.hub.server.today``) keeps of a member: ``seen_at``, the moment up to
 which they saw what changed, which only moves forward; and ``digest_on``, the local day of their last summary push

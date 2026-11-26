@@ -3,9 +3,9 @@ the absolute URL of the hub page it opens, a tag (one per notification, so a lat
 one), its kind and its project. Pure functions on the standard library.
 
 A notification of a project the hub sink's clearance keeps from Telegram (``extra.restricted``, as
-``member_channels.prepare`` reads it for the clearance Telegram has), or of a member who chose to hide details
-(``extra.hide_details``), carries the kind of thing alone as its title ("Decision needed", "Run failed"), the
-project's name as its body, and the link: nothing of what it is about. Any other carries its title and, for a
+``notifications.service.member_channels.prepare`` reads it for the clearance Telegram has), or of a member who chose to
+hide details (``extra.hide_details``), carries the kind of thing alone as its title ("Decision needed", "Run failed"),
+the project's name as its body, and the link: nothing of what it is about. Any other carries its title and, for a
 decision, its question and the label of the option its agent recommends; for the summary push of Today
 (SUMMARY_NOTICES), its sentence, which counts things and names none of them; for anything else, the kind of thing and
 the project. No push carries a decision's context, a file or its link, an image, a token or a code: none of them is

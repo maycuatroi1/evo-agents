@@ -219,7 +219,9 @@ async def notify_waiting(conn: AsyncConnection, run_id: int) -> int | None:
     """Send the owner of author run ``run_id``, which has just moved to waiting, the notice author_waiting with the
     agent's last message of the chat, and read the run's earlier ones the owner has not read; its id. None, and no
     notice, while a decision of the run is open: the owner has its notification already."""
-    from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
+    from evo_agents.hub.server.notifications.service.notifier import (
+        NOTIFIER,  # it reads runs through the routes that import this module
+    )
 
     r, p, e, n = tables.runs, tables.projects, tables.run_events, tables.notifications
     query = (
@@ -244,7 +246,7 @@ async def notify_waiting(conn: AsyncConnection, run_id: int) -> int | None:
     if (await conn.execute(select(exists().where(d.c.run_id == run_id, d.c.state == "open")))).scalar_one():
         return None
     details = {"plan_id": found.plan_id, "plan_revision": found.plan_revision} if found.plan_id else None
-    return await notifications.notify(
+    return await NOTIFIER.notify(
         conn,
         user_id=found.dispatched_by,
         kind="notice",

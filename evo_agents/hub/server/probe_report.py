@@ -49,7 +49,7 @@ from evo_agents.hub.server.curator_shift import owner_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.night_cost import usage_cost
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probe_runs import probe_models
@@ -659,7 +659,7 @@ async def send(conn: AsyncConnection, due) -> str | None:
     details |= {"cost_usd": shown.cost_usd, "budget_usd": shown.budget_usd, "unprobed": len(found.unprobed)}
     details |= {"fixes": len(found.fixes), "replacements": len(found.replacements)}
     details |= {f"arms_at_{where}": count for where, count in arms_at_counts(shown).items()}
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=due.owner_id,
         kind="notice",

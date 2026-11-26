@@ -36,7 +36,7 @@ from sqlalchemy import extract, func, select, update
 
 from evo_agents.hub import push_payload
 from evo_agents.hub.log import scrub
-from evo_agents.hub.server import push_native
+from evo_agents.hub.server.push.service import native as push_native
 from tests.hub.live import sql
 from tests.hub.test_decisions import QUESTION
 from tests.hub.test_plan_runs import plan_body, push

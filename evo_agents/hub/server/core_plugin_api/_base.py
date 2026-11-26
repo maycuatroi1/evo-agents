@@ -19,7 +19,6 @@ from evo_agents.hub import tables, telegram
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.plugin_calls import ApiContext, core_registry, effective_grant, enabled_in, enabled_query
 from evo_agents.hub.server import audit as audit_log
-from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
     Clearance,
     EgressSink,
@@ -37,6 +36,9 @@ from evo_agents.hub.server.core_plugin_api._types import (
     own_session,
     session_principal,
 )
+from evo_agents.hub.server.notifications.models import FROM_SESSION
+from evo_agents.hub.server.notifications.repository.channels import rules_of
+from evo_agents.hub.server.notifications.service.member_channels import kept_from
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.plugin_tokens import layer_config
 from evo_agents.hub.server.sealing import Sealer
@@ -99,7 +101,7 @@ def _from_this_hub(request: Request, user: CurrentUser) -> None:
 def web_session(request: Request, user: CurrentUser) -> Session:
     """The caller's web session: 403 for any other credential, and for a write whose Origin is not the hub's."""
     if user.kind != WEB:
-        raise Refused(403, member_channels.FROM_SESSION)
+        raise Refused(403, FROM_SESSION)
     _from_this_hub(request, user)
     return issue_session(user.user_id, user.login, user.token_id, True, principal=user)
 
@@ -239,8 +241,8 @@ async def restricted(conn: AsyncConnection, project: str | None, cleared: Cleara
     own_clearance(cleared)
     if project is None:
         return True
-    rules = await member_channels.rules_of(conn, project)
-    return member_channels.kept_from(rules, cleared.level, cleared.location, cleared.below)
+    rules = await rules_of(conn, project)
+    return kept_from(rules, cleared.level, cleared.location, cleared.below)
 
 
 # The audit log

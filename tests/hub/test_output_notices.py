@@ -24,8 +24,10 @@ from sqlalchemy import extract, func, select, update
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import core_plugin_api as hub_api
-from evo_agents.hub.server import notifications
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.notifications import models as notice_models
+from evo_agents.hub.server.notifications.service import channels as notice_channels
+from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
 from evo_agents.hub.server.outputs.service import notices as output_notices
 from tests.hub import live
 from tests.hub.live import sql
@@ -56,7 +58,7 @@ def hub(client, github) -> dict:
     return members(client, github)
 
 
-class Recording(notifications.Channel):
+class Recording(notice_channels.Channel):
     """A channel cleared as Telegram's is, which records what the hub's prepare gives it."""
 
     sent: list = []
@@ -70,7 +72,7 @@ class Recording(notifications.Channel):
 
 @pytest.fixture
 def recording(monkeypatch):
-    monkeypatch.setitem(notifications.CHANNELS, "recording", Recording)
+    monkeypatch.setitem(notice_channels.CHANNELS, "recording", Recording)
     monkeypatch.setattr(Recording, "sent", [])
     return Recording
 
@@ -102,7 +104,7 @@ def due_in(db, notification_id: int) -> list[float]:
 
 def deliver(client, *, blobs=True) -> dict:
     store = client.app.state.blobs if blobs else None
-    return client.portal.call(lambda: notifications.deliver_notifications(client.app.state.engine, blobs=store))
+    return client.portal.call(lambda: notice_deliveries.deliver_notifications(client.app.state.engine, blobs=store))
 
 
 def clear_hub_sink(db, level: str) -> None:
@@ -297,7 +299,7 @@ def test_a_restricted_projects_channel_gets_neither_files_nor_their_names(client
 
 def test_telegrams_message_of_a_restricted_projects_files_holds_the_project_the_kind_and_the_link_alone():
     server = pytest.importorskip("evo_core_plugins.telegram.server", reason="install deploy/hub/core-plugins.txt")
-    notice = notifications.Outgoing(
+    notice = notice_models.Outgoing(
         id=1,
         user_id=1,
         login=OWNER,

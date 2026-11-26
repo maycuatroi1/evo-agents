@@ -43,13 +43,13 @@ from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.review import PRODUCT
 from evo_agents.hub.self_managed import ProjectScope, state_of
-from evo_agents.hub.server import notifications
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.agent_types import enabled_type
 from evo_agents.hub.server.chat_runs import ChatRun, chat_run, hub_reply
 from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market_install import GitHubInstallIn, Installing, install_github
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal, member_principal
 from evo_agents.hub.tables_settings import PROPOSAL_KINDS, PROPOSAL_STATES
@@ -126,7 +126,7 @@ async def _tell_approvers(
     own = await proposals.own_install(conn, access, change.kind, change.sets)
     told = await proposals.approvers(conn, access, change.kind, admins, own)
     for user_id in told:
-        await notifications.notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
@@ -173,7 +173,7 @@ async def _propose_for_review(conn: AsyncConnection, change: kinds.Change, conte
     target = await proposals.locate(conn, access, change)
     await proposals.check(conn, access, change, target, __version__)
     proposal_id = await proposals.store(conn, access, change, target, run)
-    link = notifications.run_link(access.name, run.run_id)
+    link = NOTIFIER.run_link(access.name, run.run_id)
     told = await _tell_approvers(conn, access, change, proposal_id, run, link, context.config, by=CURATOR)
     await proposals.record_proposal(conn, owner, access, proposal_id, run)
     log.info("builder proposal made", extra={"proposal": proposal_id, "kind": change.kind, "run_id": run.run_id})

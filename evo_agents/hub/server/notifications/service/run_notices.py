@@ -1,5 +1,5 @@
 """What the end of a run says to its owner: the triage thread a failed run opens (``triage``) and the notices
-``run_failed`` and ``plan_finished`` (``notifications.notify``), which ``run_state.record_move`` asks for.
+``run_failed`` and ``plan_finished`` (``NOTIFIER.notify``), which ``run_state.record_move`` asks for.
 
 A plan run that ends ``failed`` sends the notice ``run_failed``, and one that ends ``done`` with every step of its plan
 done the notice ``plan_finished``; one that ends ``done`` because a new run resumes it sends nothing. A run of one step
@@ -11,11 +11,12 @@ off, the chats feature off, a thread that could not be opened) the notice is the
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
-from evo_agents.hub.server import notifications, triage
+from evo_agents.hub import runs
+from evo_agents.hub.server import triage
+from evo_agents.hub.server.notifications.repository import plans
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import RunStep, reported_steps
 
 
@@ -42,7 +43,7 @@ async def notify_preflight_failure(
     what = f"Run #{found.run_id} of step {found.step_key} of {found.plan_id}"
     if found.kind == "author":
         what = f"Author run #{found.run_id}"
-    return await notifications.notify(
+    return await NOTIFIER.notify(
         conn,
         user_id=found.dispatcher_id,
         kind="notice",
@@ -58,7 +59,7 @@ async def notify_preflight_failure(
             "failure_cause": found.failure_cause,
             "error": error,
         },
-        link=link or notifications.run_link(found.project, found.run_id),
+        link=link or NOTIFIER.run_link(found.project, found.run_id),
     )
 
 
@@ -75,10 +76,10 @@ async def notify_plan_run_end(
     """Send the owner of plan run ``found`` the notice its end calls for: ``run_failed`` when it failed (its last
     attempt lost included, which fails), ``plan_finished`` when it ended done with every step of its plan done. A run
     done because a new run resumes it, and any other move, send nothing. The notification's id, or None."""
-    link = link or notifications.run_link(found.project, found.run_id)
+    link = link or NOTIFIER.run_link(found.project, found.run_id)
     if new == "failed":
         error = found.error or reason
-        return await notifications.notify(
+        return await NOTIFIER.notify(
             conn,
             user_id=found.dispatcher_id,
             kind="notice",
@@ -92,15 +93,12 @@ async def notify_plan_run_end(
         )
     if new != "done" or old == "parked":
         return None
-    pl = tables.plans
-    body = (
-        await conn.execute(select(pl.c.body).where(pl.c.project_id == found.project_id, pl.c.plan_id == found.plan_id))
-    ).scalar_one_or_none()
+    body = await plans.plan_body(conn, found.project_id, found.plan_id)
     if body is None or not _every_step_done(body):
         return None
     steps = await reported_steps(conn, found.run_id)
     done = f"steps {', '.join(steps)}" if steps else "no step of its own"
-    return await notifications.notify(
+    return await NOTIFIER.notify(
         conn,
         user_id=found.dispatcher_id,
         kind="notice",

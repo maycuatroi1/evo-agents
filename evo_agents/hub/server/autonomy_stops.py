@@ -33,7 +33,7 @@ from evo_agents.hub.server import audit, autonomy_store, lease_ending, org_store
 from evo_agents.hub.server.autonomy_hold import LOGIN, UNIT, scope_name
 from evo_agents.hub.server.autonomy_page_models import StopPreview
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import notify, one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.org_models import LOGIN_PATTERN
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -142,12 +142,12 @@ async def _sweep(conn: AsyncConnection, user: Principal, covered: set[int] | Non
 async def _tell(conn: AsyncConnection, people: set[int], title: str, body: str) -> list[str]:
     """Tell ``people`` (the notice ``autonomy``); their logins."""
     for user_id in sorted(people):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
             notice_kind=runs.AUTONOMY_DECISION_CATEGORY,
-            title=one_line(title),
+            title=NOTIFIER.one_line(title),
             body=body,
         )
     if not people:

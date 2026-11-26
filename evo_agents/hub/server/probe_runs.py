@@ -516,11 +516,11 @@ async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
     PROBE_ATTEMPTS runs in all, then fails with why; a failure sends the owner the notice run_failed."""
     if new not in runs.TERMINAL_STATES or found.project_id is None:
         return
-    from evo_agents.hub.server.notifications import notify, run_link
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     why = found.error or reason
     if new == "failed":
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=found.dispatcher_id,
             kind="notice",
@@ -530,7 +530,7 @@ async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
             title=f"Probe run #{found.run_id} of {found.plan_id or 'a plugin rule'} failed",
             body=why,
             details={"run_kind": "probe", "plan_id": found.plan_id, "error": why},
-            link=run_link(found.project, found.run_id),
+            link=NOTIFIER.run_link(found.project, found.run_id),
         )
     pw = tables.curator_probe_runs
     row = (await conn.execute(select(pw).where(pw.c.run_id == found.run_id).with_for_update())).one_or_none()

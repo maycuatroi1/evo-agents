@@ -2,10 +2,11 @@
 ``brief.send_today_digests`` runs, as the Curator's morning brief (``curator.brief``) is the pattern of a job at a local
 time, once a day.
 
-A pass reads the members who may get one now: those with a push device that reaches them (``push_store.device_live``),
-away from the hub for at least AWAY, by ``users.last_seen_at`` and by their seen mark of Today alike (the hub writes
-``last_seen_at`` at most once a day a token, ``security.TOUCH_EVERY``, so a member who looked at Today within AWAY is
-not away), and who did not set the tier of kind ``today`` to off (``push_tiers``). For each, in a transaction of its
+A pass reads the members who may get one now: those with a push device that reaches them
+(``push.repository.device_live``), away from the hub for at least AWAY, by ``users.last_seen_at`` and by their seen
+mark of Today alike (the hub writes ``last_seen_at`` at most once a day a token, ``security.TOUCH_EVERY``, so a member
+who looked at Today within AWAY is not away), and who did not set the tier of kind ``today`` to off
+(``push.service.tiers``). For each, in a transaction of its
 own, it takes the member's local time in their time zone (EVO_HUB_WEB_TIME_ZONE until they choose one; UTC, logged,
 for a zone Postgres no longer knows). From their ``digest_at`` (DEFAULT_DIGEST_AT until they choose one) until
 ``curator.BRIEF_GRACE`` later, on a local day that has none yet (``today_marks.digest_on``, claimed before Today is
@@ -13,8 +14,8 @@ worked out, so a second pass or a second hub worker sends nothing), it works out
 (``today.compute``). When it has an item, the member gets one notification of the notice ``today``: no project, its
 title TITLE, its body Today's sentence, its link Home, read already, delivered to their push devices alone, so the
 Inbox keeps a record of it and no channel repeats it. The quiet hours of the member hold it as any push
-(``push_tiers.held_until``). A day whose Today has no item ends with no push, and its claim keeps the pass from working
-it out again until the next day.
+(``push.service.tiers.held_until``). A day whose Today has no item ends with no push, and its claim keeps the pass from
+working it out again until the next day.
 """
 
 from __future__ import annotations
@@ -29,7 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import bus, curator, jobs, runs, tables
 from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
-from evo_agents.hub.server import push_store, push_tiers, today
+from evo_agents.hub.server import today
+from evo_agents.hub.server.push import repository as push_repository
+from evo_agents.hub.server.push.models import FALLBACK_ZONE
+from evo_agents.hub.server.push.service import tiers as push_tiers
 from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.tables_push import DEFAULT_DIGEST_AT, OFF
 
@@ -46,7 +50,7 @@ def _candidates(now: datetime):
     local day of their last summary push."""
     u, p, t, d = tables.users, tables.notification_preferences, tables.today_marks, tables.push_devices
     away = literal(now, DateTime(timezone=True)) - AWAY
-    device = exists().where(d.c.user_id == u.c.id, push_store.device_live(d))
+    device = exists().where(d.c.user_id == u.c.id, push_repository.device_live(d))
     tier = func.coalesce(p.c.tiers[NOTICE].astext, "")
     return (
         select(
@@ -75,7 +79,7 @@ async def _local_now(conn: AsyncConnection, zone: str | None, now: datetime, con
         known = name
         if not await push_tiers.time_zone_known(conn, name):
             log.warning("summary push in a time zone Postgres does not know", extra={"zone": name})
-            known = push_tiers.FALLBACK_ZONE
+            known = FALLBACK_ZONE
         moment = literal(now, DateTime(timezone=True))
         zones[name] = (await conn.execute(select(func.timezone(known, moment)))).scalar_one()
     return zones[name]
@@ -109,7 +113,7 @@ async def _push(conn: AsyncConnection, user_id: int, found: today.Today) -> int:
         read_at=func.now(),
     )
     notification_id = (await conn.execute(stored.returning(n.c.id))).scalar_one()
-    await conn.execute(push_store.device_deliveries(notification_id, user_id))
+    await conn.execute(push_repository.device_deliveries(notification_id, user_id))
     await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)
     return notification_id
 

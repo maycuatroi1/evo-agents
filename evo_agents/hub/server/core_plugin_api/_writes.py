@@ -17,7 +17,6 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import enabled_in, manifest_of
 from evo_agents.hub.server import audit as audit_log
-from evo_agents.hub.server import notifications
 from evo_agents.hub.server.admin import project_ladder
 from evo_agents.hub.server.core_plugin_api._access import ROLES
 from evo_agents.hub.server.core_plugin_api._reads import enabled_project
@@ -30,6 +29,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     refusing,
 )
 from evo_agents.hub.server.invites import DEFAULT_DAYS, JOIN, PAGE, PREFIX, TOKEN_BYTES
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.security import hash_token
 from evo_agents.hub.server.signals.models import SignalIn
 
@@ -228,7 +228,7 @@ async def notify(
     for user_id in wanted:
         if user_id in held:
             found.append(
-                await notifications.notify(
+                await NOTIFIER.notify(
                     conn,
                     user_id=user_id,
                     kind="notice",

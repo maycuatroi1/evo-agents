@@ -42,10 +42,10 @@ parked run hands them to the run that resumes it. The hub's decisions about what
 (``runs.OUTLIVING_DECISION_CATEGORIES``: a stopped release cycle's, a Loop work item's) stay open, since what they
 decide outlives the run. A plan run that ends ``failed`` sends its owner the notice
 ``run_failed``, and one that ends ``done`` with every step of its plan done the notice ``plan_finished``
-(``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
+(``NOTIFIER.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
 author run sends ``run_failed`` when its worker failed it with a cause of ``runs.PREFLIGHT_CAUSES`` (a repo the project
-lists no origin for, a credential or a program missing: ``run_notices.notify_preflight_failure``), and the move keeps the cause
-the worker reported as the run's failure_cause.
+lists no origin for, a credential or a program missing: ``notifications.service.run_notices.notify_preflight_failure``),
+and the move keeps the cause the worker reported as the run's failure_cause.
 
 What happens to the runs that lose their worker, and the reaper's passes over the runs, is ``run_reaper``.
 
@@ -568,8 +568,11 @@ async def write_step(
 
 
 async def run_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
-    """Open the triage thread of a failed run and send the owner the notice its end calls for (``run_notices``)."""
-    from evo_agents.hub.server import run_notices  # it reads runs through the routes that import this module
+    """Open the triage thread of a failed run and send the owner the notice its end calls for
+    (``notifications.service.run_notices``)."""
+    from evo_agents.hub.server.notifications.service import (
+        run_notices,  # it reads runs through the routes that import this module
+    )
 
     await run_notices.run_ended(conn, found, old, new, reason=reason)
 

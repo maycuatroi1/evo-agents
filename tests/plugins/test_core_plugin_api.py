@@ -42,11 +42,14 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import plugin_calls, plugin_events, tables
 from evo_agents.hub.openapi import document
 from evo_agents.hub.server import core_plugin_api as hub
-from evo_agents.hub.server import notifications, plugin_routes
+from evo_agents.hub.server import plugin_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_store import insert_message
 from evo_agents.hub.server.core_plugin_api import _acts
+from evo_agents.hub.server.notifications.service import channels as notice_channels
+from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token
 from evo_agents.plugins import core
@@ -157,7 +160,7 @@ def linked(client, fake: FakeNorthwind, session: SimpleNamespace, group: str = G
 
 def deliver(client) -> dict:
     engine, config = client.app.state.engine, client.app.state.config
-    return client.portal.call(partial(notifications.deliver_notifications, engine, config=config))
+    return client.portal.call(partial(notice_deliveries.deliver_notifications, engine, config=config))
 
 
 def deliver_events(client) -> dict:
@@ -292,7 +295,7 @@ def test_a_hub_admin_links_a_members_chat_with_no_session_of_theirs_until_they_l
     ((user_id,),) = sql(hub_db, select(u.c.id).where(u.c.login == OWNER))
 
     async def notify(conn):
-        return await notifications.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="X")
+        return await NOTIFIER.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="X")
 
     on_hub(client, notify)
     assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 0}
@@ -415,9 +418,7 @@ def test_a_chat_whose_session_ended_answers_nothing_and_is_turned_off(northwind)
     ((user_id,),) = sql(db, select(u.c.id).where(u.c.login == OWNER))
 
     async def notify(conn):
-        return await notifications.notify(
-            conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Failed"
-        )
+        return await NOTIFIER.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Failed")
 
     on_hub(client, notify)
     assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}
@@ -632,16 +633,14 @@ def test_a_channel_class_that_does_not_load_fails_its_own_deliveries_alone(north
     sql(db, insert(c).values(user_id=user_id, kind="lumen-broken", config={}))
 
     async def notify(conn):
-        return await notifications.notify(
-            conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Run failed"
-        )
+        return await NOTIFIER.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Run failed")
 
     on_hub(client, notify)
     assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 1}  # the web and northwind go out
     d = tables.notification_deliveries
     ((error,),) = sql(db, select(d.c.last_error).where(d.c.state == "failed"))
     assert error.startswith("the class of channels of kind lumen-broken (plugin lumen-broken) did not load")
-    assert notifications.channel_class("lumen-broken") is None
+    assert notice_channels.channel_class("lumen-broken") is None
 
 
 def test_a_plugin_reads_the_variables_named_for_it_and_a_transaction_of_its_context(monkeypatch, northwind):

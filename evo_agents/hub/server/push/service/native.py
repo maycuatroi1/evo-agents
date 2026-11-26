@@ -1,7 +1,8 @@
-"""The senders of the hub's apps: APNs to iPhones and iPads, FCM to Android phones. ``notifications.CHANNELS`` names
-them for the kinds apns and fcm of push_devices, as it names WebPushChannel for webpush (``push_senders``), so a
-delivery to such a device goes through the outbox with the same grant check, backoff and RetryAfter, and carries what
-a Web Push carries (``push_payload``, whose redaction is the same), in the form of its service.
+"""The senders of the hub's apps: APNs to iPhones and iPads, FCM to Android phones.
+``notifications.service.channels.CHANNELS`` names them for the kinds apns and fcm of push_devices, as it names
+WebPushChannel for webpush (``senders``), so a delivery to such a device goes through the outbox with the same grant
+check, backoff and RetryAfter, and carries what a Web Push carries (``push_payload``, whose redaction is the same), in
+the form of its service.
 
 ApnsChannel posts to the APNs provider API over HTTP/2, the only protocol it takes: POST /3/device/<token> on
 api.push.apple.com, or on api.sandbox.push.apple.com for a device whose environment is sandbox, with the device's topic,
@@ -40,16 +41,16 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from evo_agents.hub import push_payload
 from evo_agents.hub.config import APNS_VARIABLES, FCM_VARIABLE
 from evo_agents.hub.log import register_secret, unregister_secret
-from evo_agents.hub.server.notifications import ChannelGone, RetryAfter, Undeliverable
-from evo_agents.hub.server.push import APNS_TOKEN, APNS_TOPIC, FCM_TOKEN
-from evo_agents.hub.server.push_senders import (
+from evo_agents.hub.server.notifications.models import ChannelGone, RetryAfter, Undeliverable
+from evo_agents.hub.server.push.models import APNS_TOKEN, APNS_TOPIC, FCM_TOKEN
+from evo_agents.hub.server.push.service.senders import (
     HTTP_TIMEOUT_SECONDS,
     MAX_REASON_CHARS,
     TTL_SECONDS,
     PushSender,
     retry_after,
 )
-from evo_agents.hub.server.webpush import b64url
+from evo_agents.hub.server.push.webpush import b64url
 from evo_agents.hub.tables_push import APNS, APNS_ENVIRONMENTS, FCM
 
 PROVIDER_TOKEN_SECONDS = 50 * 60  # how long the hub signs in to APNs with one provider token: 20 to 60 minutes

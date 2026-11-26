@@ -560,11 +560,11 @@ async def _report(conn: AsyncConnection, ctx, body: dict, state: str) -> int | N
         "decisions": len((body.get("decisions") or {}).get("numbers") or []),
         "regressions": len(body.get("regressions") or []),
     }
-    from evo_agents.hub.server.notifications import notify
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     first = None
     for user_id in to:
-        found = await notify(
+        found = await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

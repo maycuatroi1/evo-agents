@@ -20,8 +20,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Integer, extract, func, insert, literal, select, update
 
 from evo_agents.hub import jobs, tables
-from evo_agents.hub.server import notifications
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.notifications.service import channels as notice_channels
+from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.worker import queue
 from tests.hub.live import sql
 from tests.hub.test_plan_runs import PLAN, dispatch_steps, fleet_worker, plan_body, push, reported, started
@@ -53,7 +55,7 @@ def hub(client, github) -> dict:
     return headers
 
 
-class FakeChannel(notifications.Channel):
+class FakeChannel(notice_channels.Channel):
     """Records what it is handed; fails while ``failures`` says so."""
 
     sent: list = []
@@ -68,7 +70,7 @@ class FakeChannel(notifications.Channel):
 
 @pytest.fixture
 def fake(monkeypatch):
-    monkeypatch.setitem(notifications.CHANNELS, "fake", FakeChannel)
+    monkeypatch.setitem(notice_channels.CHANNELS, "fake", FakeChannel)
     monkeypatch.setattr(FakeChannel, "sent", [])
     monkeypatch.setattr(FakeChannel, "failures", 0)
     return FakeChannel
@@ -98,7 +100,7 @@ def alert(client, worker: dict, run_id: int, **body):
 
 
 def deliver(client) -> dict:
-    return client.portal.call(notifications.deliver_notifications, client.app.state.engine)
+    return client.portal.call(notice_deliveries.deliver_notifications, client.app.state.engine)
 
 
 def deliveries(db) -> list[tuple]:
@@ -297,7 +299,7 @@ def test_the_fifth_failure_fails_a_delivery_and_a_channel_without_a_class_fails_
     ) == [("failed", "the channel was turned off before the notification went out")]
 
 
-class BrokenChannel(notifications.Channel):
+class BrokenChannel(notice_channels.Channel):
     """Its ``prepare`` runs a statement the database refuses."""
 
     async def prepare(self, conn, notification):
@@ -309,7 +311,7 @@ class BrokenChannel(notifications.Channel):
 
 
 def test_notification_db_error_fails_its_own_delivery_and_the_pass_goes_on(client, hub, hub_db, fake, monkeypatch):
-    monkeypatch.setitem(notifications.CHANNELS, "broken", BrokenChannel)
+    monkeypatch.setitem(notice_channels.CHANNELS, "broken", BrokenChannel)
     add_channel(hub_db, OWNER, "broken")
     add_channel(hub_db, OWNER, "fake")
     worker, run = started(client, hub)
@@ -322,7 +324,7 @@ def test_notification_db_error_fails_its_own_delivery_and_the_pass_goes_on(clien
 
     # a database error outside any savepoint ends the delivery's transaction: that delivery alone fails its try
     alert(client, worker, run["id"])
-    real = notifications._deliver_one
+    real = notice_deliveries._deliver_one
     first = []
 
     async def failing(conn, delivery_id, instances, config):
@@ -331,7 +333,7 @@ def test_notification_db_error_fails_its_own_delivery_and_the_pass_goes_on(clien
             await conn.execute(select(func.cast(literal("x"), Integer)))
         return await real(conn, delivery_id, instances, config)
 
-    monkeypatch.setattr(notifications, "_deliver_one", failing)
+    monkeypatch.setattr(notice_deliveries, "_deliver_one", failing)
     due_now(hub_db)
     report = deliver(client)
     assert report["delivered"] == 2 and report["retried"] == 2  # the web and fake ones of the second notice
@@ -345,7 +347,7 @@ def test_notification_db_error_fails_its_own_delivery_and_the_pass_goes_on(clien
 async def _notify(engine, member: int) -> int:
     """A notice for ``member``, stored through the outbox."""
     async with engine.begin() as conn:
-        return await notifications.notify(
+        return await NOTIFIER.notify(
             conn, user_id=member, kind="notice", notice_kind="run_failed", title="Plan run of fleet failed"
         )
 
@@ -368,7 +370,7 @@ def test_the_job_runs_every_minute_queued_at_most_once_and_takes_the_hubs_pool(c
 
 
 def test_backoff_doubles_up_to_an_hour():
-    assert [int(notifications.backoff(n).total_seconds()) for n in range(1, 9)] == [
+    assert [int(notice_deliveries.backoff(n).total_seconds()) for n in range(1, 9)] == [
         60,
         120,
         240,
@@ -378,6 +380,13 @@ def test_backoff_doubles_up_to_an_hour():
         3600,
         3600,
     ]
+
+
+def test_the_web_session_the_outbox_reads_is_the_one_security_issues():
+    from evo_agents.hub.server import security
+    from evo_agents.hub.server.notifications import models as notice_models
+
+    assert notice_models.WEB_SESSION == security.WEB
 
 
 # The member's notifications
@@ -481,8 +490,8 @@ def test_the_list_finds_words_of_a_title_or_body_and_keeps_one_runs_own(client, 
 
 
 def test_a_notification_is_one_line_of_at_most_200_characters():
-    assert notifications.one_line("Pushed\n\tmain   of\x00 evo-agents") == "Pushed main of evo-agents"
-    long = notifications.one_line("x" * 300)
+    assert NOTIFIER.one_line("Pushed\n\tmain   of\x00 evo-agents") == "Pushed main of evo-agents"
+    long = NOTIFIER.one_line("x" * 300)
     assert len(long) == 200 and long.endswith("...")
 
 
@@ -490,11 +499,11 @@ def test_a_notification_is_one_line_of_at_most_200_characters():
 
 
 def _store(client, **fields) -> int:
-    """A notification stored through ``notifications.notify``, as the hub's own senders store theirs; its id."""
+    """A notification stored through ``NOTIFIER.notify``, as the hub's own senders store theirs; its id."""
 
     async def store():
         async with client.app.state.engine.begin() as conn:
-            return await notifications.notify(conn, **fields)
+            return await NOTIFIER.notify(conn, **fields)
 
     return client.portal.call(store)
 

@@ -1,7 +1,7 @@
 """The events a project's outbound webhooks take, their outbox and their delivery (``docs/hub.md``, section
 "Outbound webhooks").
 
-A project's admin sets webhooks (project_webhooks, 0263; ``evo_agents.hub.server.project_webhooks``), each an https URL,
+A project's admin sets webhooks (project_webhooks, 0263; ``evo_agents.hub.server.webhooks``), each an https URL,
 the EVENTS it takes and a signing secret the hub seals. ``enqueue`` stores, in the transaction that made an event, one
 row of webhook_deliveries for each active webhook of the event's project that takes it, and queues the job
 hub.deliver_webhooks for once that commits (``jobs.soon``): nothing goes out while the transaction is open, and
@@ -11,9 +11,9 @@ nothing is lost when the hub stops after the commit. ``plugin_events.emit`` call
 (``evo_agents.hub.server.proposals``). A payload carries ids and states, as a plugin's does, never a text: a receiver
 reads the rest from the hub, under the grant of its own credential.
 
-``evo_agents.hub.server.webhook_delivery.deliver`` is the job, every minute and on each commit that stored a delivery.
-It claims one due delivery at a time and POSTs it with no transaction open, to an address of the URL's host it checked
-is public, with a JSON body ``{id, event, project, created_at, data}`` and the headers:
+``evo_agents.hub.server.webhooks.service.delivery.deliver`` is the job, every minute and on each commit that stored a
+delivery. It claims one due delivery at a time and POSTs it with no transaction open, to an address of the URL's host it
+checked is public, with a JSON body ``{id, event, project, created_at, data}`` and the headers:
 
 - ``X-Evo-Event``: the event; ``X-Evo-Delivery``: the delivery's id, the same on every try;
 - ``X-Evo-Timestamp``: the Unix time of the try;

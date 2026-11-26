@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from evo_agents.hub import curator, runs
-from evo_agents.hub.server import push_tiers
+from evo_agents.hub.server.push.models import KINDS
 from evo_agents.hub.tables_push import TIERS
 
 
@@ -34,7 +34,7 @@ DEFAULT_TIER = (
 
 
 class TierSetting(BaseModel):
-    kind: Literal[push_tiers.KINDS] = Field(  # pyright: ignore[reportInvalidTypeForm]
+    kind: Literal[KINDS] = Field(  # pyright: ignore[reportInvalidTypeForm]
         description="a kind of notification: decision, proposal or a notice's"
     )
     tier: Literal[TIERS] = Field(description=TIER)  # pyright: ignore[reportInvalidTypeForm]
@@ -42,7 +42,7 @@ class TierSetting(BaseModel):
 
 
 class TierChoice(BaseModel):
-    kind: Literal[push_tiers.KINDS] = Field(  # pyright: ignore[reportInvalidTypeForm]
+    kind: Literal[KINDS] = Field(  # pyright: ignore[reportInvalidTypeForm]
         description="a kind of notification: decision, proposal or a notice's"
     )
     tier: Literal[TIERS] | None = Field(  # pyright: ignore[reportInvalidTypeForm]
@@ -84,7 +84,7 @@ class NotificationSettingsIn(BaseModel):
     )
     hide_details: bool | None = Field(None, description=f"{HIDE_DETAILS}; unchanged when left out")
     tiers: list[TierChoice] = Field(
-        default_factory=list, max_length=len(push_tiers.KINDS), description="the kinds to set; the others stay"
+        default_factory=list, max_length=len(KINDS), description="the kinds to set; the others stay"
     )
     quiet_hours: QuietHours | None = Field(None, description="null: none; unchanged when left out")
     time_zone: str | None = Field(

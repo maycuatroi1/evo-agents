@@ -58,7 +58,7 @@ async def made_lately(conn: AsyncConnection, project_id: int, view: View, resume
 
 
 async def _tell(conn: AsyncConnection, project_id: int, project: str, made: int, cap: int, reason: str) -> None:
-    from evo_agents.hub.server.notifications import notify  # it reaches the plugins' channels
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER  # it reaches the plugins' channels
 
     body = "\n".join(
         [
@@ -70,7 +70,7 @@ async def _tell(conn: AsyncConnection, project_id: int, project: str, made: int,
         ]
     )
     for user_id in await _admins(conn, project_id):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

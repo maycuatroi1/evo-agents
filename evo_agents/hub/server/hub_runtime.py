@@ -57,7 +57,7 @@ from evo_agents.hub.server.chat_prompts import chat_prompt
 from evo_agents.hub.server.chat_runs import agent_reply, chat_run
 from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
 from evo_agents.hub.server.gateway_leases import used_with
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.profile_store import by_id, version_rules
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.spend_store import write_figures
@@ -222,7 +222,7 @@ async def _tell_owner(conn, system, why: str) -> None:
     )
     if (await conn.execute(told.limit(1))).first() is not None:
         return
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=owner,
         kind="notice",

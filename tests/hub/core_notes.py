@@ -17,7 +17,8 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import BigInteger, Column, DateTime, Identity, MetaData, Table, Text, func, insert, select
 
-from evo_agents.hub.server.notifications import Channel, Outgoing
+from evo_agents.hub.server.notifications.models import Outgoing
+from evo_agents.hub.server.notifications.service.channels import Channel
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 

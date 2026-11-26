@@ -18,7 +18,7 @@ from evo_agents.hub.server.decisions import repository
 from evo_agents.hub.server.decisions.models import Decision, DecisionAsk, OptionIn
 from evo_agents.hub.server.decisions.service.answers import answer_by_hub, card_moved
 from evo_agents.hub.server.decisions.service.reads import decision_view
-from evo_agents.hub.server.notifications import decision_link, notify, one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.outputs.service.store import link_decision
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -61,7 +61,7 @@ async def _step_of_run(conn: AsyncConnection, run_id: int, row, key: str | None)
 def about_run(run_id: int, kind: str, title: str | None) -> str:
     """What a decision of run ``run_id`` is about when it has no plan: the author run and its title."""
     shown = f"{kind} run #{run_id}"
-    return shown + (f", {one_line(title)}" if title else "")
+    return shown + (f", {NOTIFIER.one_line(title)}" if title else "")
 
 
 async def _notify_asked(
@@ -76,16 +76,16 @@ async def _notify_asked(
     else:
         about = about_run(run_id, row.kind, title)
     who = "Run" if row.kind == "plan" else f"{row.kind.capitalize()} run"
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=asked,
         kind="decision",
         project_id=row.project_id,
         run_id=run_id,
         decision_id=decision_id,
-        title=f"{who} #{run_id} asks: {one_line(body.question)}",
+        title=f"{who} #{run_id} asks: {NOTIFIER.one_line(body.question)}",
         body=f"{body.question.strip()}\n\n{body.category} decision for {about} in project {row.name}, asked of {login}.",
-        link=decision_link(decision_id),
+        link=NOTIFIER.decision_link(decision_id),
     )
 
 
@@ -132,7 +132,7 @@ async def store_decision(
             run_id=run_id,
             asked_of=asked,
         )
-    shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
+    shown = f"decision #{decision_id} asked ({body.category}): {NOTIFIER.one_line(body.question)}"
     await write_event(
         conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
     )

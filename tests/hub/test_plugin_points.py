@@ -39,7 +39,8 @@ from evo_agents.hub import migrate as hub_migrate
 from evo_agents.hub import plugin_calls, plugin_events, plugin_jobs, runs, tables
 from evo_agents.hub.plugin_calls import PluginCallError, PluginHostClient, PluginHostUnavailable
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.notifications import channel_class, notify
+from evo_agents.hub.server.notifications.service.channels import channel_class
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import core_notes
@@ -185,7 +186,7 @@ async def _notify_owner(app) -> int:
     async with app.state.engine.begin() as conn:
         user_id = (await conn.execute(select(u.c.id).where(u.c.login == OWNER))).scalar_one()
         project_id = (await conn.execute(select(projects.c.id).where(projects.c.name == PROJECT))).scalar_one()
-        return await notify(
+        return await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

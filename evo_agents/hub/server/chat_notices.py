@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats
 from evo_agents.hub.server.chat_access import ChatAccess
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 EXCERPT_CHARS = 1000  # of a message in the notice of a mention
 
@@ -23,7 +23,7 @@ async def notice_mention(conn: AsyncConnection, chat: ChatAccess, user_id: int, 
     else:
         title = f"{chat.login} mentioned you in chat {chat.title}"
         text = body if len(body) <= EXCERPT_CHARS else body[: EXCERPT_CHARS - 3].rstrip() + "..."
-    return await notify(
+    return await NOTIFIER.notify(
         conn,
         user_id=user_id,
         kind="notice",
@@ -39,7 +39,7 @@ async def notice_mention(conn: AsyncConnection, chat: ChatAccess, user_id: int, 
 async def notice_added(conn: AsyncConnection, chat: ChatAccess, user_id: int) -> int:
     """Tell person ``user_id`` that ``chat``'s reader added them to it."""
     title = f"You were added to chat {chat.title}" if chat.restricted else f"{chat.login} added you to {chat.title}"
-    return await notify(
+    return await NOTIFIER.notify(
         conn,
         user_id=user_id,
         kind="notice",

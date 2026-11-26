@@ -60,7 +60,8 @@ from evo_agents.hub.server.decisions.repository import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.loop.view import measure
 from evo_agents.hub.server.night_cost import usage_cost
-from evo_agents.hub.server.notifications import decision_link, one_line, report_notice, run_link
+from evo_agents.hub.server.notifications.repository.listing import report_notice
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.overview import (
     UNPLANNED,
     VISIBLE,
@@ -410,14 +411,14 @@ _NOW = select(func.now())
 
 
 def _line(text: str | None, limit: int) -> str | None:
-    return one_line(text, limit) if text and text.strip() else None
+    return NOTIFIER.one_line(text, limit) if text and text.strip() else None
 
 
 def _release(row) -> Found:
     version = row.tag or "a new version"
     item = TodayItem(
         kind="release",
-        title=one_line(f"Released {version} of {row.repo}", TITLE_CHARS),
+        title=NOTIFIER.one_line(f"Released {version} of {row.repo}", TITLE_CHARS),
         body=f"The daily release of {row.project} published {version}.",
         at=row.at,
         project=row.project,
@@ -440,7 +441,7 @@ def _run(row) -> Found:
         body=_line(body, BODY_CHARS),
         at=row.at,
         project=row.project,
-        link=run_link(row.project, row.id),
+        link=NOTIFIER.run_link(row.project, row.id),
     )
     return Found(item)
 
@@ -478,7 +479,7 @@ def _report(row) -> Found:
         link = f"/inbox?kind=notice&project={row.project}"
     item = TodayItem(
         kind="report",
-        title=one_line(title, TITLE_CHARS),
+        title=NOTIFIER.one_line(title, TITLE_CHARS),
         body=_line(body, BODY_CHARS),
         at=row.at,
         project=row.project,
@@ -516,7 +517,7 @@ def _steps_of(plan, revisions: list, since: datetime) -> list[Found]:
         title = step.get("title") if isinstance(step.get("title"), str) else None
         item = TodayItem(
             kind="step_done",
-            title=one_line(title or f"Step {key}", TITLE_CHARS),
+            title=NOTIFIER.one_line(title or f"Step {key}", TITLE_CHARS),
             body=_line(f"Step {key} of {plan.title or plan.plan_id} is done.", BODY_CHARS),
             at=first[key],
             project=plan.project,
@@ -563,7 +564,7 @@ async def _problems(conn: AsyncConnection, bound: dict) -> list[Found]:
         body = f"{problems.metric_text(metric)}: {_figure(before)} seven days ago, {_figure(value)} now."
         item = TodayItem(
             kind="problem",
-            title=one_line(f"{code}: {row.statement}", TITLE_CHARS),
+            title=NOTIFIER.one_line(f"{code}: {row.statement}", TITLE_CHARS),
             body=_line(body, BODY_CHARS),
             at=last,
             project=row.project,
@@ -593,7 +594,7 @@ async def _proposals(conn: AsyncConnection, accesses: list[ProjectAccess], bound
         evidence = _count(row.evidence_count, "piece") + " of evidence"
         item = TodayItem(
             kind="proposal",
-            title=one_line(row.title, TITLE_CHARS),
+            title=NOTIFIER.one_line(row.title, TITLE_CHARS),
             body=f"A tier {row.tier} proposal of the Curator, with {evidence}, waits for an admin's answer.",
             at=row.created_at,
             project=access.name,
@@ -668,7 +669,7 @@ def _decision(row, wait: timedelta) -> TodayDecision:
     fields.pop("total")
     parks = parks_at(fields, wait)
     fields.pop("run_state")
-    return TodayDecision(**fields, parks_at=parks, link=decision_link(fields["id"]))
+    return TodayDecision(**fields, parks_at=parks, link=NOTIFIER.decision_link(fields["id"]))
 
 
 async def _found(conn: AsyncConnection, accesses: list[ProjectAccess], bound: dict) -> list[Found]:

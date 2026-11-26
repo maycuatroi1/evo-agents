@@ -173,7 +173,9 @@ async def recovered_by(conn: AsyncConnection, worker_id: int) -> None:
 
 
 async def _notify_admins(conn: AsyncConnection, home: Home) -> None:
-    from evo_agents.hub.server.notifications import notify  # notifications import the claim, which imports this
+    from evo_agents.hub.server.notifications.service.notifier import (
+        NOTIFIER,  # notifications import the claim, which imports this
+    )
 
     g = tables.grants
     admins = (
@@ -186,7 +188,7 @@ async def _notify_admins(conn: AsyncConnection, home: Home) -> None:
         "(`evo-agents worker doctor` on the machine)."
     )
     for user_id in sorted(set(admins)):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

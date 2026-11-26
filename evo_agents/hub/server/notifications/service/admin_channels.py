@@ -8,48 +8,17 @@ channel of a kind, whoever linked it and whatever its session. Both are K12 writ
 
 from __future__ import annotations
 
-from typing import Annotated, Any
-
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
 
 from evo_agents.hub.plugin_calls import core_registry
-from evo_agents.hub.server import member_channels, route_autonomy
-from evo_agents.hub.server.admin import MISSING, Login
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.security import AdminUser, admin
-from evo_agents.plugins.manifest import CHANNEL_KIND
-
-router = APIRouter(
-    prefix="/v1/admin", tags=["admin"], dependencies=[Depends(admin)], responses={401: {"model": ErrorBody}}
+from evo_agents.hub.server.notifications.models import (
+    RESERVED_KEYS,
+    ChannelLink,
+    ChannelLinked,
+    ChannelUnlinked,
 )
-
-ChannelKind = Annotated[str, Path(pattern=CHANNEL_KIND)]
-
-
-class ChannelLink(BaseModel):
-    config: dict[str, Any] = Field(
-        description="the channel's config as its plugin keeps it (the ids of the member's chat), at most 16 KiB of JSON"
-    )
-    unique_on: list[str] = Field(
-        default_factory=list,
-        max_length=8,
-        description="keys of config that name one chat: another member's channel of the kind with the same values "
-        "there goes, so a chat speaks for one member",
-    )
-
-
-class ChannelLinked(BaseModel):
-    login: str
-    kind: str
-    config: dict[str, Any]
-    linked_by: str = Field(description="the hub admin who linked it")
-
-
-class ChannelUnlinked(BaseModel):
-    login: str
-    kind: str
-    unlinked: bool = Field(description="whether the member had a channel of the kind")
+from evo_agents.hub.server.notifications.service import member_channels
+from evo_agents.hub.server.security import Principal
 
 
 def _served_kind(kind: str) -> None:
@@ -64,7 +33,7 @@ def _link_config(body: ChannelLink) -> tuple[dict, tuple[str, ...]]:
         config = member_channels.json_object(body.config, "a channel's config")
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
-    reserved = sorted(set(config) & set(member_channels.RESERVED_KEYS))
+    reserved = sorted(set(config) & set(RESERVED_KEYS))
     if reserved:
         raise HTTPException(422, f"the hub writes {', '.join(reserved)} into a channel's config, not a link")
     if not config:
@@ -75,20 +44,11 @@ def _link_config(body: ChannelLink) -> tuple[dict, tuple[str, ...]]:
     return config, unique
 
 
-@router.put(
-    "/users/{login}/channels/{kind}",
-    response_model=ChannelLinked,
-    responses={**MISSING, 422: {"model": ErrorBody}},
-    dependencies=[route_autonomy.K12],
-)
-async def link_channel(
-    request: Request, body: ChannelLink, login: Login, kind: ChannelKind, user: AdminUser
-) -> ChannelLinked:
-    """Link the channel of ``kind`` of member ``login`` with ``config``, as a hub admin, bound to no session of theirs,
-    in place of the one they had."""
+async def link(engine, user: Principal, login: str, kind: str, body: ChannelLink) -> ChannelLinked:
+    """Link the channel of ``kind`` of member ``login`` with ``body``'s config, as hub admin ``user``."""
     _served_kind(kind)
     config, unique = _link_config(body)
-    async with request.app.state.engine.begin() as conn:
+    async with engine.begin() as conn:
         found = await member_channels.admin_link(
             conn,
             login=login,
@@ -101,21 +61,12 @@ async def link_channel(
     return ChannelLinked(login=found.login, kind=kind, config=found.config, linked_by=user.login)
 
 
-@router.delete(
-    "/users/{login}/channels/{kind}",
-    response_model=ChannelUnlinked,
-    responses={**MISSING},
-    dependencies=[route_autonomy.K12],
-)
-async def unlink_channel(request: Request, login: Login, kind: ChannelKind, user: AdminUser) -> ChannelUnlinked:
-    """Unlink the channel of ``kind`` of member ``login``, whoever linked it and whatever its session."""
+async def unlink(engine, user: Principal, login: str, kind: str) -> ChannelUnlinked:
+    """Unlink the channel of ``kind`` of member ``login``, as hub admin ``user``."""
     _served_kind(kind)
-    async with request.app.state.engine.begin() as conn:
+    async with engine.begin() as conn:
         found = await member_channels.user_named(conn, login)
         gone = await member_channels.unlink(
             conn, user_id=found.id, kind=kind, by="admin", actor_id=user.user_id, actor_token_id=user.token_id
         )
     return ChannelUnlinked(login=found.login, kind=kind, unlinked=gone)
-
-
-__all__ = ["ChannelLink", "ChannelLinked", "ChannelUnlinked", "router"]

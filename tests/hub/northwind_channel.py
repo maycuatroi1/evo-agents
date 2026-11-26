@@ -24,7 +24,7 @@ import pytest
 from sqlalchemy import insert, select, update
 
 from evo_agents.hub import plugin_calls, tables
-from evo_agents.hub.server import notifications
+from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
@@ -93,4 +93,4 @@ def cleared(db, clearance: dict | None = None) -> None:
 def deliver(client) -> dict:
     """One pass of the hub's delivery of notifications, on ``client``'s app."""
     engine, config = client.app.state.engine, client.app.state.config
-    return client.portal.call(partial(notifications.deliver_notifications, engine, config=config))
+    return client.portal.call(partial(notice_deliveries.deliver_notifications, engine, config=config))

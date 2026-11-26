@@ -51,7 +51,7 @@ from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message
 from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.command_dispatch import command_workers, queue_command_run
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.runs.models import PlanRunDispatch
@@ -287,7 +287,7 @@ async def _breaker(conn: AsyncConnection, job: cron_store.Job) -> str | None:
 async def _pause(conn: AsyncConnection, job: cron_store.Job, reason: str) -> None:
     """Pause ``job`` as the hub, for ``reason``, and tell its owner."""
     await cron_store.pause(conn, job.id, None, reason)
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=job.owner_id,
         kind="notice",

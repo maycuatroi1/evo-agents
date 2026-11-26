@@ -7,7 +7,7 @@ has no brief yet), in a transaction of its own, it counts the night the brief re
 ``curator.night_of``, the one in progress when brief_at falls inside the window; with pacing, the period of the day
 before, ``curator.brief_night``) and sends a notification of kind notice
 (``curator_brief``) to the schedule's owner, who gets it on the web and on every channel they turned on, Telegram
-included, through the outbox (``notifications.notify``). The brief holds:
+included, through the outbox (``NOTIFIER.notify``). The brief holds:
 
 - the runs the night shift queued that night, by how they ended, and what they cost against the night's budget;
 - the night's review run, with the findings and proposals it wrote;
@@ -58,7 +58,7 @@ from evo_agents.hub.server.curator import curator_state, night_figures
 from evo_agents.hub.server.curator_shift import due_schedules, owner_access
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
-from evo_agents.hub.server.notifications import notify, one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess
 
@@ -161,7 +161,7 @@ async def _agent_answers(conn: AsyncConnection, project_id: int) -> tuple[int, l
             "state": row.action,
             "agent": row.details.get("agent"),
             "chat_run": row.details.get("chat_run"),
-            "note": one_line(row.details.get("note") or "", QUESTION_CHARS),
+            "note": NOTIFIER.one_line(row.details.get("note") or "", QUESTION_CHARS),
         }
         for row in (await conn.execute(query)).all()
     ]
@@ -250,7 +250,7 @@ async def _planned(conn: AsyncConnection, access: ProjectAccess) -> tuple[int, l
             "repo": row.repo,
             "tier": row.tier,
             "builder_run_id": row.builder_run_id,
-            "reason": one_line(row.reason, REASON_CHARS) if row.reason else None,
+            "reason": NOTIFIER.one_line(row.reason, REASON_CHARS) if row.reason else None,
         }
         for row in readable[:MAX_LISTED]
     ]
@@ -295,7 +295,7 @@ async def _decisions(conn: AsyncConnection, project_id: int, owner_id: int) -> t
         {
             "id": row.id,
             "category": row.category,
-            "question": one_line(row.question, QUESTION_CHARS),
+            "question": NOTIFIER.one_line(row.question, QUESTION_CHARS),
             "run_id": row.run_id,
         }
         for row in (await conn.execute(query)).all()
@@ -561,7 +561,7 @@ async def _send(conn: AsyncConnection, due) -> str:
     inside, night = curator.brief_night(body, due.local_now)
     facts = await _facts(conn, due, access, night, inside)
     title, text = compose(due.project, facts, curator.zone_of(body))
-    stored = {"title": one_line(title), **facts}
+    stored = {"title": NOTIFIER.one_line(title), **facts}
     if len(json.dumps(stored, ensure_ascii=False).encode()) > MAX_BRIEF_BYTES:
         stored = {
             key: value for key, value in stored.items() if key not in ("decisions", "proposals", "planned_changes")
@@ -576,7 +576,7 @@ async def _send(conn: AsyncConnection, due) -> str:
     ).scalar_one_or_none()
     if inserted is None:  # another pass sent it meanwhile
         return "sent"
-    notification_id = await notify(
+    notification_id = await NOTIFIER.notify(
         conn,
         user_id=due.owner_id,
         kind="notice",

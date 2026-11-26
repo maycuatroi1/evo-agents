@@ -88,7 +88,9 @@ async def record_act(
 ) -> None:
     """Write the event of an admin's act ``action`` (``did``, such as "cancelled it") into the log of run ``run_id``,
     whose row the caller holds locked, and tell the member who dispatched it, in the caller's transaction."""
-    from evo_agents.hub.server import notifications  # it imports the service of runs, which imports this module
+    from evo_agents.hub.server.notifications.service.notifier import (
+        NOTIFIER,  # it imports the service of runs, which imports this module
+    )
 
     text = acted(user, behalf, did)
     body = {
@@ -102,7 +104,7 @@ async def record_act(
     if decision_id is not None:
         body["decision_id"] = decision_id
     await write_event(conn, run_id, body)
-    await notifications.notify(
+    await NOTIFIER.notify(
         conn,
         user_id=behalf.owner_id,
         kind="notice",
@@ -118,5 +120,5 @@ async def record_act(
             "decision_id": decision_id,
             **(extra or {}),
         },
-        link=notifications.run_link(access.name, run_id),
+        link=NOTIFIER.run_link(access.name, run_id),
     )
