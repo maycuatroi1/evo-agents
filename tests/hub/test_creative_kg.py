@@ -69,6 +69,8 @@ def test_a_block_declares_the_type_links_level_and_audience_the_project_lets_it(
     hub_kind = typed.declared(front(type="Document", level="top"), FRAME)
     assert hub_kind.kind is None and hub_kind.level == "secret"  # a hub kind is refused, an unknown level is the top
     assert typed.declared(front(type="Campaign"), typed.Frame.of(LEVELS, None)).kind is None  # no ontology, no type
+    shouting = typed.Frame.of(LEVELS, {"node_kinds": ["DOCUMENT", "COMMIT", "Campaign"]})
+    assert shouting.kinds == {"Campaign"}  # a hub kind in other letters would share the id of the document's node
     broken = "---\ntype: [Campaign\n---\nText.\n"
     assert typed.declared(broken, FRAME) == typed.Declared(broken)  # a block that is no YAML declares nothing
     closed = typed.declared(front(type="Insight", audience="[chat:3, team:lumen]"), FRAME)

@@ -725,7 +725,7 @@ At the next build:
 
 - `type` makes the node `plugin.docs:<kind in lower case>:<slug>` of that kind, named by the document's title, which
   the Document node `defines`. It must be a node kind `ontology.yaml` adds (Ontology rules, below); a hub kind is
-  refused, and a project without an ontology takes no type.
+  refused in any letter case, and a project without an ontology takes no type.
 - Each link is an edge of its relation from the typed node, or from the Document without a type, to the typed node of
   the target document, else to its Document. The relation must be one the ontology or the hub knows
   (`known_relations`); a link to a slug no document has is dropped as dangling.
@@ -733,7 +733,8 @@ At the next build:
   ladder lacks reads as its highest.
 - `audience` is joined with the label's audience. A brand space is a group chat whose members are the space's members,
   so `chat:<id>` is the audience the hub already gives a chat's messages (Audience, above), and a member holds it while
-  they are in that chat and clear its label. A member outside the space finds neither the typed node nor the document
+  they are in that chat and clear its label. A list of chats narrows it: a reader must be a member of every chat it
+  names, not of one. A member outside the space finds neither the typed node nor the document
   by `kg_node` or `kg_search`. An entry other than `chat:<id>` cannot be read, so the document is left out of the
   graph rather than shown to the whole project.
 

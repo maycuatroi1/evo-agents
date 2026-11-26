@@ -12,8 +12,10 @@ audience: chat:12       # the members of chat 12, the brand space; or a list of 
 ---
 ```
 
-The project's ontology decides what may be declared: ``type`` is a node kind it adds (a hub kind is refused, since a
-document is no commit or plan step), and a relation of ``links`` one it knows, its own or the hub's
+A list of chats in ``audience`` narrows the document: a reader must be a member of every chat it names, not of one.
+
+The project's ontology decides what may be declared: ``type`` is a node kind it adds (a hub kind is refused, in any case,
+since a document is no commit or plan step), and a relation of ``links`` one it knows, its own or the hub's
 (``evo_agents.kg.schema.known_relations``). A project without an ontology takes no type. A declared type makes the
 node ``plugin.docs:<kind in lower case>:<slug>`` of that kind, named by the document's title, which the document
 ``defines``; each link is an edge from it (from the document itself without a type) to the typed node of the target
@@ -67,7 +69,8 @@ class Frame:
     def of(cls, levels, ontology: dict | None) -> Frame:
         entries = (ontology or {}).get("node_kinds") or []
         names = {entry_name(e) for e in entries} if isinstance(entries, list) else set()
-        kinds = frozenset(n for n in names if n and KIND.match(n) and n not in HUB_KINDS)
+        hub = {k.lower() for k in HUB_KINDS} | {DOCUMENT}  # the node id lowers the kind: DOCUMENT is Document
+        kinds = frozenset(n for n in names if n and KIND.match(n) and n.lower() not in hub)
         relations = frozenset(r for r in known_relations(ontology) if RELATION.match(r))
         return cls(tuple(levels) or tuple(DEFAULT_LEVELS), kinds if ontology is not None else frozenset(), relations)
 
