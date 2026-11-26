@@ -55,7 +55,7 @@ nothing of it runs. Accepting one of another tier records the answer alone. The 
 charter's ``auto_merge`` names alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time
 has passed (the job curator.collect). With the charter's ``answer_by`` agent, a proposal recorded open, or open
 again, gets a thread in the project's triage chat whose agent answers it for the review run's owner
-(``evo_agents.hub.server.curator_threads``). A proposal of kind memory may promote agents' memories in place of a plan
+(``evo_agents.hub.server.curator.service.threads``). A proposal of kind memory may promote agents' memories in place of a plan
 (``evo_agents.hub.server.memories.service.promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).

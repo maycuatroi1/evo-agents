@@ -22,7 +22,7 @@ reads the worker token writes no result. The first arm that names the task's bas
 The Judge reads none of this: its prompt and its tools hold no replay. A replay done gives a change the Judge passed
 and the hub left open its merge again (``_won_again``): once its replays win (``change_tiers.replay_verdict``), the
 change is ``judged`` again and the job reads its pull request once more, which merges it as tier 0 when its diff edits a
-harness alone (``evo_agents.hub.server.change_tiers``).
+harness alone (``evo_agents.hub.server.changes.service.tiers``).
 
 GET /v1/projects/{p}/curator/replay/tasks (reader) lists the project's suite, of ``split`` when given, the tasks of
 plans the caller may read through the project's hub sink; GET .../curator/changes/{id}/replay (reader) a change's
