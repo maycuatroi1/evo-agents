@@ -11,15 +11,18 @@ evolve status`` lists them, the newest first (GET .../curator/evolve).
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`Evolutions`
+is the gateway to the routes, :func:`evolution_body` turns the options of ``run`` into its body.
 """
 
 from __future__ import annotations
 
-from urllib.parse import quote, urlencode
+import argparse
 
-from evo_agents.hub.cli.base import project_of
-from evo_agents.hub.cli_client import call_object, client_command, print_json, signed_in, table
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
+from evo_agents.hub.cli_client import call_object
 from evo_agents.hub.curator import money
 
 EVOLVE_KEYS = (
@@ -49,19 +52,44 @@ EVOLVE_KEYS = (
 EVOLVE_LIST_KEYS = ("project", "evolutions")
 STATES = ("queued", "running", "done", "failed")
 ASI_LINE = 160  # characters of a task's ASI on its line of ``show``
+EVOLUTION = returns_object(*EVOLVE_KEYS, schema="EvolveView")
+CANDIDATE_COLUMNS = ("ID", "ORIGIN", "PARENTS", "ROUND", "SCORE", "COST", "FRONT")
 
 
-def _path(project: str, *parts: str) -> str:
-    return "/".join((f"/v1/projects/{quote(project, safe='')}/curator/evolve", *parts))
+class Evolutions(ProjectResource):
+    """The evolutions of a project: POST and GET /v1/projects/{p}/curator/evolve, GET .../curator/evolve/{id}."""
+
+    collection = "curator"
+
+    def start(self, body: dict) -> dict:
+        return call_object(self.hub, "POST", self.path("evolve"), body)
+
+    def get(self, evolution: int) -> dict:
+        return call_object(self.hub, "GET", self.path("evolve", evolution))
+
+    def list(self, limit: int, state: str | None = None) -> dict:
+        return call_object(self.hub, "GET", self.path("evolve", limit=limit, state=state))
 
 
-def _what(found: dict) -> str:
+def evolution_body(args: argparse.Namespace) -> dict:
+    """The body of ``evolve run``: target git with ``--repo``, else target agent_config."""
+    if args.repo:
+        body = {"target": "git", "repo": args.repo, "paths": args.path or []}
+    else:
+        body = {"target": "agent_config", "system_id": args.system_id, "agent": args.agent}
+    if args.proposal:
+        body["proposal_id"] = args.proposal
+    return body
+
+
+def what_of(found: dict) -> str:
+    """What an evolution rewrites: a repo's files, or an agent of a system."""
     if found["target"] == "git":
         return f"{found['repo']} {', '.join(found['paths'])}"
     return f"agent {found['agent']} of system #{found['system_id']}"
 
 
-def _asi_line(asi: dict) -> str:
+def asi_line(asi: dict) -> str:
     """One line of a task's ASI: the exit code and last line of output of its first failed check, else the agent's
     error, else its last message."""
     for check in asi.get("checks") or []:
@@ -72,120 +100,112 @@ def _asi_line(asi: dict) -> str:
     return " ".join(str(text).split())[:ASI_LINE]
 
 
-def _print_asi(candidates: list) -> None:
-    for item in candidates:
-        for ref, asi in sorted((item.get("asi") or {}).items()):
-            if isinstance(asi, dict) and (item.get("scores") or {}).get(ref, 0) < 1:
-                print(f"#{item['id']} {ref}: {_asi_line(asi)}")
+def asi_lines(candidates: list) -> list[str]:
+    """A line of each task a candidate did not pass, from its ASI."""
+    return [
+        f"#{item['id']} {ref}: {asi_line(asi)}"
+        for item in candidates
+        for ref, asi in sorted((item.get("asi") or {}).items())
+        if isinstance(asi, dict) and (item.get("scores") or {}).get(ref, 0) < 1
+    ]
 
 
-def _print_evolution(found: dict) -> None:
-    print(f"evolution #{found['id']} of {_what(found)} ({found['target']}): {found['state']}")
+def candidate_row(item: dict) -> tuple:
+    return (
+        f"#{item['id']}",
+        item["origin"],
+        ",".join(f"#{p}" for p in item["parents"]) or "-",
+        str(item["iteration"]),
+        f"{sum(item['scores'].values()):g}/{len(item['scores'])}",
+        money(item["cost_usd"]) if item.get("cost_usd") is not None else "-",
+        "yes" if item["on_front"] else "",
+    )
+
+
+def evolution_view(found: dict) -> Views:
+    """An evolution for a person: its head, its candidates with the ASI of the tasks they failed, its front."""
     run = f"run #{found['run_id']}" if found.get("run_id") else "no run yet"
-    print(f"{run}, {found['iterations']} round(s), {len(found['tasks'])} task(s) of the select split and probes")
+    head = [
+        f"evolution #{found['id']} of {what_of(found)} ({found['target']}): {found['state']}",
+        f"{run}, {found['iterations']} round(s), {len(found['tasks'])} task(s) of the select split and probes",
+    ]
     if found.get("reason"):
-        print(f"why: {found['reason']}")
-    rows = [
-        (
-            f"#{item['id']}",
-            item["origin"],
-            ",".join(f"#{p}" for p in item["parents"]) or "-",
-            str(item["iteration"]),
-            f"{sum(item['scores'].values()):g}/{len(item['scores'])}",
-            money(item["cost_usd"]) if item.get("cost_usd") is not None else "-",
-            "yes" if item["on_front"] else "",
-        )
-        for item in found.get("candidates") or []
-    ]
-    if rows:
-        table(("ID", "ORIGIN", "PARENTS", "ROUND", "SCORE", "COST", "FRONT"), rows)
-        _print_asi(found.get("candidates") or [])
+        head.append(f"why: {found['reason']}")
+    candidates = found.get("candidates") or []
     front = ", ".join(f"#{item['candidate_id']} leads {item['freq']}" for item in found["frontier"]) or "none yet"
-    print(f"front: {front}")
+    tail = [f"front: {front}"]
     if found.get("best_candidate_id"):
-        print(f"best: #{found['best_candidate_id']}")
+        tail.append(f"best: #{found['best_candidate_id']}")
+    return Views(
+        Text(*head),
+        Table(CANDIDATE_COLUMNS, [candidate_row(item) for item in candidates]),
+        Text(*asi_lines(candidates)),
+        Text(*tail),
+    )
 
 
-@client_command
-def cmd_run(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    if args.repo:
-        body = {"target": "git", "repo": args.repo, "paths": args.path or []}
-    else:
-        body = {"target": "agent_config", "system_id": args.system_id, "agent": args.agent}
-    if args.proposal:
-        body["proposal_id"] = args.proposal
-    found = call_object(hub, "POST", _path(project), body)
-    if args.json:
-        print_json(found)
-        return 0
-    _print_evolution(found)
-    return 0
+class EvolveRun(HubCommand):
+    name = "run"
+    help = "start an evolution of a repo's harness files or of an agent's configuration"
+    arguments = (
+        PROJECT,
+        Arg("--repo", help="target git: the repo whose harness files it rewrites"),
+        Arg("--path", action="append", help="target git: a file it rewrites, repeatable"),
+        Arg("--system-id", type=int, help="target agent_config: the agent system"),
+        Arg("--agent", help="target agent_config: the node's id or its profile's handle"),
+        Arg("--proposal", type=int, help="the accepted proposal whose planned change takes the branch"),
+    )
+    output = EVOLUTION
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Evolutions.of(ctx).start(evolution_body(ctx.args))
+        return Result(found, evolution_view(found))
 
 
-@client_command
-def cmd_show(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "GET", _path(project_of(args), str(args.evolution)))
-    if args.json:
-        print_json(found)
-        return 0
-    _print_evolution(found)
-    return 0
+class EvolveShow(HubCommand):
+    name = "show"
+    help = "one evolution: its candidates, their scores and the front"
+    arguments = (
+        Arg("evolution", type=int, metavar="ID", help="the evolution's id, as `curator evolve status` lists"),
+        PROJECT,
+    )
+    output = EVOLUTION
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Evolutions.of(ctx).get(ctx.args.evolution)
+        return Result(found, evolution_view(found))
 
 
-@client_command
-def cmd_status(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    query = {"limit": args.limit, **({"state": args.state} if args.state else {})}
-    found = call_object(hub, "GET", _path(project) + f"?{urlencode(query)}")
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (f"#{item['id']}", item["target"], _what(item), item["state"], str(item["iterations"]), item["reason"] or "")
-        for item in found["evolutions"]
-    ]
-    if rows:
-        table(("ID", "TARGET", "WHAT", "STATE", "ROUNDS", "WHY"), rows)
-    print(f"{len(rows)} evolution(s) of {project}")
-    return 0
+class EvolveStatus(HubCommand):
+    name = "status"
+    help = "the project's evolutions, the newest first"
+    arguments = (
+        PROJECT,
+        Arg("--state", choices=STATES, help="the evolutions in this state alone"),
+        Arg("--limit", type=int, default=20, choices=range(1, 101), metavar="N", help="1 to 100"),
+    )
+    output = returns_object(*EVOLVE_LIST_KEYS, schema="EvolveList")
+    columns = ("ID", "TARGET", "WHAT", "STATE", "ROUNDS", "WHY")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Evolutions.of(ctx).list(ctx.args.limit, ctx.args.state)
+        rows = [
+            (
+                f"#{item['id']}",
+                item["target"],
+                what_of(item),
+                item["state"],
+                str(item["iterations"]),
+                item["reason"] or "",
+            )
+            for item in found["evolutions"]
+        ]
+        said = f"{len(rows)} evolution(s) of {ctx.project}"
+        return Result(found, Views(Table(self.columns, rows), Text(said)))
 
 
-def register_evolve_run(esub, with_project) -> None:
-    run = esub.add_parser("run", help="start an evolution of a repo's harness files or of an agent's configuration")
-    with_project(run)
-    run.add_argument("--repo", help="target git: the repo whose harness files it rewrites")
-    run.add_argument("--path", action="append", help="target git: a file it rewrites, repeatable")
-    run.add_argument("--system-id", type=int, help="target agent_config: the agent system")
-    run.add_argument("--agent", help="target agent_config: the node's id or its profile's handle")
-    run.add_argument("--proposal", type=int, help="the accepted proposal whose planned change takes the branch")
-    json_option(run, returns_object(*EVOLVE_KEYS, schema="EvolveView"))
-    run.set_defaults(func=cmd_run)
-
-
-def register_evolve_show(esub, with_project) -> None:
-    shown = esub.add_parser("show", help="one evolution: its candidates, their scores and the front")
-    shown.add_argument("evolution", type=int, metavar="ID", help="the evolution's id, as `curator evolve status` lists")
-    with_project(shown)
-    json_option(shown, returns_object(*EVOLVE_KEYS, schema="EvolveView"))
-    shown.set_defaults(func=cmd_show)
-
-
-def register_evolve_status(esub, with_project) -> None:
-    status = esub.add_parser("status", help="the project's evolutions, the newest first")
-    with_project(status)
-    status.add_argument("--state", choices=STATES, help="the evolutions in this state alone")
-    status.add_argument("--limit", type=int, default=20, choices=range(1, 101), metavar="N", help="1 to 100")
-    json_option(status, returns_object(*EVOLVE_LIST_KEYS, schema="EvolveList"))
-    status.set_defaults(func=cmd_status)
-
-
-def register_evolve(csub, with_project) -> None:
-    """``curator evolve`` and its commands."""
-    parser = csub.add_parser("evolve", help="the evolutions of a harness or of an agent's configuration")
-    esub = parser.add_subparsers(dest="evolve_command", required=True)
-    for register in (register_evolve_run, register_evolve_show, register_evolve_status):
-        register(esub, with_project)
+EVOLVE = Group(
+    "evolve",
+    "the evolutions of a harness or of an agent's configuration",
+    (EvolveRun(), EvolveShow(), EvolveStatus()),
+)

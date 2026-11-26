@@ -21,17 +21,21 @@ written in place of probes not reproduced or stale.
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`Probes` is
+the gateway to the routes, :func:`probe_body` and :func:`probe_edits` turn the options of ``add`` and ``edit`` into
+their bodies.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
-from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli.base import project_of
-from evo_agents.hub.cli_client import HubError, client_command, print_json, signed_in, table
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
+from evo_agents.hub.cli_client import HubError
 from evo_agents.hub.probes import MAX_TASK_BYTES, STATES
 
 PROBE_KEYS = (
@@ -55,7 +59,7 @@ PROBE_KEYS = (
     "plugin",
     "ref",
 )
-PROBE = returns_object(*PROBE_KEYS, schema="Probe")
+PROBE_OUTPUT = returns_object(*PROBE_KEYS, schema="Probe")
 
 
 REQUEUE = returns_object("probe_id", "week", "requeued", "kept", schema="ProbeRequeue")
@@ -65,15 +69,41 @@ EDITED = ("repo", "commit", "verify")  # with the task, what ``probe edit`` may 
 REPORT_KEYS = ("project", "k", "budget_usd", "weeks", "unprobed", "fixes", "replacements")
 DEFAULT_WEEKS = 2
 MAX_WEEKS = 52
+PROBE_ID = Arg("id", type=int)
+TASK_HELP = "the task text the agent is given"
+TASK_FILE_HELP = "a file holding the task text; - for stdin"
+VERIFY_HELP = "one shell line that exits 0 when the agent does not repeat the mistake"
+REPORT_COLUMNS = ("PROBE", "CHANGE", "RULE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE", "ARMS AT")
 
 
-def _path(project: str, *parts: str, **params) -> str:
-    asked = {key: value for key, value in params.items() if value is not None}
-    query = f"?{urlencode(asked)}" if asked else ""
-    return "/".join((f"/v1/projects/{quote(project, safe='')}/curator/probes", *parts)) + query
+class Probes(ProjectResource):
+    """The probes of a project: .../curator/probes and the routes below it, and GET .../curator/probe-report."""
+
+    collection = "curator"
+
+    def list(self, **query) -> dict:
+        return self.call("GET", "probes", **query)
+
+    def get(self, probe: int) -> dict:
+        return self.call("GET", "probes", probe)
+
+    def add(self, body: dict) -> dict:
+        return self.call("POST", "probes", body=body)
+
+    def edit(self, probe: int, body: dict) -> dict:
+        return self.call("PATCH", "probes", probe, body=body)
+
+    def act(self, probe: int, action: str, body: dict) -> dict:
+        """POST ``action`` (retire or requeue) of one probe."""
+        return self.call("POST", "probes", probe, action, body=body)
+
+    def report(self, weeks: int, week: str | None) -> dict:
+        return self.call("GET", "probe-report", weeks=weeks, week=week)
 
 
-def _task(args) -> str:
+def task_of(args: argparse.Namespace) -> str:
+    """The task of ``add`` or ``edit``: ``--task``, else the text of ``--task-file`` (``-``: stdin), at most
+    MAX_TASK_BYTES; HubError when it cannot be read or is too long."""
     if args.task is not None:
         return args.task
     source = args.task_file
@@ -86,275 +116,260 @@ def _task(args) -> str:
     return text
 
 
-def _rule(item: dict) -> str:
+def probe_body(args: argparse.Namespace) -> dict:
+    """The body of ``probe add``."""
+    body = {"repo": args.repo, "task": task_of(args), "verify": args.verify}
+    if args.commit:
+        body["commit"] = args.commit
+    body["change_id" if args.change else "proposal_id"] = args.change or args.proposal
+    return body
+
+
+def probe_edits(args: argparse.Namespace) -> dict:
+    """The body of ``probe edit``: the options given; HubError when none is."""
+    body = {key: getattr(args, key) for key in EDITED if getattr(args, key) is not None}
+    if args.task is not None or args.task_file is not None:
+        body["task"] = task_of(args)
+    if not body:
+        raise HubError("give at least one of --repo, --commit, --task, --task-file or --verify")
+    return body
+
+
+def rule_of(item: dict) -> str:
     """The plugin and rule key of a plugin's probe (source plugin), else ``-``."""
     return f"{item.get('plugin') or 'removed'}:{item['ref']}" if item.get("ref") else "-"
 
 
-def _print(probe: dict) -> None:
+def probe_lines(probe: dict) -> list[str]:
+    """One probe for a person: what it probes, its repo and verify, then its task."""
     target = f"change #{probe['change_id']}" if probe["change_id"] else f"proposal #{probe['proposal_id']}"
     if probe.get("ref"):
         target = f"plugin {probe.get('plugin') or 'removed'} rule {probe['ref']}"
-    print(f"probe #{probe['id']} of {target}, {probe['state']} ({probe['source']})")
-    print(f"repo: {probe['repo']} at {probe['commit'] or 'the tip of the default branch when it was made'}")
-    print(f"verify: {probe['verify'] if probe['verify'] is not None else '(hidden: the admins of the project see it)'}")
+    verify = probe["verify"] if probe["verify"] is not None else "(hidden: the admins of the project see it)"
+    lines = [
+        f"probe #{probe['id']} of {target}, {probe['state']} ({probe['source']})",
+        f"repo: {probe['repo']} at {probe['commit'] or 'the tip of the default branch when it was made'}",
+        f"verify: {verify}",
+    ]
     if probe["retired_note"]:
-        print(f"retired: {probe['retired_note']}")
+        lines.append(f"retired: {probe['retired_note']}")
     if probe.get("replaces"):
-        print(f"replaces: probe #{probe['replaces']}")
-    print()
-    print(probe["task"])
+        lines.append(f"replaces: probe #{probe['replaces']}")
+    return [*lines, "", probe["task"]]
 
 
-@client_command
-def cmd_probe_list(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    found = hub.call(
-        "GET", _path(project, change=args.change, proposal=args.proposal, state=args.state, limit=args.limit)
+class ProbeList(HubCommand):
+    name = "list"
+    help = "the probes of the project, newest first"
+    arguments = (
+        PROJECT,
+        Arg("--change", type=int, metavar="N", help="the probes of this change"),
+        Arg("--proposal", type=int, metavar="N", help="the probes of this proposal"),
+        Arg("--state", choices=STATES),
+        Arg("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200"),
     )
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (
+    output = returns_object("probes", "total", schema="ProbeList")
+    columns = ("PROBE", "CHANGE", "PROPOSAL", "RULE", "REPO", "STATE", "SOURCE", "TASK")
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        found = Probes.of(ctx).list(change=args.change, proposal=args.proposal, state=args.state, limit=args.limit)
+        rows = [self.row(probe) for probe in found["probes"]]
+        return Result(found, Views(Table(self.columns, rows), Text(f"{found['total']} probe(s) in {ctx.project}")))
+
+    @staticmethod
+    def row(probe: dict) -> tuple:
+        return (
             f"#{probe['id']}",
             f"#{probe['change_id']}" if probe["change_id"] else "-",
             f"#{probe['proposal_id']}" if probe["proposal_id"] else "-",
-            _rule(probe),
+            rule_of(probe),
             probe["repo"],
             probe["state"],
             probe["source"],
             probe["task"].strip().splitlines()[0][:60] if probe["task"].strip() else "",
         )
-        for probe in found["probes"]
-    ]
-    if rows:
-        table(("PROBE", "CHANGE", "PROPOSAL", "RULE", "REPO", "STATE", "SOURCE", "TASK"), rows)
-    print(f"{found['total']} probe(s) in {project}")
-    return 0
 
 
-@client_command
-def cmd_probe_show(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("GET", _path(project_of(args), str(args.id)))
-    if args.json:
-        print_json(found)
-        return 0
-    _print(found)
-    return 0
+class ProbeShow(HubCommand):
+    name = "show"
+    help = "one probe: its task, and its verify for the project's admins"
+    arguments = (PROJECT, PROBE_ID)
+    output = PROBE_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Probes.of(ctx).get(ctx.args.id)
+        return Result(found, Text(*probe_lines(found)))
 
 
-@client_command
-def cmd_probe_add(args) -> int:
-    hub, _ = signed_in()
-    body = {"repo": args.repo, "task": _task(args), "verify": args.verify}
-    if args.commit:
-        body["commit"] = args.commit
-    body["change_id" if args.change else "proposal_id"] = args.change or args.proposal
-    found = hub.call("POST", _path(project_of(args)), body)
-    if args.json:
-        print_json(found)
-        return 0
-    print(f"added probe #{found['id']}")
-    return 0
+class ProbeAdd(HubCommand):
+    name = "add"
+    help = "add a probe to a change or a proposal (the project's admins)"
+    output = PROBE_OUTPUT
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        PROJECT.add_to(parser)
+        target = parser.add_mutually_exclusive_group(required=True)
+        target.add_argument("--change", type=int, metavar="N", help="the change it probes")
+        target.add_argument("--proposal", type=int, metavar="N", help="the proposal whose change it probes")
+        parser.add_argument("--repo", required=True, help="the repo of the project the task runs in")
+        parser.add_argument("--commit", help="the base commit; none: the tip of the default branch")
+        task = parser.add_mutually_exclusive_group(required=True)
+        task.add_argument("--task", help=TASK_HELP)
+        task.add_argument("--task-file", metavar="PATH", help=TASK_FILE_HELP)
+        parser.add_argument("--verify", required=True, help=VERIFY_HELP)
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Probes.of(ctx).add(probe_body(ctx.args))
+        return Result(found, Text(f"added probe #{found['id']}"))
 
 
-@client_command
-def cmd_probe_edit(args) -> int:
-    body = {key: getattr(args, key) for key in EDITED if getattr(args, key) is not None}
-    if args.task is not None or args.task_file is not None:
-        body["task"] = _task(args)
-    if not body:
-        raise HubError("give at least one of --repo, --commit, --task, --task-file or --verify")
-    hub, _ = signed_in()
-    found = hub.call("PATCH", _path(project_of(args), str(args.id)), body)
-    if args.json:
-        print_json(found)
-        return 0
-    print(f"edited probe #{found['id']}: {', '.join(sorted(body))}")
-    return 0
+class ProbeEdit(HubCommand):
+    name = "edit"
+    help = "change an active probe's repo, commit, task or verify (the project's admins)"
+    output = PROBE_OUTPUT
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        PROJECT.add_to(parser)
+        PROBE_ID.add_to(parser)
+        parser.add_argument("--repo", help="the repo of the project the task runs in")
+        parser.add_argument("--commit", help="the base commit")
+        task = parser.add_mutually_exclusive_group()
+        task.add_argument("--task", help=TASK_HELP)
+        task.add_argument("--task-file", metavar="PATH", help=TASK_FILE_HELP)
+        parser.add_argument("--verify", help=VERIFY_HELP)
+
+    def run(self, ctx: HubContext) -> Result:
+        body = probe_edits(ctx.args)  # before the hub is asked: a usage mistake signs in nowhere
+        found = Probes.of(ctx).edit(ctx.args.id, body)
+        return Result(found, Text(f"edited probe #{found['id']}: {', '.join(sorted(body))}"))
 
 
-def _run_words(item: dict) -> str:
+class ProbeRetire(HubCommand):
+    name = "retire"
+    help = "retire a probe (the project's admins)"
+    arguments = (PROJECT, PROBE_ID, Arg("--note", help="why it is retired"))
+    output = PROBE_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        body = {"note": ctx.args.note} if ctx.args.note else {}
+        found = Probes.of(ctx).act(ctx.args.id, "retire", body)
+        return Result(found, Text(f"retired probe #{found['id']}"))
+
+
+def run_words(item: dict) -> str:
     model = f" {item['model']}" if item.get("model") else ""
     return f"  {item['runtime']}{model}: {item['state']}"
 
 
-@client_command
-def cmd_probe_requeue(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("POST", _path(project_of(args), str(args.id), "requeue"), {})
-    if args.json:
-        print_json(found)
-        return 0
-    week = found["week"]
-    print(f"probe #{found['probe_id']}, the week of {week}: {len(found['requeued'])} row(s) requeued")
-    for item in found["requeued"]:
-        print(_run_words(item))
-    if found["kept"]:
-        print(f"kept as they are: {len(found['kept'])}")
-        for item in found["kept"]:
-            print(_run_words(item))
-    return 0
+class ProbeRequeue(HubCommand):
+    name = "requeue"
+    help = "measure an active probe again this week: its stale, failed or unmeasured rows (admins)"
+    arguments = (PROJECT, PROBE_ID)
+    output = REQUEUE
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Probes.of(ctx).act(ctx.args.id, "requeue", {})
+        lines = [f"probe #{found['probe_id']}, the week of {found['week']}: {len(found['requeued'])} row(s) requeued"]
+        lines += [run_words(item) for item in found["requeued"]]
+        if found["kept"]:
+            lines.append(f"kept as they are: {len(found['kept'])}")
+            lines += [run_words(item) for item in found["kept"]]
+        return Result(found, Text(*lines))
 
 
-@client_command
-def cmd_probe_retire(args) -> int:
-    hub, _ = signed_in()
-    body = {"note": args.note} if args.note else {}
-    found = hub.call("POST", _path(project_of(args), str(args.id), "retire"), body)
-    if args.json:
-        print_json(found)
-        return 0
-    print(f"retired probe #{found['id']}")
-    return 0
-
-
-@client_command
-def cmd_probe_report(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    asked = {"weeks": args.weeks, **({"week": args.week} if args.week else {})}
-    found = hub.call("GET", f"/v1/projects/{quote(project, safe='')}/curator/probe-report?{urlencode(asked)}")
-    if args.json:
-        print_json(found)
-        return 0
-    cap = (
-        f"{found['budget_usd']:.2f} USD a week"
-        if found["budget_usd"] is not None
-        else "none (probes.budget_usd is null)"
+def report_row(item: dict) -> tuple:
+    return (
+        f"#{item['probe_id']}",
+        f"#{item['change_id']}" if item["change_id"] else "-",
+        rule_of(item),
+        f"{item['runtime']}{' ' + item['model'] if item['model'] else ''}",
+        f"{item['on']['failed']}/{item['on']['runs']}",
+        f"{item['off']['failed']}/{item['off']['runs']}",
+        item["status"],
+        item["previous"] or "-",
+        item.get("arms_at") or "-",
     )
-    print(f"probes of {project}: k {found['k']}, budget {cap}")
-    for week in found["weeks"]:
-        totals = week["totals"]
-        state = "" if week["complete"] else " (in progress)"
-        print()
-        print(
-            f"week of {week['week']}{state}: {totals['holds']} holds, {totals['recurring']} recurring, "
-            f"{totals['not_reproduced']} not reproduced, {totals['stale']} stale, {totals['unmeasured']} unmeasured; "
-            f"cost {week['cost_usd']:.2f} USD"
-        )
-        rows = [
-            (
-                f"#{item['probe_id']}",
-                f"#{item['change_id']}" if item["change_id"] else "-",
-                _rule(item),
-                f"{item['runtime']}{' ' + item['model'] if item['model'] else ''}",
-                f"{item['on']['failed']}/{item['on']['runs']}",
-                f"{item['off']['failed']}/{item['off']['runs']}",
-                item["status"],
-                item["previous"] or "-",
-                item.get("arms_at") or "-",
-            )
-            for item in week["probes"]
-        ]
-        if rows:
-            table(
-                ("PROBE", "CHANGE", "RULE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE", "ARMS AT"),
-                rows,
-            )
-        if any(item.get("arms_at") == "change" for item in week["probes"]):
-            print("ARMS AT change: the change's diff no longer comes off the tip, so its arms ran at its own commits")
+
+
+def week_view(week: dict) -> Views:
+    """One ISO week of the report: its totals and cost, then its probes."""
+    totals = week["totals"]
+    state = "" if week["complete"] else " (in progress)"
+    head = (
+        f"week of {week['week']}{state}: {totals['holds']} holds, {totals['recurring']} recurring, "
+        f"{totals['not_reproduced']} not reproduced, {totals['stale']} stale, {totals['unmeasured']} unmeasured; "
+        f"cost {week['cost_usd']:.2f} USD"
+    )
+    arms = (
+        ["ARMS AT change: the change's diff no longer comes off the tip, so its arms ran at its own commits"]
+        if any(item.get("arms_at") == "change" for item in week["probes"])
+        else []
+    )
+    return Views(Text("", head), Table(REPORT_COLUMNS, [report_row(item) for item in week["probes"]]), Text(*arms))
+
+
+def report_tail(found: dict) -> list[str]:
+    """Under the weeks: the changes no probe measures, the fix proposals, the probes written in place of others."""
+    lines = []
     if found["unprobed"]:
-        print()
-        print(f"changes without a probe a probe could measure, or born of a correction: {len(found['unprobed'])}")
-        for item in found["unprobed"]:
-            print(f"  #{item['change_id']} {item['title']}: {item['reason']}")
-    for fix in found["fixes"]:
-        print(f"fix proposal #{fix['proposal_id']} of change #{fix['change_id']} ({fix['state']}): {fix['title']}")
-    for item in found.get("replacements") or []:
-        print(f"probe #{item['probe_id']} of change #{item['change_id']} in place of probe #{item['replaces']}")
-    return 0
+        lines += [
+            "",
+            f"changes without a probe a probe could measure, or born of a correction: {len(found['unprobed'])}",
+        ]
+        lines += [f"  #{item['change_id']} {item['title']}: {item['reason']}" for item in found["unprobed"]]
+    lines += [
+        f"fix proposal #{fix['proposal_id']} of change #{fix['change_id']} ({fix['state']}): {fix['title']}"
+        for fix in found["fixes"]
+    ]
+    lines += [
+        f"probe #{item['probe_id']} of change #{item['change_id']} in place of probe #{item['replaces']}"
+        for item in found.get("replacements") or []
+    ]
+    return lines
 
 
-def register_probe(csub, with_project) -> None:
-    """``curator probe list|show|add|edit|retire|requeue|report``."""
-    probe = csub.add_parser("probe", help="the probes of the Curator's proposals and changes")
-    psub = probe.add_subparsers(dest="probe_command", required=True, metavar="COMMAND")
-
-    listed = psub.add_parser("list", help="the probes of the project, newest first")
-    with_project(listed)
-    listed.add_argument("--change", type=int, metavar="N", help="the probes of this change")
-    listed.add_argument("--proposal", type=int, metavar="N", help="the probes of this proposal")
-    listed.add_argument("--state", choices=STATES)
-    listed.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
-    json_option(listed, returns_object("probes", "total", schema="ProbeList"))
-    listed.set_defaults(func=cmd_probe_list)
-
-    shown = psub.add_parser("show", help="one probe: its task, and its verify for the project's admins")
-    with_project(shown)
-    shown.add_argument("id", type=int)
-    json_option(shown, PROBE)
-    shown.set_defaults(func=cmd_probe_show)
-
-    _register_add(psub, with_project)
-    _register_edit(psub, with_project)
-
-    retired = psub.add_parser("retire", help="retire a probe (the project's admins)")
-    with_project(retired)
-    retired.add_argument("id", type=int)
-    retired.add_argument("--note", help="why it is retired")
-    json_option(retired, PROBE)
-    retired.set_defaults(func=cmd_probe_retire)
-
-    requeued = psub.add_parser(
-        "requeue", help="measure an active probe again this week: its stale, failed or unmeasured rows (admins)"
+class ProbeReport(HubCommand):
+    name = "report"
+    help = "the weekly report of the probes: arm on and off, status, cost"
+    arguments = (
+        PROJECT,
+        Arg(
+            "--weeks",
+            type=int,
+            default=DEFAULT_WEEKS,
+            choices=range(1, MAX_WEEKS + 1),
+            metavar="N",
+            help=f"the newest weeks, the one in progress first; 1 to {MAX_WEEKS}, default {DEFAULT_WEEKS}",
+        ),
+        Arg("--week", metavar="YYYY-MM-DD", help="a day of the newest week to show; default today"),
     )
-    with_project(requeued)
-    requeued.add_argument("id", type=int)
-    json_option(requeued, REQUEUE)
-    requeued.set_defaults(func=cmd_probe_requeue)
+    output = returns_object(*REPORT_KEYS, schema="ProbeWeekly")
 
-    _register_report(psub, with_project)
-
-
-def _register_add(psub, with_project) -> None:
-    added = psub.add_parser("add", help="add a probe to a change or a proposal (the project's admins)")
-    with_project(added)
-    target = added.add_mutually_exclusive_group(required=True)
-    target.add_argument("--change", type=int, metavar="N", help="the change it probes")
-    target.add_argument("--proposal", type=int, metavar="N", help="the proposal whose change it probes")
-    added.add_argument("--repo", required=True, help="the repo of the project the task runs in")
-    added.add_argument("--commit", help="the base commit; none: the tip of the default branch")
-    task = added.add_mutually_exclusive_group(required=True)
-    task.add_argument("--task", help="the task text the agent is given")
-    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
-    added.add_argument(
-        "--verify", required=True, help="one shell line that exits 0 when the agent does not repeat the mistake"
-    )
-    json_option(added, PROBE)
-    added.set_defaults(func=cmd_probe_add)
+    def run(self, ctx: HubContext) -> Result:
+        found = Probes.of(ctx).report(ctx.args.weeks, ctx.args.week or None)
+        cap = (
+            f"{found['budget_usd']:.2f} USD a week"
+            if found["budget_usd"] is not None
+            else "none (probes.budget_usd is null)"
+        )
+        head = Text(f"probes of {ctx.project}: k {found['k']}, budget {cap}")
+        weeks = [week_view(week) for week in found["weeks"]]
+        return Result(found, Views(head, *weeks, Text(*report_tail(found))))
 
 
-def _register_edit(psub, with_project) -> None:
-    edited = psub.add_parser(
-        "edit", help="change an active probe's repo, commit, task or verify (the project's admins)"
-    )
-    with_project(edited)
-    edited.add_argument("id", type=int)
-    edited.add_argument("--repo", help="the repo of the project the task runs in")
-    edited.add_argument("--commit", help="the base commit")
-    task = edited.add_mutually_exclusive_group()
-    task.add_argument("--task", help="the task text the agent is given")
-    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
-    edited.add_argument("--verify", help="one shell line that exits 0 when the agent does not repeat the mistake")
-    json_option(edited, PROBE)
-    edited.set_defaults(func=cmd_probe_edit)
+class ProbeGroup(Group):
+    """``curator probe``, whose commands its usage names COMMAND."""
+
+    def attach(self, subparsers: argparse._SubParsersAction) -> None:
+        parser = subparsers.add_parser(self.name, help=self.help, **self.options)
+        below = parser.add_subparsers(dest=self.dest, required=True, metavar="COMMAND")
+        for child in self.children:
+            child.attach(below)
 
 
-def _register_report(psub, with_project) -> None:
-    report = psub.add_parser("report", help="the weekly report of the probes: arm on and off, status, cost")
-    with_project(report)
-    report.add_argument(
-        "--weeks",
-        type=int,
-        default=DEFAULT_WEEKS,
-        choices=range(1, MAX_WEEKS + 1),
-        metavar="N",
-        help=f"the newest weeks, the one in progress first; 1 to {MAX_WEEKS}, default {DEFAULT_WEEKS}",
-    )
-    report.add_argument("--week", metavar="YYYY-MM-DD", help="a day of the newest week to show; default today")
-    json_option(report, returns_object(*REPORT_KEYS, schema="ProbeWeekly"))
-    report.set_defaults(func=cmd_probe_report)
+PROBE = ProbeGroup(
+    "probe",
+    "the probes of the Curator's proposals and changes",
+    (ProbeList(), ProbeShow(), ProbeAdd(), ProbeEdit(), ProbeRetire(), ProbeRequeue(), ProbeReport()),
+)

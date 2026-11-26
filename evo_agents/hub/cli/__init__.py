@@ -393,9 +393,9 @@ def _register_workspace_commands(hsub) -> None:
 
 def _register_steering_commands(hsub) -> None:
     """The client's groups from hub release to hub inbox."""
-    from evo_agents.hub.cli.curator.release import register_release
+    from evo_agents.hub.cli.curator.release import RELEASE
 
-    register_release(hsub)
+    RELEASE.attach(hsub)
 
     from evo_agents.hub.cli_policy import register_policy
 

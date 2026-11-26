@@ -17,15 +17,18 @@ the group chats the caller may read, best first, each with the evidence that nam
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`History` and
+:class:`Transcripts` are the gateways to the routes.
 """
 
 from __future__ import annotations
 
-from urllib.parse import quote, urlencode
+from typing import Any
+from urllib.parse import urlencode
 
-from evo_agents.hub.cli.base import project_of
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
 from evo_agents.hub.curator import money
 
 STATUS_KEYS = ("project", "budget_usd", "runtime", "model", "llm", "runs", "clusters", "hidden")
@@ -50,32 +53,83 @@ KINDS = ("session", "run")
 RUNTIMES = ("claude-code", "codex")
 
 
-def _path(project: str, *parts: str) -> str:
-    return "/".join((f"/v1/projects/{quote(project, safe='')}/curator/history", *parts))
+def query_of(**params) -> str:
+    """``?<query>`` of the values given, a list as its key repeated after the others; empty when none is."""
+    pairs = [(key, value) for key, value in params.items() if value is not None and not isinstance(value, list)]
+    pairs += [(key, item) for key, value in params.items() if isinstance(value, list) for item in value]
+    return f"?{urlencode(pairs)}" if pairs else ""
 
 
-@client_command
-def cmd_status(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    found = hub.call("GET", _path(project))
-    if args.json:
-        print_json(found)
-        return 0
+class History(ProjectResource):
+    """The history of a project: GET /v1/projects/{p}/curator/history and the routes below it."""
+
+    collection = "curator"
+
+    def status(self) -> dict:
+        return self.call("GET", "history")
+
+    def clusters(self, limit: int) -> dict:
+        return self.call("GET", "history", "clusters", limit=limit)
+
+    def read(self, what: str, **params) -> Any:
+        """``what`` (sessions or search) of the whole history, by ``params``."""
+        return self.hub.call("GET", self.path("history", what) + query_of(**params))
+
+
+class Transcripts(ProjectResource):
+    """The transcripts of a project's sessions: GET /v1/projects/{p}/transcripts/{session}/lines."""
+
+    collection = "transcripts"
+
+    def lines(self, session: str, **params) -> Any:
+        return self.hub.call("GET", self.path(session, "lines") + query_of(**params))
+
+
+def when_of(value: str | None) -> str:
+    return (value or "-")[:16].replace("T", " ")
+
+
+FILTERS = (  # the filters ``sessions`` and ``search`` share: by day, by member, by runtime
+    Arg("--since", metavar="YYYY-MM-DD", help="from this UTC day on"),
+    Arg("--until", metavar="YYYY-MM-DD", help="before this UTC day"),
+    Arg("--login", metavar="LOGIN", help="of this member"),
+    Arg("--runtime", choices=RUNTIMES),
+)
+
+
+def status_lines(found: dict, project: str) -> list[str]:
+    """What ``history status`` says above its table of runs: the cap and model, then the facets of the model."""
     cap = found["budget_usd"]
     if cap is None:
-        print(f"Project {project} has no charter: no history run")
+        lines = [f"Project {project} has no charter: no history run"]
     else:
         model = found["model"] or "the cheapest the worker on duty reports"
         spend = f"at most {money(cap)} a night" if cap else "none: history.budget_usd is 0"
-        print(f"History run of {project}: {spend}, on {found['runtime']} with {model}")
+        lines = [f"History run of {project}: {spend}, on {found['runtime']} with {model}"]
     llm = found["llm"]
-    print(
+    lines.append(
         f"Facets of the model: {llm['analyzed']} of {llm['items']} sessions and runs, {llm['waiting']} waiting, "
         f"{llm['failed']} whose last attempt failed (version {llm['version']})"
     )
-    rows = [
-        (
+    return lines
+
+
+class HistoryStatus(HubCommand):
+    name = "status"
+    help = "its cap and model, the facets of the model, its latest runs"
+    arguments = (PROJECT,)
+    output = returns_object(*STATUS_KEYS, schema="HistoryStatus")
+    columns = ("RUN", "NIGHT", "STATE", "MODEL", "COST", "FACETS", "FAILED", "NAMED")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = History.of(ctx).status()
+        rows = [self.row(item) for item in found["runs"]]
+        said = f"{found['clusters']} cluster(s) in the night's figures, {found['hidden']} smaller left out"
+        return Result(found, Views(Text(*status_lines(found, ctx.project)), Table(self.columns, rows), Text(said)))
+
+    @staticmethod
+    def row(item: dict) -> tuple:
+        return (
             f"#{item['id']}",
             item["night"] or "-",
             item["state"],
@@ -85,187 +139,151 @@ def cmd_status(args) -> int:
             str(item["failed"]),
             str(item["named"]),
         )
-        for item in found["runs"]
-    ]
-    if rows:
-        table(("RUN", "NIGHT", "STATE", "MODEL", "COST", "FACETS", "FAILED", "NAMED"), rows)
-    print(f"{found['clusters']} cluster(s) in the night's figures, {found['hidden']} smaller left out")
-    return 0
 
 
-@client_command
-def cmd_clusters(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    found = hub.call("GET", _path(project, "clusters") + f"?{urlencode({'limit': args.limit})}")
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (
-            item["name"],
-            str(item["sessions"]),
-            str(item["runs"]),
-            str(item["members"]),
-            item["failure_mode"],
-            item["representative"] or "-",
+class HistoryClusters(HubCommand):
+    name = "clusters"
+    help = "the clusters of 3 sessions or more, as the night's figures hold them"
+    arguments = (
+        PROJECT,
+        Arg("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200"),
+    )
+    output = returns_object(*CLUSTER_LIST_KEYS, schema="FacetClusterList")
+    columns = ("CLUSTER", "SESSIONS", "RUNS", "MEMBERS", "MODE", "REPRESENTATIVE")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = History.of(ctx).clusters(ctx.args.limit)
+        rows = [
+            (
+                item["name"],
+                str(item["sessions"]),
+                str(item["runs"]),
+                str(item["members"]),
+                item["failure_mode"],
+                item["representative"] or "-",
+            )
+            for item in found["clusters"]
+        ]
+        said = (
+            f"{len(rows)} cluster(s) of {found['min_sessions']} sessions or more in {ctx.project}, {found['hidden']} "
+            "smaller left out"
         )
-        for item in found["clusters"]
-    ]
-    if rows:
-        table(("CLUSTER", "SESSIONS", "RUNS", "MEMBERS", "MODE", "REPRESENTATIVE"), rows)
-    print(
-        f"{len(rows)} cluster(s) of {found['min_sessions']} sessions or more in {project}, {found['hidden']} smaller "
-        "left out"
+        return Result(found, Views(Table(self.columns, rows), Text(said)))
+
+
+class HistorySessions(HubCommand):
+    name = "sessions"
+    help = "the sessions and runs of the whole history, with their numbers"
+    arguments = (
+        PROJECT,
+        Arg("--kind", choices=KINDS),
+        *FILTERS,
+        Arg("--outcome", metavar="OUTCOME", help="achieved, partial, failed, abandoned, unclear, or a state"),
+        Arg("--cluster", metavar="KEY", help="a cluster's key, such as fix/FM-3.2"),
+        Arg("--limit", type=int, default=20, choices=range(1, 101), metavar="N", help="1 to 100"),
+        Arg("--offset", type=int, default=0, metavar="N"),
     )
-    return 0
+    output = returns_object(*SESSIONS_KEYS, schema="HistorySessions")
+    columns = ("ITEM", "MEMBER", "RUNTIME", "AT", "MESSAGES", "ERRORS", "OUTCOME", "CLUSTER")
 
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        found = History.of(ctx).read(
+            "sessions",
+            kind=args.kind,
+            since=args.since,
+            until=args.until,
+            login=args.login,
+            runtime=args.runtime,
+            outcome=args.outcome,
+            cluster=args.cluster,
+            limit=args.limit,
+            offset=args.offset,
+        )
+        rows = [self.row(item) for item in found["items"]]
+        said = f"{len(rows)} of {found['total']} sessions and runs of {ctx.project}"
+        return Result(found, Views(Table(self.columns, rows), Text(said)))
 
-def _query(**params) -> str:
-    pairs = [(key, value) for key, value in params.items() if value is not None and not isinstance(value, list)]
-    pairs += [(key, item) for key, value in params.items() if isinstance(value, list) for item in value]
-    return f"?{urlencode(pairs)}" if pairs else ""
-
-
-def _when(value: str | None) -> str:
-    return (value or "-")[:16].replace("T", " ")
-
-
-@client_command
-def cmd_sessions(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    asked = _query(
-        kind=args.kind,
-        since=args.since,
-        until=args.until,
-        login=args.login,
-        runtime=args.runtime,
-        outcome=args.outcome,
-        cluster=args.cluster,
-        limit=args.limit,
-        offset=args.offset,
-    )
-    found = hub.call("GET", _path(project, "sessions") + asked)
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (
+    @staticmethod
+    def row(item: dict) -> tuple:
+        return (
             item["evidence"],
             item["login"] or "-",
             item["runtime"] or "-",
-            _when(item["at"]),
+            when_of(item["at"]),
             str(item["numbers"].get("messages", 0)),
             str(item["numbers"].get("tool_errors", 0)),
             item["outcome"] or (item["state"] or "-"),
             item["cluster"] or "-",
         )
-        for item in found["items"]
-    ]
-    if rows:
-        table(("ITEM", "MEMBER", "RUNTIME", "AT", "MESSAGES", "ERRORS", "OUTCOME", "CLUSTER"), rows)
-    print(f"{len(rows)} of {found['total']} sessions and runs of {project}")
-    return 0
 
 
-@client_command
-def cmd_search(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    asked = _query(
-        q=args.query,
-        source=args.source or None,
-        since=args.since,
-        until=args.until,
-        login=args.login,
-        runtime=args.runtime,
-        limit=args.limit,
-        offset=args.offset,
+class HistorySearch(HubCommand):
+    name = "search"
+    help = "words in the transcripts, run logs and group chats, best first"
+    arguments = (
+        Arg("query", metavar="QUERY", help='words, "a phrase", or -excluded'),
+        PROJECT,
+        Arg("--source", action="append", choices=SOURCES, help="this source alone; repeat it"),
+        *FILTERS,
+        Arg("--limit", type=int, default=20, choices=range(1, 51), metavar="N", help="1 to 50"),
+        Arg("--offset", type=int, default=0, metavar="N"),
     )
-    found = hub.call("GET", _path(project, "search") + asked)
-    if args.json:
-        print_json(found)
-        return 0
-    for hit in found["hits"]:
+    output = returns_object(*SEARCH_KEYS, schema="HistorySearch")
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        found = History.of(ctx).read(
+            "search",
+            q=args.query,
+            source=args.source or None,
+            since=args.since,
+            until=args.until,
+            login=args.login,
+            runtime=args.runtime,
+            limit=args.limit,
+            offset=args.offset,
+        )
+        lines = [self.line(hit) for hit in found["hits"]]
+        lines.append(f"{len(found['hits'])} of {found['total']} hits of {found['query']!r} in {ctx.project}")
+        return Result(found, Text(*lines))
+
+    @staticmethod
+    def line(hit: dict) -> str:
         where = hit["evidence"] or f"chat #{hit['chat_id']} message {hit['line']}"
-        print(f"{where} ({hit['login'] or '-'}, {_when(hit['at'])}, {hit['role']}): {' '.join(hit['text'].split())}")
-    print(f"{len(found['hits'])} of {found['total']} hits of {found['query']!r} in {project}")
-    return 0
+        return f"{where} ({hit['login'] or '-'}, {when_of(hit['at'])}, {hit['role']}): {' '.join(hit['text'].split())}"
 
 
-@client_command
-def cmd_lines(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    asked = _query(line=args.line, file=args.file, before=args.before, after=args.after)
-    path = f"/v1/projects/{quote(project, safe='')}/transcripts/{quote(args.session, safe='')}/lines"
-    found = hub.call("GET", path + asked)
-    if args.json:
-        print_json(found)
-        return 0
-    print(
-        f"Lines {found['first']} to {found['last']} of {found['lines']} of transcript {found['file']} of session "
-        f"{found['session_id']} ({found['runtime']}, {found['login']}):"
+class HistoryLines(HubCommand):
+    name = "lines"
+    help = "the lines of a session's transcript around one line"
+    arguments = (
+        Arg("session", metavar="SESSION", help="the session's id"),
+        Arg("line", type=int, metavar="LINE", help="the line to read around"),
+        PROJECT,
+        Arg("--file", default="main", help="main (default), or subagents/... for a subagent's"),
+        Arg("--before", type=int, default=10, choices=range(0, 101), metavar="N", help="0 to 100"),
+        Arg("--after", type=int, default=10, choices=range(0, 101), metavar="N", help="0 to 100"),
     )
-    for entry in found["entries"]:
-        mark = ">" if entry["line"] == found["asked"] else " "
-        print(f"{mark} L{entry['line']} {entry['role']}: {entry['text']}")
-    return 0
+    output = returns_object(*LINES_KEYS, schema="TranscriptLines")
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        found = Transcripts.of(ctx).lines(
+            args.session, line=args.line, file=args.file, before=args.before, after=args.after
+        )
+        lines = [
+            f"Lines {found['first']} to {found['last']} of {found['lines']} of transcript {found['file']} of session "
+            f"{found['session_id']} ({found['runtime']}, {found['login']}):"
+        ]
+        for entry in found["entries"]:
+            mark = ">" if entry["line"] == found["asked"] else " "
+            lines.append(f"{mark} L{entry['line']} {entry['role']}: {entry['text']}")
+        return Result(found, Text(*lines))
 
 
-def _filters(parser, *, runtime: bool = True) -> None:
-    parser.add_argument("--since", metavar="YYYY-MM-DD", help="from this UTC day on")
-    parser.add_argument("--until", metavar="YYYY-MM-DD", help="before this UTC day")
-    parser.add_argument("--login", metavar="LOGIN", help="of this member")
-    if runtime:
-        parser.add_argument("--runtime", choices=RUNTIMES)
-
-
-def _register_reading(hsub, with_project) -> None:
-    sessions = hsub.add_parser("sessions", help="the sessions and runs of the whole history, with their numbers")
-    with_project(sessions)
-    sessions.add_argument("--kind", choices=KINDS)
-    _filters(sessions)
-    sessions.add_argument(
-        "--outcome", metavar="OUTCOME", help="achieved, partial, failed, abandoned, unclear, or a state"
-    )
-    sessions.add_argument("--cluster", metavar="KEY", help="a cluster's key, such as fix/FM-3.2")
-    sessions.add_argument("--limit", type=int, default=20, choices=range(1, 101), metavar="N", help="1 to 100")
-    sessions.add_argument("--offset", type=int, default=0, metavar="N")
-    json_option(sessions, returns_object(*SESSIONS_KEYS, schema="HistorySessions"))
-    sessions.set_defaults(func=cmd_sessions)
-    search = hsub.add_parser("search", help="words in the transcripts, run logs and group chats, best first")
-    search.add_argument("query", metavar="QUERY", help='words, "a phrase", or -excluded')
-    with_project(search)
-    search.add_argument("--source", action="append", choices=SOURCES, help="this source alone; repeat it")
-    _filters(search)
-    search.add_argument("--limit", type=int, default=20, choices=range(1, 51), metavar="N", help="1 to 50")
-    search.add_argument("--offset", type=int, default=0, metavar="N")
-    json_option(search, returns_object(*SEARCH_KEYS, schema="HistorySearch"))
-    search.set_defaults(func=cmd_search)
-    lines = hsub.add_parser("lines", help="the lines of a session's transcript around one line")
-    lines.add_argument("session", metavar="SESSION", help="the session's id")
-    lines.add_argument("line", type=int, metavar="LINE", help="the line to read around")
-    with_project(lines)
-    lines.add_argument("--file", default="main", help="main (default), or subagents/... for a subagent's")
-    lines.add_argument("--before", type=int, default=10, choices=range(0, 101), metavar="N", help="0 to 100")
-    lines.add_argument("--after", type=int, default=10, choices=range(0, 101), metavar="N", help="0 to 100")
-    json_option(lines, returns_object(*LINES_KEYS, schema="TranscriptLines"))
-    lines.set_defaults(func=cmd_lines)
-
-
-def register_history(csub, with_project) -> None:
-    """``curator history`` and its commands."""
-    parser = csub.add_parser("history", help="the night's history run: facets of a cheap model and their clusters")
-    hsub = parser.add_subparsers(dest="history_command", required=True)
-    status = hsub.add_parser("status", help="its cap and model, the facets of the model, its latest runs")
-    with_project(status)
-    json_option(status, returns_object(*STATUS_KEYS, schema="HistoryStatus"))
-    status.set_defaults(func=cmd_status)
-    clusters = hsub.add_parser("clusters", help="the clusters of 3 sessions or more, as the night's figures hold them")
-    with_project(clusters)
-    clusters.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
-    json_option(clusters, returns_object(*CLUSTER_LIST_KEYS, schema="FacetClusterList"))
-    clusters.set_defaults(func=cmd_clusters)
-    _register_reading(hsub, with_project)
+HISTORY = Group(
+    "history",
+    "the night's history run: facets of a cheap model and their clusters",
+    (HistoryStatus(), HistoryClusters(), HistorySessions(), HistorySearch(), HistoryLines()),
+)

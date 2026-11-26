@@ -9,15 +9,15 @@ reverted) and its proposals, and the proposals the owner rejected lately (GET ..
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`Memory` is the
+gateway to the routes.
 """
 
 from __future__ import annotations
 
-from urllib.parse import quote, urlencode
-
-from evo_agents.hub.cli.base import project_of
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Result, Table, Text, Views, returns_object
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
 from evo_agents.hub.review import LENSES
 
 PLAYBOOK_KEYS = ("project", "entries", "live", "retired")
@@ -25,22 +25,38 @@ EARLIER_KEYS = ("project", "findings", "rejected")
 STATUSES = ("open", "proposed", "rejected", "merged", "kept", "reverted")  # server.earlier.STATUSES
 
 
-def _path(project: str, name: str, **params) -> str:
-    asked = {key: value for key, value in params.items() if value is not None}
-    query = f"?{urlencode(asked)}" if asked else ""
-    return f"/v1/projects/{quote(project, safe='')}/curator/{name}{query}"
+class Memory(ProjectResource):
+    """What the review runs remember: GET /v1/projects/{p}/curator/playbook and .../curator/earlier."""
+
+    collection = "curator"
+
+    def playbook(self, lens: str | None, retired: bool) -> dict:
+        return self.call("GET", "playbook", lens=lens, retired="true" if retired else None)
+
+    def earlier(self, lens: str | None, status: str | None, limit: int) -> dict:
+        return self.call("GET", "earlier", lens=lens, status=status, limit=limit)
 
 
-@client_command
-def cmd_playbook(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    found = hub.call("GET", _path(project, "playbook", lens=args.lens, retired="true" if args.retired else None))
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (
+class Playbook(HubCommand):
+    name = "playbook"
+    help = "the Curator's playbook of the project, the most helpful entries first"
+    arguments = (
+        PROJECT,
+        Arg("--lens", choices=list(LENSES), help="its entries and those of every lens"),
+        Arg("--retired", action="store_true", help="the retired entries too"),
+    )
+    output = returns_object(*PLAYBOOK_KEYS, schema="PlaybookView")
+    columns = ("ENTRY", "LENS", "HELPFUL", "HARMFUL", "SHOWN", "UNTIL", "STATE", "TEXT")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Memory.of(ctx).playbook(ctx.args.lens, ctx.args.retired)
+        rows = [self.row(entry) for entry in found["entries"]]
+        said = f"The playbook of {ctx.project}: {found['live']} live entries, {found['retired']} retired"
+        return Result(found, Views(Table(self.columns, rows), Text(said)))
+
+    @staticmethod
+    def row(entry: dict) -> tuple:
+        return (
             entry["ref"],
             entry["lens"] or "every lens",
             str(entry["helpful"]),
@@ -50,24 +66,33 @@ def cmd_playbook(args) -> int:
             "retired" if entry["retired"] else "live",
             entry["text"],
         )
-        for entry in found["entries"]
-    ]
-    if rows:
-        table(("ENTRY", "LENS", "HELPFUL", "HARMFUL", "SHOWN", "UNTIL", "STATE", "TEXT"), rows)
-    print(f"The playbook of {project}: {found['live']} live entries, {found['retired']} retired")
-    return 0
 
 
-@client_command
-def cmd_earlier(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    found = hub.call("GET", _path(project, "earlier", lens=args.lens, status=args.status, limit=args.limit))
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (
+class Earlier(HubCommand):
+    name = "earlier"
+    help = "what earlier review nights found and what became of it, newest first"
+    arguments = (
+        PROJECT,
+        Arg("--lens", choices=list(LENSES)),
+        Arg("--status", choices=STATUSES),
+        Arg("--limit", type=int, default=20, choices=range(1, 101), metavar="N", help="1 to 100"),
+    )
+    output = returns_object(*EARLIER_KEYS, schema="EarlierView")
+    columns = ("FINDING", "LENS", "NIGHT", "STATUS", "PROPOSALS", "TITLE")
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        found = Memory.of(ctx).earlier(args.lens, args.status, args.limit)
+        rows = [self.row(item) for item in found["findings"]]
+        lines = [f"{len(rows)} finding(s) of earlier nights in {ctx.project}"]
+        for item in found["rejected"]:
+            note = f" ({item['note']})" if item["note"] else ""
+            lines.append(f"rejected lately: #{item['id']} {item['lens']} {item['kind']}: {item['title']}{note}")
+        return Result(found, Views(Table(self.columns, rows), Text(*lines)))
+
+    @staticmethod
+    def row(item: dict) -> tuple:
+        return (
             f"#{item['id']}",
             item["lens"],
             item["night"] or "-",
@@ -75,29 +100,7 @@ def cmd_earlier(args) -> int:
             ", ".join(f"#{p['id']} {p['status']}" for p in item["proposals"]) or "-",
             item["title"],
         )
-        for item in found["findings"]
-    ]
-    if rows:
-        table(("FINDING", "LENS", "NIGHT", "STATUS", "PROPOSALS", "TITLE"), rows)
-    print(f"{len(rows)} finding(s) of earlier nights in {project}")
-    for item in found["rejected"]:
-        note = f" ({item['note']})" if item["note"] else ""
-        print(f"rejected lately: #{item['id']} {item['lens']} {item['kind']}: {item['title']}{note}")
-    return 0
 
 
-def register_playbook(csub, with_project) -> None:
-    """``curator playbook`` and ``curator earlier``."""
-    playbook = csub.add_parser("playbook", help="the Curator's playbook of the project, the most helpful entries first")
-    with_project(playbook)
-    playbook.add_argument("--lens", choices=list(LENSES), help="its entries and those of every lens")
-    playbook.add_argument("--retired", action="store_true", help="the retired entries too")
-    json_option(playbook, returns_object(*PLAYBOOK_KEYS, schema="PlaybookView"))
-    playbook.set_defaults(func=cmd_playbook)
-    earlier = csub.add_parser("earlier", help="what earlier review nights found and what became of it, newest first")
-    with_project(earlier)
-    earlier.add_argument("--lens", choices=list(LENSES))
-    earlier.add_argument("--status", choices=STATUSES)
-    earlier.add_argument("--limit", type=int, default=20, choices=range(1, 101), metavar="N", help="1 to 100")
-    json_option(earlier, returns_object(*EARLIER_KEYS, schema="EarlierView"))
-    earlier.set_defaults(func=cmd_earlier)
+PLAYBOOK = Playbook()
+EARLIER = Earlier()
