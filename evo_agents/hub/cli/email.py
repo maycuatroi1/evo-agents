@@ -4,116 +4,121 @@ the hub names that member by, such as the author of a commit.
 Each command acts on the signed-in member's own emails; ``--user LOGIN`` acts on another member's, which a hub admin
 alone may do. ``add`` and ``remove`` check the address before they ask the hub; ``remove`` finds the row of the
 address in the member's list and removes it by its id, so the address never goes in a URL. ``--json`` prints the
-hub's rows (``UserEmail``). Standard library only, like the rest of the client.
+hub's rows (``UserEmail``).
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`Emails` is the
+gateway to ``/v1/emails``, and :data:`EMAIL` their group. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
 from urllib.parse import urlencode
 
-from evo_agents.clikit import Legacy
-from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
-from evo_agents.hub.contract import json_option, returns_array, returns_object
+from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, Views, returns_array, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, when
+from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.user_emails import NOREPLY_DOMAIN, email_key, email_problem
 
-EXIT_USAGE = 2
 EMAIL_KEYS = ("id", "email", "login", "created_at")
+USER = Arg("--user", metavar="LOGIN", help="another member's emails (a hub admin only)")
 
 
-def _path(user: str | None) -> str:
-    return "/v1/emails" + (f"?{urlencode({'user': user})}" if user else "")
+class Emails(HubRoutes):
+    """GET and POST /v1/emails (``?user=`` for another member's) and DELETE /v1/emails/{id} (Gateway)."""
+
+    path = "/v1/emails"
+
+    def __init__(self, hub: Hub, user: str | None):
+        super().__init__(hub)
+        self.user = user
+
+    @classmethod
+    def of(cls, ctx: HubContext) -> Emails:
+        return cls(ctx.hub, ctx.args.user)
+
+    def whose(self) -> str:
+        return f"?{urlencode({'user': self.user})}" if self.user else ""
+
+    def list(self) -> list[dict]:
+        return self.call("GET", self.whose())
+
+    def add(self, email: str) -> dict:
+        return self.call("POST", self.whose(), {"email": email})
+
+    def find(self, email: str) -> dict | None:
+        """The row of ``email`` in the list, whatever its case."""
+        return next((e for e in self.list() if email_key(e["email"]) == email_key(email)), None)
+
+    def remove(self, row: int) -> dict:
+        return self.call("DELETE", f"/{row}")
 
 
-def _checked(email: str) -> str | None:
-    """``email`` without the spaces around it; None, with an error line, when the hub would refuse it."""
+def checked(email: str) -> str:
+    """``email`` without the spaces around it; UsageError when the hub would refuse it."""
     email = email.strip()
     problem = email_problem(email)
     if problem:
-        print(f"error: {problem}", file=sys.stderr)
-        return None
+        raise UsageError(problem)
     return email
 
 
-def _whose(user: str | None) -> str:
+def whose(user: str | None) -> str:
     return user or "you"
 
 
-@client_command
-def cmd_list(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("GET", _path(args.user))
-    if args.json:
-        print_json(found)
-        return 0
-    if found:
-        table(("ID", "EMAIL", "ADDED (UTC)"), [(e["id"], e["email"], when(e["created_at"])) for e in found])
-    else:
-        print(f"No email listed for {_whose(args.user)}.")
-    print(f"GitHub's noreply addresses (@{NOREPLY_DOMAIN}) name their login and need no row.")
-    return 0
+class EmailList(HubCommand):
+    name = "list"
+    help = "the emails listed for you, or for --user"
+    arguments = (USER,)
+    output = returns_array(*EMAIL_KEYS, schema="UserEmail")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Emails.of(ctx).list()
+        if found:
+            listed = Table(
+                ("ID", "EMAIL", "ADDED (UTC)"), [(e["id"], e["email"], when(e["created_at"])) for e in found]
+            )
+        else:
+            listed = Text(f"No email listed for {whose(ctx.args.user)}.")
+        noreply = Text(f"GitHub's noreply addresses (@{NOREPLY_DOMAIN}) name their login and need no row.")
+        return Result(found, Views(listed, noreply))
 
 
-@client_command
-def cmd_add(args) -> int:
-    email = _checked(args.email)
-    if email is None:
-        return EXIT_USAGE
-    hub, _ = signed_in()
-    added = hub.call("POST", _path(args.user), {"email": email})
-    if args.json:
-        print_json(added)
-        return 0
-    print(f"{added['email']} is an email of {added['login']} (id {added['id']}).")
-    return 0
+class EmailAdd(HubCommand):
+    name = "add"
+    help = "list an email for you, or for --user; one member an address"
+    arguments = (Arg("email", metavar="EMAIL", help="the address; case does not matter"), USER)
+    output = returns_object(*EMAIL_KEYS, schema="UserEmail")
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args.email)
+
+    def run(self, ctx: HubContext) -> Result:
+        added = Emails.of(ctx).add(checked(ctx.args.email))
+        return Result(added, Text(f"{added['email']} is an email of {added['login']} (id {added['id']})."))
 
 
-@client_command
-def cmd_remove(args) -> int:
-    email = _checked(args.email)
-    if email is None:
-        return EXIT_USAGE
-    hub, _ = signed_in()
-    listed = hub.call("GET", _path(args.user))
-    row = next((e for e in listed if email_key(e["email"]) == email_key(email)), None)
-    if row is None:
-        print(
-            f"error: {email} is not an email of {_whose(args.user)}: see `evo-agents hub email list`", file=sys.stderr
-        )
-        return 1
-    removed = hub.call("DELETE", f"/v1/emails/{row['id']}")
-    if args.json:
-        print_json(removed)
-        return 0
-    print(f"Removed {removed['email']} from the emails of {removed['login']}.")
-    return 0
+class EmailRemove(HubCommand):
+    name = "remove"
+    help = "drop one of your emails, or one of --user's"
+    arguments = (Arg("email", metavar="EMAIL", help="the address, as `hub email list` shows it, any case"), USER)
+    output = returns_object(*EMAIL_KEYS, schema="UserEmail")
+
+    def check(self, args: argparse.Namespace) -> None:
+        checked(args.email)
+
+    def run(self, ctx: HubContext) -> Result:
+        email, emails = checked(ctx.args.email), Emails.of(ctx)
+        row = emails.find(email)
+        if row is None:
+            raise HubError(f"{email} is not an email of {whose(ctx.args.user)}: see `evo-agents hub email list`")
+        removed = emails.remove(row["id"])
+        return Result(removed, Text(f"Removed {removed['email']} from the emails of {removed['login']}."))
 
 
-def _user_option(parser) -> None:
-    parser.add_argument("--user", metavar="LOGIN", help="another member's emails (a hub admin only)")
-
-
-def register_emails(hsub) -> None:
-    email = hsub.add_parser("email", help="your emails on the hub, which name you as a commit's author")
-    esub = email.add_subparsers(dest="email_command", required=True)
-
-    listed = esub.add_parser("list", help="the emails listed for you, or for --user")
-    _user_option(listed)
-    json_option(listed, returns_array(*EMAIL_KEYS, schema="UserEmail"))
-    listed.set_defaults(func=cmd_list)
-
-    add = esub.add_parser("add", help="list an email for you, or for --user; one member an address")
-    add.add_argument("email", metavar="EMAIL", help="the address; case does not matter")
-    _user_option(add)
-    json_option(add, returns_object(*EMAIL_KEYS, schema="UserEmail"))
-    add.set_defaults(func=cmd_add)
-
-    remove = esub.add_parser("remove", help="drop one of your emails, or one of --user's")
-    remove.add_argument("email", metavar="EMAIL", help="the address, as `hub email list` shows it, any case")
-    _user_option(remove)
-    json_option(remove, returns_object(*EMAIL_KEYS, schema="UserEmail"))
-    remove.set_defaults(func=cmd_remove)
-
-
-# The node this module attaches, an adapter of its register function until its commands are classes.
-EMAIL = Legacy(register_emails)
+EMAIL = Group(
+    "email",
+    "your emails on the hub, which name you as a commit's author",
+    [EmailList(), EmailAdd(), EmailRemove()],
+)

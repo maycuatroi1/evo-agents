@@ -6,6 +6,7 @@
   exit status ``client.exit_status`` gives it, as :func:`client_command` does for a function.
 - :class:`ProjectResource` is the gateway to one collection of a project's API (``/v1/projects/<p>/<collection>``):
   the one place that quotes the project and the parts of a path. A command asks its resource, never builds a path.
+  :class:`HubRoutes` is the base of a gateway to routes outside a project (``/v1/tokens``, ``/v1/admin``).
 
 The helpers of the hub's function commands live here too, the one copy of each: :func:`client_command`,
 :func:`call_object`, :func:`print_json`, :func:`table` and :func:`when`; ``signed_in`` and ``EXIT_FAILED`` are the
@@ -150,3 +151,19 @@ class ProjectResource:
 
     def call(self, method: str, *parts: Any, body: dict | None = None, **query: Any) -> Any:
         return self.hub.call(method, self.path(*parts, **query), body)
+
+
+class HubRoutes:
+    """Routes of the hub outside a project, under ``path`` (Gateway): the base of a small gateway such as the tokens'
+    or the emails'. ``call`` sends a body only when there is one."""
+
+    path: ClassVar[str]
+
+    def __init__(self, hub: Hub):
+        self.hub = hub
+
+    def call(self, method: str, tail: str = "", body: dict | None = None) -> Any:
+        """The hub's answer to ``method <path><tail>``; ``tail`` is quoted by the caller."""
+        if body is None:
+            return self.hub.call(method, self.path + tail)
+        return self.hub.call(method, self.path + tail, body)

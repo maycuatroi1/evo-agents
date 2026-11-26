@@ -666,7 +666,8 @@ TELEGRAM_SINK = {"id": "telegram", "kind": "channel", "clearance": {"level": "pu
 def test_a_channel_sink_is_stored_at_register_and_listed_by_project_list_json(
     client, github, hub_db, monkeypatch, capsys
 ):
-    from evo_agents.hub.cli import session as cli_client
+    from evo_agents.hub.cli import base
+    from evo_agents.hub.cli.project import PROJECT_LIST
 
     who = users(client, github)
     sinks = [*body()["sinks"], TELEGRAM_SINK]
@@ -680,8 +681,8 @@ def test_a_channel_sink_is_stored_at_register_and_listed_by_project_list_json(
         def call(self, method, path):
             return client.request(method, path, headers=who["member"]).json()
 
-    monkeypatch.setattr(cli_client, "signed_in", lambda: (Hub(), None))
-    assert cli_client.cmd_project_list(type("Args", (), {"json": True, "archived": False})()) == 0
+    monkeypatch.setattr(base, "signed_in", lambda: (Hub(), None))
+    assert PROJECT_LIST(type("Args", (), {"json": True, "archived": False})()) == 0
     (listed,) = json.loads(capsys.readouterr().out)
     assert [s for s in listed["sinks"] if s["kind"] == "channel"] == [TELEGRAM_SINK]
 
