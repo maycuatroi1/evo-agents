@@ -716,6 +716,32 @@
       "back": "Back to tasks",
       "main": "Open task",
       "palette": "Search"
+    },
+    "task": {
+      "started": "Started {at}",
+      "source": "Open the message that asked",
+      "details": "Details",
+      "left": "Left:",
+      "markHandled": "Mark as handled",
+      "handleFailed": "Couldn't mark the task handled",
+      "handledBy": "Handled by {login}",
+      "notMet": "Not met yet",
+      "team": "Team",
+      "coordinator": "Coordinator",
+      "teamFigures": "{runs, plural, one {# run} other {# runs}}, {cost}",
+      "noResult": "No result yet",
+      "log": "Task {title}",
+      "conversation": "Conversation",
+      "notices": "{count, plural, one {# hub notice} other {# hub notices}}",
+      "showLog": "Show whole log, {count, plural, one {# more line} other {# more lines}}",
+      "hideLog": "Show less of the log",
+      "readAll": "Read all",
+      "readLess": "Show less",
+      "result": "Result",
+      "answer": "Answer",
+      "cardFigures": "{agents, plural, one {# agent} other {# agents}}, {time}, {cost}",
+      "open": "Open task",
+      "openTitled": "Open task {title}"
     }
   },
   "project": {

@@ -20,6 +20,7 @@ import type { AgentPanels } from "./agent-sheet";
 import { ChatBackContext } from "./chat-header";
 import { ChatView, type UseUnder } from "./chat-view";
 import { HomeRail, HubMenuButton, TASK_PARAM } from "./home-rail";
+import { HomeTaskContext } from "./home-task-context";
 
 /** The query parameter that names the agent chosen on Home, so a reload or a shared link keeps it. */
 export const AGENT_PARAM = "agent";
@@ -168,8 +169,10 @@ export function ChatHome({
               data-testid="home-main"
               data-task={task ?? undefined}
             >
-              {/* The chat's head has the back control under 768 px, the direct chat's start its own. */}
+              {/* The chat's head has the back control under 768 px, the direct chat's start its own; a task card in the
+                  direct chat opens its task here. */}
               <ChatBackContext.Provider value={back}>
+              <HomeTaskContext.Provider value={open}>
                 {task !== null ? (
                   <div className="flex min-h-0 flex-1">{renderTask(task)}</div>
                 ) : (
@@ -189,6 +192,7 @@ export function ChatHome({
                     className="h-full"
                   />
                 )}
+              </HomeTaskContext.Provider>
               </ChatBackContext.Provider>
             </section>
           </div>

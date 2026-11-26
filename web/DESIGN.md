@@ -720,11 +720,44 @@ Shared pieces built on them:
     the app since the chat feature may not reach into the palette's or the inbox's: Search with the palette's key
     (⌘K or Ctrl K), LiveIndicator (shown only when the page is not current), the Inbox bell with its count, Today
     (`CalendarCheck`) and the account menu.
-  - The main pane (`home-main`): the task's chat as its own page draws it (`ChatWithDecisions`: the work card pinned,
-    its decisions), or, with no task, the direct chat in `chats/agent-chat.tsx`, `AgentChat`, without a picker of its
+  - The main pane (`home-main`): a task as the task view below draws it (`app/(app)/home-task.tsx`, `HomeTask`), a
+    group chat as its own page draws it (`ChatWithDecisions`), or, with no task, the direct chat in `chats/agent-chat.tsx`, `AgentChat`, without a picker of its
     own (the rail has it): the agent's start until the chat has a message, then `ChatView` itself, with its threads,
     outputs and interactive answers. Looking at an agent opens no chat: the first message opens the direct chat
     (`PUT /v1/chats/direct/{handle}`), sends, reads the chat's page again and shows the chat.
+  - The task (`chats/task-view.tsx`, `TaskLine`, drawn through `ChatView`'s `line` slot in place of its head bar,
+    its pinned card and its list; `chats/task-model.ts` holds the folding as pure functions). One scroll region holds
+    the head (`chats/task-head.tsx`, `TaskHead`, testid `chat-header`) and the conversation. The head, in order: a
+    source line in 13 px `muted-foreground` (the system's name, "Started" and when, a link to the message that asked,
+    `/chats/{chat_id}?message={message_id}` in the direct chat, and Details, outline with `Info`, which opens the
+    chat's members; under 768 px the back control stands first); the title as the page's h1 (18 px semibold, id
+    `chat-title`); the state's pill with "Left:" and what the coordinator named as left (`work set --left`), "Handled
+    by LOGIN" once a member marked it, and Mark as handled (default button, `CheckCheck`) while the outcome is
+    `not_met`: it posts `POST /v1/chats/{id}/work/handled`, puts the card it answers in the work card's query and reads
+    the chat list again, so the task leaves Needs you; a failure stays under the button. Then the work card's figures
+    (time, runs, hop and cost against the revision's limits), Goal and Done when with "Not met yet" (an
+    `attention-soft` tag) beside Done when for a `not_met` outcome, the open decisions (those asking the visitor
+    answered in place), and Team: the coordinator (with "Coordinator", the work's pill, the runs and cost its asks do
+    not account for, and the answer's first line), then each agent asked, once, in the order it was first asked (its
+    last ask's state, the runs and cost of its asks, its last answer's first line, or "No result yet").
+  - The task's conversation (an `ol` in the reading column): the work chat's main line, oldest first. Each hand-off
+    sits where its question was, as a card (`task-delegation`): "@from asked @to" and the last ask's state, the brief
+    (what the asking agent wrote, its question on the main line; the ask's goal until the feed holds it) clamped to 3
+    lines with Read all (a link button, `aria-expanded`) when it may run longer, then the thread of the
+    agent asked (its updates), the hand-offs that agent opened nested inside, and its result labelled Result. Every
+    thread of a hand-off is read whole (`loadThread`) once the card names it. The hub's lines that repeat a message
+    (`repeats`: the asked and answered lines) fold, each run of them, into one row "N hub notices" (a ghost button with
+    `ChevronDown`, `aria-expanded`) that opens to them. A pasted log, a fenced block longer than 6 lines, shows 6: its
+    lines that say "error" first, then its last ones, in their order, with "Show whole log, N more lines" under the
+    message until opened. The coordinator's last message on the main line once the work is done (not one it forwarded)
+    carries the label Answer (`success-soft`). The composer stays under it, as in the work chat.
+  - The direct chat on Home: a thread of it that opened work (a message carrying `work`) keeps only the person's
+    messages, one task card (`chats/task-card.tsx`, `TaskCard`) a task where the hub's work card sat, and the
+    coordinator's last message after it once the work is done or failed; what the coordinator said meanwhile, the
+    answers it forwarded (`forwarded_by`) and the hub's lines that repeat a message (`repeats`) are the task's, shown
+    in the task. The card shows the state's pill, the title, what is left, the agents, the time and the cost, and Open
+    task, which opens the task in the main pane (`HomeTaskContext` from `ChatHome`). A thread that opened no work
+    shows whole, and the direct chat's own page (`/chats/{id}`) shows every message.
   - Under 768 px the rail and the main pane take turns: the rail is the first screen, with the page's h1 for screen
     readers; a task (or Direct chat, or New task) opens on the whole screen, and the chat's head, or the bar over the
     agent's start, has a back control ("Back to tasks", `ArrowLeft`, 44 px) in place of the link to Chats
@@ -741,6 +774,8 @@ Shared pieces built on them:
   `e2e/home-chat.spec.ts` checks the pick, the start, the first send, an interactive answer on Home, the rail's groups
   and search, a task opened and kept over a reload, the state with no agent, and axe at 1440 and 375 px in light and
   dark on the rail, a task, the start and the chat; `e2e/mobile.spec.ts` the phone's turns between the rail and a task.
+  Its "task view" test checks the task's head, team, hand-off card and notices, the answer, and Mark as handled;
+  `task-model.test.ts` the folding of hub lines that repeat, of logs, and of the direct chat to one card a task.
 - `components/home/today-card.tsx`, Today, the first card of the Today page (docs/notifications.md, Today): one read of
   `GET /v1/me/today` a visit, prefetched on the server with the overview and kept while the page is open (no polling,
   no refetch on focus), so what it lists stays under the visitor's eyes. A 48 px head (the h2, the window in

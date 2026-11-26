@@ -716,6 +716,32 @@
       "back": "Quay lại danh sách task",
       "main": "Task đang mở",
       "palette": "Tìm kiếm"
+    },
+    "task": {
+      "started": "Bắt đầu {at}",
+      "source": "Mở tin nhắn đã giao việc",
+      "details": "Chi tiết",
+      "left": "Còn lại:",
+      "markHandled": "Đánh dấu đã xử lý",
+      "handleFailed": "Không đánh dấu được task là đã xử lý",
+      "handledBy": "{login} đã xử lý",
+      "notMet": "Chưa đạt",
+      "team": "Nhóm",
+      "coordinator": "Điều phối",
+      "teamFigures": "{runs, plural, other {# lượt chạy}}, {cost}",
+      "noResult": "Chưa có kết quả",
+      "log": "Task {title}",
+      "conversation": "Trao đổi",
+      "notices": "{count, plural, other {# thông báo của hub}}",
+      "showLog": "Xem cả log, {count, plural, other {thêm # dòng}}",
+      "hideLog": "Thu gọn log",
+      "readAll": "Đọc hết",
+      "readLess": "Thu gọn",
+      "result": "Kết quả",
+      "answer": "Trả lời",
+      "cardFigures": "{agents, plural, other {# agent}}, {time}, {cost}",
+      "open": "Mở task",
+      "openTitled": "Mở task {title}"
     }
   },
   "project": {

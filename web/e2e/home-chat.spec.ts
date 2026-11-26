@@ -7,7 +7,7 @@ import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { sendOutputs } from "./support/outputs";
 import { open } from "./support/plans";
-import { finishWork, listedWork, seedWork, workSystem } from "./support/work";
+import { finishWork, listedWork, seedWork, setWork, workSystem } from "./support/work";
 
 /**
  * The chat home (plan chat-first-home, criterion b3; docs/hub.md, Chat home): Home `/` is a chat with one of the agents
@@ -210,6 +210,66 @@ test("home rail lists the agent's tasks", async ({ page, member }) => {
   await sheet.getByTestId("nav-today").click();
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByTestId("top-bar")).toBeVisible();
+});
+
+test("task view", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const system = await workSystem(me, me.projects[0]);
+  const work = await seedWork(me, system, "Refund backlog", { decide: false });
+  // @lead records the work done short of its done-when, with what is left, then the work ends.
+  await setWork(system, work, { outcome: "not_met", left: "Two refunds wait on finance at lumenops.example." });
+  await finishWork(system, work);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, `/?agent=${system.lead}&task=${work.workChat}`);
+  const head = pane(page).getByTestId("chat-header");
+  await expect(head).toHaveAttribute("data-view", "task");
+  await expect(head).toHaveAttribute("data-status", "done");
+  // No chat head bar: a source line, then the title as the page's heading.
+  await expect(pane(page).getByTestId("chat-head")).toHaveCount(0);
+  await expect(head.getByTestId("task-source")).toContainText(system.name);
+  await expect(head.getByTestId("task-source-link")).toHaveAttribute("href", `/chats/${work.rootChat}?message=${work.root}`);
+  await expect(head.getByTestId("chat-details-open")).toBeVisible();
+  await expect(head.getByRole("heading", { level: 1 })).toHaveText("Refund backlog");
+  await expect(head.getByTestId("task-left")).toContainText("Two refunds wait on finance");
+  await expect(head.getByTestId("work-card-runs")).toBeVisible();
+  await expect(head.getByTestId("task-goal")).toHaveText("Every refund ticket of Northwind has a reply.");
+  await expect(head.getByTestId("task-done-when")).toContainText("No refund ticket is left without a reply.");
+  await expect(head.getByTestId("task-not-met")).toBeVisible();
+
+  // The team: the coordinator first, then the agent it asked, with its result.
+  const team = head.getByTestId("task-team-member");
+  await expect(team).toHaveCount(2);
+  await expect(team.nth(0)).toHaveAttribute("data-agent", system.lead);
+  await expect(team.nth(0)).toHaveAttribute("data-coordinator", "true");
+  await expect(team.nth(1)).toHaveAttribute("data-agent", system.helper);
+  await expect(team.nth(1).getByTestId("task-team-result")).toHaveText("The refund replies are drafted.");
+
+  // The hand-off is a card: the brief, the agent's updates with the hub's lines folded, and its result.
+  const handOff = pane(page).locator(`[data-testid="task-delegation"][data-agent="${system.helper}"]`);
+  await expect(handOff).toHaveCount(1);
+  await expect(handOff.getByTestId("task-delegation-brief")).toContainText("Please draft the refund replies for the open tickets.");
+  const result = handOff.getByTestId("task-message").filter({ hasText: "The refund replies are drafted." });
+  await expect(result.getByTestId("task-message-label")).toBeVisible();
+  const notices = pane(page).getByTestId("task-notices").first();
+  await expect(notices.getByTestId("task-notices-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(notices.getByTestId("chat-message")).toHaveCount(0);
+  await notices.getByTestId("task-notices-toggle").click();
+  await expect(notices.getByTestId("task-notices-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(notices.getByTestId("chat-message").first()).toBeVisible();
+
+  // The coordinator's final answer carries its label.
+  const answer = pane(page).getByTestId("task-conversation").locator(':scope > [data-testid="task-message"]').filter({ hasText: "Every refund ticket has a reply." });
+  await expect(answer.getByTestId("task-message-label")).toBeVisible();
+  await expectNoSeriousViolations(page, "a task's view on Home");
+
+  // Mark as handled: the outcome no longer reads not met, what is left stays, and who marked it shows.
+  await head.getByTestId("task-mark-handled").click();
+  await expect(head.getByTestId("task-mark-handled")).toHaveCount(0);
+  await expect(head.getByTestId("task-not-met")).toHaveCount(0);
+  await expect(head.getByTestId("task-handled")).toContainText(me.login);
+  await expect(head.getByTestId("task-left")).toContainText("Two refunds wait on finance");
+  await expect.poll(async () => (await listedWork(me, work.workChat))?.outcome ?? null).toBeNull();
 });
 
 test("a task opens on home and survives a reload", async ({ page, member }) => {
