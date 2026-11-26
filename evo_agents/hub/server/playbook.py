@@ -35,9 +35,10 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import playbook, review, tables
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import EvidenceIn
 from evo_agents.hub.server.proposals import held_review_run, resolve, writer_of
@@ -242,7 +243,7 @@ async def playbook_view(
 ) -> PlaybookView:
     access = await project_access(conn, user, project)
     need_reader(access)
-    rows = await entries_of(conn, access, plan_routes._sink(access, sink))
+    rows = await entries_of(conn, access, plan_service.read_sink(access, sink))
     by_id = {row.id: row for row in rows}
     shown = [_entry(by_id[item["id"]]) for item in _ordered(rows, retired, lens)]
     live = sum(1 for row in rows if row.retired_at is None)
@@ -256,7 +257,7 @@ async def show_playbook(
     user: CurrentUser,
     lens: Annotated[Literal[tuple(review.LENSES)] | None, Query(description="its entries and those of no lens")] = None,
     retired: Annotated[bool, Query(description="the retired entries too, after the live ones")] = False,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> PlaybookView:
     """The project's playbook of the Curator, the most helpful first."""
     async with request.app.state.engine.begin() as conn:

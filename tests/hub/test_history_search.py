@@ -1,5 +1,5 @@
-"""Reading a project's whole history on the hub (``evo_agents.hub.history_index``, ``evo_agents.hub.server.history_search``,
-``evo_agents.hub.server.history_mcp``) and schema 0060, on a hub with a blob store: test_history_runs' lab, the
+"""Reading a project's whole history on the hub (``evo_agents.hub.history_index``, ``evo_agents.hub.server.history.service.search``,
+``evo_agents.hub.server.history.mcp``) and schema 0060, on a hub with a blob store: test_history_runs' lab, the
 owner an admin of evo-agents with a charter whose worker on duty runs every kind of run.
 
 Step 5 of plan history-driven-curator, criteria a1 (its part of runs, local sessions and group chats), a4 and a13: the

@@ -74,8 +74,8 @@ from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, PO
 # evo_agents.hub.worker imports no server module beyond its job list (docs/structure.md, section Package boundaries):
 # the hub worker command takes them from here and hands them down.
 from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
-from evo_agents.hub.server.memory_upkeep import router as restore_routes
-from evo_agents.hub.server.memory_upkeep import upkeep as memory_upkeep  # noqa: F401
+from evo_agents.hub.server.memories.routes import restore_router as restore_routes
+from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
@@ -338,13 +338,13 @@ def _include_account_routes(app: FastAPI) -> None:
     ):
         app.include_router(routes)
 
-    from evo_agents.hub.server import plans
+    from evo_agents.hub.server.plans import routes as plans
 
     app.include_router(plans.router)
 
-    from evo_agents.hub.server import memories
+    from evo_agents.hub.server.memories import routes as memory_routes
 
-    app.include_router(memories.router)
+    app.include_router(memory_routes.router)
 
     from evo_agents.hub.server import skills
 
@@ -420,7 +420,7 @@ def _include_kg_routes(app: FastAPI) -> None:
 
     app.include_router(kg_eval_sets.router)
 
-    from evo_agents.hub.server import kg_decisions
+    from evo_agents.hub.server.kg_decisions import routes as kg_decisions
 
     app.include_router(kg_decisions.router)
 
@@ -481,8 +481,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     from evo_agents.hub.server import (
         attachments,
         curator,
-        decision_reads,
-        decisions,
         dlp_policy,
         doc_versions,
         kg_worker,
@@ -502,11 +500,11 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         run_outputs,
         today,
     )
+    from evo_agents.hub.server.decisions import routes as decisions
 
     for routes in (
         kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
-        decision_reads.router,  # reading decisions
-        decisions.router,
+        decisions.router,  # reading and answering decisions
         decisions.worker_router,
         local_runs.router,
         local_runs.batch_router,
@@ -549,8 +547,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         digests,
         earlier,
         evolve,
-        history,
-        history_search,
         kg_health,
         ledger,
         merged_work,
@@ -559,13 +555,14 @@ def _include_curator_routes(app: FastAPI) -> None:
         probe_report,
         probe_routes,
         probe_runs,
-        proposal_plans,
         protection,
         replays,
         transcripts,
         worker_doctor,
         worker_shares,
     )
+    from evo_agents.hub.server.history import routes as history_routes
+    from evo_agents.hub.server.proposal_plans import routes as proposal_plans
 
     for routes in (
         change_routes.router,
@@ -579,9 +576,9 @@ def _include_curator_routes(app: FastAPI) -> None:
         kg_health.router,
         replays.router,
         replays.worker_router,
-        history.router,
-        history.worker_router,
-        history_search.router,
+        history_routes.router,
+        history_routes.worker_router,
+        history_routes.search_router,
         earlier.router,
         playbook.router,
         playbook.worker_router,
@@ -642,7 +639,6 @@ def _include_member_routes(app: FastAPI) -> None:
         curator_threads,
         features,
         gateway_proxy,
-        intake,
         kg_shared_pool_api,
         market,
         market_install,
@@ -654,8 +650,6 @@ def _include_member_routes(app: FastAPI) -> None:
         opportunity_evidence,
         ops_actions,
         orchestrator_actions,
-        plan_run_choice,
-        plan_systems,
         plugin_chats_api,
         plugin_command_list,
         plugin_docs_api,
@@ -680,8 +674,6 @@ def _include_member_routes(app: FastAPI) -> None:
         secrets,
         seller,
         seller_api,
-        signal_keys,
-        signals,
         system_ops,
         task_dispatch,
         triage_actions,
@@ -689,8 +681,12 @@ def _include_member_routes(app: FastAPI) -> None:
         worker_autonomy,
     )
     from evo_agents.hub.server.goals import routes as goals
+    from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
+    from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
+    from evo_agents.hub.server.signals import routes as signals
 
     for routes in (
         secrets.router,
@@ -782,7 +778,7 @@ def _include_member_routes(app: FastAPI) -> None:
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
         context_answer_reuse.router,  # GET .../context-answers: the answers loaded by week
-        signal_keys.router,
+        signals.keys_router,
         autonomy_policies.router,
         goals.router,
         problems.router,

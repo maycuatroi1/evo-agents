@@ -34,10 +34,10 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub.accounts import CHOICES
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.gateway_runs import GATEWAY
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser
@@ -348,7 +348,7 @@ async def run_accounts(
     project: ProjectName,
     run_id: RunId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> list[RunAccount]:
     """The accounts run ``run_id`` took, by variable, and each usage limit it hit; for the member who dispatched it."""
     r, ra, users = tables.runs, tables.run_accounts, tables.users

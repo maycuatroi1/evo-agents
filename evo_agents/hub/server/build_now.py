@@ -17,14 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import judge
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_shift import queue_builder
 from evo_agents.hub.server.change_views import change_of_plan
 from evo_agents.hub.server.curator_shift import project_gate
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_duty import on_duty
-from evo_agents.hub.server.plans import PlanId
+from evo_agents.hub.server.plans import service as plan_service
+from evo_agents.hub.server.plans.models import PlanId
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import Run
@@ -59,7 +59,7 @@ async def build_now(conn: AsyncConnection, user: Principal, project: str, plan_i
     access = await project_access(conn, user, project)
     check_dispatcher(access)
     await check_seat(conn, user)
-    await plan_routes._visible(conn, access, plan_id, None)  # 404 for a plan the caller may not read
+    await plan_service.visible(conn, access, plan_id, None)  # 404 for a plan the caller may not read
     change = await change_of_plan(conn, access.project_id, plan_id) if judge.is_curator_plan_id(plan_id) else None
     if change is None:
         raise HTTPException(404, f"plan {plan_id} is not one of the Curator's plans in project {access.name}")

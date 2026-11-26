@@ -56,7 +56,7 @@ charter's ``auto_merge`` names alone (``evo_agents.hub.server.changes``). A defe
 has passed (the job curator.collect). With the charter's ``answer_by`` agent, a proposal recorded open, or open
 again, gets a thread in the project's triage chat whose agent answers it for the review run's owner
 (``evo_agents.hub.server.curator_threads``). A proposal of kind memory may promote agents' memories in place of a plan
-(``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
+(``evo_agents.hub.server.memories.service.promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
 The routes that read findings and proposals and answer a proposal live in ``evo_agents.hub.server.proposal_reads``,
@@ -87,25 +87,26 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers, webhook_events
 from evo_agents.hub.access import has_role
-from evo_agents.hub.plans import VERIFY_RULE, PlanProblem, check_body, check_json
+from evo_agents.hub.plans import PLAN_ID, VERIFY_RULE, PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import (
     change_tiers,
     earlier,
     facet_figures,
-    history_search,
-    memory_promotion,
     probe_fixes,
     system_curation,
 )
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
 from evo_agents.hub.server.change_views import Change
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.history.service import search as history_search
 from evo_agents.hub.server.kg_audience import person_audience
+from evo_agents.hub.server.memories.service import promotion as memory_promotion
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import (
     EvidenceIn,
@@ -395,7 +396,7 @@ def _check_draft(plan: dict) -> None:
         raise _refused(where, str(exc)) from None
     if len(json.dumps(plan, ensure_ascii=False).encode()) > review.MAX_DRAFT_BYTES:
         raise _refused(where, f"it is over {review.MAX_DRAFT_BYTES // 1024} KiB as JSON")
-    if not isinstance(plan.get("id"), str) or not re.match(plan_routes.PLAN_ID, plan["id"]):
+    if not isinstance(plan.get("id"), str) or not re.match(PLAN_ID, plan["id"]):
         raise _refused(where, "its id must be a plan id: lower case letters, digits and -, at most 100")
     found = errors(validate(plan, load_schema("plan")))
     if found:
@@ -695,7 +696,7 @@ async def show_figures(
     project: ProjectName,
     user: CurrentUser,
     night: Annotated[date | None, Query(description="the night, the local date its window opened; the latest")] = None,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> NightFiguresView:
     """The figures curator.collect counted for a night of the project: the latest, or ``night``'s."""
     cf = tables.curator_figures
@@ -708,7 +709,7 @@ async def show_figures(
         if night is not None:
             query = query.where(cf.c.night == night)
         row = (await conn.execute(query.order_by(cf.c.night.desc()).limit(1))).one_or_none()
-    if row is None or not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
+    if row is None or not plan_service.sees(access, access.rules.default_label, sink):
         which = f"for the night of {night.isoformat()}" if night else "yet"
         raise HTTPException(404, f"project {project} has no figures {which}: curator.collect counts them at night")
     return NightFiguresView(project=access.name, **row._mapping)

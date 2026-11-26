@@ -37,7 +37,8 @@ from evo_agents.hub.kg_web import WebSession
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg_decisions import Fix, KgDecision, apply_fixes
+from evo_agents.hub.server.kg_decisions.models import Fix, KgDecision
+from evo_agents.hub.server.kg_decisions.service import apply_fixes
 from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph, require_reader
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser

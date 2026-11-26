@@ -1,5 +1,5 @@
 """Memories derived from chat messages carry the audience of those chats, and every read of memories holds the reader's
-audience, computed from the database at that read (``evo_agents.hub.server.memory_audience``), as criterion a6 of plan
+audience, computed from the database at that read (``evo_agents.hub.server.memories.service.audience``), as criterion a6 of plan
 chat-history-in-kg names it.
 
 Checked on the hub of ``tests.hub.test_kg_audience`` (project aud with a graph of chats one and two; alice and dave in

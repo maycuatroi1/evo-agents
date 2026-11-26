@@ -15,7 +15,7 @@ earliest anchors first, and its last TAIL entries, with ``[... n lines left out 
 
 The same readers give the entries of each line with a longer text (``chars``: its start and its end, where a failed
 command says why), for the words the hub indexes for search and the lines a reader asks for around one
-(``evo_agents.hub.history_index``, ``evo_agents.hub.server.history_search``).
+(``evo_agents.hub.history_index``, ``evo_agents.hub.server.history.service.search``).
 """
 
 from __future__ import annotations

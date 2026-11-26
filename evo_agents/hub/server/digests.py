@@ -33,9 +33,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import digest, tables
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -335,13 +336,13 @@ async def list_digests(
     login: Annotated[str | None, Query(pattern=LOGIN_NAME, description="pushed by this member")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     offset: Annotated[int, Query(ge=0, le=SCAN_ROWS)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> DigestList:
     """The digests of the project the caller may read, the latest pushed first."""
     d, u = tables.session_digests, tables.users
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        plan_routes._reader(access)
+        plan_service.reader(access)
         query = select(*_summary_columns()).join_from(d, u, u.c.id == d.c.user_id)
         query = query.where(d.c.project_id == access.project_id)
         if since is not None:
@@ -350,7 +351,7 @@ async def list_digests(
             query = query.where(func.lower(u.c.login) == login.lower())
         query = query.order_by(d.c.updated_at.desc(), d.c.id.desc()).limit(SCAN_ROWS)
         rows = (await conn.execute(query)).all()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     visible = [DigestSummary(**row._mapping) for row in rows if access.visible(row.label, through)]
     return DigestList(digests=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset)
 
@@ -361,20 +362,20 @@ async def show_digest(
     project: ProjectName,
     session_id: SessionId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> DigestRecord:
     """The digest of session ``session_id``, when the caller may read it."""
     d, u = tables.session_digests, tables.users
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        plan_routes._reader(access)
+        plan_service.reader(access)
         query = (
             select(*_summary_columns(), d.c.body)
             .join_from(d, u, u.c.id == d.c.user_id)
             .where(d.c.project_id == access.project_id, d.c.session_id == session_id)
         )
         row = (await conn.execute(query)).first()
-    if row is None or not access.visible(row.label, plan_routes._sink(access, sink)):
+    if row is None or not plan_service.sees(access, row.label, sink):
         raise HTTPException(404, _not_found(project, session_id))
     found = dict(row._mapping)
     body = SessionDigest.model_validate(found.pop("body"))

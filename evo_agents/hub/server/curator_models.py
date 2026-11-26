@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from evo_agents.hub import curator, ledger, runs
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.judge import PLANNED_TIERS, PlannableTier
-from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.server.charter_settings import (
     EvolveSettings,
     HistorySettings,
@@ -30,7 +30,7 @@ CURATOR_STATES: tuple[str, ...] = get_args(CuratorState)  # where a project's ni
 TimeOfDay = Annotated[str, Field(pattern=curator.TIME_OF_DAY, description="HH:MM, 24 hours, in the window's zone")]
 PathGlob = Annotated[str, Field(min_length=1, max_length=curator.MAX_PATH_CHARS, pattern=r"^[^\x00-\x1f\x7f]+$")]
 Check = Annotated[str, Field(min_length=1, max_length=curator.MAX_CHECK_CHARS, pattern=r"^[^\x00]+$")]
-PlanIdentifier = Annotated[str, Field(pattern=plan_routes.PLAN_ID)]
+PlanIdentifier = Annotated[str, Field(pattern=PLAN_ID)]
 SecretName = Annotated[str, Field(pattern=f"^{SECRET_NAME.pattern}$", description="a secret of the schedule's owner")]
 
 

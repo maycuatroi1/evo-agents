@@ -2,7 +2,7 @@
 
 A signal is a number or a piece of feedback in text about a project's product, measured by a service outside the hub
 (a search's zero-result rate, a support ticket) or entered by a member. Its key must be in the project's registry
-(``signal_keys``); the routes are ``evo_agents.hub.server.signals`` and ``evo_agents.hub.server.signal_keys``, and
+(``signal_keys``); the routes are in the package ``evo_agents.hub.server.signals``, and
 ``docs/signals.md`` says how a service sends them.
 
 An ingest key is ``evi_`` and 32 random bytes in base64url; Postgres keeps only its hex SHA-256. It writes the signals

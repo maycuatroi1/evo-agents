@@ -103,7 +103,8 @@ def chosen_tiers(row) -> dict[str, str]:
 
 async def _facts(conn: AsyncConnection, kind: str, user_id: int, run_id, decision_id, details) -> Facts:
     if kind == "decision" and decision_id is not None:
-        from evo_agents.hub.server.decision_reads import asked_person  # it imports notifications, which imports this
+        # it imports notifications, which imports this
+        from evo_agents.hub.server.decisions.repository import asked_person
 
         d, r = tables.decisions, tables.runs
         asked = select(asked_person()).select_from(d.join(r, r.c.id == d.c.run_id)).where(d.c.id == decision_id)

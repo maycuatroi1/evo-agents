@@ -17,14 +17,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import review, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, memory_promotion, system_curation
+from evo_agents.hub.server import audit, system_curation
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_views import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.memory_audience import Reader, label_reaches
+from evo_agents.hub.server.memories.service import promotion as memory_promotion
+from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import (
     Finding,
@@ -73,7 +75,7 @@ async def list_findings(
     lens: Annotated[review.Lens | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> FindingList:
     """The findings of the project's review runs the caller may read, newest first."""
     f = tables.findings
@@ -86,7 +88,7 @@ async def list_findings(
         if lens is not None:
             query = query.where(f.c.lens == lens)
         rows = (await conn.execute(query.order_by(f.c.id.desc()).limit(MAX_OFFSET))).all()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     visible = [finding_view(access.name, row) for row in rows if through and access.visible(row.label, through)]
     return FindingList(findings=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset)
 
@@ -97,7 +99,7 @@ async def show_finding(
     project: ProjectName,
     finding_id: ItemId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> Finding:
     f = tables.findings
     async with request.app.state.engine.begin() as conn:
@@ -105,7 +107,7 @@ async def show_finding(
         require_reader(access)
         query = findings_query().where(f.c.project_id == access.project_id, f.c.id == finding_id)
         row = (await conn.execute(query)).one_or_none()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     if row is None or through is None or not access.visible(row.label, through):
         raise HTTPException(404, f"project {project} has no finding {finding_id}")
     return finding_view(access.name, row)
@@ -122,7 +124,7 @@ async def list_proposals(
     run_id: Annotated[int | None, Query(ge=1, le=MAX_ID, description="of this review run")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ProposalList:
     """The proposals of the project's review runs the caller may read, newest first."""
     p = tables.proposals
@@ -133,7 +135,7 @@ async def list_proposals(
         if run_id is not None:
             query = query.where(p.c.run_id == run_id)
         rows = (await conn.execute(query.order_by(p.c.id.desc()).limit(MAX_OFFSET))).all()
-        through, reader = plan_routes._sink(access, sink), Reader(conn, user)
+        through, reader = plan_service.read_sink(access, sink), Reader(conn, user)
         readable = [row for row in rows if through and await label_reaches(reader, access, row.label, through)]
     states, tiers_asked = set(state), set(tier)
 
@@ -169,7 +171,7 @@ async def readable_proposal(
     if lock:
         query = query.with_for_update(of=p)
     row = (await conn.execute(query)).one_or_none()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     if row is None or through is None or not await label_reaches(Reader(conn, user), access, row.label, through):
         raise HTTPException(404, f"project {access.name} has no proposal {proposal_id}")
     return row
@@ -192,7 +194,7 @@ async def show_proposal(
     project: ProjectName,
     proposal_id: ItemId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> Proposal:
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
@@ -258,7 +260,9 @@ async def answer_proposal_as(
     elif body.action == "accept" and row.system_change is not None:
         await system_curation.apply(conn, access, user, proposal_id, row.run_id, row.system_change)
     elif body.action == "accept" and row.tier in await planned_tiers_of(conn, access.project_id):
-        from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
+        from evo_agents.hub.server.proposal_plans.service import (
+            plan_from_proposal,  # it reads proposals through this module
+        )
 
         await plan_from_proposal(conn, access, user, row)
     await conn.execute(

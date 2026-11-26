@@ -159,7 +159,7 @@ def test_a_new_plan_with_prose_in_a_verify_is_refused_and_nothing_is_written(cli
 def test_a_plan_stored_before_the_check_keeps_its_prose_until_its_verify_changes(  # noqa: F811
     client, github, hub_db, monkeypatch
 ):
-    from evo_agents.hub.server import plans as plan_routes
+    from evo_agents.hub.server.plans import service as plan_routes
 
     hubs = setup_project(client, github)
     alice = hubs["alice"]

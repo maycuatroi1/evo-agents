@@ -43,19 +43,15 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.plans import PLAN_ID, PlanProblem, step_index
 from evo_agents.hub.server import audit, project_archive
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.decisions import (
-    AnswerIn,
-    Decision,
-    DecisionAsk,
-    answer_target,
-    decision_view,
-    store_decision,
-)
+from evo_agents.hub.server.decisions.models import AnswerIn, Decision, DecisionAsk
+from evo_agents.hub.server.decisions.service.answers import answer_target
+from evo_agents.hub.server.decisions.service.asks import store_decision
+from evo_agents.hub.server.decisions.service.reads import decision_view
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import (
     BatchRoute,
@@ -133,9 +129,7 @@ class LocalState(BaseModel):
         description="running: a turn is under way; waiting: the agent waits for a decision; idle: the turn ended and "
         "the person has the word; ended: the session is over",
     )
-    plan_id: str | None = Field(
-        None, pattern=plan_routes.PLAN_ID, description="the plan the session works on, as the hub holds it"
-    )
+    plan_id: str | None = Field(None, pattern=PLAN_ID, description="the plan the session works on, as the hub holds it")
     step_key: str | None = Field(
         None, min_length=1, max_length=200, pattern=LINE, description="the step of that plan it works on"
     )
@@ -164,7 +158,7 @@ async def owned_local_run(conn: AsyncConnection, user: Principal, project: str, 
     events_acked, project_id, name (the project's), plan_id, plan_revision, step_key, dispatched_by and kind. 404 for
     any other run, as for none; 403 without the writer role (``write``) or any grant."""
     access = await project_access(conn, user, project)
-    plan_routes._reader(access)
+    plan_service.reader(access)
     if write:
         check_dispatcher(access)
     r, p = tables.runs, tables.projects
@@ -305,7 +299,7 @@ async def register(
     given and which runs again when it had ended."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        plan_routes._reader(access)
+        plan_service.reader(access)
         check_dispatcher(access)
         run_id, created = await _register(conn, user, access, session_id, body)
         view = await run_view(conn, run_id)

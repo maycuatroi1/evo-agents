@@ -42,7 +42,7 @@ from evo_agents.hub.server.canvas.acting import STRATEGIST, Acting, acting, canv
 from evo_agents.hub.server.canvas.commands import undo_command, undone_text
 from evo_agents.hub.server.canvas.content import LINKS, CanvasError, code, number_of
 from evo_agents.hub.server.canvas.tools import AGENT_EVIDENCE_KINDS
-from evo_agents.hub.server.signals import readable
+from evo_agents.hub.server.signals.service import readable
 from evo_agents.hub.tables_canvas import CELLS
 
 SHOWN_REVS = 10  # of a claim, the latest

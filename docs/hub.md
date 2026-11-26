@@ -3240,7 +3240,7 @@ ends done with nothing pinned and says why. A run that ends before its report fa
 
 Each night, after its review run, the night shift reads the project's sessions and runs with a cheap model, which
 writes a facet of each that has none (schema 0059, `evo_agents/hub/history.py`, `evo_agents/hub/excerpts.py`,
-`evo_agents/hub/server/history.py`), and the hub groups those facets into clusters. The deterministic facets (Session
+`evo_agents/hub/server/history/`), and the hub groups those facets into clusters. The deterministic facets (Session
 facets, below) count what happened; the facet of the model says what the session was about and how it went.
 
 **The items.** An item is the facet of a session whose own transcript the hub holds (`session:ID`), or of a run that
@@ -3305,7 +3305,7 @@ evo-agents hub curator history clusters    # the clusters of 3 sessions or more,
 ## The project's history
 
 The Reviewer, and any member, read a project's whole history through the hub, Postgres alone (schema 0060,
-`evo_agents/hub/history_index.py`, `evo_agents/hub/server/history_search.py`, `evo_agents/hub/server/history_mcp.py`).
+`evo_agents/hub/history_index.py`, `evo_agents/hub/server/history/service/search.py`, `evo_agents/hub/server/history/mcp.py`).
 
 **The index.** The job `hub.index_history`, every 5 minutes, reads each part of a transcript the hub holds that it has
 not read, and each run that ended 2 minutes ago and more whose log or count of events changed since (not a history run,
@@ -3751,7 +3751,7 @@ pulls at SessionStart, pruning only files that did not change here, and pushes a
 agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
 **Audience of memories.** A memory derived from chat messages carries the audience of those chats
-(`evo_agents/hub/server/memory_audience.py`): its label holds the principals under the key `audience`, sorted, as a
+(`evo_agents/hub/server/memories/service/audience.py`): its label holds the principals under the key `audience`, sorted, as a
 kg/1 label does. Every read of memories gives one that names an audience only to a reader whose audience holds it,
 computed at that read as for the graph (Projects and who sees what, Audience), and one whose audience cannot be read to
 no one. A write keeps or raises the audience, never lowers it: the stored audience is the memory's own, plus what the
@@ -3769,7 +3769,7 @@ the audit row `memory.audience`. Raising it there is a 422, a stale revision a 4
 admin, a 403. No command of the CLI lowers it.
 
 **Memories of agents.** Each agent profile of a project that is not its default has memories of its own
-(`memories.profile_id`, `evo_agents/hub/server/memory_agents.py`). The agent of a run under such a profile writes
+(`memories.profile_id`, `evo_agents/hub/server/memories/service/agents.py`). The agent of a run under such a profile writes
 into its profile's namespace alone, and reads the project's shared memories with its own, never another agent's. A
 run under the default profile reads and writes as it always did. A member reads an agent's memories under the
 project's read rule, by id or by naming the agent (`GET /v1/memories?agent=<handle>`, `evo-agents hub memory list
@@ -3786,7 +3786,7 @@ memories, changing one it wrote already counting as no new one.
 
 The prompt of a run under such a profile ends with the index of its agent's memories, newest first: each one's name,
 id, type, description and a stale mark, at most 4 KiB and within the room the prompt has left
-(`evo_agents/hub/server/memory_upkeep.py`). A memory whose label names an audience, such as one written in a chat
+(`evo_agents/hub/server/memories/service/upkeep.py`). A memory whose label names an audience, such as one written in a chat
 (`chat:N`), is listed when the run's agent could open it with `memory_get`: its audience holds the label's (the
 owner's, or for a chat run what both people it is cleared for hold), and the run counts as having seen that audience. A profile with no memory its agent could open, and the default profile,
 keep the prompt as it was. The agent opens a memory with `memory_get`, which records the read (`memories.read_at`);

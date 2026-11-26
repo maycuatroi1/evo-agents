@@ -1,5 +1,5 @@
 """The memories of agent profiles and the fences of memories in a run (plan agent-profile-workspace, criteria a1 and
-a2; ``evo_agents.hub.server.memory_agents``).
+a2; ``evo_agents.hub.server.memories.service.agents``).
 
 Checked on the hub of ``tests.hub.test_kg_audience`` (project aud; alice a writer, bob, carol and dave readers), with
 two profiles of aud besides its default, @scout and @critic, and runs written straight into the runs table as the

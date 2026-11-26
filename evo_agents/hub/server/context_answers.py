@@ -1,7 +1,7 @@
 """The confirmed answers in the prompt of a run (plan active-context-answers, criteria a1 to a4).
 
 When the project's policy sets ``context.answers`` (false by default), the prompt of each run ends, before the index of
-an agent's memories (``memory_upkeep.with_index``), with a block of what people already answered that matches the
+an agent's memories (``memories.service.upkeep.with_index``), with a block of what people already answered that matches the
 work: the decisions of the project that were answered (the question, the option chosen, the answerer's words, who and
 when) and its feedback memories of the project's scope. The block is built by rules, with no model:
 
@@ -47,8 +47,8 @@ from evo_agents.hub.server.autonomy_policies import effective_policy
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.kg_health import owner_access
 from evo_agents.hub.server.mcp_text import memory_about
-from evo_agents.hub.server.memory_audience import label_audience
-from evo_agents.hub.server.memory_upkeep import citations
+from evo_agents.hub.server.memories.service.audience import label_audience
+from evo_agents.hub.server.memories.service.upkeep import citations
 from evo_agents.kg.policy import audience_below
 
 log = logging.getLogger(__name__)

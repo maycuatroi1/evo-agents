@@ -31,7 +31,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
 )
 from evo_agents.hub.server.invites import DEFAULT_DAYS, JOIN, PAGE, PREFIX, TOKEN_BYTES
 from evo_agents.hub.server.security import hash_token
-from evo_agents.hub.server.signals import SignalIn
+from evo_agents.hub.server.signals.models import SignalIn
 
 SIGNAL_DAYS = 90  # how long a value pushed stays, as the plugins of evo-agents keep theirs
 MAX_INVITE_DAYS = 30

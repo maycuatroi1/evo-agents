@@ -113,7 +113,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.context_answer_reuse``, daily at 00:09: the answers loaded into prompts the day before, posted as the signal
   ``context.answer_reuse`` of each project whose policy sets ``context.answers`` (``server.context_answer_reuse``).
 - ``hub.memory_upkeep``, daily: the memories of agent profiles nobody opened for 30 days archived, and those citing
-  code the project's knowledge graph no longer has marked stale (``evo_agents.hub.server.memory_upkeep``), handed
+  code the project's knowledge graph no longer has marked stale (``evo_agents.hub.server.memories.service.upkeep``), handed
   down by the ``hub worker`` command (``HubContext.memory_upkeep``), as the release pass is.
 - ``hub.prune_signals``, daily: the signals measured more than EVO_HUB_SIGNAL_DAYS days ago, 400 by default
   (``evo_agents.hub.signals``).
@@ -224,7 +224,7 @@ class HubContext:
     # the server's tick of a project's Loop (evo_agents.hub.server.loop.tick), handed down the same way and called
     # with ``github_app``; None ticks no Loop
     loop_tick: Callable[..., Awaitable[dict]] | None = None
-    # the server's upkeep of agents' memories (evo_agents.hub.server.memory_upkeep), handed down the same way; None
+    # the server's upkeep of agents' memories (evo_agents.hub.server.memories.service.upkeep), handed down the same way; None
     # keeps none
     memory_upkeep: Callable[[AsyncEngine, BlobStore, Path], Awaitable[dict]] | None = None
     # the server's finder of the key of a build's entities step (evo_agents.hub.server.kg_entity_key.find), handed down

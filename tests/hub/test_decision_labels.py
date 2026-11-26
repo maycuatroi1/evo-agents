@@ -16,7 +16,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.decision_channels import contributed_kinds
+from evo_agents.hub.server.decisions.service.channels import contributed_kinds
 from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
 from tests.hub.test_decisions import ask, asked, client, decision, hub  # noqa: F401 (fixtures)

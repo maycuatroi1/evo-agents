@@ -479,7 +479,8 @@ def test_prose_credential_other_questions_of_a_plan_run_are_asked_as_before(clie
 def test_prose_credential_the_gate_holds_plan_and_author_runs_alone():
     from fastapi import HTTPException
 
-    from evo_agents.hub.server.decisions import DecisionAsk, admit_ask
+    from evo_agents.hub.server.decisions.models import DecisionAsk
+    from evo_agents.hub.server.decisions.service.asks import admit_ask
 
     body = DecisionAsk(category="scope", question="Please give me TELEGRAM_BOT_TOKEN.", options=OPTIONS)
     for kind in ("plan", "author"):
@@ -626,7 +627,8 @@ def test_autonomy_gate_holds_plan_and_author_runs_alone_and_the_scope_words_ask_
     from fastapi import HTTPException
 
     from evo_agents.hub import autonomy_card
-    from evo_agents.hub.server.decisions import DecisionAsk, admit_ask
+    from evo_agents.hub.server.decisions.models import DecisionAsk
+    from evo_agents.hub.server.decisions.service.asks import admit_ask
 
     made = autonomy_card.card(at_level(None), autonomy_card.Who(OWNER, "lead", "unit"))
     body = DecisionAsk(category="merge", question="Merge it now?", options=OPTIONS)

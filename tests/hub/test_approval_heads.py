@@ -10,7 +10,7 @@ pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub
 from pydantic import ValidationError
 
 from evo_agents.hub import approval_heads
-from evo_agents.hub.server.decision_models import DecisionAsk
+from evo_agents.hub.server.decisions.models import DecisionAsk
 
 HEAD, NEW_HEAD = "a" * 40, "b" * 40
 FILES = ["app/models.py", "app/views.py"]

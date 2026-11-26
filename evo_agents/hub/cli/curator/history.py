@@ -1,6 +1,6 @@
 """``evo-agents hub curator history``: the night's history run, which reads the project's sessions and runs with a
 cheap model (``evo_agents.hub.history``), and the project's whole history as the Curator's Reviewer reads it
-(``evo_agents.hub.server.history_search``).
+(``evo_agents.hub.server.history.service.search``).
 
 ``curator history status`` says where it stands (GET /v1/projects/{p}/curator/history): its cap and the model it runs
 on, how many of the project's sessions and runs have a facet of the model and how many wait, and the latest history

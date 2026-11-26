@@ -49,7 +49,6 @@ from evo_agents.hub.server import (
     agent_asks,
     chat_agents,
     kg,
-    memories,
     ops_actions,
     orchestrator,
     orchestrator_actions,
@@ -59,6 +58,9 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.mcp_run import hub_principal
+from evo_agents.hub.server.memories import routes as memories
+from evo_agents.hub.server.memories.models import Written
+from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.output_store import OutputIn
 from evo_agents.hub.server.runs.service.plan_runs import held_row
 from evo_agents.hub.server.security import WORKER
@@ -399,7 +401,7 @@ def _request(turn: Turn) -> Request:
 
 async def memory_write(turn: Turn, arguments: dict) -> str:
     text = arguments.get("body") or ""
-    memory = memories.MemoryIn(
+    memory = MemoryIn(
         scope="project",
         project=turn.project,
         location=HARNESS,
@@ -414,7 +416,7 @@ async def memory_write(turn: Turn, arguments: dict) -> str:
     async with turn.engine.connect() as conn:
         user = await hub_principal(conn, turn.run_id, WORKER)
     written = await memories.put(_request(turn), memory, user, sink=AGENT_SINK)
-    if not isinstance(written, memories.Written):
+    if not isinstance(written, Written):
         return f"refused: {bytes(written.body).decode(errors='replace')}"
     return f"wrote memory {written.name} (revision {written.revision})"
 

@@ -70,20 +70,14 @@ from evo_agents.hub.plan_writes import ATTEMPTS, check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import (
     chat_read,
-    decision_reads,
     digests,
     evolve,
-    history_mcp,
     hub_settings,
-    intake,
     kg,
     kg_audience,
-    kg_decisions,
     kg_optimize,
     local_runs,
-    memories,
     opportunity_mcp,
-    plans,
     plugin_tools,
     probe_report,
     problem_evidence,
@@ -94,6 +88,10 @@ from evo_agents.hub.server import (
     skills,
     tool_stats,
 )
+from evo_agents.hub.server.decisions.service import reads as decision_reads
+from evo_agents.hub.server.history import mcp as history_mcp
+from evo_agents.hub.server.intake import service as intake
+from evo_agents.hub.server.kg_decisions import service as kg_decisions
 from evo_agents.hub.server.mcp_gate import MAX_BODY, SESSION, McpGate, http_detail, transport_security
 from evo_agents.hub.server.mcp_run import MOUNT
 from evo_agents.hub.server.mcp_text import (
@@ -112,6 +110,9 @@ from evo_agents.hub.server.mcp_text import (
     problem_line,
     problem_lines,
 )
+from evo_agents.hub.server.memories import routes as memories
+from evo_agents.hub.server.memories.service.inputs import MemoryIn
+from evo_agents.hub.server.plans import routes as plans
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
@@ -398,7 +399,7 @@ class HubMcp(MCPServer):
             location = arguments.get("location") or HARNESS
         body = arguments["body"]
         try:
-            memory = memories.MemoryIn(
+            memory = MemoryIn(
                 scope=scope,
                 project=project,
                 location=location,
@@ -612,7 +613,7 @@ class HubMcp(MCPServer):
         access = await self._readable(caller, project)
         status = arguments.get("status")
         async with self.hub.state.engine.begin() as conn:
-            found = await intake.listed(conn, access, status)
+            found = await intake.listed_in(conn, access, status)
         listed = [i.model_dump(mode="json") for i in found]
         text = "\n".join(intake_line(i) for i in listed)
         text = text or f"project {project} has no intake{' ' + status if status else ''} on the hub"
@@ -622,7 +623,7 @@ class HubMcp(MCPServer):
         project = self._project(caller, arguments)
         access = await self._readable(caller, project)
         async with self.hub.state.engine.begin() as conn:
-            found = await intake.shown(conn, access, arguments["code"])
+            found = await intake.shown_in(conn, access, arguments["code"])
         data = found.model_dump(mode="json")
         return "\n".join(intake_lines(data)), {"project": project, "intake": data, "summary": f"intake {found.code}"}
 
@@ -843,11 +844,11 @@ class HubMcp(MCPServer):
     async def _decision_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)
         await self._readable(caller, project)
-        found = await decision_reads.list_decisions(
-            caller.request,
-            project,
+        found = await decision_reads.listing(
+            caller.request.app.state.engine,
             caller.user,
-            state=[arguments["state"]] if "state" in arguments else [],
+            project,
+            states=[arguments["state"]] if "state" in arguments else [],
             run_id=arguments.get("run_id"),
             plan_id=arguments.get("plan_id"),
             limit=arguments.get("limit", 20),
