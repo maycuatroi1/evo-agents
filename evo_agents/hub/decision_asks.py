@@ -3,7 +3,7 @@ why the agent recommends the option it does (``recommended_reason``), whether th
 how (``reversible``, ``undo``), and the refs of what the question rests on (``evidence``). All of it is optional: a
 worker or a skill that predates it still asks.
 
-The hub (``evo_agents.hub.server.decision_models``) and ``evo-agents worker ask`` both read evidence with
+The hub (``evo_agents.hub.server.decisions.models``) and ``evo-agents worker ask`` both read evidence with
 ``evidence_ref``, which takes a ref in one of the forms of ``review.parse_evidence`` (``session:ID[:FIELD:INDEX]``,
 ``transcript:ID[:FILE]:LINE``, ``run:ID:SEQ``, ``code:REPO:PATH[:LINE]``, ``memory:ID:REV``) or ``run:ID``,
 ``output:ID``, ``P-<n>/E-<n>`` (a line of evidence of a problem) or an https URL, and gives it back as the command

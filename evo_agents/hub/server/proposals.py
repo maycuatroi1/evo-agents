@@ -56,7 +56,7 @@ charter's ``auto_merge`` names alone (``evo_agents.hub.server.changes``). A defe
 has passed (the job curator.collect). With the charter's ``answer_by`` agent, a proposal recorded open, or open
 again, gets a thread in the project's triage chat whose agent answers it for the review run's owner
 (``evo_agents.hub.server.curator_threads``). A proposal of kind memory may promote agents' memories in place of a plan
-(``evo_agents.hub.server.memory_promotion``): accepting it writes a shared memory, and makes no plan. Recording a
+(``evo_agents.hub.server.memories.service.promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
 The routes that read findings and proposals and answer a proposal live in ``evo_agents.hub.server.proposal_reads``,
@@ -93,7 +93,6 @@ from evo_agents.hub.server import (
     change_tiers,
     earlier,
     facet_figures,
-    memory_promotion,
     probe_fixes,
     system_curation,
 )
@@ -106,6 +105,7 @@ from evo_agents.hub.server.change_views import Change
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.history.service import search as history_search
 from evo_agents.hub.server.kg_audience import person_audience
+from evo_agents.hub.server.memories.service import promotion as memory_promotion
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import (
     EvidenceIn,

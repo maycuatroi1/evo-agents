@@ -539,7 +539,7 @@ delivery, with the reason (not linked, turned off, linked after the decision was
 
 ## Routes
 
-`evo_agents/hub/server/decisions.py` and `evo_agents/hub/server/notifications.py` hold them, with
+`evo_agents/hub/server/decisions/` and `evo_agents/hub/server/notifications.py` hold them, with
 `output_notices.py` (the settings), `push.py` (push devices) and `today.py` (Today) in the same directory.
 
 For the worker holding a plan run (or, for `decisions`, an author run), with its `evw_` token and the protocol header

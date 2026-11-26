@@ -1,5 +1,5 @@
 """The Curator promotes the memories of a project's agents into its shared memories (plan agent-profile-workspace,
-criterion a4; ``evo_agents.hub.server.memory_promotion``).
+criterion a4; ``evo_agents.hub.server.memories.service.promotion``).
 
 Checked on the night project of ``tests.hub.test_review_runs`` with an agent profile @scout whose memories a writer
 put: the review run's prompt holds the agents' memories new or changed since the last review, with where each came
@@ -25,7 +25,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import review as review_model
 from evo_agents.hub import tables
-from evo_agents.hub.server import memory_agents, memory_upkeep
+from evo_agents.hub.server.memories import models, repository
 from tests.hub.live import sql
 from tests.hub.test_curator import (
     NIGHT,
@@ -183,8 +183,8 @@ def promoted(db, *ids: int) -> dict:
 
 def namespace_ids(db, profile_id: int) -> set[int]:
     m = tables.memories
-    live = select(m.c.id).where(memory_agents.namespace_condition(memory_agents.LIVE))
-    indexed = {row[0] for row in sql(db, memory_upkeep._INDEXED, {"profile_id": profile_id})}
+    live = select(m.c.id).where(repository.namespace_condition(models.LIVE))
+    indexed = {row[0] for row in sql(db, repository.INDEXED, {"profile_id": profile_id})}
     return {row[0] for row in sql(db, live, {"namespace_id": profile_id})} | indexed
 
 

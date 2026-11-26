@@ -8,16 +8,16 @@ the memories of no agent, as before, and memories_agent_key gives one memory per
 its type.
 
 memory_revisions takes where each revision came from when the agent of a run wrote it (``evo_agents.hub.server.
-memory_agents``): the run, the profile and version it ran under, the person at its origin (runs.dispatched_by), its
+memories.agents``): the run, the profile and version it ran under, the person at its origin (runs.dispatched_by), its
 hop, and its chat and chat message; all NULL for a write that came from no run. The run and the chat are plain ids,
 kept as the history of the memory whatever happens to them; memory_revisions_run_idx counts what one run wrote.
 
-The upkeep of an agent's memories (0102, ``evo_agents.hub.server.memory_upkeep``): memories.read_at is when the agent
+The upkeep of an agent's memories (0102, ``evo_agents.hub.server.memories.service.upkeep``): memories.read_at is when the agent
 of a run last opened it (memory_get), archived_at when the daily job archived it, nobody having opened it for 30 days
 (out of the index and the searches of runs until a writer restores it), and stale_at when the job found that a path it
 cites (code:REPO:PATH) is gone from the project's knowledge graph; all NULL for a memory of no agent.
 
-The Curator's promotion of an agent's memories (0103, ``evo_agents.hub.server.memory_promotion``): memories.promoted_at
+The Curator's promotion of an agent's memories (0103, ``evo_agents.hub.server.memories.service.promotion``): memories.promoted_at
 is when an accepted proposal wrote an agent's memory into a shared one, promoted_into that shared memory (NULL once it
 is deleted); memory_revisions.proposal_id names the proposal whose promotion wrote a revision, a plain id kept as
 history.

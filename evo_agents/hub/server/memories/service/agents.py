@@ -1,5 +1,5 @@
-"""The memories of agents and the fences of memories in a run (plan agent-profile-workspace, criteria a1 and a2), for
-``evo_agents.hub.server.memories``.
+"""The memories of agents and the fences of memories in a run (plan agent-profile-workspace, criteria a1 and a2), for the
+service of ``evo_agents.hub.server.memories``.
 
 Namespaces: a memory of a project belongs to no agent (``memories.profile_id`` NULL: the project's shared memories and
 a person's own, as before) or to one agent profile of the project that is not its default. The agent of a run under
@@ -20,49 +20,17 @@ Fences of a run, each a 403 whose message the agent reads through /mcp:
 
 Provenance: each revision a run writes records the run, the profile and version it runs under, the person at its
 origin (the run's owner, runs.dispatched_by), its hop, and its chat and chat message (``provenance``). A revision of
-a shared memory an accepted proposal promoted agents' memories into names the proposal (``memory_promotion``).
+a shared memory an accepted proposal promoted agents' memories into names the proposal (``promotion``).
 """
 
 from __future__ import annotations
 
-from typing import Annotated
-
-from fastapi import HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import BigInteger, Integer, SmallInteger, and_, bindparam, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables, tables_memory_agents
-from evo_agents.hub.db import one_of
-from evo_agents.hub.profiles import HANDLE_PATTERN
+from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.memories import repository
+from evo_agents.hub.server.memories.models import AGENT_TYPES, BOTH, LIVE, MAX_RUN_WRITES, NONE, OWN, Provenance
 from evo_agents.hub.server.security import Principal, RunScope
-
-MAX_RUN_WRITES = 5  # memories one run writes
-NONE, OWN, BOTH = "none", "own", "both"  # the namespaces a read reaches: no agent's, one agent's, or both
-LIVE = "live"  # what a run's agent reaches naming its own namespace: its memories less those archived or promoted
-AGENT_TYPES = ("project", "reference", "feedback")  # what an agent's memory may be
-
-AgentHandle = Annotated[
-    str | None,
-    Query(
-        pattern=HANDLE_PATTERN,
-        description="only the memories of this agent profile (its handle, @ left out); left out, those of no agent",
-    ),
-]
-
-
-class Provenance(BaseModel):
-    """Where a revision came from, when the agent of a run wrote it or an accepted proposal promoted agents' memories
-    into it."""
-
-    run: int | None = Field(description="the run whose agent wrote it; null for a promotion")
-    proposal: int | None = Field(None, description="the Curator's proposal whose promotion wrote it")
-    agent: str | None = Field(description="the handle of the profile the run ran under")
-    agent_version: int | None = Field(description="the version of that profile")
-    origin: str | None = Field(description="the login of the person at the run's origin, who dispatched it")
-    hop: int | None = Field(description="the run's hop in its chat: 1 for a person's mention, more agent to agent")
-    chat: int | None = Field(description="the chat of the run")
-    chat_message: int | None = Field(description="the chat message that started the run")
 
 
 def _chat(scope: RunScope | None) -> bool:
@@ -80,18 +48,11 @@ def readable(profile_id: int | None, kind: str, user: Principal) -> bool:
     return not (_chat(scope) and kind == "user")
 
 
-# What a listing or a search reaches: the namespaces, then the conditions on memories.
+# What a listing or a search reaches: the namespaces, then the conditions on memories (``repository.reach``).
 
 
-async def _profile(conn: AsyncConnection, handle: str) -> tuple[int, str, bool] | None:
-    ap, p = tables.agent_profiles, tables.projects
-    found = select(ap.c.id, p.c.name, ap.c.is_default).join_from(ap, p, p.c.id == ap.c.project_id)
-    row = (await conn.execute(found.where(ap.c.handle == handle))).first()
-    return None if row is None else tuple(row)
-
-
-def _no_agent(handle: str) -> HTTPException:
-    return HTTPException(404, f"no agent @{handle} with memories of its own in a project you can read")
+def _no_agent(handle: str) -> NotFound:
+    return NotFound(f"no agent @{handle} with memories of its own in a project you can read")
 
 
 async def reach(
@@ -103,7 +64,7 @@ async def reach(
     scope = user.scope
     if agent is None:
         return (BOTH if scope is not None and scope.namespace else NONE), scope and scope.namespace, project
-    found = await _profile(conn, agent)
+    found = await repository.profile(conn, agent)
     if found is None or found[2] or (project is not None and project != found[1]):
         raise _no_agent(agent)
     if scope is not None and found[0] != scope.namespace:
@@ -111,40 +72,11 @@ async def reach(
     return (OWN if scope is None else LIVE), found[0], found[1]
 
 
-def namespace_condition(namespace: str):
-    """The condition on memories.profile_id of a listing or a search reaching ``namespace``, :namespace_id bound. The
-    agent of a run (BOTH, LIVE) reaches none of its memories the daily upkeep archived or the Curator promoted."""
-    m = tables.memories
-    named = m.c.profile_id == bindparam("namespace_id", type_=BigInteger)
-    live = and_(named, m.c.archived_at.is_(None), m.c.promoted_at.is_(None))
-    none = m.c.profile_id.is_(None)
-    return {NONE: none, OWN: named, LIVE: live, BOTH: or_(none, live)}[namespace]
-
-
-def key_condition(kind: str):
-    """The namespace of the memory at a key, by ``kind`` of key: an agent's (:profile_id), else none."""
-    m = tables.memories
-    if kind == "agent":
-        return m.c.profile_id == bindparam("profile_id", type_=BigInteger)
-    return m.c.profile_id.is_(None)
-
-
-def key_kind(kind: str) -> object:
-    """What else the key of ``kind`` asks of the memory there: shared, the caller's (:user_id) own, or anything in the
-    agent's namespace."""
-    m = tables.memories
-    if kind == "agent":
-        return true()
-    if kind == "shared":
-        return one_of(m.c.type, tables_memory_agents.SHARED)
-    return and_(one_of(m.c.type, tables_memory_agents.OWNED), m.c.owner_id == bindparam("user_id", type_=BigInteger))
-
-
 # Writes
 
 
-def _refused(message: str) -> HTTPException:
-    return HTTPException(403, f"{message}; nothing was written")
+def _refused(message: str) -> Forbidden:
+    return Forbidden(f"{message}; nothing was written")
 
 
 def promotion(scope: RunScope, project: str) -> str:
@@ -167,20 +99,12 @@ async def namespace(conn: AsyncConnection, user: Principal, project_id: int, pro
         return None
     if scope is not None:
         raise _refused(f"the agent of run {scope.run_id} runs under the default profile and writes no agent's memory")
-    found = await _profile(conn, agent)
+    found = await repository.profile(conn, agent)
     if found is None or found[1] != project or found[2]:
-        raise HTTPException(
-            422, f"project {project} has no agent @{agent} other than its default profile, which keeps no memory"
+        raise Unprocessable(
+            f"project {project} has no agent @{agent} other than its default profile, which keeps no memory"
         )
     return found[0]
-
-
-_WRITTEN = (
-    select(tables.memory_revisions.c.memory_id)
-    .distinct()
-    .where(tables.memory_revisions.c.run_id == bindparam("run_id", type_=BigInteger))
-    .limit(MAX_RUN_WRITES + 1)
-)  # the memories run :run_id wrote
 
 
 async def check_write(
@@ -205,7 +129,7 @@ async def check_write(
         )
     if scope.agent is not None and kind not in AGENT_TYPES:
         raise _refused(f"a memory of @{scope.agent} is of type project, reference or feedback, not {kind}")
-    written = set((await conn.execute(_WRITTEN, {"run_id": scope.run_id})).scalars())
+    written = await repository.written_by_run(conn, scope.run_id)
     if memory_id not in written and len(written) >= MAX_RUN_WRITES:
         raise _refused(
             f"run {scope.run_id} wrote {MAX_RUN_WRITES} memories already, as many as one run may: change one of "
@@ -217,7 +141,7 @@ def provenance(user: Principal) -> dict:
     """The provenance columns of a revision ``user`` writes, as the parameters of the revision row (``prov_*``)."""
     scope = user.scope
     if scope is None:
-        return dict.fromkeys(PARAMETERS)
+        return dict.fromkeys(repository.PARAMETERS)
     values = (
         scope.run_id,
         scope.profile_id,
@@ -228,52 +152,12 @@ def provenance(user: Principal) -> dict:
         scope.chat_message_id,
         None,
     )
-    return dict(zip(PARAMETERS, values, strict=True))
-
-
-# memory_revisions column: (parameter of the revision row, its type)
-COLUMNS = {
-    "run_id": ("prov_run", BigInteger),
-    "profile_id": ("prov_profile", BigInteger),
-    "profile_version": ("prov_version", Integer),
-    "origin_id": ("prov_origin", BigInteger),
-    "hop": ("prov_hop", SmallInteger),
-    "chat_id": ("prov_chat", BigInteger),
-    "chat_message_id": ("prov_message", BigInteger),
-    "proposal_id": ("prov_proposal", BigInteger),
-}
-PARAMETERS = tuple(parameter for parameter, _ in COLUMNS.values())
-
-
-def provenance_parameters() -> list:
-    """The bind parameters of the provenance columns, in the order of COLUMNS."""
-    return [bindparam(parameter, type_=kind) for parameter, kind in COLUMNS.values()]
-
-
-def provenance_columns():
-    """The columns of memory_revisions a revision's provenance shows, labelled ``prov_*``, and the joins they need
-    from memory_revisions: (columns, join)."""
-    r, ap = tables.memory_revisions, tables.agent_profiles
-    origin = tables.users.alias("origin")
-    columns = (
-        r.c.run_id.label("prov_run"),
-        ap.c.handle.label("prov_agent"),
-        r.c.profile_version.label("prov_version"),
-        origin.c.login.label("prov_origin"),
-        r.c.hop.label("prov_hop"),
-        r.c.chat_id.label("prov_chat"),
-        r.c.chat_message_id.label("prov_message"),
-        r.c.proposal_id.label("prov_proposal"),
-    )
-
-    def join(source):
-        return source.outerjoin(ap, ap.c.id == r.c.profile_id).outerjoin(origin, origin.c.id == r.c.origin_id)
-
-    return columns, join
+    return dict(zip(repository.PARAMETERS, values, strict=True))
 
 
 def provenance_of(values) -> Provenance | None:
-    """The provenance of a revision row of ``provenance_columns``; None when neither a run nor a promotion wrote it."""
+    """The provenance of a revision row of ``repository.provenance_columns``; None when neither a run nor a promotion
+    wrote it."""
     v = values._mapping
     if v["prov_run"] is None and v["prov_proposal"] is None:
         return None

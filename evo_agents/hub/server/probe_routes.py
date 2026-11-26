@@ -37,7 +37,7 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.curator import charter_row
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.memory_audience import Reader, label_reaches
+from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.probe_report import local_today
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import ItemId

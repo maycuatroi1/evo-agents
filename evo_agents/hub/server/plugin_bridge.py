@@ -41,7 +41,8 @@ def bridge_reads() -> dict[Callable, str]:
     """What the bridge reads with each permission (web/src/components/plugins/bridge.ts, METHODS): the route's
     handler, and the permission it needs. Read when the first call with the header comes, once create_app has
     imported every route; memories are read with scope=project&project=<project> only."""
-    from evo_agents.hub.server import memories, plans
+    from evo_agents.hub.server import plans
+    from evo_agents.hub.server.memories import routes as memories
     from evo_agents.hub.server.runs.routes import listing
 
     return {

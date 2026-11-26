@@ -103,7 +103,7 @@ def test_no_grant_or_a_level_the_ladder_lacks_lets_nothing_through(max_level):
 
 def test_a_web_session_reads_through_no_sink_and_a_machine_token_through_claude_codes():
     pytest.importorskip("fastapi")
-    from evo_agents.hub.server.memories import _through
+    from evo_agents.hub.server.memories.service.core import through as _through
     from evo_agents.hub.server.security import MACHINE, WEB, Principal
 
     def principal(kind: str) -> Principal:
@@ -353,7 +353,8 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
     from fastapi import HTTPException
     from starlette.requests import Request
 
-    from evo_agents.hub.server import memories
+    from evo_agents.hub.server.memories import routes as memories
+    from evo_agents.hub.server.memories.service.inputs import MemoryIn
     from evo_agents.hub.server.projects import project_access
     from evo_agents.hub.server.security import WORKER, Principal, RunScope
 
@@ -417,10 +418,10 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
 
     note = {"scope": "project", "project": "demo", "location": "harness", "name": "agent.md", "type": "project"}
     note["body"] = "---\nname: Agent\n---\nquokka agent\n"
-    written = call(memories.put, body=memories.MemoryIn(**note), sink="hub")
+    written = call(memories.put, body=MemoryIn(**note), sink="hub")
     assert written.created and (written.project, written.updated_by) == ("demo", "alice")
-    assert refused(memories.put, body=memories.MemoryIn(**{**note, "project": "other"}), sink="hub").status_code == 404
-    mine = refused(memories.put, body=memories.MemoryIn(**{**diary, "name": "agent-diary.md"}), sink="hub")
+    assert refused(memories.put, body=MemoryIn(**{**note, "project": "other"}), sink="hub").status_code == 404
+    mine = refused(memories.put, body=MemoryIn(**{**diary, "name": "agent-diary.md"}), sink="hub")
     assert mine.status_code == 403 and "a personal memory is its owner's" in mine.detail
     stored = live.sql(hub_db, select(tables.memories.c.name))
     assert sorted(row[0] for row in stored) == sorted([*everything, "agent.md"])
@@ -428,7 +429,7 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
     # The scope caps the grant, role and level alike: a reader's scope writes nothing.
     reader = replace(agent, scope=RunScope(7, "demo", "reader", "public"))
     assert (
-        refused(memories.put, user=reader, body=memories.MemoryIn(**{**note, "name": "r.md"}), sink="hub").status_code
+        refused(memories.put, user=reader, body=MemoryIn(**{**note, "name": "r.md"}), sink="hub").status_code
         == 403
     )
     assert names(call(memories.list_memories, user=reader, sink="hub")) == []

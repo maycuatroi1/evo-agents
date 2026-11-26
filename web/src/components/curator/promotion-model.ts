@@ -1,5 +1,5 @@
 /**
- * A proposal of kind memory's promotion as the hub keeps it (proposals.promotion, evo_agents.hub.server.memory_promotion):
+ * A proposal of kind memory's promotion as the hub keeps it (proposals.promotion, evo_agents.hub.server.memories.service.promotion):
  * the agents' memories it promotes, each at the revision it read, the shared memory it merges into (by id and revision)
  * or the new one it makes (by location, name and type), the whole memory after the merge, and once accepted the shared
  * memory and revision it wrote. The hub keeps it as JSON; this reads it defensively, null when it is no promotion.

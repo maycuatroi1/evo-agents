@@ -29,13 +29,13 @@ find; a file of a repo of the project that the knowledge graph does not hold yet
 
 The Reviewer reads the history in two tiers: the numbers first (the night's figures, the sessions and runs with the
 numbers of their facets, the clusters), then the words of a transcript or a run's log only where the numbers point
-(``evo_agents.hub.server.history_search``). Its prompt also holds what earlier nights found through the night's lenses,
+(``evo_agents.hub.server.history.service.search``). Its prompt also holds what earlier nights found through the night's lenses,
 with what became of it, and the proposals the owner rejected lately (``evo_agents.hub.server.earlier``), and the
 project's playbook of the Curator (``evo_agents.hub.playbook``), which the run changes by deltas alone.
 
 The prompt also holds the memories the project's agents wrote or changed since the last review run that ended done,
 each with where it came from, and the project's shared memories (``memory_lines``,
-``evo_agents.hub.server.memory_promotion.for_prompt``): the Reviewer may propose, as a proposal of kind memory, to
+``evo_agents.hub.server.memories.service.promotion.for_prompt``): the Reviewer may propose, as a proposal of kind memory, to
 promote what agents learned into a shared memory, new or one it merges them into.
 
 The prompt holds the run's probe assignments too (``assignment_lines``, ``evo_agents.hub.server.probe_fixes``): a
@@ -162,7 +162,7 @@ TRANSCRIPT_FILE = r"^(main|subagents(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}){1,5})$"
 MAIN_FILE = "main"
 REPO_NAME = r"^[^\x00-\x1f\x7f/:][^\x00-\x1f\x7f:]{0,199}$"
 MAX_LINE = 10_000_000
-MAX_REVISION = 2**31 - 1  # as evo_agents.hub.server.memories.MAX_REVISION
+MAX_REVISION = 2**31 - 1  # as evo_agents.hub.server.memories.models.MAX_REVISION
 MEMORIES_BYTES = 12 * 1024  # the agents' memories in the prompt; memory_get gives each whole
 SHARED_BYTES = 4 * 1024  # the shared memories in the prompt
 FIGURES_BYTES = 12 * 1024  # the figures in the prompt; curator_figures gives them whole
@@ -711,7 +711,7 @@ def assignment_lines(assignments: list[dict]) -> list[str]:
 
 def memory_lines(memories: dict) -> list[str]:
     """The agents' memories new or changed since the last review, with where each came from, the project's shared
-    memories, and how to propose a promotion (``evo_agents.hub.server.memory_promotion.for_prompt``)."""
+    memories, and how to propose a promotion (``evo_agents.hub.server.memories.service.promotion.for_prompt``)."""
     since = memories.get("since")
     when = f"since {since}" if since else "so far"
     lines = [

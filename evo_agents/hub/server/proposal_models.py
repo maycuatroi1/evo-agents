@@ -11,9 +11,10 @@ from fastapi import Path
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import review, tiers
-from evo_agents.hub.server import memory_promotion, system_curation
 from evo_agents.hub.server import probes as stored_probes
+from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.change_views import Change
+from evo_agents.hub.server.memories.models import PromotionIn
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME
 
 Title = Annotated[str, Field(min_length=1, max_length=review.MAX_TITLE_CHARS, pattern=LINE)]
@@ -127,7 +128,7 @@ class ProposalIn(BaseModel):
     )
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=review.MAX_EVIDENCE)
     plan: dict | None = Field(None, description="the draft plan: plan.schema.json, in outcome steps; none to promote")
-    promotion: memory_promotion.PromotionIn | None = Field(None, description="kind memory: in place of a plan")
+    promotion: PromotionIn | None = Field(None, description="kind memory: in place of a plan")
     system_change: system_curation.SystemChangeIn | None = Field(
         None, description="kind agent_config, lens agent_system: in place of a plan"
     )
