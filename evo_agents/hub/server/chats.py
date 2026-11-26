@@ -48,7 +48,8 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import attachment_store, audit, chat_answers, direct_systems, work_chats
+from evo_agents.hub.server import audit, chat_answers, direct_systems
+from evo_agents.hub.server.attachments.service import messages as attachment_store
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
@@ -99,6 +100,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
 from evo_agents.hub.server.runs.models.attachment_parts import AttachmentIds
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.work_chats import service as work_chats
 
 log = logging.getLogger(__name__)
 

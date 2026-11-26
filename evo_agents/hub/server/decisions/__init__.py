@@ -10,7 +10,7 @@ agent recommends, and optionally why, whether the act it asks about can be undon
 rests on (``models``, which holds the models, 422 for a ref in no form ``decision_asks`` reads), the step it
 is about, which must be a step of the run's plan (422 for an author run that has put no plan yet, which has no steps),
 and the outputs of the run it carries (``output_ids``, 422 for one of another run;
-``output_store``), which every view of the decision lists with the decision's URL of their bytes. The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
+``outputs.service.store``), which every view of the decision lists with the decision's URL of their bytes. The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
 for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
 ``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
 decision without a plan names the author run and its title instead. A run has at most MAX_OPEN_DECISIONS open at once

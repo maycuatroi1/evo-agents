@@ -157,7 +157,7 @@ WORK_SET = "work.set"  # the entry agent of a system set the title, goal or done
 WORK_HANDLED = "work.handled"  # a member of a trace's work chat marked its work handled (work_cards, Mark as handled)
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
-# The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the
+# The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.outputs): the
 # run's target, then " output:<id>", never its name or its bytes.
 RUN_OUTPUT_DELETE = "run.output_delete"
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
@@ -169,7 +169,7 @@ RUN_OPEN_REPO = "run.open_repo"
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
 NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
-# A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.output_notices).
+# A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.outputs.service.notices).
 NOTIFICATION_SETTINGS = "notification.settings"
 # A member added a push device, or it went: removed by the member, or by the hub when its push service no longer knew
 # it or its sign-in ended. "push_device:<id> kind=<kind> user=<login> by=<member|hub>", never its endpoint or token.
@@ -354,7 +354,7 @@ PLUGIN_CONFIG = "plugin.config"
 # " rollback-to=v<n>"; never a value.
 SETTINGS_BRANDING = "settings.branding"
 SETTINGS_FEATURES = "settings.features"
-# An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.run_outputs):
+# An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.outputs):
 # "<project>/outputs tool_images=on|off".
 SETTINGS_OUTPUTS = "settings.outputs"
 # A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:

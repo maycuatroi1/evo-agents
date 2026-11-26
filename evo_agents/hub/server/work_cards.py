@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, system_context, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, system_traces, work_chats, work_status
+from evo_agents.hub.server import audit, system_traces, work_status
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
 from evo_agents.hub.server.chat_members import ChatId
@@ -43,6 +43,7 @@ from evo_agents.hub.server.chat_store import write_event
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.work_chats import service as work_chats
 from evo_agents.hub.server.work_status import WorkCard
 
 log = logging.getLogger(__name__)

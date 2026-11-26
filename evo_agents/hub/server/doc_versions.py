@@ -11,7 +11,7 @@ messages of the older ones are not on the page it loaded.
 A document is named as the web names it (``docKey`` of web/src/components/chats/doc-model.ts): the last part of a
 file's name after a slash, without case, so an output kept under a path is a version of the file attached under its
 own name. Each version carries the URL of its bytes on the route that serves it to the same reader
-(``attachments``, ``output_content``). Anyone else gets the 404 of a chat or run that does not exist. Nothing here
+(``attachments.routes``, ``outputs.routes``). Anyone else gets the 404 of a chat or run that does not exist. Nothing here
 is stored: the versions are read from ``attachments``, ``run_inbox_attachments``, ``run_outputs`` and
 ``run_output_links``.
 """
@@ -33,8 +33,7 @@ from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.chat_members import ChatId
 from evo_agents.hub.server.chat_views import HUB_AUTHOR, ChatAuthor, agent_author, person_author, profiles_by_id
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.output_content import Sink
-from evo_agents.hub.server.output_views import chat_url, run_url
+from evo_agents.hub.server.outputs.models import Sink, chat_url, run_url
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser

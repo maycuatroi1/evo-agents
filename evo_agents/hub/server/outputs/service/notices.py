@@ -2,7 +2,7 @@
 notification's files a channel may send, and the notices a member turned off. ``docs/notifications.md`` (Notices,
 What never goes to Telegram) is the design.
 
-``outputs_recorded`` runs in the transaction that records outputs (``output_store.record``), holding the run's row.
+``outputs_recorded`` runs in the transaction that records outputs (``store.record``), holding the run's row.
 The files of sources sent and outputs it took (an image taken out of a tool's result never) become one notice of kind
 ``run_outputs`` to the run's owner, gathered a minute a run: the first files store the notification with its
 deliveries due OUTPUT_NOTICE_SECONDS later, and the files that come before any channel tried it join it (its details,
@@ -31,22 +31,26 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import delete, exists, func, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, outputs, runs, tables
+from evo_agents.hub import outputs, runs
 from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
-from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit, push_tiers
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.base.errors import Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.notifications import PASS_BLOBS, Outgoing, notify, one_line, run_link
-from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.tables_push import DEFAULT_DIGEST_AT, TIERS
+from evo_agents.hub.server.outputs.models.notices import (
+    NoticeSetting,
+    NotificationSettings,
+    NotificationSettingsIn,
+    QuietHours,
+    TierSetting,
+)
+from evo_agents.hub.server.outputs.repository import notices as repository
+from evo_agents.hub.server.security import Principal
+from evo_agents.hub.tables_push import DEFAULT_DIGEST_AT
 
 log = logging.getLogger(__name__)
 
@@ -55,150 +59,17 @@ NAMES_IN_BODY = 20  # files a notice's body names; the rest it counts
 CAPTION_CHARS = 200  # of a file's caption in a notice's body
 CHANNEL_OUTPUTS = 10  # files a channel gets of one notification: a media group of Telegram holds 10
 
-router = APIRouter(prefix="/v1/me", tags=["notifications"], responses={401: {"model": ErrorBody}})
-
 
 # The notices a member turned off
 
 
 async def muted(conn: AsyncConnection, user_id: int, notice_kind: str) -> bool:
     """Whether member ``user_id`` turned the notices of ``notice_kind`` off."""
-    m = tables.notification_mutes
-    found = select(m.c.user_id).where(m.c.user_id == user_id, m.c.notice_kind == notice_kind)
-    return (await conn.execute(found)).first() is not None
-
-
-class NoticeSetting(BaseModel):
-    kind: Literal[runs.MUTABLE_NOTICE_KINDS] = Field(description="a kind of notice a member may turn off")
-    on: bool = Field(description="false: the member gets no notice of this kind, on any channel")
-
-
-HIDE_DETAILS = (
-    "push notifications carry only the kind of thing, the project and the link, as on a locked screen anyone may read"
-)
-TIER = (
-    "interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The "
-    "Inbox, the bell and the channels get every notification whatever its tier"
-)
-DEFAULT_TIER = (
-    "false: the hub's default, interrupt for a decision asked of the member, a run_failed of a run they dispatched "
-    "(not one the Curator's night shift queued), a release that went wrong and merge_paused, and brief for every "
-    "other; a tier the member chose holds for every notification of the kind"
-)
-
-
-class TierSetting(BaseModel):
-    kind: Literal[push_tiers.KINDS] = Field(description="a kind of notification: decision, proposal or a notice's")
-    tier: Literal[TIERS] = Field(description=TIER)
-    chosen: bool = Field(description=DEFAULT_TIER)
-
-
-class TierChoice(BaseModel):
-    kind: Literal[push_tiers.KINDS] = Field(description="a kind of notification: decision, proposal or a notice's")
-    tier: Literal[TIERS] | None = Field(description=f"{TIER}; null: back to the hub's default")
-
-
-class QuietHours(BaseModel):
-    start: str = Field(pattern=curator.TIME_OF_DAY, description="HH:MM, 24 hours, in the member's time zone")
-    end: str = Field(
-        pattern=curator.TIME_OF_DAY,
-        description="HH:MM, 24 hours; the quiet hours run past midnight when it is not after start",
-    )
-
-    @model_validator(mode="after")
-    def _not_empty(self):
-        if self.start == self.end:
-            raise ValueError("quiet hours end at another time than they start")
-        return self
-
-
-class NotificationSettings(BaseModel):
-    notices: list[NoticeSetting] = Field(description="each kind of notice a member may turn off, and whether it is on")
-    hide_details: bool = Field(False, description=HIDE_DETAILS)
-    tiers: list[TierSetting] = Field(description="each kind of notification and its tier")
-    quiet_hours: QuietHours | None = Field(
-        description="when an interrupt waits to be pushed until they end, a decision's too; null: none"
-    )
-    time_zone: str = Field(description="the IANA time zone of the quiet hours and digest_at")
-    time_zone_chosen: bool = Field(description="false: the hub's time zone, EVO_HUB_WEB_TIME_ZONE")
-    digest_at: str = Field(description="the local time of the summary push, HH:MM")
-
-
-class NotificationSettingsIn(BaseModel):
-    notices: list[NoticeSetting] = Field(
-        default_factory=list,
-        max_length=len(runs.MUTABLE_NOTICE_KINDS),
-        description="the kinds to set; the others stay",
-    )
-    hide_details: bool | None = Field(None, description=f"{HIDE_DETAILS}; unchanged when left out")
-    tiers: list[TierChoice] = Field(
-        default_factory=list, max_length=len(push_tiers.KINDS), description="the kinds to set; the others stay"
-    )
-    quiet_hours: QuietHours | None = Field(None, description="null: none; unchanged when left out")
-    time_zone: str | None = Field(
-        None,
-        max_length=curator.MAX_TIME_ZONE_CHARS,
-        pattern=curator.TIME_ZONE,
-        description="an IANA name such as Asia/Tokyo; null: the hub's; unchanged when left out",
-    )
-    digest_at: str | None = Field(
-        None, pattern=curator.TIME_OF_DAY, description="HH:MM; null: the hub's default; unchanged when left out"
-    )
-
-    @field_validator("notices")
-    @classmethod
-    def _once(cls, value: list[NoticeSetting]) -> list[NoticeSetting]:
-        if len({setting.kind for setting in value}) != len(value):
-            raise ValueError("name each kind of notice once")
-        return value
-
-    @field_validator("tiers")
-    @classmethod
-    def _tier_once(cls, value: list[TierChoice]) -> list[TierChoice]:
-        if len({choice.kind for choice in value}) != len(value):
-            raise ValueError("name each kind of notification once")
-        return value
-
-    @model_validator(mode="after")
-    def _something(self):
-        named = self.model_fields_set & {"quiet_hours", "time_zone", "digest_at"}
-        if not (self.notices or self.tiers or named or self.hide_details is not None):
-            raise ValueError("set notices, hide_details, tiers, quiet_hours, time_zone or digest_at")
-        return self
-
-    def preferences(self) -> dict:
-        """The columns of notification_preferences this body sets (``push_tiers.set_preferences``)."""
-        values: dict = {}
-        if self.hide_details is not None:
-            values["hide_details"] = self.hide_details
-        if self.tiers:
-            values["tiers"] = {choice.kind: choice.tier for choice in self.tiers}
-        if "quiet_hours" in self.model_fields_set:
-            quiet = self.quiet_hours
-            values["quiet_start"], values["quiet_end"] = (quiet.start, quiet.end) if quiet else (None, None)
-        for name in ("time_zone", "digest_at"):
-            if name in self.model_fields_set:
-                values[name] = getattr(self, name)
-        return values
-
-    def shown(self) -> str:
-        """What the audit row says of this body."""
-        chosen = [f"{setting.kind}={'on' if setting.on else 'off'}" for setting in self.notices]
-        if self.hide_details is not None:
-            chosen.append(f"hide_details={'on' if self.hide_details else 'off'}")
-        chosen += [f"tier:{choice.kind}={choice.tier or 'default'}" for choice in self.tiers]
-        if "quiet_hours" in self.model_fields_set:
-            quiet = self.quiet_hours
-            chosen.append(f"quiet_hours={quiet.start}-{quiet.end}" if quiet else "quiet_hours=none")
-        for name in ("time_zone", "digest_at"):
-            if name in self.model_fields_set:
-                chosen.append(f"{name}={getattr(self, name) or 'default'}")
-        return " ".join(chosen)
+    return await repository.muted(conn, user_id, notice_kind)
 
 
 async def _settings(conn: AsyncConnection, user_id: int, hub_zone: str) -> NotificationSettings:
-    m = tables.notification_mutes
-    off = set((await conn.execute(select(m.c.notice_kind).where(m.c.user_id == user_id))).scalars())
+    off = await repository.muted_kinds(conn, user_id)
     row = await push_tiers.preferences(conn, user_id)
     chosen = push_tiers.chosen_tiers(row)
     tiers = [
@@ -224,33 +95,25 @@ def _hub_zone(request: Request) -> str:
     return getattr(request.app.state.config, "web_time_zone", None) or DEFAULT_WEB_TIME_ZONE
 
 
-@router.get("/notification-settings", response_model=NotificationSettings)
-async def show_notification_settings(request: Request, user: CurrentUser) -> NotificationSettings:
-    """The kinds of notice the caller may turn off and whether each is on, the tier of each kind of notification, their
-    quiet hours, time zone and time of the summary push, and whether push hides details."""
-    async with request.app.state.engine.begin() as conn:
+async def settings(request: Request, user: Principal) -> NotificationSettings:
+    """The notification settings of the caller (see the module)."""
+    async with UnitOfWork(request.app.state.engine) as conn:
         return await _settings(conn, user.user_id, _hub_zone(request))
 
 
-@router.put("/notification-settings", response_model=NotificationSettings, responses={422: {"model": ErrorBody}})
-async def set_notification_settings(
-    request: Request, body: NotificationSettingsIn, user: CurrentUser
-) -> NotificationSettings:
-    """Turn kinds of notice on or off for the caller, choose the tier of kinds of notification, their quiet hours,
-    time zone and time of the summary push, and whether push hides details; the Inbox gets every notification still."""
-    m = tables.notification_mutes
+async def set_settings(request: Request, user: Principal, body: NotificationSettingsIn) -> NotificationSettings:
+    """Set what ``body`` names of the caller's notification settings, audited; the settings as they are then."""
     off = [setting.kind for setting in body.notices if not setting.on]
     on = [setting.kind for setting in body.notices if setting.on]
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(request.app.state.engine) as conn:
         if body.time_zone is not None and not await push_tiers.time_zone_known(conn, body.time_zone):
-            raise HTTPException(
-                422, f"{body.time_zone!r} is not a time zone the hub knows: give an IANA name such as Asia/Tokyo"
+            raise Unprocessable(
+                f"{body.time_zone!r} is not a time zone the hub knows: give an IANA name such as Asia/Tokyo"
             )
         if on:
-            await conn.execute(delete(m).where(m.c.user_id == user.user_id, m.c.notice_kind.in_(on)))
+            await repository.unmute(conn, user.user_id, on)
         if off:
-            rows = [{"user_id": user.user_id, "notice_kind": kind} for kind in off]
-            await conn.execute(pg_insert(m).values(rows).on_conflict_do_nothing())
+            await repository.mute(conn, user.user_id, off)
         await push_tiers.set_preferences(conn, user.user_id, body.preferences())
         shown = body.shown()
         await audit.record(
@@ -260,9 +123,9 @@ async def set_notification_settings(
             action=audit.NOTIFICATION_SETTINGS,
             target=f"notifications:settings {shown}",
         )
-        settings = await _settings(conn, user.user_id, _hub_zone(request))
+        found = await _settings(conn, user.user_id, _hub_zone(request))
     log.info("notification settings set", extra={"login": user.login, "settings": shown})
-    return settings
+    return found
 
 
 # The notice of a run's files
@@ -293,45 +156,6 @@ def _text(kind: str, run_id: int, project: str, files: list) -> tuple[str, str]:
     return title, "\n".join([*lines, "", f"Files of {_who(kind, run_id).lower()} in project {project}."])
 
 
-def _carried_by_question():
-    o, k = tables.run_outputs, tables.run_output_links
-    return exists().where(k.c.output_id == o.c.id, k.c.decision_id.is_not(None))
-
-
-async def _files(conn: AsyncConnection, run_id: int, output_ids: list[int]) -> list:
-    """The outputs of ``output_ids`` of run ``run_id`` a notice names: not of source tool, carried by no question,
-    oldest first."""
-    if not output_ids:
-        return []
-    o = tables.run_outputs
-    query = select(o.c.id, o.c.name, o.c.size, o.c.caption).where(
-        o.c.run_id == run_id, one_of(o.c.id, output_ids), o.c.source != outputs.TOOL, ~_carried_by_question()
-    )
-    return list((await conn.execute(query.order_by(o.c.id))).all())
-
-
-def _untried(run_id: int):
-    """The notices of run ``run_id``'s files that no channel has tried yet, newest first, locked."""
-    n, dl = tables.notifications, tables.notification_deliveries
-    tried = exists().where(dl.c.notification_id == n.c.id, or_(dl.c.state != "pending", dl.c.attempts > 0))
-    return (
-        select(n.c.id, n.c.user_id, n.c.details)
-        .where(n.c.run_id == run_id, n.c.kind == "notice", n.c.notice_kind == runs.OUTPUT_NOTICE, ~tried)
-        .order_by(n.c.id.desc())
-        .with_for_update(of=n)
-    )
-
-
-async def _held(conn: AsyncConnection, notification_id: int) -> bool:
-    """Whether every delivery of notification ``notification_id`` is pending, untried and locked now: false while the
-    job's pass holds one (it is being sent)."""
-    dl = tables.notification_deliveries
-    of = dl.c.notification_id == notification_id
-    total = (await conn.execute(select(func.count()).select_from(dl).where(of))).scalar_one()
-    free = select(dl.c.id).where(of, dl.c.state == "pending", dl.c.attempts == 0).with_for_update(skip_locked=True)
-    return len((await conn.execute(free)).all()) == total
-
-
 def _ids(details) -> list[int]:
     found = details.get("outputs") if isinstance(details, dict) else None
     return [value for value in found or [] if isinstance(value, int)]
@@ -339,46 +163,37 @@ def _ids(details) -> list[int]:
 
 async def _rewrite(conn: AsyncConnection, notification_id: int, run, files: list) -> None:
     title, body = _text(run.kind, run.id, run.project, files)
-    n = tables.notifications
-    changed = update(n).values(
-        title=one_line(title),
-        body=runs.clip(body, runs.MAX_NOTICE_BODY_BYTES),
-        details={"outputs": [f.id for f in files]},
+    await repository.rewrite(
+        conn,
+        notification_id,
+        one_line(title),
+        runs.clip(body, runs.MAX_NOTICE_BODY_BYTES),
+        {"outputs": [f.id for f in files]},
     )
-    await conn.execute(changed.where(n.c.id == notification_id))
-
-
-async def _run(conn: AsyncConnection, run_id: int):
-    r, p = tables.runs, tables.projects
-    query = select(r.c.id, r.c.kind, r.c.project_id, r.c.dispatched_by, p.c.name.label("project")).join_from(
-        r, p, p.c.id == r.c.project_id
-    )
-    return (await conn.execute(query.where(r.c.id == run_id))).one_or_none()
 
 
 async def _told(conn: AsyncConnection, run) -> set[int]:
     """The outputs a notice of ``run``'s files to its owner names already: a file sent again with a caption, say, is
     not told twice."""
-    n = tables.notifications
-    query = select(n.c.details).where(
-        n.c.run_id == run.id, n.c.user_id == run.dispatched_by, n.c.notice_kind == runs.OUTPUT_NOTICE
-    )
-    return {output_id for details in (await conn.execute(query)).scalars() for output_id in _ids(details)}
+    return {
+        output_id
+        for details in await repository.told_details(conn, run.id, run.dispatched_by)
+        for output_id in _ids(details)
+    }
 
 
 async def outputs_recorded(conn: AsyncConnection, run_id: int, output_ids: list[int]) -> int | None:
     """Tell the owner of run ``run_id``, whose row the caller holds, of its outputs ``output_ids`` just recorded or
     changed (see the module); the notification's id, or None when nothing is sent."""
-    run = await _run(conn, run_id)
+    run = await repository.run(conn, run_id)
     if run is None or run.kind == "chat" or await muted(conn, run.dispatched_by, runs.OUTPUT_NOTICE):
         return None
-    files = await _files(conn, run_id, [i for i in output_ids if i not in await _told(conn, run)])
+    files = await repository.files(conn, run_id, [i for i in output_ids if i not in await _told(conn, run)])
     if not files:
         return None
-    mine = _untried(run_id).where(tables.notifications.c.user_id == run.dispatched_by).limit(1)
-    found = (await conn.execute(mine)).one_or_none()
-    if found is not None and await _held(conn, found.id):  # else the job's pass is sending it: a new notice
-        await _rewrite(conn, found.id, run, await _files(conn, run_id, [*_ids(found.details), *output_ids]))
+    found = await repository.untried_of(conn, run_id, run.dispatched_by)
+    if found is not None and await repository.held(conn, found.id):  # else the job's pass is sending it: a new notice
+        await _rewrite(conn, found.id, run, await repository.files(conn, run_id, [*_ids(found.details), *output_ids]))
         return found.id
     title, body = _text(run.kind, run_id, run.project, files)
     notification_id = await notify(
@@ -393,8 +208,7 @@ async def outputs_recorded(conn: AsyncConnection, run_id: int, output_ids: list[
         details={"outputs": [row.id for row in files]},
         link=run_link(run.project, run_id),
     )
-    dl = tables.notification_deliveries
-    await conn.execute(update(dl).values(next_at=func.now() + GATHER).where(dl.c.notification_id == notification_id))
+    await repository.gather(conn, notification_id, GATHER)
     return notification_id
 
 
@@ -403,35 +217,30 @@ async def withdraw(conn: AsyncConnection, run_id: int, output_ids: list[int]) ->
     that no channel has tried yet; a notice left with none goes, its deliveries with it."""
     if not output_ids:
         return
-    run = await _run(conn, run_id)
+    run = await repository.run(conn, run_id)
     if run is None:
         return
-    for found in (await conn.execute(_untried(run_id))).all():
+    for found in await repository.untried(conn, run_id):
         held = _ids(found.details)
-        if not set(held) & set(output_ids) or not await _held(conn, found.id):
+        if not set(held) & set(output_ids) or not await repository.held(conn, found.id):
             continue
-        files = await _files(conn, run_id, held)
+        files = await repository.files(conn, run_id, held)
         if files:
             await _rewrite(conn, found.id, run, files)
         else:
-            await conn.execute(delete(tables.notifications).where(tables.notifications.c.id == found.id))
+            await repository.drop(conn, found.id)
 
 
 # What a channel may send of a notification's files
 
 
-def _channel_files(notification: Outgoing):
-    """The query of the files of ``notification`` a channel may send, or None when it carries none."""
-    o, k = tables.run_outputs, tables.run_output_links
-    shown = select(o.c.id, o.c.name, o.c.media_type, o.c.size, o.c.sha256, o.c.caption).where(
-        o.c.source != outputs.TOOL
-    )
+async def _channel_files(conn: AsyncConnection, notification: Outgoing) -> list | None:
+    """The files of ``notification`` a channel may send, oldest first, or None when it carries none."""
     if notification.kind == "decision" and notification.decision_id is not None:
-        carried = exists().where(k.c.output_id == o.c.id, k.c.decision_id == notification.decision_id)
-        return shown.where(carried)
+        return await repository.decision_files(conn, notification.decision_id)
     if notification.notice_kind == runs.OUTPUT_NOTICE and notification.run_id is not None:
         ids = _ids(notification.details)
-        return shown.where(o.c.run_id == notification.run_id, one_of(o.c.id, ids)) if ids else None
+        return await repository.run_files(conn, notification.run_id, ids) if ids else None
     return None
 
 
@@ -447,10 +256,9 @@ async def channel_outputs(conn: AsyncConnection, notification: Outgoing) -> tupl
     are) for a decision or a notice of a run's files, or None for any other notification. A file is its id, name,
     media type, viewer, size, caption and ``url``: a presigned GET of its bytes for GET_TTL, None when the job's pass
     has no blob store. No image taken out of a tool's result is among them."""
-    query = _channel_files(notification)
-    if query is None:
+    rows = await _channel_files(conn, notification)
+    if rows is None:
         return None
-    rows = (await conn.execute(query.order_by(tables.run_outputs.c.id))).all()
     files = [
         {
             "id": row.id,
@@ -464,15 +272,3 @@ async def channel_outputs(conn: AsyncConnection, notification: Outgoing) -> tupl
         for row in rows[:CHANNEL_OUTPUTS]
     ]
     return files, len(rows)
-
-
-__all__ = [
-    "CHANNEL_OUTPUTS",
-    "NotificationSettings",
-    "NotificationSettingsIn",
-    "channel_outputs",
-    "muted",
-    "outputs_recorded",
-    "router",
-    "withdraw",
-]

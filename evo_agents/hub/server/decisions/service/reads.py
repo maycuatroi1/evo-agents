@@ -21,7 +21,7 @@ from evo_agents.hub.server.decisions import repository
 from evo_agents.hub.server.decisions.models import Decision, DecisionList, DecisionOption, WakeOn
 from evo_agents.hub.server.decisions.service import channels
 from evo_agents.hub.server.member_channels import effective_label
-from evo_agents.hub.server.output_views import by_decision as outputs_by_decision
+from evo_agents.hub.server.outputs.service.views import by_decision as outputs_by_decision
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
 from evo_agents.hub.server.security import Principal

@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator, model_validat
 
 from evo_agents.hub import approval_heads, credential_requests, decision_asks, outputs, runs
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
-from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.outputs.models import RunOutput
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
 from evo_agents.hub.server.waiting_on import WaitingOn
 

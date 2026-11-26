@@ -47,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, tables
-from evo_agents.hub.server import attachment_store
+from evo_agents.hub.server.attachments import repository as attachment_store
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.chat_agents import agent_run
 from evo_agents.hub.server.chat_prompts import run_clearers

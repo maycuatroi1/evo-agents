@@ -32,10 +32,9 @@ from dataclasses import dataclass, replace
 from typing import cast
 
 from fastapi import HTTPException
-from sqlalchemy import and_, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, runs, tables
+from evo_agents.hub import chats, runs
 from evo_agents.hub.server import audit, system_traces
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access
 from evo_agents.hub.server.chat_direct import direct_chat
@@ -45,74 +44,40 @@ from evo_agents.hub.server.chat_store import add_member, insert_message, member_
 from evo_agents.hub.server.chat_views import person_author
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.work_chats import repository
+from evo_agents.hub.server.work_chats.models import STEP_THREADS_SCAN, TITLE, TITLE_WORDS, Handed, Trace
+from evo_agents.hub.server.work_chats.repository import trace_of_chat, trace_of_run
 
 log = logging.getLogger(__name__)
 
-TITLE = "Work: {what}"
-TITLE_WORDS = 60  # characters of the trace's first message a work chat's title shows
-STEP_THREADS_SCAN = 500  # the latest runs of an agent in a work chat an ask of a plan step looks through for its thread
-
 
 @dataclass(frozen=True)
-class Trace:
-    """A trace as its work chat needs it: its system and project, the chat, message and thread root of the message
-    that opened it, who wrote that message, the system's coordinator (its entry agent) and the work chat."""
+class Asker:
+    """Who hands work over: the agent and run that write the question, the person at the origin, the credential
+    kind and the hop of the work, and the priority of the run it asks for (runs.PRIORITIES)."""
 
-    id: int
-    system_id: int | None
-    project_id: int
-    chat_id: int | None
-    message_id: int | None
-    root_id: int | None
-    opened_by: int | None
-    coordinator_id: int | None
-    work_chat_id: int | None
+    profile: Profile
+    run_id: int
+    origin: Principal
+    via: str
+    hop: int
+    priority: str = runs.DEFAULT_PRIORITY
 
+    @property
+    def author(self) -> str:
+        return f"@{self.profile.handle}"
 
-@dataclass(frozen=True)
-class Handed:
-    """A hand-off: the run the work went to and the question's message (None and why none), and the thread it is in."""
-
-    child: int | None
-    message_id: int | None
-    why: str | None
-    place: tuple[int, int] | None = None
-
-
-def _trace_query():
-    t, s, m = tables.system_traces, tables.agent_systems, tables.chat_messages
-    root = func.coalesce(m.c.thread_root_id, m.c.id).label("root_id")
-    return select(
-        t.c.id,
-        t.c.system_id,
-        t.c.project_id,
-        t.c.chat_id,
-        t.c.message_id,
-        root,
-        t.c.opened_by,
-        s.c.entry_profile_id,
-        t.c.work_chat_id,
-    ).select_from(t.outerjoin(s, s.c.id == t.c.system_id).outerjoin(m, m.c.id == t.c.message_id))
-
-
-async def trace_of_run(conn: AsyncConnection, run_id: int) -> Trace | None:
-    """The trace run ``run_id`` is a span of; None for a run in none."""
-    s = tables.system_spans
-    span = select(s.c.trace_id).where(s.c.run_id == run_id, s.c.name == "invoke_agent").scalar_subquery()
-    row = (await conn.execute(_trace_query().where(tables.system_traces.c.id == span))).one_or_none()
-    return None if row is None else Trace(*row)
-
-
-async def trace_of_chat(conn: AsyncConnection, chat_id: int) -> Trace | None:
-    """The trace whose work chat chat ``chat_id`` is; None for any other chat."""
-    query = _trace_query().where(tables.system_traces.c.work_chat_id == chat_id)
-    row = (await conn.execute(query.limit(1))).one_or_none()
-    return None if row is None else Trace(*row)
+    def hand(self, chat: ChatAccess, message_id: int, root_id: int, target: Profile, text: str) -> Hand:
+        """The work of ``target`` it asks for with message ``message_id`` in the thread of ``root_id`` of ``chat``."""
+        origin = self.origin
+        hand = Hand(
+            chat, message_id, root_id, target, origin.user_id, origin.login, self.via, self.hop, self.author, text
+        )
+        return replace(hand, priority=self.priority)
 
 
 async def _person(conn: AsyncConnection, user_id: int) -> Principal:
-    u = tables.users
-    login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
+    login = await repository.login_of(conn, user_id)
     return Principal(user_id, login, False, cast(int, None), MACHINE, "")
 
 
@@ -120,19 +85,17 @@ async def _person(conn: AsyncConnection, user_id: int) -> Principal:
 
 
 async def _title(conn: AsyncConnection, trace: Trace) -> str:
-    m = tables.chat_messages
     body = None
     if trace.message_id is not None:
-        body = (await conn.execute(select(m.c.body).where(m.c.id == trace.message_id))).scalar_one_or_none()
+        body = await repository.body_of(conn, trace.message_id)
     words = " ".join((body or "").split())
     what = (words[:TITLE_WORDS] + "...") if len(words) > TITLE_WORDS else words or f"trace #{trace.id}"
     return TITLE.format(what=what)[: chats.MAX_TITLE_CHARS]
 
 
 async def _made(conn: AsyncConnection, trace: Trace, creator: Principal) -> int:
-    c = tables.chats
     values = {"title": await _title(conn, trace), "created_by": creator.user_id, "kind": chats.WORK}
-    chat_id = (await conn.execute(insert(c).values(**values).returning(c.c.id))).scalar_one()
+    chat_id = await repository.add_chat(conn, values)
     await add_member(conn, chat_id, user_id=creator.user_id, added_by=creator.user_id)
     await member_event(conn, chat_id, "member_added", person_author(creator.login), creator.login)
     await audit.record(
@@ -150,14 +113,13 @@ async def open_work(conn: AsyncConnection, trace: Trace, person: Principal) -> i
     """The work chat of ``trace``: made at its first hand-off, under the trace's advisory lock, its creator the person
     who opened the trace (else ``person``), with the coordinator in it and the trace's work card posted in its root thread
     (``work_cards``); its id."""
-    await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"work:{trace.id}", 0))))
-    t = tables.system_traces
-    found = (await conn.execute(select(t.c.work_chat_id).where(t.c.id == trace.id))).scalar_one()
+    await repository.lock_trace(conn, trace.id)
+    found = await repository.work_chat_of(conn, trace.id)
     if found is not None:
         return found
     creator = person if trace.opened_by is None else await _person(conn, trace.opened_by)
     chat_id = await _made(conn, trace, creator)
-    await conn.execute(update(t).values(work_chat_id=chat_id).where(t.c.id == trace.id))
+    await repository.set_work_chat(conn, trace.id, chat_id)
     coordinator = None if trace.coordinator_id is None else await by_id(conn, trace.coordinator_id)
     if coordinator is not None and coordinator.deleted_at is None:
         _, why = await put_in(conn, chat_id, coordinator)
@@ -224,31 +186,6 @@ async def placed(
 # Handing work over
 
 
-@dataclass(frozen=True)
-class Asker:
-    """Who hands work over: the agent and run that write the question, the person at the origin, the credential
-    kind and the hop of the work, and the priority of the run it asks for (runs.PRIORITIES)."""
-
-    profile: Profile
-    run_id: int
-    origin: Principal
-    via: str
-    hop: int
-    priority: str = runs.DEFAULT_PRIORITY
-
-    @property
-    def author(self) -> str:
-        return f"@{self.profile.handle}"
-
-    def hand(self, chat: ChatAccess, message_id: int, root_id: int, target: Profile, text: str) -> Hand:
-        """The work of ``target`` it asks for with message ``message_id`` in the thread of ``root_id`` of ``chat``."""
-        origin = self.origin
-        hand = Hand(
-            chat, message_id, root_id, target, origin.user_id, origin.login, self.via, self.hop, self.author, text
-        )
-        return replace(hand, priority=self.priority)
-
-
 async def _direct(conn: AsyncConnection, asker: Asker, target: Profile, text: str) -> Handed:
     """The question in the direct chat of the origin with ``target``, as an ask outside a system is."""
     chat_id, _ = await direct_chat(conn, asker.origin, target.handle)
@@ -267,19 +204,9 @@ async def agent_thread(
     """The thread of agent ``profile_id`` in work chat ``chat_id``: that of its latest run there, a thread of the
     Orchestrator left out; for an ask that names plan ``steps`` (``system_traces.ref_steps``), that of its latest run
     whose brief names one of them, so each step has a session of its own; None when it has none."""
-    r, m, o, b = tables.runs, tables.chat_messages, tables.orchestrator_threads, tables.agent_ask_briefs
-    root = func.coalesce(m.c.thread_root_id, m.c.id)
-    query = (
-        select(root, b.c.brief)
-        .join_from(r, m, m.c.id == r.c.chat_message_id)
-        .outerjoin(b, b.c.run_id == r.c.id)
-        .where(r.c.chat_id == chat_id, r.c.profile_id == profile_id, r.c.kind == "chat")
-        .where(~exists().where(and_(o.c.chat_id == chat_id, o.c.root_message_id == root)))
-        .order_by(r.c.id.desc())
-    )
     if not steps:
-        return (await conn.execute(query.limit(1))).scalar_one_or_none()
-    for found, brief in await conn.execute(query.limit(STEP_THREADS_SCAN)):
+        return await repository.latest_thread(conn, chat_id, profile_id)
+    for found, brief in await repository.threads(conn, chat_id, profile_id, STEP_THREADS_SCAN):
         if steps & system_traces.ref_steps(brief):
             return found
     return None
@@ -400,10 +327,7 @@ async def say(
     chat_id, root_id = await line_place(conn, run_id, own, there)
     message_id = await hub_reply(conn, chat_id, root_id, text)
     if repeats is not None:
-        m, c = tables.chat_messages, tables.chats
-        same = exists().where(m.c.id == repeats, m.c.chat_id == chat_id)
-        work = exists().where(c.c.id == chat_id, c.c.kind == chats.WORK)
-        await conn.execute(update(m).values(repeats_id=repeats).where(m.c.id == message_id, same, work))
+        await repository.mark_repeats(conn, message_id, chat_id, repeats)
     return message_id
 
 
@@ -440,9 +364,7 @@ async def main_line(conn: AsyncConnection, root: int | None) -> bool:
     thread of a copy of the coordinator's words."""
     if root is None:
         return True
-    m = tables.chat_messages
-    copied = (await conn.execute(select(m.c.copied_from_id).where(m.c.id == root))).scalar_one_or_none()
-    return copied is not None
+    return await repository.copied_from(conn, root) is not None
 
 
 async def to_coordinator(

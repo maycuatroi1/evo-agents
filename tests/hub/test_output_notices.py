@@ -24,8 +24,9 @@ from sqlalchemy import extract, func, select, update
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import core_plugin_api as hub_api
-from evo_agents.hub.server import notifications, output_notices
+from evo_agents.hub.server import notifications
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.outputs.service import notices as output_notices
 from tests.hub import live
 from tests.hub.live import sql
 from tests.hub.s3 import get_url

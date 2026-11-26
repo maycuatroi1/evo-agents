@@ -6,7 +6,7 @@ row.
   (``kg.tool_result``), through the agent sink.
 - ``chat_post``: a message of the agent in its thread or a chat it is in (``chat_agents.agent_message``), masked.
 - ``interactive_answer``: an HTML answer the chat shows inside the message that carries it, with the semantics, the
-  size limit, the CSP and the bridge of ``--interactive`` (``output_store.record_held``, then a message).
+  size limit, the CSP and the bridge of ``--interactive`` (``outputs.service.store.record_held``, then a message).
 - ``agent_ask``: ask an agent of another project, with the brief template, the friction and the trace budget of
   ``evo-agents worker agent ask`` (``agent_asks.ask_agent``); the run then parks until the answer wakes it.
 - ``agent_forward``: post the answer of a run it asked verbatim (``agent_asks.forward``).
@@ -52,7 +52,6 @@ from evo_agents.hub.server import (
     ops_actions,
     orchestrator,
     orchestrator_actions,
-    output_store,
     work_cards,
     work_status,
 )
@@ -61,7 +60,8 @@ from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.models import Written
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
-from evo_agents.hub.server.output_store import OutputIn
+from evo_agents.hub.server.outputs.models import OutputIn
+from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.runs.service.plan_runs import held_row
 from evo_agents.hub.server.security import WORKER
 

@@ -1,5 +1,5 @@
 """The outputs of a run: the files its agent made that the hub keeps for the people who read the run. Both sides use
-this module: the hub (``evo_agents.hub.server.run_outputs``, ``output_store`` and ``output_content``) and the machines
+this module: the hub (the package ``evo_agents.hub.server.outputs``: its routes, ``service.store`` and ``service.content``) and the machines
 that send outputs (a worker's run, a local session). Standard library only, as the client side runs on a core install.
 
 An output is one file of one run, from one of SOURCES: ``sent``, a file the agent sent on purpose (``evo-agents worker

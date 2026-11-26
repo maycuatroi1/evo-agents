@@ -1122,7 +1122,7 @@ the choice: `hub run plan` takes only what its options say.
 ### Work chats
 
 The first hand-off of a trace opens its work chat: one group chat of kind `work` (`chats.WORK`), where the agents the
-trace's work goes to answer, each in a thread of its own (`evo_agents/hub/server/work_chats.py`, migration 0234). A
+trace's work goes to answer, each in a thread of its own (`evo_agents/hub/server/work_chats/`, migration 0234). A
 hand-off is an agent's ask (Agents across projects), an escalation, or any other thread of the Orchestrator about a
 run of the trace (The Orchestrator). A person's mention, in a direct chat (Home), of an agent of a system that the
 chat does not have opens one too: the work goes to the entry agent, whose run opens the trace, and the message is

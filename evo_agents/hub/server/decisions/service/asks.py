@@ -19,7 +19,7 @@ from evo_agents.hub.server.decisions.models import Decision, DecisionAsk, Option
 from evo_agents.hub.server.decisions.service.answers import answer_by_hub, card_moved
 from evo_agents.hub.server.decisions.service.reads import decision_view
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
-from evo_agents.hub.server.output_store import link_decision
+from evo_agents.hub.server.outputs.service.store import link_decision
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import Principal

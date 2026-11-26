@@ -45,7 +45,6 @@ from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server import (
     agent_placement,
     agent_tasking,
-    attachment_store,
     autonomy_hold,
     gateway_accounts,
     pool_accounts,
@@ -54,12 +53,13 @@ from evo_agents.hub.server import (
     system_store,
     system_traces,
 )
+from evo_agents.hub.server.attachments import repository as attachment_store
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
 from evo_agents.hub.server.org_store import ended_refusal
-from evo_agents.hub.server.output_store import attach_leftovers, link_message
+from evo_agents.hub.server.outputs.service.store import attach_leftovers, link_message
 from evo_agents.hub.server.profile_store import Profile, by_id, version_rules
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.run_events import write_user_message
@@ -776,7 +776,7 @@ async def post_agent(
     await link_message(conn, run_id, message_id, output_ids or [])
     for user_id in dict.fromkeys(people):
         await notice_mention(conn, chat, user_id, message_id, body)
-    from evo_agents.hub.server.work_chats import copy_out  # it hands work through this module
+    from evo_agents.hub.server.work_chats.service import copy_out  # it hands work through this module
 
     await copy_out(conn, chat, profile, run_id, message_id, root_id or message_id, body)  # the coordinator's words
     return message_id, kept

@@ -405,7 +405,7 @@ before.
 
 ### The files of a run
 
-The hub sends `run_outputs` itself (`evo_agents/hub/server/output_notices.py`), in the transaction that records a
+The hub sends `run_outputs` itself (`evo_agents/hub/server/outputs/service/notices.py`), in the transaction that records a
 run's outputs, to the member who dispatched the run, for the files of source `sent` and `outputs`; an image taken out
 of a tool's result (source `tool`) never makes or joins one. It gathers a minute a run (`runs.OUTPUT_NOTICE_SECONDS`):
 
@@ -540,7 +540,8 @@ delivery, with the reason (not linked, turned off, linked after the decision was
 ## Routes
 
 `evo_agents/hub/server/decisions/` and `evo_agents/hub/server/notifications.py` hold them, with
-`output_notices.py` (the settings), `push.py` (push devices) and `today.py` (Today) in the same directory.
+`push.py` (push devices) and `today.py` (Today) in the same directory; `outputs/routes.py` holds the settings
+(`outputs/service/notices.py` sets them).
 
 For the worker holding a plan run (or, for `decisions`, an author run), with its `evw_` token and the protocol header
 (`docs/workers.md`); any other run, a run of one step, a review run and a judge run included, gets 404:

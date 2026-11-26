@@ -7,7 +7,7 @@ Agent types), granted ``runs:dispatch`` in the project (``plugin_api_access.gran
 - GET .../runs/{run}/outputs: the files its agent made that the hub keeps (``evo_agents.hub.outputs``), oldest first,
   ``source`` and ``after`` filtering them as a member's list does, each with the URL of its bytes below;
 - GET .../runs/{run}/outputs/{output}/content: the bytes of one, as a member's GET of them is answered
-  (``output_content.serve``: its media type, a Range, ETag and ``download=true``).
+  (``outputs.service.serving.serve``: its media type, a Range, ETag and ``download=true``).
 
 A run is one of these when it is a task run in the project of an agent type the plugin contributes, each attempt of a
 task by its own id (the ``run_id`` of task.result); any other run is a 404, as is an output of another run.
@@ -24,12 +24,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import outputs, tables, task_runs
-from evo_agents.hub.server import output_views
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.output_content import CONTENT, Download, IfNoneMatch, RangeHeader, serve
-from evo_agents.hub.server.output_store import usage
-from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.outputs.models import CONTENT, Download, IfNoneMatch, RangeHeader, RunOutput, view
+from evo_agents.hub.server.outputs.repository.views import columns
+from evo_agents.hub.server.outputs.service.serving import serve
+from evo_agents.hub.server.outputs.service.store import usage
 from evo_agents.hub.server.plugin_api_access import granted
 from evo_agents.hub.server.runs.models import MAX_ID, RunId
 from evo_agents.hub.server.task_dispatch import Task, plugin_of_request, task_select, task_view
@@ -103,12 +103,12 @@ async def run_outputs(
     o = tables.run_outputs
     async with request.app.state.engine.begin() as conn:
         found = await _own_run(request, conn, project, run_id)
-        query = select(*output_views.columns()).where(o.c.run_id == run_id, o.c.id > after)
+        query = select(*columns()).where(o.c.run_id == run_id, o.c.id > after)
         if source:
             query = query.where(o.c.source.in_(list(dict.fromkeys(source))))
         rows = (await conn.execute(query.order_by(o.c.id))).all()
         count, size = await usage(conn, run_id)
-    shown = [output_views.view(row, content_url(found.project, run_id, row.id)) for row in rows]
+    shown = [view(row, content_url(found.project, run_id, row.id)) for row in rows]
     return TaskRunOutputs(run_id=run_id, outputs=shown, count=count, bytes=size)
 
 
@@ -130,7 +130,7 @@ async def output_content(
     o = tables.run_outputs
     async with request.app.state.engine.begin() as conn:
         await _own_run(request, conn, project, run_id)
-        query = select(*output_views.columns()).where(o.c.id == output_id, o.c.run_id == run_id)
+        query = select(*columns()).where(o.c.id == output_id, o.c.run_id == run_id)
         row = (await conn.execute(query)).one_or_none()
     if row is None:
         raise HTTPException(404, f"run {run_id} has no output {output_id}: see GET .../runs/{run_id}/outputs")
