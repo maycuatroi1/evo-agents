@@ -56,7 +56,6 @@ from evo_agents.hub.server import (
     core_plugin_api,
     invites,
     post_merge,
-    probes,
     route_autonomy,
     run_access,
     run_access_rules,
@@ -71,6 +70,7 @@ from evo_agents.hub.server.chats.routes import events as chat_events
 from evo_agents.hub.server.goals import service as goals
 from evo_agents.hub.server.loop import breaker as loop_breaker
 from evo_agents.hub.server.opportunities import service as opportunities
+from evo_agents.hub.server.probes.service import probes
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.service import dispatch
