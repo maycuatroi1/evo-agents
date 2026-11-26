@@ -29,7 +29,7 @@ from evo_agents.hub.chats import chat_link as chats_link
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.merge_gate import GITLAB_STATE, MERGE_SHA
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
+from evo_agents.hub.server.autonomy.service.policies import effective_policy, newest, project_repos
 from evo_agents.hub.server.loop import backlog, baseline, covering
 from evo_agents.hub.server.loop.model import (
     ACTIVE,

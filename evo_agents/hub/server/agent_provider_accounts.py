@@ -31,7 +31,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, PROVIDER_KIND
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID
-from evo_agents.hub.server import audit, gateway_sync, route_autonomy
+from evo_agents.hub.server import audit, gateway_sync
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_accounts import (
     MAX_ACCOUNTS_PER_AGENT,
@@ -47,6 +47,7 @@ from evo_agents.hub.server.agent_accounts import (
     retire_accounts,
 )
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.provider_quota import ProviderQuota, refresh_for

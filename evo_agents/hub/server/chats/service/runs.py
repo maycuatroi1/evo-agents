@@ -44,15 +44,15 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import (
     agent_placement,
     agent_tasking,
-    autonomy_hold,
     gateway_accounts,
     pool_accounts,
     run_access_rules,
-    run_autonomy,
     system_store,
     system_traces,
 )
 from evo_agents.hub.server.attachments import repository as attachment_store
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import ChatRun, Hand
 from evo_agents.hub.server.chats.repository import runs as store

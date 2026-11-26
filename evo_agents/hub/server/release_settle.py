@@ -36,7 +36,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import releases, tables
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import autonomy_gates, pulls
+from evo_agents.hub.server import pulls
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.release_cycles import cycle_of, go_on, held_by, stop_cycle

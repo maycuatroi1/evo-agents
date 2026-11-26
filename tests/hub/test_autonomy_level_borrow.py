@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from evo_agents.hub import autonomy_levels, tables
 from evo_agents.hub.autonomy_levels import CREDENTIAL_SHARE, Source
-from evo_agents.hub.server import run_autonomy
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from tests.hub.live import sql
 from tests.hub.test_autonomy_level_runs import daemon, on_db, pref, snapshot_of, user_id
 from tests.hub.test_runs import (  # noqa: F401 (client and hub are fixtures)

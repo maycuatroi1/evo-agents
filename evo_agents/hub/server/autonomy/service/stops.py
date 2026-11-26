@@ -29,9 +29,10 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import org, runs, tables
-from evo_agents.hub.server import audit, autonomy_store, lease_ending, org_store
-from evo_agents.hub.server.autonomy_hold import LOGIN, UNIT, scope_name
-from evo_agents.hub.server.autonomy_page_models import StopPreview
+from evo_agents.hub.server import audit, lease_ending, org_store
+from evo_agents.hub.server.autonomy.models.page import StopPreview
+from evo_agents.hub.server.autonomy.service import levels as autonomy_store
+from evo_agents.hub.server.autonomy.service.hold import LOGIN, UNIT, scope_name
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.org_models import LOGIN_PATTERN

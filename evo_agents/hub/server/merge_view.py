@@ -32,7 +32,7 @@ from evo_agents.hub.server import merge_breaker as breaker_rows
 from evo_agents.hub.server import merge_pass
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser

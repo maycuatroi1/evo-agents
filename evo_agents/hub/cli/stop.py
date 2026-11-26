@@ -20,7 +20,7 @@ import argparse
 from evo_agents.clikit import Arg, Result, Text, returns_object
 from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, call_object
 
-# The keys of the hub's answer (``evo_agents.hub.server.autonomy_stops.StopView``).
+# The keys of the hub's answer (``evo_agents.hub.server.autonomy.service.stops.StopView``).
 STOP_KEYS = (
     "id",
     "scope",

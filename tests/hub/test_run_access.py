@@ -50,14 +50,10 @@ from evo_agents.hub.credentials import (
     env_name_refusal,
 )
 from evo_agents.hub.server import (
-    autonomy_policies,
-    autonomy_stops,
-    autonomy_store,
     core_plugin_api,
     invites,
     post_merge,
     probes,
-    route_autonomy,
     run_access,
     run_access_rules,
     run_events,
@@ -65,6 +61,10 @@ from evo_agents.hub.server import (
     worker_shares,
 )
 from evo_agents.hub.server import org as org_routes
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.autonomy.service import levels as autonomy_store
+from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
+from evo_agents.hub.server.autonomy.service import stops as autonomy_stops
 from evo_agents.hub.server.canvas import routes as canvas_routes
 from evo_agents.hub.server.canvas.models import content as canvas_content
 from evo_agents.hub.server.chats.routes import events as chat_events

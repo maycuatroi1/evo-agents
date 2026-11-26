@@ -1,4 +1,4 @@
-"""The shapes the web reads for autonomy (``evo_agents.hub.server.autonomy_page``, plan autonomy-levels, step 7): a
+"""The shapes the web reads for autonomy (``evo_agents.hub.server.autonomy.service.page``, plan autonomy-levels, step 7): a
 person's own settings page, the effective mode of each class of every seat of the org chart with the stops that hold,
 and what a stop would cancel before it is written. No CLI prints them."""
 
@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.server.autonomy_models import Mode
+from evo_agents.hub.server.autonomy.models.levels import Mode
 from evo_agents.hub.server.org_models import CLASSES_FIELD, Level
 
 FIGURE_DAYS = 30

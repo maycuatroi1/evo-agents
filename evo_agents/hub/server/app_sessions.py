@@ -41,8 +41,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.server import audit, org_store, route_autonomy
+from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.auth import NO_STORE, SignedIn
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.sealing import Sealer, Unsealable, auth_app_aad
 from evo_agents.hub.server.security import APP, WEB, WWW_AUTHENTICATE, AdminUser, admin_login, issue_token

@@ -1,4 +1,4 @@
-"""The shapes of the autonomy routes (``evo_agents.hub.server.autonomy_routes``, plan autonomy-levels): the effective
+"""The shapes of the autonomy routes (``evo_agents.hub.server.autonomy.routes.levels``, plan autonomy-levels): the effective
 autonomy GET /v1/autonomy answers, whose keys are those `evo-agents hub autonomy show --json` prints (criterion a3),
 a person's own preference PUT /v1/autonomy/prefs writes (criterion a2), and the run reach of a person that GET and PUT
 /v1/autonomy/run-reach read and write (``run_access_rules.REACH_GROUPS``)."""

@@ -1,5 +1,5 @@
 """Cron jobs of a project (``docs/hub.md``, Cron jobs; plan hub-cron-jobs, criterion a1): ``evo_agents.hub.cron``, the
-routes of ``evo_agents.hub.server.cron_jobs`` and ``evo-agents hub cron``.
+routes of ``evo_agents.hub.server.cron.service.jobs`` and ``evo-agents hub cron``.
 
 Without a database: the helper validates five fields in an IANA zone, refuses aliases, crons that never fire and
 crons finer than the limit of their kind, and finds the next fire in the job's zone; ``hub cron set`` merges the flags
@@ -273,7 +273,7 @@ def test_role_an_admin_pauses_runs_and_deletes_another_persons_job_but_does_not_
     assert client.get(path(hub, "standup"), headers=hub["owner"]).status_code == 404
 
 
-# Firing (``evo_agents.hub.server.cron_fire``; criteria a2, a3, a4 and a6)
+# Firing (``evo_agents.hub.server.cron.service.fire``; criteria a2, a3, a4 and a6)
 
 DAY = datetime(2026, 11, 10, tzinfo=UTC)
 
@@ -286,7 +286,7 @@ def fired(client, now: datetime, times: int = 1) -> list[dict]:
     """``times`` passes of the cron job, run together, at ``now``; what each counted."""
     import asyncio
 
-    from evo_agents.hub.server.cron_fire import cron_pass
+    from evo_agents.hub.server.cron.service.fire import cron_pass
 
     async def passes() -> list[dict]:
         engine = client.app.state.engine
@@ -536,7 +536,7 @@ def test_agent_job_in_a_chat_the_agent_is_not_in_is_refused_with_the_reason(clie
 def test_agent_job_of_an_owner_whose_seat_ended_pauses_and_tells_them(client, hub):
     job = made(client, hub, "standup", {**agent_job(), "cron": "0 9 * * *", "timezone": "UTC"}, at(8))
     with pytest.MonkeyPatch.context() as patch:
-        from evo_agents.hub.server import cron_fire
+        from evo_agents.hub.server.cron.service import fire as cron_fire
 
         async def ended(conn, user_id, login, *, what, lock=False):
             return f"{login}'s seat ended on 2026-11-01: {what} cannot start"

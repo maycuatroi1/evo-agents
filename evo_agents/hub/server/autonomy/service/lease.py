@@ -26,7 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import account_providers, merge_gate, profiles
 from evo_agents.hub.autonomy_levels import ACTING, DENY, TEST_SECRETS, Choice, refusal
 from evo_agents.hub.credentials import GITHUB_READ_PERMISSIONS, TEST_ENVIRONMENT, github_repo
-from evo_agents.hub.server import audit, autonomy_ledger, run_autonomy
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.forge import forge_token
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher

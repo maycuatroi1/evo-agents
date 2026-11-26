@@ -19,8 +19,10 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, Request
 
 from evo_agents.hub.autonomy_levels import ACTING, ASK, refusal
-from evo_agents.hub.server import audit, autonomy_ledger, run_autonomy
-from evo_agents.hub.server.autonomy_ledger import ALLOWED, REFUSED
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.autonomy.service.ledger import ALLOWED, REFUSED
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 READS = ("GET", "HEAD", "OPTIONS")

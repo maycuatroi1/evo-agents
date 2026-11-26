@@ -27,8 +27,9 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import system_spec
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, route_autonomy, system_store
+from evo_agents.hub.server import audit, system_store
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser

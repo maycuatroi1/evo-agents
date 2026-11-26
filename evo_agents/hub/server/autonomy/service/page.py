@@ -22,8 +22,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy_card, autonomy_levels, org, post_merge, tables
-from evo_agents.hub.server import audit, autonomy_hold, autonomy_ledger
-from evo_agents.hub.server.autonomy_page_models import (
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.models.page import (
     FIGURE_DAYS,
     AutonomySettings,
     ClassFigures,
@@ -33,7 +33,9 @@ from evo_agents.hub.server.autonomy_page_models import (
     SeatClasses,
     SettingsClass,
 )
-from evo_agents.hub.server.autonomy_store import newest_pref
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service.levels import newest_pref
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_store import load, today
 from evo_agents.hub.server.security import CurrentUser, Principal

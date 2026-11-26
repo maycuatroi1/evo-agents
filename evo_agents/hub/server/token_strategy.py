@@ -287,7 +287,9 @@ async def _routing_of(conn: AsyncConnection, row) -> dict | None:
         return None
     if model_router.pinned_by_profile(profiles.allowed(_permissions(row), "model")):
         return None
-    from evo_agents.hub.server.autonomy_policies import effective_policy  # it imports the Loop, which reads runs
+    from evo_agents.hub.server.autonomy.service.policies import (
+        effective_policy,  # it imports the Loop, which reads runs
+    )
 
     return model_router.routing_section(await effective_policy(conn, row.project_id))
 
@@ -410,7 +412,7 @@ async def recommend(conn: AsyncConnection, project_id: int, owner_id: int, plan:
         return {"difficulty": None, "recommended_model": None, "routing_reason": None}
     rating = model_router.rate_step(step, plan)
     level = rating.difficulty or model_router.FALLBACK  # the rules rate every step
-    from evo_agents.hub.server.autonomy_policies import effective_policy
+    from evo_agents.hub.server.autonomy.service.policies import effective_policy
 
     policy = await effective_policy(conn, project_id)
     routing = model_router.routing_section({"routing": {**policy.get("routing", {}), "enabled": True}})

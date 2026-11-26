@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, goals, opportunities, problems, runs, tables, task_runs
 from evo_agents.hub.autonomy import AUTO, REPOS
-from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.loop.model import ItemView
 from evo_agents.hub.tables_srs import code_key
 

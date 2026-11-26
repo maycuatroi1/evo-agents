@@ -4,7 +4,7 @@ An approval of a merge holds for one head of the pull or merge request, the comm
 (``scope_of``) of the files the request touches, the migrations among them, and the lines of its description that say
 needs-you. Two decisions take one: a decision of category merge an agent asks naming its pull request (``evo-agents
 worker ask --category merge --pull N``: the worker reads the head and the scope from GitHub), and a decision the gate
-of autonomy asks for the key ``merge ...`` (``server.autonomy_gates``), the head and scope the hub read. The decision
+of autonomy asks for the key ``merge ...`` (``server.autonomy.service.gates``), the head and scope the hub read. The decision
 keeps it in its column ``approval`` (schema 0184): ``{"pull", "head", "scope"}``.
 
 A push that moves the head, or one that changes what the request touches, leaves the approval behind: it no longer

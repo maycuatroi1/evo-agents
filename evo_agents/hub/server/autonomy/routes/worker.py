@@ -28,7 +28,10 @@ from sqlalchemy import select
 from evo_agents.hub import approval_heads, tables
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ACTING, ASK, NOTIFY
-from evo_agents.hub.server import audit, autonomy_gates, autonomy_ledger, run_autonomy
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.run_state import write_event

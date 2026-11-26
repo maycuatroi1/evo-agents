@@ -31,8 +31,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.autonomy_levels import Choice
-from evo_agents.hub.server import audit, autonomy_ledger, lease_autonomy, run_autonomy
-from evo_agents.hub.server.autonomy_ledger import ALLOWED
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import lease as lease_autonomy
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.autonomy.service.ledger import ALLOWED
 from evo_agents.hub.server.secrets import audit_target
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.worker_placement import bound_on

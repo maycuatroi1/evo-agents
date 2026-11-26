@@ -19,8 +19,8 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy, autonomy_levels, org, tables
-from evo_agents.hub.server import audit, autonomy_policies, run_access_rules
-from evo_agents.hub.server.autonomy_models import (
+from evo_agents.hub.server import audit, run_access_rules
+from evo_agents.hub.server.autonomy.models.levels import (
     AutonomyClass,
     AutonomyView,
     PrefSet,
@@ -29,6 +29,7 @@ from evo_agents.hub.server.autonomy_models import (
     RunReachSet,
     RunReachWritten,
 )
+from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
 from evo_agents.hub.server.org_store import load, lock, profile_by_handle, today, user_by_login
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal

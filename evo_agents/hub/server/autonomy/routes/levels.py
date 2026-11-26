@@ -19,8 +19,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
-from evo_agents.hub.server import autonomy_store, route_autonomy
-from evo_agents.hub.server.autonomy_models import (
+from evo_agents.hub.server.autonomy.models.levels import (
     AutonomyView,
     PrefSet,
     PrefWritten,
@@ -28,6 +27,8 @@ from evo_agents.hub.server.autonomy_models import (
     RunReachSet,
     RunReachWritten,
 )
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.autonomy.service import levels as autonomy_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_models import HANDLE_PATTERN, LOGIN_PATTERN
 from evo_agents.hub.server.security import CurrentUser

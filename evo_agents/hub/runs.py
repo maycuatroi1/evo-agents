@@ -474,7 +474,7 @@ NOTICE_KINDS = (
     "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops_threads``)
     "ops_paused",  # two ops runs in a row failed of their agent, which paused the system's ops (same)
     "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
-    "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron_fire``)
+    "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron.service.fire``)
     "run_admin_action",  # an admin of the project acted on a run the member dispatched (``runs.service.admin_acts``)
     "kg_build_halted",  # a project's kg builds kept killing their worker, so none is queued again (``kg_build``)
 )

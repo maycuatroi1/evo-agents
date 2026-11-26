@@ -88,7 +88,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.cron_jobs``, every minute, one pass at a time: each cron job of a project not archived that is due fires once
   per scheduled minute as its owner: a message to an agent in a new thread, a plan run or a command run; a fire whose
   earlier run is still active is busy, minutes missed are recorded, and a job whose owner lost their role or seat, or
-  whose runs failed three times in a row, pauses with a notice (``evo_agents.hub.server.cron_fire``). The pass is the
+  whose runs failed three times in a row, pauses with a notice (``evo_agents.hub.server.cron.service.fire``). The pass is the
   server's, handed down by the ``hub worker`` command (``HubContext.cron_pass``).
 - ``hub.loop_ticks``, every 5 minutes: a ``hub.loop_tick`` of each project whose Loop is on, queued under the
   project's Loop lock (``evo_agents.hub.loop_jobs``); ``hub.loop_tick`` runs one tick of a project's Loop, one at a
@@ -233,7 +233,7 @@ class HubContext:
     # the server's turn of a chat run on the hub runtime (evo_agents.hub.server.hub_runtime.take_turn), handed down the
     # same way; None takes no turn
     hub_turn: Callable[..., Awaitable[dict]] | None = None
-    # the server's pass over the cron jobs of projects (evo_agents.hub.server.cron_fire.cron_pass), handed down the
+    # the server's pass over the cron jobs of projects (evo_agents.hub.server.cron.service.fire.cron_pass), handed down the
     # same way; None fires no cron job
     cron_pass: Callable[[AsyncEngine], Awaitable[dict]] | None = None
 

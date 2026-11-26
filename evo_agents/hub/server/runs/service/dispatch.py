@@ -24,13 +24,13 @@ from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import (
     agent_placement,
     audit,
-    autonomy_hold,
     project_archive,
     run_access,
     run_access_rules,
-    run_autonomy,
     worker_placement,
 )
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.plugin_configs import check_run_layer

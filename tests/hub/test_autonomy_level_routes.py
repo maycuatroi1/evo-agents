@@ -1,4 +1,4 @@
-"""K8 and K12 at the routes (``evo_agents.hub.server.route_autonomy``), as criterion a6 of plan autonomy-levels names
+"""K8 and K12 at the routes (``evo_agents.hub.server.autonomy.service.guards``), as criterion a6 of plan autonomy-levels names
 them: a write to a route that keeps credentials (K8: secrets, accounts) or rules (K12: grants, policies, agent profiles,
 the org, autonomy), made with the credential of a run (``security.RunScope``, the agent of a run on /mcp), answers 403
 when the class is deny for the run's principal, and 403 telling the agent to ask its principal when it is ask; each

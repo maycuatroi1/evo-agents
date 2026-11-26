@@ -225,7 +225,7 @@ SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
 SYSTEM_DEFAULT = "system.default"  # an admin made it the project's default system (plan hub-steward)
 SYSTEM_OPS_PAUSE = "system.ops-pause"  # an admin paused its ops: closed batches open no thread
 SYSTEM_OPS_RESUME = "system.ops-resume"  # an admin resumed them
-# A project's cron jobs (evo_agents.hub.server.cron_jobs), in the project; the target is
+# A project's cron jobs (evo_agents.hub.server.cron.service.jobs), in the project; the target is
 # "<project> cron=<name> revision=<n>", never a prompt or a command line.
 CRON_CREATE = "cron.create"  # a writer of the project made a cron job, at revision 1
 CRON_UPDATE = "cron.update"  # its owner stored a new revision of it
@@ -358,7 +358,7 @@ SETTINGS_FEATURES = "settings.features"
 # An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.outputs):
 # "<project>/outputs tool_images=on|off".
 SETTINGS_OUTPUTS = "settings.outputs"
-# A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:
+# A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy.service.policies), in the project:
 # "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
 # approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
 POLICY_SET = "policy.set"
@@ -399,28 +399,28 @@ ORG_UNIT_ARCHIVE = "org.unit_archive"
 ORG_SEAT_ADD = "org.seat_add"
 ORG_SEAT_EDIT = "org.seat_edit"
 ORG_SEAT_END = "org.seat_end"
-# Autonomy levels belong to no project (evo_agents.hub.server.autonomy_store, .org_writes; plan autonomy-levels): a
+# Autonomy levels belong to no project (evo_agents.hub.server.autonomy.service.levels, .org_writes; plan autonomy-levels): a
 # ceiling revision of a unit or seat, "ceiling unit:<slug> level=A5->A1[ K5=ask ...][ environments=<e,...>]
 # [ workers=<w,...>] revision=<n>", and a revision of a person's own preference, "pref <login> level=A5->A2
 # [ K6=deny ...][ reset] revision=<n>"; never a ceiling's note.
 AUTONOMY_CEILING_SET = "autonomy.ceiling_set"
 AUTONOMY_PREF_SET = "autonomy.pref_set"
-# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy_gates,
+# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy.service.gates,
 # .lease_autonomy, .route_autonomy): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
 # act), "run:<id> <class> <act> decision:<id>" when it asked the principal, "run:<id> <class> <act>" when it acted and
 # told the principal; a route refused to a run's credential is "<class> <route> mode=<mode> source=<source> run:<id>".
 AUTONOMY_REFUSED = "autonomy.refused"
 AUTONOMY_ASKED = "autonomy.asked"
 AUTONOMY_NOTIFIED = "autonomy.notified"
-# A backup the agent of a run made before deleting data (evo_agents.hub.server.worker_autonomy, the floor S2), in the
+# A backup the agent of a run made before deleting data (evo_agents.hub.server.autonomy.routes.worker, the floor S2), in the
 # run's project, with the worker's owner as actor: "run:<id> <target> at=<location> made=<ISO time>".
 AUTONOMY_BACKUP = "autonomy.backup"
-# The ledger S1 of autonomy (evo_agents.hub.server.autonomy_ledger): every decision a gate of the hub made for a run,
+# The ledger S1 of autonomy (evo_agents.hub.server.autonomy.service.ledger): every decision a gate of the hub made for a run,
 # in the run's project, with the run's principal as actor, once for each distinct decision: "run:<id> principal=<login>
 # agent=<handle> <class> mode=<mode> result=<acted|asked|refused|allowed|granted|withheld> <act>", "-" for a principal
 # or an agent the run has none of.
 AUTONOMY_DECIDED = "autonomy.decided"
-# The stop S4 and its lift (evo_agents.hub.server.autonomy_stops), in no project, with who stopped or lifted as actor:
+# The stop S4 and its lift (evo_agents.hub.server.autonomy.service.stops), in no project, with who stopped or lifted as actor:
 # "stop:<id> <login:<login>|unit:<slug>|all> runs=<n cancelled or asked to stop> leases=<n ended>" and "stop:<id>
 # <login:<login>|unit:<slug>|all>"; never the reason.
 AUTONOMY_STOP = "autonomy.stop"

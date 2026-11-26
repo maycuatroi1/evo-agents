@@ -24,7 +24,7 @@ from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy_card, org, runs, tables
-from evo_agents.hub.server import run_autonomy
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 
 ESCALATE_AFTER = timedelta(hours=24)  # an intern's decision open this long goes to the leads of their unit too
 ESCALATE_BATCH = 500

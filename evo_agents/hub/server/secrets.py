@@ -76,7 +76,7 @@ from evo_agents.hub.credentials import (
     env_name_refusal,
     normalize_origin,
 )
-from evo_agents.hub.server import audit, route_autonomy
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.account_choice import clear_relogin
 from evo_agents.hub.server.account_oauth import (
     OAUTH_ENV_VAR,
@@ -87,6 +87,7 @@ from evo_agents.hub.server.account_oauth import (
 )
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models.placement import PoolName

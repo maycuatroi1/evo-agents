@@ -37,13 +37,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import system_context, system_spec, tables
 from evo_agents.hub.server import (
     agent_tasking,
-    route_autonomy,
     system_trace_stats,
     system_traces,
     work_observe,
     work_status,
 )
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener

@@ -1,6 +1,6 @@
 """The schedule of a cron job (``docs/hub.md``, Cron jobs): reading its five cron fields, checking its IANA time zone,
 how often it fires at most, and its next fire. The one helper of the hub for them: the routes of
-``evo_agents.hub.server.cron_jobs`` check a job with it and list its next fire, and the job that fires the jobs reads
+``evo_agents.hub.server.cron.service.jobs`` check a job with it and list its next fire, and the job that fires the jobs reads
 the minutes it fires at with it.
 
 A cron is the five fields minute, hour, day of month, month and day of week, read by croniter in the job's time zone:

@@ -1,4 +1,4 @@
-"""What the web's autonomy pages read (``evo_agents.hub.server.autonomy_page`` and the preview of
+"""What the web's autonomy pages read (``evo_agents.hub.server.autonomy.service.page`` and the preview of
 ``autonomy_stops``), plan autonomy-levels step 7: the caller's own settings with the ceiling over their preference,
 the classes it lowers, the stop that holds them and the 30-day figures; every seat's mode of each class with the
 stops that hold; and the count of runs a stop would cancel, read with the same rights as the stop."""
@@ -15,7 +15,7 @@ if not pg.DSN:
 from sqlalchemy import insert
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import autonomy_ledger
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
 from tests.hub.live import sql
 from tests.hub.test_autonomy_level_routing import COHORT, interns
 from tests.hub.test_autonomy_level_runs import org, pref, user_id

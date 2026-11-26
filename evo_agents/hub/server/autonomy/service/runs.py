@@ -92,7 +92,7 @@ async def _login(conn: AsyncConnection, user_id: int) -> str:
 
 async def _policies(conn: AsyncConnection, project_id: int, repos: list[str]) -> list[autonomy_levels.Source]:
     """Source 4 for each of ``repos`` the project lists; a repo it does not list has none."""
-    from evo_agents.hub.server.autonomy_policies import effective_policy
+    from evo_agents.hub.server.autonomy.service.policies import effective_policy
 
     if not repos:
         return []
@@ -125,7 +125,7 @@ async def reached(
 ) -> Reached:
     """The effective autonomy of ``user_id`` running the agent profile ``profile_id`` on ``repos`` of the project now,
     under the credentials ``shares`` lend it (source 6): the strictest over the repos, each under its project policy."""
-    from evo_agents.hub.server.autonomy_store import newest_pref
+    from evo_agents.hub.server.autonomy.service.levels import newest_pref
 
     login = await _login(conn, user_id)
     pref = await newest_pref(conn, user_id)

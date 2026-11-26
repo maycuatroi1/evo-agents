@@ -28,7 +28,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import agent_placement, run_autonomy, worker_placement
+from evo_agents.hub.server import agent_placement, worker_placement
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.plugin_configs import record_run_plugins
 from evo_agents.hub.server.run_state import RUNS_CHANNEL, move_run

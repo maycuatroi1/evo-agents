@@ -29,7 +29,8 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import diff_signs, judge
-from evo_agents.hub.server import audit, autonomy_gates
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.changes.repository import job as job_store
 from evo_agents.hub.server.changes.repository import repos as store
 from evo_agents.hub.server.changes.repository.repos import repos_of

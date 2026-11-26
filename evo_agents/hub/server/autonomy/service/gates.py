@@ -45,8 +45,10 @@ from evo_agents.hub.autonomy_levels import (
     Choice,
     refusal,
 )
-from evo_agents.hub.server import audit, autonomy_ledger, principals, run_autonomy
-from evo_agents.hub.server.autonomy_ledger import ACTED, ASKED, REFUSED
+from evo_agents.hub.server import audit, principals
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.autonomy.service.ledger import ACTED, ASKED, REFUSED
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 APPROVE, REFUSE = "approve", "refuse"

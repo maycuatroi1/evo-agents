@@ -56,8 +56,9 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
-from evo_agents.hub.server import audit, kg_scrub, org_store, route_autonomy
+from evo_agents.hub.server import audit, kg_scrub, org_store
 from evo_agents.hub.server.auth import GrantInfo
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.base.models import LOGIN_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
