@@ -1,5 +1,4 @@
-"""``evo-agents hub secret set|list|delete`` and ``hub account``: the owner's secrets on the hub, and their env secrets
-as accounts (``docs/credentials.md``).
+"""``evo-agents hub secret set|list|delete|bind|share|unshare``: the owner's secrets on the hub (``docs/credentials.md``).
 
 ``set`` writes a secret whole, value included (PUT /v1/secrets/{name}), creating it or replacing the one of that name.
 The value never comes from the command line, where ``ps`` and the shell's history would see it: it is read from stdin
@@ -16,87 +15,35 @@ project.
 
 ``list`` prints the caller's own secrets without their values (GET /v1/secrets), and ``delete`` deletes one (DELETE
 /v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``bind``, in
-``cli.secret.bindings``, binds one to other workers or pools without its value. ``hub run credentials``, in ``evo_agents.hub.cli.run``, lists
-the leases one run got of them.
+``cli.secret.bindings``, binds one to other workers or pools without its value, and ``share`` and ``unshare``, in
+``cli.secret.shares``, share one with other members. ``hub run credentials``, in ``evo_agents.hub.cli.run``, lists the
+leases one run got of them. ``hub account``, in ``cli.account``, sees the env secrets as accounts.
 
-``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
-variable. ``account list`` prints them and the provider accounts, never a value (GET /v1/accounts); ``account set``
-changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them back (PATCH
-/v1/accounts/{name}); a resume also ends a cooldown, save one that needs a new sign-in. ``account policy PROJECT`` prints the caller's policy for a project (GET
-/v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
-``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
-renew an account that ends within RENEW_WITHIN_DAYS days, or has ended.
-
-``account login NAME`` adds a Claude account, or renews the token of one: it runs ``claude setup-token`` unchanged on
-the member's machine (``evo_agents.hub.setup_token``), where the member approves in the browser, takes the token it
-prints off its screen, and writes it with PUT /v1/secrets/{name} as an env secret for CLAUDE_CODE_OAUTH_TOKEN, ending a
-year from today less a day unless ``--expires`` says otherwise. With ``--paste``, when stdin is not a terminal, or
-when the screen held no token, the token is read as ``secret set`` reads a value. An API key of the Anthropic Console
-is refused, pointing at ANTHROPIC_API_KEY. Renewing an account sends its projects and workers again unless a flag
-gives others; PUT keeps the id of the secret, so its weight, priority, pause, cooldown and runs stay. Every check that
-needs no token (the name, the day, the projects' writer role, the workers) comes before ``claude setup-token`` runs,
-so a token it makes is not lost to a refusal. Standard library only, like the rest of the client.
-
-``account oauth-login NAME`` does the same for an account of Claude's OAuth sign-in (``evo_agents.hub.claude_oauth``):
-the member approves on claude.ai, the command trades the code for an access token, a refresh token and the end of the
-access token, in memory alone, and writes them with PUT /v1/secrets/{name}: the access token as the value, the rest as
-``oauth``, which the hub seals with it. ``account list`` and ``show`` tell such an account by ``auth``: oauth, where an
-account of a pasted or ``claude setup-token`` token is token. Running it again for a NAME that exists replaces the
-tokens alone, as ``login`` does, with the same secret id.
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes) over the gateway
+``cli.secret.resources.Secrets``; :func:`secret_body` turns the options of ``set`` into the body to write, and
+``SECRET`` is their group. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
 import argparse
-import shutil
-import sys
-import webbrowser
-from datetime import UTC, datetime, timedelta
-from urllib.parse import quote
 
-from evo_agents.clikit import Legacy
-from evo_agents.hub import claude_oauth, setup_token
-from evo_agents.hub.access import has_role
-from evo_agents.hub.accounts import (
-    MAX_PRIORITY,
-    MAX_WEIGHT,
-    RENEW_WITHIN_DAYS,
-)
-from evo_agents.hub.cli.account.policy import register_policy
-from evo_agents.hub.cli.base import EXIT_FAILED, client_command, print_json, signed_in, table, when
-from evo_agents.hub.cli.provider_account import print_gateway, provider_text
-from evo_agents.hub.cli.secret import shares as cli_shares
+from evo_agents.clikit import Arg, Group, Result, Table, Text, returns_array
+from evo_agents.hub.cli.base import HubCommand, HubContext, when
 from evo_agents.hub.cli.secret.bindings import (
     BOTH,
+    SECRET_BIND,
     SECRET_COLUMNS,
     SECRET_KEYS,
-    add_pool_flag,
-    bound_to,
-    register_bind,
-    secret_path,
+    pool_arg,
     secret_row,
     target_text,
-    where_cell,
     where_text,
 )
+from evo_agents.hub.cli.secret.resources import Secrets
+from evo_agents.hub.cli.secret.shares import SECRET_SHARE, SECRET_UNSHARE
 from evo_agents.hub.cli.secret.values import Refused, check_name, check_value, expires_at, read_value
-from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.credentials import (
-    FORGE_KIND,
-    SECRET_ENVIRONMENTS,
-    SECRET_KINDS,
-    SECRET_NAME,
-    env_name_refusal,
-)
-from evo_agents.hub.curator import money
-
-EXIT_USAGE = 2
-MAX_BUDGET_USD = 1_000_000  # evo_agents.hub.server.accounts.MAX_BUDGET_USD
-
-
-def _usage_error(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
+from evo_agents.hub.credentials import FORGE_KIND, SECRET_ENVIRONMENTS, SECRET_KINDS, env_name_refusal
 
 
 def target(args) -> dict:
@@ -127,792 +74,138 @@ def target(args) -> dict:
     return {"url_prefix": args.url_prefix, **({"username": args.username} if args.username is not None else {})}
 
 
-def _workers_text(secret: dict) -> str:
+def workers_text(secret: dict) -> str:
     if secret["kind"] == FORGE_KIND:
         return "used by the hub alone, never leased to a run"
     return where_text(secret)
 
 
-@client_command
-def cmd_set(args) -> int:
-    try:
-        check_name(args.name)
-        body = {"kind": args.kind, **target(args), "projects": args.project or []}
-        if args.worker and args.pool:
-            raise Refused(BOTH)
-        if not args.project and args.kind == FORGE_KIND:
-            raise Refused("--kind forge needs --project: the hub drives the merge requests of its projects with it")
-        if not args.project and (args.worker or args.pool):
-            raise Refused(
-                "--worker and --pool need --project: a secret bound to no project is personal, and no run gets it"
-            )
-        body.update({key: given for key, given in (("workers", args.worker), ("pools", args.pool)) if given})
-        if args.expires is not None:
-            body["expires_at"] = expires_at(args.expires)
-    except Refused as exc:
-        return _usage_error(str(exc))
-    hub, _ = signed_in()  # before the value is asked for: not signed in costs no paste
-    try:
-        value = read_value(args.name)
-        check_value(args.kind, value)
-    except Refused as exc:
-        return _usage_error(str(exc))
-    written = hub.call("PUT", secret_path(args.name), {**body, "value": value})
-    verb = "Created" if written["created"] else "Replaced"
-    ends = f"; it ends {when(written['expires_at'])} UTC" if written["expires_at"] else ""
-    if written["projects"]:
-        where = f"for project(s) {', '.join(written['projects'])}, {_workers_text(written)}"
-    else:
-        where = "for you alone, bound to no project: no run gets it until it is bound to one"
-    print(
-        f"{verb} secret {written['name']} ({written['kind']}, {target_text(written)}) {where}{ends}. The hub keeps "
-        "the value sealed and never shows it again."
-    )
-    return 0
-
-
-@client_command
-def cmd_list(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("GET", "/v1/secrets")
-    if args.json:
-        print_json(found)
-        return 0
-    if not found:
-        print("You keep no secret on this hub; `evo-agents hub secret set` adds one.")
-        return 0
-    table(SECRET_COLUMNS, [secret_row(s) for s in found])
-    return 0
-
-
-@client_command
-def cmd_delete(args) -> int:
-    try:
-        check_name(args.name)
-    except Refused as exc:
-        return _usage_error(str(exc))
-    hub, _ = signed_in()
-    hub.call("DELETE", secret_path(args.name))
-    print(
-        f"Deleted secret {args.name}: its value and bindings are gone from the hub, and its leases still out are "
-        "revoked. Revoke it where it was made as well."
-    )
-    return 0
-
-
-def register_secrets(hsub) -> None:
-    secret = hsub.add_parser(
-        "secret", help="your secrets on the hub, which runs of your projects get as leases; values are never shown"
-    )
-    ssub = secret.add_subparsers(dest="secret_command", required=True)
-
-    put = ssub.add_parser(
-        "set",
-        help="create a secret, or replace it whole; the value comes from stdin, or is asked for without echo",
-    )
-    put.add_argument("name", metavar="NAME", help="1 to 64 of a-z, 0-9, '.', '_' and '-'")
-    put.add_argument(
-        "--kind",
-        required=True,
-        choices=SECRET_KINDS,
-        help="env: a variable of the agent's environment; git: what git's credential helper answers; forge: a GitLab "
-        "token the hub alone uses to merge the project's merge requests, never leased to a run",
-    )
-    put.add_argument("--env-var", metavar="VAR", help="kind env: the variable it sets, such as CLAUDE_CODE_OAUTH_TOKEN")
-    put.add_argument(
-        "--url-prefix",
-        metavar="URL",
-        help="kinds git and forge: the https prefix of the origins it answers for, such as "
-        "https://gitlab.example.org/group",
-    )
-    put.add_argument("--username", metavar="USER", help="kind git: the user git sends with the value (default oauth2)")
-    put.add_argument(
-        "--environment",
-        choices=SECRET_ENVIRONMENTS,
-        help="kind env: the environment it is for; a run whose principal's K7 is auto:test_secrets gets only the env "
-        "secrets labelled test",
-    )
-    put.add_argument(
-        "--project",
-        action="append",
-        metavar="PROJECT",
-        help="a project whose runs get it, on which you hold writer (admin for kind forge); repeat it for several; "
-        "left out, the secret is yours alone and no run gets it",
-    )
-    put.add_argument(
-        "--worker",
-        action="append",
-        metavar="NAME",
-        help="only runs on this worker of yours get it; repeat it for several (default: any worker of yours)",
-    )
-    add_pool_flag(put)
-    put.add_argument(
-        "--expires",
-        metavar="YYYY-MM-DD",
-        help="no run gets it from 00:00 UTC of this day on (default: no end; kind forge needs one)",
-    )
-    put.set_defaults(func=cmd_set)
-
-    listed = ssub.add_parser("list", help="your secrets: kind, target, projects, workers and dates, never the value")
-    json_option(listed, returns_array(*SECRET_KEYS, schema="Secret"))
-    listed.set_defaults(func=cmd_list)
-
-    delete = ssub.add_parser(
-        "delete", help="delete a secret: its value and bindings go, and its leases still out are revoked"
-    )
-    delete.add_argument("name", metavar="NAME")
-    delete.set_defaults(func=cmd_delete)
-    register_bind(ssub)
-    cli_shares.register_share_commands(ssub, "secret")
-
-
-# `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
-
-
-# The keys of an account in `hub account list --json` and `set|pause|resume --json` (`evo-agents hub contract print`).
-ACCOUNT_KEYS = (
-    "name",
-    "env_var",
-    "provider",
-    "category",
-    "auth",
-    "projects",
-    "workers",
-    "pools",
-    "weight",
-    "priority",
-    "paused_at",
-    "cooldown_until",
-    "cooldown_reason",
-    "last_leased_at",
-    "expires_at",
-    "state",
-    "last_usage",
-    "last_usage_at",
-    "weekly_budget_usd",
-    "weekly_reset_at",
-    "runs_24h",
-    "runs_7d",
-    "cost_24h_usd",
-    "cost_7d_usd",
-    "held_by",
-    "shares",
-    "cost_by_principal",
-    "gateway",
-)
-
-
-def _account_path(name: str) -> str:
-    return f"/v1/accounts/{quote(name, safe='')}"
-
-
-BOUNDS = {
-    "weight": (0, MAX_WEIGHT, "--weight"),
-    "priority": (0, MAX_PRIORITY, "--priority"),
-}
-
-
-def _out_of_bounds(given: dict) -> str | None:
-    """Why a number of ``given`` is not one the hub takes; None when each is."""
-    for key, value in given.items():
-        if key in BOUNDS and not BOUNDS[key][0] <= value <= BOUNDS[key][1]:
-            low, high, flag = BOUNDS[key]
-            return f"{flag} is a whole number from {low} to {high}, not {value}"
-    return None
-
-
-def _account_line(account: dict) -> str:
-    return (
-        f"Account {account['name']} ({account['env_var']}): {account['state']}, weight {account['weight']}, "
-        f"priority {account['priority']}."
-    )
-
-
-def _change_account(args, body: dict) -> int:
-    if not SECRET_NAME.fullmatch(args.name):
-        return _usage_error(f"{args.name!r} is not a secret's name")
-    hub, _ = signed_in()
-    account = hub.call("PATCH", _account_path(args.name), body)
-    if args.json:
-        print_json(account)
-    else:
-        print(_account_line(account))
-    return 0
-
-
-@client_command
-def cmd_account_list(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("GET", "/v1/accounts")
-    if args.json:
-        print_json(found)
-        return 0
-    if not found:
-        print("You keep no env secret on this hub; `evo-agents hub secret set --kind env` adds one.")
-        return 0
-    rows = [
-        (
-            a["name"],
-            a["env_var"],
-            provider_text(a),
-            "key" if a.get("gateway") else a["auth"],
-            a["state"],
-            a["weight"],
-            a["priority"],
-            when(a["cooldown_until"]),
-            _usage_text(a["last_usage"]),
-            f"{a['runs_24h']}/{a['runs_7d']}",
-            "-" if a["cost_7d_usd"] is None else money(a["cost_7d_usd"]),
-            " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
-            ", ".join(a["projects"]),
-            where_cell(a),
+def secret_body(args: argparse.Namespace) -> dict:
+    """The body of PUT /v1/secrets/{name} for ``secret set``, but its value; Refused for options that cannot make
+    one."""
+    check_name(args.name)
+    body = {"kind": args.kind, **target(args), "projects": args.project or []}
+    if args.worker and args.pool:
+        raise Refused(BOTH)
+    if not args.project and args.kind == FORGE_KIND:
+        raise Refused("--kind forge needs --project: the hub drives the merge requests of its projects with it")
+    if not args.project and (args.worker or args.pool):
+        raise Refused(
+            "--worker and --pool need --project: a secret bound to no project is personal, and no run gets it"
         )
-        for a in found
-    ]
-    header = (
-        "NAME",
-        "VARIABLE",
-        "PROVIDER",
-        "AUTH",
-        "STATE",
-        "WEIGHT",
-        "PRIORITY",
-        "COOLS UNTIL",
-        "USAGE",
-        "RUNS 24H/7D",
-        "COST 7D",
-    )
-    table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
-    now = datetime.now(UTC)
-    reminders = []
-    for a in found:
-        text, due = _expiry(a, now)
-        if due:
-            reminders.append(f"Account {a['name']}: expires {text}.")
-    if reminders:
-        print("\n" + "\n".join(reminders))
-    return 0
-
-
-def _renew_command(account: dict) -> str:
-    if account.get("gateway"):
-        return f"`evo-agents hub provider-account set {account['name']} --expires ...`"
-    if account["env_var"] == setup_token.ENV_VAR:
-        command = "oauth-login" if account.get("auth") == "oauth" else "login"
-        return f"`evo-agents hub account {command} {account['name']}`"
-    return f"`evo-agents hub secret set {account['name']} --kind env --env-var {account['env_var']} ...`"
-
-
-def _expiry(account: dict, now: datetime) -> tuple[str, bool]:
-    """When the account ends, as ``account show`` says it, and whether it is due for renewal: it ends within
-    RENEW_WITHIN_DAYS days, or has ended."""
-    if not account["expires_at"]:
-        return "never", False
-    until = f"{when(account['expires_at'])} UTC"
-    if account.get("auth") == "oauth":  # the end of its access token, which its refresh token replaces
-        return f"access token until {until}", False
-    left = datetime.fromisoformat(account["expires_at"]) - now
-    if left > timedelta(days=RENEW_WITHIN_DAYS):
-        return until, False
-    renew = f"renew it with {_renew_command(account)}"
-    if left <= timedelta(0):
-        return f"{until}, already past, so no run takes it: {renew}", True
-    days = f"in {left.days} day(s)" if left.days else "in less than a day"
-    return f"{until}, {days}: {renew}", True
-
-
-def _percent(share) -> str:
-    """A utilization the CLI gave, a fraction of the limit (0.85), as `` 85%``; above 1 is the limit, `` 100%``, as
-    the web reads it (docs/credentials.md, section "Accounts"); empty for none."""
-    if isinstance(share, bool) or not isinstance(share, int | float):
-        return ""
-    return f" {min(max(share, 0), 1) * 100:.0f}%"
-
-
-def _usage_text(usage: dict | None) -> str:
-    """The last usage a run's CLI reported, short: ``five_hour 85% (allowed_warning)``; ``-`` for none."""
-    if not usage:
-        return "-"
-    return f"{usage.get('rate_limit_type') or 'usage'}{_percent(usage.get('utilization'))} ({usage['status']})"
-
-
-def _windows_text(usage: dict | None) -> str:
-    """The windows of a last usage: ``five_hour 20%, seven_day 45% (resets 2026-11-23 00:00)``; empty for none."""
-    windows = usage.get("windows") if isinstance(usage, dict) else None
-    if not isinstance(windows, dict):
-        return ""
-    parts = []
-    for name, window in sorted(windows.items()):
-        if not isinstance(window, dict):
-            continue
-        resets = f" (resets {when(window['resets_at'])})" if window.get("resets_at") else ""
-        parts.append(f"{name}{_percent(window.get('utilization'))}{resets}")
-    return ", ".join(parts)
-
-
-def _state_text(account: dict) -> str:
-    state = account["state"]
-    if state == "cooling":
-        return f"cooling until {when(account['cooldown_until'])} UTC ({account['cooldown_reason'] or 'usage limit'})"
-    if state == "paused":
-        return f"paused since {when(account['paused_at'])} UTC"
-    if state == "expired":
-        return f"expired at {when(account['expires_at'])} UTC"
-    if state == "needs-relogin":
-        return f"needs a new sign-in: run `evo-agents hub account oauth-login {account['name']}`"
-    return "ready"
-
-
-@client_command
-def cmd_account_show(args) -> int:
-    if not SECRET_NAME.fullmatch(args.name):
-        return _usage_error(f"{args.name!r} is not a secret's name")
-    hub, _ = signed_in()
-    owner = getattr(args, "owner", None)
-    a = hub.call("GET", _account_path(args.name) + (f"?owner={quote(owner, safe='')}" if owner else ""))
-    if args.json:
-        print_json(a)
-    else:
-        _print_account(a)
-    return 0
-
-
-def _print_account(a: dict) -> None:
-    """An account as ``account show`` prints it."""
-    held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
-    usage = _usage_text(a["last_usage"])
-    reported = f", reported {when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
-    print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
-    print_gateway(a)
-    if a.get("auth") == "oauth":
-        print("  Signed in with OAuth: the hub keeps its tokens sealed; renew with `account oauth-login`.")
-    where = (
-        f"pools: {', '.join(a['pools'])}" if a.get("pools") else f"workers: {', '.join(a['workers']) or 'any of yours'}"
-    )
-    print(f"  Projects: {', '.join(a['projects']) or '-'}; {where}.")
-    print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
-    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {when(a['last_leased_at'])} UTC.")
-    print(f"  Last usage: {usage}{reported}.")
-    if windows := _windows_text(a["last_usage"]):
-        print(f"  Windows: {windows}.")
-    if a.get("weekly_budget_usd") is not None:
-        start = f", weeks from {when(a['weekly_reset_at'])} UTC" if a.get("weekly_reset_at") else ", weeks from Monday"
-        print(f"  Weekly budget: {money(a['weekly_budget_usd'])}{start}.")
-    if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
-        print(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
-    else:
-        print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
-        print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
-    print(f"  Held by: {held}.")
-    for row in a.get("cost_by_principal") or []:
-        print(f"  For {row['principal'] or '(gone)'}: {row['runs_month']} runs this month", end="")
-        print(f" ({money(row['cost_month_usd'])}), {row['runs_7d']} in 7 days ({money(row['cost_7d_usd'])}).")
-
-
-def _budget_body(args) -> dict:
-    """The weekly budget fields ``account set`` was given: a number, or null for --no-weekly-budget; ValueError for a
-    reset time that is no ISO 8601 instant."""
-    body: dict = {}
-    if args.no_weekly_budget:
-        body["weekly_budget_usd"] = None
-    elif args.weekly_budget_usd is not None:
-        body["weekly_budget_usd"] = args.weekly_budget_usd
-    if args.weekly_reset_at is not None:
-        moment = datetime.fromisoformat(args.weekly_reset_at.replace("Z", "+00:00"))
-        moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
-        body["weekly_reset_at"] = moment.astimezone(UTC).isoformat()
+    body.update({key: given for key, given in (("workers", args.worker), ("pools", args.pool)) if given})
+    if args.expires is not None:
+        body["expires_at"] = expires_at(args.expires)
     return body
 
 
-@client_command
-def cmd_account_set(args) -> int:
-    body = {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
-    if args.no_weekly_budget and args.weekly_budget_usd is not None:
-        return _usage_error("give --weekly-budget-usd or --no-weekly-budget, not both")
-    if args.weekly_budget_usd is not None and not 0 < args.weekly_budget_usd <= MAX_BUDGET_USD:
-        return _usage_error(f"--weekly-budget-usd is above 0 and at most {MAX_BUDGET_USD}")
-    try:
-        body |= _budget_body(args)
-    except ValueError:
-        return _usage_error("--weekly-reset-at is an ISO 8601 instant, such as 2026-11-16T00:00:00Z")
-    if not body:
-        return _usage_error("give --weight, --priority, --weekly-budget-usd, --no-weekly-budget or --weekly-reset-at")
-    if (refusal := _out_of_bounds(body)) is not None:
-        return _usage_error(refusal)
-    return _change_account(args, body)
-
-
-@client_command
-def cmd_account_pause(args) -> int:
-    return _change_account(args, {"paused": True})
-
-
-@client_command
-def cmd_account_resume(args) -> int:
-    return _change_account(args, {"paused": False})
-
-
-# `hub account login`: a Claude account from `claude setup-token`
-
-NO_CLAUDE = (
-    "there is no `claude` on PATH to run `claude setup-token` with. Install Claude Code "
-    "(https://code.claude.com/docs/en/setup), or run `claude setup-token` where it is installed and give the token "
-    "it prints to `evo-agents hub account login {name} --paste`, which asks for it without echo, or on stdin, such "
-    "as `pbpaste | evo-agents hub account login {name}`"
-)
-NO_TOKEN = (
-    "no token: run the command in a terminal, where it runs `claude setup-token` for you or asks for the token, or "
-    "pipe the token on stdin, such as `pbpaste | evo-agents hub account login NAME`"
-)
-API_KEY = (
-    "that is an API key of the Anthropic Console (sk-ant-api...), not a token of `claude setup-token`: an API key "
-    "goes in ANTHROPIC_API_KEY, with `evo-agents hub secret set NAME --kind env --env-var ANTHROPIC_API_KEY "
-    "--project PROJECT`"
-)
-
-
-def _say(text: str) -> None:
-    """A line for the member at the terminal, on stderr, so stdout holds the account alone."""
-    print(text, file=sys.stderr)
-
-
-def login_ends(day: str | None, now: datetime) -> str:
-    """When the account ends, in ISO 8601: 00:00 UTC of ``day`` (YYYY-MM-DD), which is to come, or of a year from
-    today (UTC) less a day when there is none. Refused for a day that is not one, or is past."""
-    if day is None:
-        return expires_at(setup_token.default_end(now.date()).isoformat())
-    ends = expires_at(day)
-    if datetime.fromisoformat(ends) <= now:
-        raise Refused(f"--expires {day} is past already: an account ends on a day to come")
-    return ends
-
-
-def login_body(args, existing: dict | None, ends: str) -> dict:
-    """What PUT /v1/secrets/{name} gets for the account, but its token: the projects and workers given, else those of
-    the account when it is one already. Refused for a secret of that name that is not an account for
-    CLAUDE_CODE_OAUTH_TOKEN, and for a new account without a project."""
-    var = setup_token.ENV_VAR
-    if existing is not None and (existing["kind"], existing["env_var"]) != ("env", var):
-        what = f"sets {existing['env_var']}" if existing["kind"] == "env" else f"is of kind {existing['kind']}"
-        raise Refused(f"your secret {args.name} {what}, not {var}: give the Claude account another name")
-    projects = args.project or (existing["projects"] if existing else [])
-    if not projects:
-        raise Refused("a new account needs --project, a project whose runs take it; repeat it for several")
-    try:
-        bound = bound_to(args, existing)
-    except ValueError as exc:
-        raise Refused(str(exc)) from None
-    return {"kind": "env", "env_var": var, "projects": projects, **bound, "expires_at": ends}
-
-
-def check_bindings(hub, body: dict) -> None:
-    """Refused for a project of ``body`` the caller does not hold the writer role on, or a worker that is not one of
-    theirs, as PUT /v1/secrets would refuse them: asked before ``claude setup-token`` makes a token, so none is made
-    to be lost."""
-    me = hub.call("GET", "/v1/auth/whoami")
-    roles = {grant["project"]: grant["role"] for grant in me["grants"]}
-    for project in body["projects"]:
-        if not has_role(roles.get(project), "writer"):
-            held = roles.get(project) or "no role"
-            raise Refused(f"an account for project {project} needs the writer role on it; you hold {held}")
-    if body["workers"]:
-        mine = {w["name"].lower() for w in hub.call("GET", "/v1/workers") if w["owner"] == me["login"]}
-        for worker in body["workers"]:
-            if worker.lower() not in mine:
-                raise Refused(f"{worker} is not a worker of yours that is not revoked: see GET /v1/workers")
-    if body["pools"]:
-        pools = {p["name"].lower() for p in hub.call("GET", "/v1/worker-pools")}
-        for pool in body["pools"]:
-            if pool.lower() not in pools:
-                raise Refused(f"{pool} is not a worker pool of yours: see GET /v1/worker-pools")
-
-
-def login_token(value: str) -> str:
-    """The token as given, without the spaces and line breaks around it; Refused for an API key, or for what cannot
-    be one token."""
-    token = value.strip()
-    if not token:
-        raise Refused(NO_TOKEN)
-    if setup_token.is_api_key(token):
-        raise Refused(API_KEY)
-    if any(char.isspace() for char in token):
-        raise Refused("the token holds a space or a line break: give it as one line")
-    check_value("env", token)
-    return token
-
-
-def _login_intro(name: str, existing: dict | None, body: dict) -> str:
-    projects = ", ".join(body["projects"])
-    where = where_text(body)
-    ends = f"{when(body['expires_at'])} UTC"
-    if existing is None:
-        return f"Adding account {name} ({body['env_var']}) for project(s) {projects}, {where}; it ends {ends}."
+def written_text(written: dict) -> str:
+    """What ``secret set`` prints of the secret the hub wrote."""
+    verb = "Created" if written["created"] else "Replaced"
+    ends = f"; it ends {when(written['expires_at'])} UTC" if written["expires_at"] else ""
+    if written["projects"]:
+        where = f"for project(s) {', '.join(written['projects'])}, {workers_text(written)}"
+    else:
+        where = "for you alone, bound to no project: no run gets it until it is bound to one"
     return (
-        f"{name} is an account of yours already: this replaces its token, which ends {ends}, for project(s) "
-        f"{projects}, {where}. Its weight, priority, pause, cooldown and runs stay as they are."
+        f"{verb} secret {written['name']} ({written['kind']}, {target_text(written)}) {where}{ends}. The hub keeps "
+        "the value sealed and never shows it again."
     )
 
 
-def _login_value(name: str, claude: str | None) -> str:
-    """The token: what ``claude setup-token`` printed when ``claude`` runs it and its screen held one, else read
-    from stdin or asked for without echo."""
-    if claude is not None:
-        _say(
-            "Running `claude setup-token`: sign in to Claude in the browser it opens. The token it prints goes to the "
-            "hub sealed, and is not shown here."
-        )
-        token = setup_token.run(claude)
-        if token is not None:
-            _say("Took the token `claude setup-token` printed.")
-            return token
-        _say("Found no token in what `claude setup-token` printed: paste it, or press Enter to stop.")
-    prompt = f"Token of `claude setup-token` for account {name} (not shown): "
-    return read_value(name, prompt=prompt, missing=NO_TOKEN)
+class SecretSet(HubCommand):
+    name = "set"
+    help = "create a secret, or replace it whole; the value comes from stdin, or is asked for without echo"
+    arguments = (
+        Arg("name", metavar="NAME", help="1 to 64 of a-z, 0-9, '.', '_' and '-'"),
+        Arg(
+            "--kind",
+            required=True,
+            choices=SECRET_KINDS,
+            help="env: a variable of the agent's environment; git: what git's credential helper answers; forge: a "
+            "GitLab token the hub alone uses to merge the project's merge requests, never leased to a run",
+        ),
+        Arg("--env-var", metavar="VAR", help="kind env: the variable it sets, such as CLAUDE_CODE_OAUTH_TOKEN"),
+        Arg(
+            "--url-prefix",
+            metavar="URL",
+            help="kinds git and forge: the https prefix of the origins it answers for, such as "
+            "https://gitlab.example.org/group",
+        ),
+        Arg("--username", metavar="USER", help="kind git: the user git sends with the value (default oauth2)"),
+        Arg(
+            "--environment",
+            choices=SECRET_ENVIRONMENTS,
+            help="kind env: the environment it is for; a run whose principal's K7 is auto:test_secrets gets only the "
+            "env secrets labelled test",
+        ),
+        Arg(
+            "--project",
+            action="append",
+            metavar="PROJECT",
+            help="a project whose runs get it, on which you hold writer (admin for kind forge); repeat it for "
+            "several; left out, the secret is yours alone and no run gets it",
+        ),
+        Arg(
+            "--worker",
+            action="append",
+            metavar="NAME",
+            help="only runs on this worker of yours get it; repeat it for several (default: any worker of yours)",
+        ),
+        pool_arg(),
+        Arg(
+            "--expires",
+            metavar="YYYY-MM-DD",
+            help="no run gets it from 00:00 UTC of this day on (default: no end; kind forge needs one)",
+        ),
+    )
+
+    def check(self, args: argparse.Namespace) -> None:
+        secret_body(args)  # every check of the arguments before the value is read, so a mistyped flag costs no paste
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        secrets = Secrets.of(ctx)  # signed in before the value is asked for: not signed in costs no paste
+        value = read_value(args.name)
+        check_value(args.kind, value)
+        written = secrets.put(args.name, {**secret_body(args), "value": value})
+        return Result(written, Text(written_text(written)))
 
 
-@client_command
-def cmd_account_login(args) -> int:
-    try:
+class SecretList(HubCommand):
+    name = "list"
+    help = "your secrets: kind, target, projects, workers and dates, never the value"
+    output = returns_array(*SECRET_KEYS, schema="Secret")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = Secrets.of(ctx).list()
+        if ctx.args.json:
+            return Result(found)
+        empty = "You keep no secret on this hub; `evo-agents hub secret set` adds one."
+        return Result(found, Table(SECRET_COLUMNS, [secret_row(s) for s in found], empty))
+
+
+class SecretDelete(HubCommand):
+    name = "delete"
+    help = "delete a secret: its value and bindings go, and its leases still out are revoked"
+    arguments = (Arg("name", metavar="NAME"),)
+
+    def check(self, args: argparse.Namespace) -> None:
         check_name(args.name)
-        ends = login_ends(args.expires, datetime.now(UTC))
-    except Refused as exc:
-        return _usage_error(str(exc))
-    hub, _ = signed_in()
-    claude = None
-    if not args.paste and sys.stdin is not None and sys.stdin.isatty():
-        claude = shutil.which("claude")
-        if claude is None:
-            print(f"error: {NO_CLAUDE.format(name=args.name)}", file=sys.stderr)
-            return EXIT_FAILED
-    existing = next((s for s in hub.call("GET", "/v1/secrets") if s["name"] == args.name), None)
-    try:
-        body = login_body(args, existing, ends)
-        check_bindings(hub, body)
-        _say(_login_intro(args.name, existing, body))
-        token = login_token(_login_value(args.name, claude))
-    except Refused as exc:
-        return _usage_error(str(exc))
-    written = hub.call("PUT", secret_path(args.name), {**body, "value": token})
-    account = hub.call("GET", _account_path(args.name))
-    if args.json:
-        print_json(account)
-        return 0
-    if written["created"]:
-        print(f"Created account {args.name}. The hub keeps its token sealed and never shows it again.")
-    else:
-        print(
-            f"Replaced the token of account {args.name}; its weight, priority, pause, cooldown and runs stay. The hub "
-            "keeps the token sealed and never shows it again."
+
+    def run(self, ctx: HubContext) -> Result:
+        Secrets.of(ctx).delete(ctx.args.name)
+        return Result(
+            None,
+            Text(
+                f"Deleted secret {ctx.args.name}: its value and bindings are gone from the hub, and its leases still "
+                "out are revoked. Revoke it where it was made as well."
+            ),
         )
-    _print_account(account)
-    return 0
 
 
-OAUTH_PASTE = (
-    "no code: pipe the code claude.ai shows after you approve, such as `pbpaste | evo-agents hub account oauth-login "
-    "NAME`, or run the command in a terminal"
+SECRET = Group(
+    "secret",
+    "your secrets on the hub, which runs of your projects get as leases; values are never shown",
+    [SecretSet(), SecretList(), SecretDelete(), SECRET_BIND, SECRET_SHARE, SECRET_UNSHARE],
 )
-
-
-def _oauth_code(name: str, pkce: claude_oauth.Pkce, args) -> str:
-    """The authorization code: from the browser's answer on localhost when a terminal and a browser are here, else
-    pasted (a code, ``code#state``, or the address the browser went to)."""
-    url = claude_oauth.authorize_url(pkce)
-    if not args.paste and sys.stdin is not None and sys.stdin.isatty():
-        _say(f"Sign in to Claude in the browser, then come back here. If it does not open, go to:\n\n{url}\n")
-        if not args.no_browser:
-            try:
-                webbrowser.open(url)
-            except webbrowser.Error:
-                pass
-        try:
-            return claude_oauth.wait_for_callback(pkce.state)
-        except claude_oauth.ListenError as exc:
-            _say(f"{exc}: paste the code claude.ai shows, or the address the browser went to.")
-    else:
-        _say(f"Open this address, approve, and give the code claude.ai shows:\n\n{url}\n")
-    pasted = read_value(name, prompt=f"Code for account {name} (not shown): ", missing=OAUTH_PASTE)
-    return claude_oauth.parse_code(pasted, pkce.state)
-
-
-@client_command
-def cmd_account_oauth_login(args) -> int:
-    try:
-        check_name(args.name)
-    except Refused as exc:
-        return _usage_error(str(exc))
-    hub, _ = signed_in()
-    existing = next((s for s in hub.call("GET", "/v1/secrets") if s["name"] == args.name), None)
-    try:
-        body = login_body(args, existing, "")
-        body.pop("expires_at")  # the end of the access token, which the tokens carry
-        check_bindings(hub, body)
-        projects = ", ".join(body["projects"])
-        verb = "Adding" if existing is None else "Replacing the tokens of"
-        _say(f"{verb} account {args.name} ({body['env_var']}, OAuth) for project(s) {projects}, {where_text(body)}.")
-        pkce = claude_oauth.new_pkce()
-        code = _oauth_code(args.name, pkce, args)
-        tokens = claude_oauth.exchange(code, pkce)
-    except (Refused, claude_oauth.OAuthError) as exc:
-        return _usage_error(str(exc))
-    oauth = {
-        "refresh_token": tokens.refresh_token,
-        "access_expires_at": tokens.expires_at.isoformat(),
-        "account_uuid": tokens.account_uuid,
-        "organization_uuid": tokens.organization_uuid,
-        "email": tokens.email,
-    }
-    written = hub.call("PUT", secret_path(args.name), {**body, "value": tokens.access_token, "oauth": oauth})
-    account = hub.call("GET", _account_path(args.name))
-    if args.json:
-        print_json(account)
-        return 0
-    if written["created"]:
-        print(f"Created account {args.name} (OAuth). The hub keeps its tokens sealed and never shows them again.")
-    else:
-        print(
-            f"Replaced the tokens of account {args.name}; its weight, priority, pause, cooldown and runs stay. The hub "
-            "keeps the tokens sealed and never shows them again."
-        )
-    _print_account(account)
-    return 0
-
-
-def _register_oauth_login(asub) -> None:
-    login = asub.add_parser(
-        "oauth-login",
-        help="add a Claude account, or renew its tokens, by Claude's OAuth sign-in in your browser: the tokens go to "
-        "the hub sealed, never on the screen",
-    )
-    login.add_argument("name", metavar="NAME", help="1 to 64 of a-z, 0-9, '.', '_' and '-'; an account's to renew it")
-    login.add_argument(
-        "--project",
-        action="append",
-        metavar="PROJECT",
-        help="a project whose runs take it, on which you hold writer; repeat it for several (a new account needs one; "
-        "renewing keeps the account's projects)",
-    )
-    login.add_argument(
-        "--worker",
-        action="append",
-        metavar="NAME",
-        help="only runs on this worker of yours take it; repeat it for several (default: any worker of yours; "
-        "renewing keeps the account's workers)",
-    )
-    add_pool_flag(login, "take")
-    login.add_argument("--no-browser", action="store_true", help="print the address to open instead of opening it")
-    login.add_argument(
-        "--paste",
-        action="store_true",
-        help="do not listen for the browser: ask for the code claude.ai shows without echo, or read it from stdin",
-    )
-    json_option(login, returns_object(*ACCOUNT_KEYS, schema="Account"))
-    login.set_defaults(func=cmd_account_oauth_login)
-
-
-def _register_login(asub) -> None:
-    login = asub.add_parser(
-        "login",
-        help="add a Claude account, or renew its token: runs `claude setup-token` and puts the token it prints on the "
-        "hub, never on the screen",
-    )
-    login.add_argument("name", metavar="NAME", help="1 to 64 of a-z, 0-9, '.', '_' and '-'; an account's to renew it")
-    login.add_argument(
-        "--project",
-        action="append",
-        metavar="PROJECT",
-        help="a project whose runs take it, on which you hold writer; repeat it for several (a new account needs one; "
-        "renewing keeps the account's projects)",
-    )
-    login.add_argument(
-        "--worker",
-        action="append",
-        metavar="NAME",
-        help="only runs on this worker of yours take it; repeat it for several (default: any worker of yours; "
-        "renewing keeps the account's workers)",
-    )
-    add_pool_flag(login, "take")
-    login.add_argument(
-        "--expires",
-        metavar="YYYY-MM-DD",
-        help="no run takes it from 00:00 UTC of this day on (default: a year from today, less a day)",
-    )
-    login.add_argument(
-        "--paste",
-        action="store_true",
-        help="do not run `claude setup-token`: ask for the token without echo, or read it from stdin",
-    )
-    json_option(login, returns_object(*ACCOUNT_KEYS, schema="Account"))
-    login.set_defaults(func=cmd_account_login)
-
-
-def _named(sub, command: str, help: str, func) -> argparse.ArgumentParser:
-    parser = sub.add_parser(command, help=help)
-    parser.add_argument("name", metavar="NAME", help="one of your env secrets")
-    json_option(parser, returns_object(*ACCOUNT_KEYS, schema="Account"))
-    parser.set_defaults(func=func)
-    return parser
-
-
-def register_accounts(hsub) -> None:
-    account = hsub.add_parser(
-        "account", help="your env secrets as accounts runs rotate among, and your policy for each project"
-    )
-    asub = account.add_subparsers(dest="account_command", required=True)
-
-    listed = asub.add_parser(
-        "list", help="your accounts: variable, state, weight, priority, usage, runs and cost, never the value"
-    )
-    json_option(listed, returns_array(*ACCOUNT_KEYS, schema="Account"))
-    listed.set_defaults(func=cmd_account_list)
-
-    shown = _named(
-        asub,
-        "show",
-        "one account: state, last usage, runs and cost over 24 hours and 7 days and by principal, runs holding it",
-        cmd_account_show,
-    )
-    shown.add_argument("--owner", metavar="LOGIN", help="an account LOGIN shared with you: your runs' figures alone")
-    changed = _named(asub, "set", "change the weight or priority of an account", cmd_account_set)
-    changed.add_argument(
-        "--weight",
-        type=int,
-        metavar="N",
-        help=f"0 to {MAX_WEIGHT}: its share in a weighted-round-robin pool; 0 leaves the pool",
-    )
-    changed.add_argument(
-        "--priority",
-        type=int,
-        metavar="N",
-        help=f"0 to {MAX_PRIORITY}: the lower, the sooner a fill-first pool takes it",
-    )
-    changed.add_argument(
-        "--weekly-budget-usd",
-        type=float,
-        metavar="USD",
-        help="what a week of the account holds, for a provider with no quota API: its runs' cost over it is its "
-        "seven_day window",
-    )
-    changed.add_argument("--no-weekly-budget", action="store_true", help="drop the account's weekly budget")
-    changed.add_argument(
-        "--weekly-reset-at",
-        metavar="WHEN",
-        help="an ISO 8601 instant (UTC when no zone) its budget weeks start from, every 7 days; default Monday 00:00 UTC",
-    )
-    _named(asub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_account_pause)
-    _named(
-        asub,
-        "resume",
-        "let new runs take the account again: ends a pause, and a cooldown after a usage limit that reset early",
-        cmd_account_resume,
-    )
-    _register_login(asub)
-    _register_oauth_login(asub)
-    cli_shares.register_share_commands(asub, "account")
-
-    register_policy(asub)
-
-
-# The node this module attaches, an adapter of its register function until its commands are classes.
-SECRET = Legacy(register_secrets)
-ACCOUNT = Legacy(register_accounts)
