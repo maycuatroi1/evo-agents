@@ -65,6 +65,8 @@ comments, ``findings`` keeps the conflicts and gates approval, ``diff`` compares
 version.
 """
 
+from evo_agents.hub.server.base.tools import Tool, Tools
+
 SERVER = "evo_agents.hub.server.srs.server"
 KG = "evo_agents.hub.server.srs.kg"
 AGENT = "evo_agents.hub.server.srs.agent"
@@ -374,8 +376,9 @@ FINDING_SCHEMA = {
         },
     },
 }
-TOOLS = (
-    (
+TOOLS = Tools(
+    AGENT,
+    Tool(
         "read",
         "Read the SRS documents",
         "Read a BA document of the project: without document, the list of documents; with it, a version as Markdown "
@@ -383,14 +386,14 @@ TOOLS = (
         "and the items under it.",
         READ_SCHEMA,
     ),
-    (
+    Tool(
         "search",
         "Search the SRS items",
         "Find items of the latest version of each document by code, alias or words of their title or body.",
         SEARCH_SCHEMA,
     ),
-    ("diff", "Compare two versions", "What changed between two versions of a document, item by item.", DIFF_SCHEMA),
-    (
+    Tool("diff", "Compare two versions", "What changed between two versions of a document, item by item.", DIFF_SCHEMA),
+    Tool(
         "propose",
         "Propose a new version",
         "Propose changes of a document's items as its next version, which goes to review at once and which members "
@@ -398,14 +401,14 @@ TOOLS = (
         "call it; it never drops an item or changes a code.",
         PROPOSE_SCHEMA,
     ),
-    (
+    Tool(
         "comment",
         "Comment on a document",
         "Comment on a document, a version or an item, as the member the run works for, marked as drafted by the run. "
         "Only the agent of a run of @ba may call it; a comment is advice and blocks no approval.",
         COMMENT_SCHEMA,
     ),
-    (
+    Tool(
         "finding",
         "Record or settle a conflict",
         "Record a conflict of a document as a finding with the sources that show it (graph nodes, codes, paths), each "
@@ -487,10 +490,7 @@ MANIFEST = {
                 },
             }
         ],
-        "mcp_tools": [
-            {"name": name, "title": title, "description": text, "python": f"{AGENT}:{name}", "input_schema": schema}
-            for name, title, text, schema in TOOLS
-        ],
+        "mcp_tools": TOOLS.contributions(),
         "events": [
             {
                 "name": "reviews",
