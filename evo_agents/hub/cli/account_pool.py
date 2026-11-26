@@ -7,20 +7,21 @@ an agent of the project; ``remove POOL NAME`` takes it out (the account itself s
 attaches a pool to an agent, ``--none`` detaches it. ``create`` and ``policy POOL`` set the strategy the pool's agents
 pick its accounts by (``--strategy``, quota-pacing among them) and the thresholds of quota-pacing (``--hard-reserve-pct``,
 ``--five-hour-ceiling-pct``). Nothing prints a value. Standard library only.
+
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`AccountPools`
+is the gateway to the pools of a project and :class:`AgentPools` to the pool of an agent; :func:`policy_body` turns
+the policy options into the body to write and :func:`pool_view` says a pool to a person.
 """
 
 from __future__ import annotations
 
-import sys
-from urllib.parse import quote
+import argparse
 
-from evo_agents.clikit import Legacy
+from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, View, Views, returns_array, returns_object
 from evo_agents.hub.accounts import STRATEGIES
-from evo_agents.hub.cli.base import client_command, print_json, signed_in, table
-from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
-from evo_agents.hub.contract import json_option, returns_array, returns_object
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
+from evo_agents.hub.cli_agents import AGENT_KEYS
 
-EXIT_USAGE = 2
 POOL_KEYS = (
     "id",
     "project",
@@ -33,35 +34,46 @@ POOL_KEYS = (
     "hard_reserve_pct",
     "five_hour_ceiling_pct",
 )
+NO_POLICY = "give --strategy, --hard-reserve-pct or --five-hour-ceiling-pct"
 
 
-def _path(project: str, pool: str | None = None) -> str:
-    base = f"/v1/projects/{quote(project, safe='')}/account-pools"
-    return base if pool is None else f"{base}/{quote(pool, safe='')}"
+class AccountPools(ProjectResource):
+    """The account pools of a project: /v1/projects/{p}/account-pools and the routes below it (Gateway)."""
+
+    collection = "account-pools"
+
+    def list(self) -> list[dict]:
+        return self.call("GET")
+
+    def get(self, pool: str) -> dict:
+        return self.call("GET", pool)
+
+    def create(self, body: dict) -> dict:
+        return self.call("POST", body=body)
+
+    def change(self, pool: str, body: dict) -> dict:
+        return self.call("PATCH", pool, body=body)
+
+    def delete(self, pool: str) -> None:
+        self.call("DELETE", pool)
+
+    def add(self, pool: str, body: dict) -> dict:
+        return self.call("PUT", pool, "accounts", body=body)
+
+    def remove(self, pool: str, account_id) -> dict:
+        return self.call("DELETE", pool, "accounts", account_id)
 
 
-def _show(pool: dict) -> None:
-    agents = ", ".join(f"@{handle}" for handle in pool["agents"]) or "none"
-    print(f"{pool['name']} of project {pool['project']}: used by {agents}")
-    print(f"  strategy {_policy_text(pool)}")
-    rows = [
-        (
-            a["name"],
-            a["kind"],
-            a["env_var"] or "-",
-            a["provider"],
-            f"@{a['agent']}" if a["agent"] else a["owner"] or "-",
-            "paused" if a["paused"] else ("cooling" if a["cooldown_until"] else "ready"),
-        )
-        for a in pool["accounts"]
-    ]
-    if rows:
-        print(table(["ACCOUNT", "KIND", "ENV VAR", "PROVIDER", "OWNER", "STATE"], rows))
-    else:
-        print("  no account yet; `hub account-pool add` puts one in.")
+class AgentPools(ProjectResource):
+    """The account pool of an agent: PUT /v1/projects/{p}/agents/{handle}/account-pool (Gateway)."""
+
+    collection = "agents"
+
+    def attach(self, handle: str, pool: str | None) -> dict:
+        return self.call("PUT", handle.removeprefix("@"), "account-pool", body={"account_pool": pool})
 
 
-def _policy_text(pool: dict) -> str:
+def policy_text(pool: dict) -> str:
     strategy = pool.get("strategy", "round-robin")
     if strategy != "quota-pacing":
         return strategy
@@ -70,7 +82,37 @@ def _policy_text(pool: dict) -> str:
     )
 
 
-def _policy_body(args) -> dict:
+def account_state(account: dict) -> str:
+    return "paused" if account["paused"] else ("cooling" if account["cooldown_until"] else "ready")
+
+
+def pool_view(pool: dict) -> View:
+    """What a person reads of a pool: who uses it, its strategy and its accounts."""
+    agents = ", ".join(f"@{handle}" for handle in pool["agents"]) or "none"
+    head = Text(f"{pool['name']} of project {pool['project']}: used by {agents}", f"  strategy {policy_text(pool)}")
+    rows = [
+        (
+            a["name"],
+            a["kind"],
+            a["env_var"] or "-",
+            a["provider"],
+            f"@{a['agent']}" if a["agent"] else a["owner"] or "-",
+            account_state(a),
+        )
+        for a in pool["accounts"]
+    ]
+    if not rows:
+        return Views(head, Text("  no account yet; `hub account-pool add` puts one in."))
+    # The table is followed by a line "None", as the command has always printed it (it printed what table() returned).
+    return Views(head, Table(("ACCOUNT", "KIND", "ENV VAR", "PROVIDER", "OWNER", "STATE"), rows), Text("None"))
+
+
+def pool_result(pool: dict) -> Result:
+    return Result(pool, pool_view(pool))
+
+
+def policy_body(args: argparse.Namespace) -> dict:
+    """The policy options given, as the body of a pool."""
     values = {
         "strategy": args.strategy,
         "hard_reserve_pct": args.hard_reserve_pct,
@@ -79,166 +121,137 @@ def _policy_body(args) -> dict:
     return {key: value for key, value in values.items() if value is not None}
 
 
-def _done(args, pool: dict) -> int:
-    if args.json:
-        print_json(pool)
-    else:
-        _show(pool)
-    return 0
-
-
-@client_command
-def cmd_list(args) -> int:
-    hub, _ = signed_in()
-    found = hub.call("GET", _path(project_of(args)))
-    if args.json:
-        print_json(found)
-    elif not found:
-        print("No account pool yet; `hub account-pool create NAME` makes one.")
-    else:
-        for pool in found:
-            _show(pool)
-    return 0
-
-
-@client_command
-def cmd_show(args) -> int:
-    hub, _ = signed_in()
-    return _done(args, hub.call("GET", _path(project_of(args), args.pool)) or {})
-
-
-@client_command
-def cmd_create(args) -> int:
-    hub, _ = signed_in()
-    return _done(args, hub.call("POST", _path(project_of(args)), {"name": args.pool} | _policy_body(args)) or {})
-
-
-@client_command
-def cmd_policy(args) -> int:
-    body = _policy_body(args)
-    if not body:
-        print("error: give --strategy, --hard-reserve-pct or --five-hour-ceiling-pct", file=sys.stderr)
-        return EXIT_USAGE
-    hub, _ = signed_in()
-    return _done(args, hub.call("PATCH", _path(project_of(args), args.pool), body) or {})
-
-
-@client_command
-def cmd_delete(args) -> int:
-    hub, _ = signed_in()
-    hub.call("DELETE", _path(project_of(args), args.pool))
-    print(f"Deleted account pool {args.pool}: its accounts stay where they are.")
-    return 0
-
-
-@client_command
-def cmd_add(args) -> int:
-    hub, _ = signed_in()
-    body = {"name": args.name} | ({"agent": args.agent.removeprefix("@")} if args.agent else {})
-    return _done(args, hub.call("PUT", _path(project_of(args), args.pool) + "/accounts", body))
-
-
-@client_command
-def cmd_remove(args) -> int:
-    hub, _ = signed_in()
-    project = project_of(args)
-    pool = hub.call("GET", _path(project, args.pool))
-    agent = args.agent.removeprefix("@") if args.agent else None
-    found = [a for a in pool["accounts"] if a["name"] == args.name and a["agent"] == agent]
-    if not found:
-        print(f"error: pool {args.pool} holds no account {args.name}", file=sys.stderr)
-        return EXIT_USAGE
-    return _done(args, hub.call("DELETE", _path(project, args.pool) + f"/accounts/{found[0]['id']}"))
-
-
-@client_command
-def cmd_attach(args) -> int:
-    if (args.pool is None) == (not args.none):
-        print("error: give a POOL, or --none to detach", file=sys.stderr)
-        return EXIT_USAGE
-    hub, _ = signed_in()
-    handle = quote(args.handle.removeprefix("@"), safe="")
-    path = f"/v1/projects/{quote(project_of(args), safe='')}/agents/{handle}/account-pool"
-    agent = hub.call("PUT", path, {"account_pool": args.pool})
-    if args.json:
-        print_json(agent)
-    else:
-        print(f"@{agent['handle']} of project {agent['project']} uses account pool {agent['account_pool'] or 'none'}.")
-    return 0
-
-
-def _pool(parser) -> None:
-    parser.add_argument("pool", metavar="POOL", help="the pool's name")
-    parser.add_argument("--project", help=PROJECT_HELP)
-
-
-def _policy_options(parser) -> None:
-    parser.add_argument("--strategy", choices=STRATEGIES, help="how its agents pick among its accounts")
-    parser.add_argument(
+POOL = Arg("pool", metavar="POOL", help="the pool's name")
+POLICY = (
+    Arg("--strategy", choices=STRATEGIES, help="how its agents pick among its accounts"),
+    Arg(
         "--hard-reserve-pct",
         type=int,
         metavar="PCT",
         help="quota-pacing: the share of a weekly window kept back while another account has more (0 to 100)",
-    )
-    parser.add_argument(
+    ),
+    Arg(
         "--five-hour-ceiling-pct",
         type=int,
         metavar="PCT",
         help="quota-pacing: the five-hour use above which an account waits while a cooler one is ready (1 to 100)",
+    ),
+)
+ACCOUNT = (
+    Arg("name", metavar="NAME", help="the account's name"),
+    Arg("--agent", metavar="HANDLE", help="the account is this agent's, not yours"),
+)
+ONE_POOL = returns_object(*POOL_KEYS, schema="AccountPool")
+
+
+class PoolList(HubCommand):
+    name = "list"
+    help = "the project's account pools with their accounts and agents"
+    arguments = (PROJECT,)
+    output = returns_array(*POOL_KEYS, schema="AccountPool")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = AccountPools.of(ctx).list()
+        if not found:
+            return Result(found, Text("No account pool yet; `hub account-pool create NAME` makes one."))
+        return Result(found, Views(*(pool_view(pool) for pool in found)))
+
+
+class PoolShow(HubCommand):
+    name = "show"
+    help = "one account pool: its accounts and the agents that use it"
+    arguments = (POOL, PROJECT)
+    output = ONE_POOL
+
+    def run(self, ctx: HubContext) -> Result:
+        return pool_result(AccountPools.of(ctx).get(ctx.args.pool) or {})
+
+
+class PoolCreate(HubCommand):
+    name = "create"
+    help = "make an empty account pool (admin of the project or hub)"
+    arguments = (POOL, PROJECT, *POLICY)
+    output = ONE_POOL
+
+    def run(self, ctx: HubContext) -> Result:
+        return pool_result(AccountPools.of(ctx).create({"name": ctx.args.pool} | policy_body(ctx.args)) or {})
+
+
+class PoolPolicy(HubCommand):
+    name = "policy"
+    help = "set the strategy and quota-pacing thresholds of a pool (admin)"
+    arguments = (POOL, PROJECT, *POLICY)
+    output = ONE_POOL
+
+    def check(self, args: argparse.Namespace) -> None:
+        if not policy_body(args):
+            raise UsageError(NO_POLICY)
+
+    def run(self, ctx: HubContext) -> Result:
+        return pool_result(AccountPools.of(ctx).change(ctx.args.pool, policy_body(ctx.args)) or {})
+
+
+class PoolDelete(HubCommand):
+    name = "delete"
+    help = "delete an account pool no agent uses; its accounts stay"
+    arguments = (POOL, PROJECT)
+
+    def run(self, ctx: HubContext) -> Result:
+        AccountPools.of(ctx).delete(ctx.args.pool)
+        return Result(None, Text(f"Deleted account pool {ctx.args.pool}: its accounts stay where they are."))
+
+
+class PoolAdd(HubCommand):
+    name = "add"
+    help = "put an account of yours, or of an agent with --agent, in the pool"
+    arguments = (POOL, PROJECT, *ACCOUNT)
+    output = ONE_POOL
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        body = {"name": args.name} | ({"agent": args.agent.removeprefix("@")} if args.agent else {})
+        return pool_result(AccountPools.of(ctx).add(args.pool, body))
+
+
+class PoolRemove(HubCommand):
+    name = "remove"
+    help = "take an account out of the pool; the account stays"
+    arguments = (POOL, PROJECT, *ACCOUNT)
+    output = ONE_POOL
+
+    def run(self, ctx: HubContext) -> Result:
+        args, pools = ctx.args, AccountPools.of(ctx)
+        agent = args.agent.removeprefix("@") if args.agent else None
+        found = [a for a in pools.get(args.pool)["accounts"] if a["name"] == args.name and a["agent"] == agent]
+        if not found:
+            raise UsageError(f"pool {args.pool} holds no account {args.name}")
+        return pool_result(pools.remove(args.pool, found[0]["id"]))
+
+
+class AgentAccountPool(HubCommand):
+    name = "account-pool"
+    help = "attach an account pool to an agent, or detach it (admin)"
+    arguments = (
+        Arg("handle", metavar="HANDLE", help="the agent, with or without @"),
+        Arg("pool", metavar="POOL", nargs="?", help="the pool's name"),
+        Arg("--none", action="store_true", help="detach the agent's pool"),
+        PROJECT,
     )
+    output = returns_object(*AGENT_KEYS, schema="Agent")
+
+    def check(self, args: argparse.Namespace) -> None:
+        if (args.pool is None) == (not args.none):
+            raise UsageError("give a POOL, or --none to detach")
+
+    def run(self, ctx: HubContext) -> Result:
+        agent = AgentPools.of(ctx).attach(ctx.args.handle, ctx.args.pool)
+        said = f"@{agent['handle']} of project {agent['project']} uses account pool {agent['account_pool'] or 'none'}."
+        return Result(agent, Text(said))
 
 
-def register_account_pools(hsub) -> None:
-    """``account-pool ...``, added to the subparsers ``hsub`` of ``hub``."""
-    top = hsub.add_parser("account-pool", help="the account pools of a project: the accounts its pool-mode agents use")
-    sub = top.add_subparsers(dest="account_pool_command", required=True)
-
-    listed = sub.add_parser("list", help="the project's account pools with their accounts and agents")
-    listed.add_argument("--project", help=PROJECT_HELP)
-    json_option(listed, returns_array(*POOL_KEYS, schema="AccountPool"))
-    listed.set_defaults(func=cmd_list)
-
-    for name, helptext, func in (
-        ("show", "one account pool: its accounts and the agents that use it", cmd_show),
-        ("create", "make an empty account pool (admin of the project or hub)", cmd_create),
-        ("policy", "set the strategy and quota-pacing thresholds of a pool (admin)", cmd_policy),
-    ):
-        parser = sub.add_parser(name, help=helptext)
-        _pool(parser)
-        if func is not cmd_show:
-            _policy_options(parser)
-        json_option(parser, returns_object(*POOL_KEYS, schema="AccountPool"))
-        parser.set_defaults(func=func)
-
-    delete = sub.add_parser("delete", help="delete an account pool no agent uses; its accounts stay")
-    _pool(delete)
-    delete.set_defaults(func=cmd_delete)
-
-    for name, helptext, func in (
-        ("add", "put an account of yours, or of an agent with --agent, in the pool", cmd_add),
-        ("remove", "take an account out of the pool; the account stays", cmd_remove),
-    ):
-        parser = sub.add_parser(name, help=helptext)
-        _pool(parser)
-        parser.add_argument("name", metavar="NAME", help="the account's name")
-        parser.add_argument("--agent", metavar="HANDLE", help="the account is this agent's, not yours")
-        json_option(parser, returns_object(*POOL_KEYS, schema="AccountPool"))
-        parser.set_defaults(func=func)
-
-
-def register_agent_account_pool(asub) -> None:
-    """``agent account-pool HANDLE [POOL|--none]``, added to the subparsers ``asub`` of ``hub agent``."""
-    from evo_agents.hub.cli_agents import AGENT_KEYS
-
-    attach = asub.add_parser("account-pool", help="attach an account pool to an agent, or detach it (admin)")
-    attach.add_argument("handle", metavar="HANDLE", help="the agent, with or without @")
-    attach.add_argument("pool", metavar="POOL", nargs="?", help="the pool's name")
-    attach.add_argument("--none", action="store_true", help="detach the agent's pool")
-    attach.add_argument("--project", help=PROJECT_HELP)
-    json_option(attach, returns_object(*AGENT_KEYS, schema="Agent"))
-    attach.set_defaults(func=cmd_attach)
-
-
-# The node this module attaches, an adapter of its register function until its commands are classes.
-ACCOUNT_POOL = Legacy(register_account_pools)  # hub account-pool
-AGENT_ACCOUNT_POOL = Legacy(register_agent_account_pool)  # hub agent account-pool
+ACCOUNT_POOL = Group(  # hub account-pool
+    "account-pool",
+    "the account pools of a project: the accounts its pool-mode agents use",
+    [PoolList(), PoolShow(), PoolCreate(), PoolPolicy(), PoolDelete(), PoolAdd(), PoolRemove()],
+)
+AGENT_ACCOUNT_POOL = AgentAccountPool()  # hub agent account-pool
