@@ -18,7 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context, tables
-from evo_agents.hub.server import system_store, system_traces
+from evo_agents.hub.server.systems.repository import store as system_store
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 
 async def tree_usage(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, tuple[int, float, int | None]]:

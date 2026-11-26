@@ -5,7 +5,7 @@ Revises: 0219
 Create Date: 2026-11-07
 
 A review run that looks through the lens ``agent_system`` (plan multi-agent-systems, criterion a8;
-``evo_agents.hub.server.system_curation``) proposes a change of an agent or a named knowledge graph that the curator
+``evo_agents.hub.server.systems``) proposes a change of an agent or a named knowledge graph that the curator
 node of an agent system optimizes: an agent's instructions, skill or model, or a graph's sources or a decision on it.
 Accepting the proposal applies it through the hub, never by hand: a new version of the profile, with a new revision of
 the system's spec that pins it, or a change of the graph.

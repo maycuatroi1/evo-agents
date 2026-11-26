@@ -90,7 +90,6 @@ from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import (
     earlier,
     facet_figures,
-    system_curation,
 )
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.changes.models.views import Change
@@ -112,6 +111,7 @@ from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, WEB, Principal
+from evo_agents.hub.server.systems.service import curation as system_curation
 from evo_agents.hub.verify_words import shell_problem
 from evo_agents.schema import errors, validate
 

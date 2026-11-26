@@ -465,8 +465,9 @@ def test_an_apply_waits_for_a_merge_under_way_and_is_then_refused(hub, tmp_path,
 
 @needs_db
 def test_kg_status_and_kg_more_answer_a_run_whose_system_has_a_default_graph(hub, tmp_path, caplog, monkeypatch):
-    from evo_agents.hub.server import security, system_traces
+    from evo_agents.hub.server import security
     from evo_agents.hub.server.security import RUN, Principal
+    from evo_agents.hub.server.systems.service import traces as system_traces
 
     _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
 

@@ -38,8 +38,6 @@ from evo_agents.hub import system_context, system_spec, tables
 from evo_agents.hub.server import (
     agent_tasking,
     route_autonomy,
-    system_trace_stats,
-    system_traces,
     work_observe,
     work_status,
 )
@@ -51,6 +49,8 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser, Principal, still_live
+from evo_agents.hub.server.systems.repository import stats as system_trace_stats
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_status_models import WorkBrief, WorkStatus, WorkWaiting
 
 log = logging.getLogger(__name__)

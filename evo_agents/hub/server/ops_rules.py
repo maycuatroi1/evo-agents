@@ -40,7 +40,7 @@ from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.messages import resolve_mentions
 from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import chat_run, hand_mentions
-from evo_agents.hub.server.orchestrator import origin_of
+from evo_agents.hub.server.orchestrator.service.threads import origin_of
 from evo_agents.hub.server.profile_store import by_id
 
 log = logging.getLogger(__name__)

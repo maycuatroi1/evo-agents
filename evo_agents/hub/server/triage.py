@@ -140,7 +140,9 @@ async def _orchestrated(conn: AsyncConnection, found: RunStep, *, stale: bool) -
     """The thread the Orchestrator of the agent of run ``found`` gets of it in its system's ops chat, in place of the
     project's triage chat (``orchestrator.on_run``); None for a run with a thread already, or of an agent no
     Orchestrator orchestrates."""
-    from evo_agents.hub.server import orchestrator  # it opens its chat through this module
+    from evo_agents.hub.server.orchestrator.service import (
+        threads as orchestrator,  # it opens its chat through this module
+    )
 
     if await thread_of(conn, found.run_id) is not None:
         return None

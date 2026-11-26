@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from evo_agents.hub import model_router, tables
 from evo_agents.hub.model_router import Rating
-from evo_agents.hub.server.system_traces import ref_plans, ref_steps
+from evo_agents.hub.server.systems.service.traces import ref_plans, ref_steps
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401

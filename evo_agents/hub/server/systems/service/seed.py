@@ -16,7 +16,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import profiles, system_spec, tables
-from evo_agents.hub.server import audit, profile_store, system_store
+from evo_agents.hub.server import audit, profile_store
+from evo_agents.hub.server.systems.repository import store as system_store
 
 log = logging.getLogger(__name__)
 

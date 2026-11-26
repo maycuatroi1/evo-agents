@@ -200,7 +200,7 @@ def promotion_file(source: str) -> dict:
 
 def system_change_file(source: str) -> dict:
     """The system change of a proposal of kind agent_config (``worker propose --system-change-file``): the system,
-    the node its curator optimizes and what changes there (``evo_agents.hub.server.system_curation``)."""
+    the node its curator optimizes and what changes there (``evo_agents.hub.server.systems``)."""
     from evo_agents.hub.profiles import MAX_INSTRUCTIONS_CHARS
 
     holds = "a system change is a mapping with system, node and what changes"

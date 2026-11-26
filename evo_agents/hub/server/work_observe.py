@@ -24,7 +24,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, system_context, tables
-from evo_agents.hub.server import system_trace_stats, work_status
+from evo_agents.hub.server import work_status
+from evo_agents.hub.server.systems.repository import stats as system_trace_stats
 
 SegmentKind = Literal["queued", "running", "parked", "waiting"]
 

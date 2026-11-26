@@ -50,7 +50,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, runs, system_context, tables, triage_rules
-from evo_agents.hub.server import audit, system_traces
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import Hand
@@ -65,6 +65,7 @@ from evo_agents.hub.server.chats.service.runs import chat_run, hand_mentions, hu
 from evo_agents.hub.server.profile_store import Profile, by_handle
 from evo_agents.hub.server.run_state import RunStep
 from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 log = logging.getLogger(__name__)
 

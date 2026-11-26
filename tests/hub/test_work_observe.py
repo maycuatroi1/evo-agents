@@ -17,7 +17,7 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import system_traces
+from evo_agents.hub.server.systems.service import traces as system_traces
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401
     OWNER,

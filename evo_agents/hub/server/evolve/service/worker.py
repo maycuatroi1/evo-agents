@@ -10,7 +10,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, evolve, runs
-from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.changes.repository.views import charter_of
 from evo_agents.hub.server.evolve.models import (
@@ -32,6 +31,7 @@ from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import curation as system_curation
 
 
 async def held_evolve(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):

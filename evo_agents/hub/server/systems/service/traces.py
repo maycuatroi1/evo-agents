@@ -34,8 +34,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, system_context, system_spec, tables, wake
-from evo_agents.hub.server import system_store
 from evo_agents.hub.server.plans.models import PlanTrace
+from evo_agents.hub.server.systems.repository import store as system_store
 from evo_agents.kg.sessions import READ_META
 
 log = logging.getLogger(__name__)
@@ -314,7 +314,9 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
     await notify(conn, held.id)
     log.info("run joined a trace", extra={"run_id": run_id, "trace_id": trace_id, "off_design": off})
     if RESUME not in attributes:
-        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it opens threads through chat_runs, which joins runs here
+        )
 
         await orchestrator.check_loop(conn, run_id)
     return trace_id
@@ -399,7 +401,9 @@ async def record_tool(
     await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == membership.trace_id))
     await notify(conn, membership.system.id)
     if status == "refused" and reason is not None and reason.startswith(system_context.BUDGET_REFUSAL):
-        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it opens threads through chat_runs, which joins runs here
+        )
 
         await orchestrator.on_budget(conn, membership, span_id, reason)
     return span_id
@@ -597,7 +601,9 @@ async def save_brief(conn: AsyncConnection, run_id: int, asked_by: int, brief: d
         if await take_plan(conn, run_id, plan_id) is not None:
             break
     if found.get("goal"):
-        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+        from evo_agents.hub.server.orchestrator.service import (
+            threads as orchestrator,  # it opens threads through chat_runs, which joins runs here
+        )
 
         await orchestrator.check_loop(conn, run_id)
 

@@ -98,7 +98,6 @@ from evo_agents.hub.server import (
     product_figures,
     review_trigger,
     runtime_figures,
-    system_curation,
 )
 from evo_agents.hub.server import kg_entity_map_run as entity_map_runs
 from evo_agents.hub.server.curator.service import threads as curator_threads
@@ -112,6 +111,7 @@ from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
 from evo_agents.hub.server.runs.service.kg_duties import keeper_of
 from evo_agents.hub.server.runs.service.views import visible_plans
+from evo_agents.hub.server.systems.service import curation as system_curation
 from evo_agents.hub.tables_kg import OPTIMIZE_ACTIVE
 
 log = logging.getLogger(__name__)

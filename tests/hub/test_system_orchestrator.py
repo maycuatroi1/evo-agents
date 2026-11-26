@@ -135,7 +135,7 @@ if pg.DSN:
     from sqlalchemy import select, update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server import orchestrator
+    from evo_agents.hub.server.orchestrator.service import threads as orchestrator
     from tests.hub.account_pool_setup import give_account_pool
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401

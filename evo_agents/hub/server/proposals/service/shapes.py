@@ -1,6 +1,6 @@
 """The shapes of a proposal that carry a probe or a system change: what a review run proposes (``ProposalIn``, and
 ``SessionProposalIn`` for a member's session) and the proposal as members read it (``Proposal``). They hold the models
-of ``evo_agents.hub.server.probes`` and ``evo_agents.hub.server.system_curation``, which reach this service through
+of ``evo_agents.hub.server.probes`` and ``evo_agents.hub.server.systems``, which reach this service through
 the rest of the hub, so they sit in the service layer, not in ``evo_agents.hub.server.proposals.models``."""
 
 from __future__ import annotations
@@ -10,12 +10,12 @@ from typing import Annotated
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import review, tiers
-from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.memories.models import PromotionIn
 from evo_agents.hub.server.probes.service import probes as stored_probes
 from evo_agents.hub.server.proposals.models import EvidenceIn, PathIn, ProposalSummary, RepoPath, Title
 from evo_agents.hub.server.runs.models import MAX_ID
+from evo_agents.hub.server.systems.service import curation as system_curation
 
 
 class ProposalIn(BaseModel):

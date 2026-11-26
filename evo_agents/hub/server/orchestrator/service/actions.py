@@ -35,7 +35,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, profiles, runs, system_context, tables, triage_rules
-from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces, wait_cycles
+from evo_agents.hub.server import audit, run_waits, wait_cycles
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chats.models.agents import REFUSALS
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
@@ -43,10 +43,12 @@ from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, pos
 from evo_agents.hub.server.decisions.models import DecisionAsk, OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 
 log = logging.getLogger(__name__)

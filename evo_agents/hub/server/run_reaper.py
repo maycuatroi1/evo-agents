@@ -271,7 +271,8 @@ async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> Non
     from evo_agents.hub.server import triage  # it reads runs through this module
 
     await triage.open_stale(engine)
-    from evo_agents.hub.server import draft_pulls, orchestrator  # it opens threads through triage
+    from evo_agents.hub.server import draft_pulls  # it opens threads through triage
+    from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 
     await orchestrator.open_idle(engine)
     await orchestrator.close_recovered(engine)
@@ -362,7 +363,8 @@ async def recover_runs(
     from evo_agents.hub.server import browser_install  # it reads queued runs through queue_fit
 
     await browser_install.ask_for_queued(engine)  # a queued browser run whose owner's worker lacks only Chromium
-    from evo_agents.hub.server import ops_queue, system_seed  # plan hub-steward
+    from evo_agents.hub.server import ops_queue  # plan hub-steward
+    from evo_agents.hub.server.systems.service import seed as system_seed
 
     await system_seed.seed_pass(engine)  # a project with no system gets its default orchestrator system, once
     await ops_queue.ops_pass(engine)  # the operations events of each project with ops on, gathered by cause

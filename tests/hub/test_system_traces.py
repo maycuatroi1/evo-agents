@@ -1,4 +1,4 @@
-"""The traces of an agent system (``evo_agents.hub.server.system_traces`` and ``system_trace_views``), as criterion a5
+"""The traces of an agent system (``evo_agents.hub.server.systems``), as criterion a5
 of plan multi-agent-systems names it: a person's message to the entry agent opens a trace in any chat, a direct chat
 included; the runs it wakes join it through mentions and asks; each turn and each ask or mention is a span named as
 OpenTelemetry GenAI names them; an edge the spec lacks is off_design, and an agent the spec lacks an external node; a
@@ -21,7 +21,8 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import system_spec, tables
-from evo_agents.hub.server import system_trace_views, system_traces
+from evo_agents.hub.server.systems.routes import traces as system_trace_views
+from evo_agents.hub.server.systems.service import traces as system_traces
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401

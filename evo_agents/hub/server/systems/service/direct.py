@@ -20,7 +20,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, tables
-from evo_agents.hub.server import system_traces
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import Hand
 from evo_agents.hub.server.chats.service.access import chat_access
@@ -29,6 +28,7 @@ from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import hand_work
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 
 log = logging.getLogger(__name__)

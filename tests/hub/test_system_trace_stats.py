@@ -1,5 +1,5 @@
 """The spread of the traces of an agent system (``system_context.trace_row`` and ``distribution``,
-``evo_agents.hub.server.system_trace_stats``, GET .../systems/{slug}/metrics/traces, ``hub system metrics``): per
+``evo_agents.hub.server.systems``, GET .../systems/{slug}/metrics/traces, ``hub system metrics``): per
 trace its final cost and runs with the tree they spawned, the deepest hop, the budget refusals, the overrun of
 limits.trace_usd only when positive, the loop, idle and rounds threads and the off-design ratio per edge; per system
 p50 and p95 over a window of N days. It reads only: the budget and the rules keep their tests
@@ -91,7 +91,7 @@ if pg.DSN:
 
     from evo_agents.hub import system_spec, tables
     from evo_agents.hub.cli.system import SystemMetrics
-    from evo_agents.hub.server import system_trace_views
+    from evo_agents.hub.server.systems.routes import traces as system_trace_views
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401
         OTHER,

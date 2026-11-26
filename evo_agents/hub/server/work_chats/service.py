@@ -35,7 +35,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, runs
-from evo_agents.hub.server import audit, system_traces
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import Hand
 from evo_agents.hub.server.chats.models.views import person_author
@@ -47,6 +47,7 @@ from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import agent_access, hand_work, hub_reply
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import repository
 from evo_agents.hub.server.work_chats.models import STEP_THREADS_SCAN, TITLE, TITLE_WORDS, Handed, Trace
 from evo_agents.hub.server.work_chats.repository import trace_of_chat, trace_of_run

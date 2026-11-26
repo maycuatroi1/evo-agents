@@ -56,7 +56,6 @@ from evo_agents.hub.server import (
     invites,
     projects,
     security,
-    system_trace_views,
     tokens,
     user_emails,
     web_auth,
@@ -80,6 +79,7 @@ from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
+from evo_agents.hub.server.systems.routes import traces as system_trace_views
 from evo_agents.kg import pacing
 from evo_agents.plugins.signing import default_sigstore
 
@@ -609,7 +609,6 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_profiles,
         agent_provider_accounts,
         agent_reads,
-        agent_systems,
         agent_types,
         autonomy_policies,
         branding,
@@ -635,7 +634,6 @@ def _include_member_routes(app: FastAPI) -> None:
         model_catalog,
         opportunity_evidence,
         ops_actions,
-        orchestrator_actions,
         plugin_chats_api,
         plugin_command_list,
         plugin_docs_api,
@@ -660,7 +658,6 @@ def _include_member_routes(app: FastAPI) -> None:
         secrets,
         seller,
         seller_api,
-        system_ops,
         task_dispatch,
         triage_actions,
         work_cards,
@@ -681,10 +678,13 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.orchestrator.service import actions as orchestrator_actions
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.signals import routes as signals
+    from evo_agents.hub.server.systems.routes import ops as system_ops
+    from evo_agents.hub.server.systems.routes import systems as agent_systems
 
     for routes in (
         secrets.router,

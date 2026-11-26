@@ -2,7 +2,7 @@
 as its own attributes (``tables.system_traces``, ``tables.system_spans``, ``tables.agent_ask_briefs``): queries name
 them there.
 
-system_traces holds each trace of an agent system (``evo_agents.hub.server.system_traces``): the system and the
+system_traces holds each trace of an agent system (``evo_agents.hub.server.systems``): the system and the
 revision of its spec it ran under, the chat and the message of a person that opened it, who wrote that message, and
 when it started and last moved, and the plan (plan_id, plan_revision) a system dispatch gave it to run, NULL for a
 trace a typed message opened. system_spans holds its spans, named as OpenTelemetry GenAI names them

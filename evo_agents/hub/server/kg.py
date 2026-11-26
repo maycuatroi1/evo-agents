@@ -102,13 +102,14 @@ from evo_agents.hub.kg_snapshots import Held, requests_waiting
 from evo_agents.hub.kg_source_state import SourceState, source_state
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience, system_traces
+from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH
 from evo_agents.kg.pacing import pacing
 from evo_agents.kg.policy import Label, Policy
