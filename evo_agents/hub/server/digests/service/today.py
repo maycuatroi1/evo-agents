@@ -22,53 +22,19 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import DateTime, exists, func, insert, literal, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import bus, curator, jobs, runs, tables
+from evo_agents.hub import bus, curator, jobs, runs
 from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
 from evo_agents.hub.server import today
-from evo_agents.hub.server.push import repository as push_repository
+from evo_agents.hub.server.digests.repository import today as repository
 from evo_agents.hub.server.push.models import FALLBACK_ZONE
 from evo_agents.hub.server.push.service import tiers as push_tiers
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.hub.tables_push import DEFAULT_DIGEST_AT, OFF
 
 log = logging.getLogger(__name__)
-
-AWAY = timedelta(hours=8)  # a member seen on the hub more recently gets no summary push
-NOTICE = "today"  # runs.NOTICE_KINDS: the summary push
-TITLE = "Today on the hub"
-TODAY = "/today"  # the web's Today, which was Home until the chat home took "/"
-
-
-def _candidates(now: datetime):
-    """The members who may get a summary push at ``now`` (the module): their id, login, time zone, digest_at and the
-    local day of their last summary push."""
-    u, p, t, d = tables.users, tables.notification_preferences, tables.today_marks, tables.push_devices
-    away = literal(now, DateTime(timezone=True)) - AWAY
-    device = exists().where(d.c.user_id == u.c.id, push_repository.device_live(d))
-    tier = func.coalesce(p.c.tiers[NOTICE].astext, "")
-    return (
-        select(
-            u.c.id,
-            u.c.login,
-            p.c.time_zone,
-            func.coalesce(p.c.digest_at, DEFAULT_DIGEST_AT).label("digest_at"),
-            t.c.digest_on,
-        )
-        .select_from(u.outerjoin(p, p.c.user_id == u.c.id).outerjoin(t, t.c.user_id == u.c.id))
-        .where(
-            device,
-            or_(u.c.last_seen_at.is_(None), u.c.last_seen_at <= away),
-            or_(t.c.seen_at.is_(None), t.c.seen_at <= away),
-            tier != OFF,
-        )
-        .order_by(u.c.id)
-    )
 
 
 async def _local_now(conn: AsyncConnection, zone: str | None, now: datetime, config, zones: dict) -> datetime:
@@ -80,40 +46,15 @@ async def _local_now(conn: AsyncConnection, zone: str | None, now: datetime, con
         if not await push_tiers.time_zone_known(conn, name):
             log.warning("summary push in a time zone Postgres does not know", extra={"zone": name})
             known = FALLBACK_ZONE
-        moment = literal(now, DateTime(timezone=True))
-        zones[name] = (await conn.execute(select(func.timezone(known, moment)))).scalar_one()
+        zones[name] = await repository.local_time(conn, known, now)
     return zones[name]
-
-
-async def _claim(conn: AsyncConnection, user_id: int, day: date) -> bool:
-    """Take local day ``day`` for member ``user_id``'s summary push; False when it was taken already."""
-    t = tables.today_marks
-    claimed = pg_insert(t).values(user_id=user_id, digest_on=day)
-    claimed = claimed.on_conflict_do_update(
-        constraint="today_marks_pkey",
-        set_={"digest_on": day, "updated_at": func.now()},
-        where=or_(t.c.digest_on.is_(None), t.c.digest_on != day),
-    )
-    return (await conn.execute(claimed.returning(t.c.user_id))).first() is not None
 
 
 async def _push(conn: AsyncConnection, user_id: int, found: today.Today) -> int:
     """The summary push of ``found`` to member ``user_id``: its notification, read already, and a delivery on each of
     their devices that reaches them; its id."""
-    n = tables.notifications
     details = {"items": len(found.items), "needs_you": found.needs_you_count, "caught_up": found.caught_up}
-    stored = insert(n).values(
-        user_id=user_id,
-        kind="notice",
-        notice_kind=NOTICE,
-        title=TITLE,
-        body=found.summary,
-        details=details,
-        link=TODAY,
-        read_at=func.now(),
-    )
-    notification_id = (await conn.execute(stored.returning(n.c.id))).scalar_one()
-    await conn.execute(push_repository.device_deliveries(notification_id, user_id))
+    notification_id = await repository.pushed(conn, user_id, found.summary, details)
     await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)
     return notification_id
 
@@ -124,7 +65,7 @@ async def _digest(conn: AsyncConnection, row, now: datetime, config, zones: dict
     if not curator.brief_due(local_now, row.digest_at):
         return "not_due"
     day = local_now.date()
-    if row.digest_on == day or not await _claim(conn, row.id, day):
+    if row.digest_on == day or not await repository.claim(conn, row.id, day):
         return "sent"
     member = Principal(user_id=row.id, login=row.login, admin=False, token_id=0, kind=MACHINE, token_hash="")
     wait = timedelta(seconds=getattr(config, "decision_wait_seconds", None) or runs.DECISION_WAIT_SECONDS)
@@ -144,8 +85,8 @@ async def send(engine: AsyncEngine, *, config=None, now: datetime | None = None)
     its own; how many members ended in each outcome."""
     async with engine.begin() as conn:
         if now is None:
-            now = (await conn.execute(select(func.now()))).scalar_one()
-        found = (await conn.execute(_candidates(now))).all()
+            now = await repository.now(conn)
+        found = await repository.candidates(conn, now)
     outcomes: Counter = Counter()
     zones: dict[str, datetime] = {}
     for row in found:

@@ -69,8 +69,6 @@ from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_writes import ATTEMPTS, check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import (
-    digests,
-    evolve,
     hub_settings,
     kg,
     kg_audience,
@@ -89,6 +87,8 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.chats import mcp as chat_read
 from evo_agents.hub.server.decisions.service import reads as decision_reads
+from evo_agents.hub.server.digests.service import sessions as digest_sessions
+from evo_agents.hub.server.evolve import mcp as evolve_mcp
 from evo_agents.hub.server.history import mcp as history_mcp
 from evo_agents.hub.server.intake import service as intake
 from evo_agents.hub.server.kg_decisions import service as kg_decisions
@@ -228,7 +228,7 @@ class HubMcp(MCPServer):
             "decision_list": self._decision_list,
             "curator_replay": partial(self._delegated, replays.mcp_answer),
             "curator_probe_report": partial(self._delegated, probe_report.mcp_answer),
-            "curator_evolve": partial(self._delegated, evolve.mcp_answer),
+            "curator_evolve": partial(self._delegated, evolve_mcp.mcp_answer),
             **{name: partial(self._delegated, partial(history_mcp.answer, name)) for name in history_mcp.NAMES},
         }
 
@@ -779,16 +779,17 @@ class HubMcp(MCPServer):
         project = self._project(caller, arguments)
         await self._readable(caller, project)
         since = datetime.now(UTC) - timedelta(days=arguments.get("days", 7))
-        found = await digests.list_digests(
-            caller.request,
-            project,
-            caller.user,
-            since=since,
-            login=arguments.get("login"),
-            limit=arguments.get("limit", 20),
-            offset=arguments.get("offset", 0),
-            sink=caller.sink,
-        )
+        async with caller.request.app.state.engine.begin() as conn:
+            found = await digest_sessions.listed(
+                conn,
+                caller.user,
+                project,
+                since=since,
+                login=arguments.get("login"),
+                limit=arguments.get("limit", 20),
+                offset=arguments.get("offset", 0),
+                sink=caller.sink,
+            )
         lines = [
             f"{item.session_id}: {item.login}, {item.messages} messages, {item.model or '-'}, {item.cwd}, pushed "
             f"{item.updated_at:%Y-%m-%d %H:%M} UTC"
@@ -801,7 +802,8 @@ class HubMcp(MCPServer):
     async def _digest_show(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)
         await self._readable(caller, project)
-        found = await digests.show_digest(caller.request, project, arguments["session_id"], caller.user, caller.sink)
+        async with caller.request.app.state.engine.begin() as conn:
+            found = await digest_sessions.shown(conn, caller.user, project, arguments["session_id"], caller.sink)
         body = found.digest.model_dump(mode="json", by_alias=True)
         head = (
             f"Digest of session {found.session_id} of project {project}, pushed by {found.login}: {found.messages} "

@@ -3229,7 +3229,7 @@ evo-agents hub curator probe report --weeks 2 --json    # keys weeks, unprobed, 
 ## The Curator's evolutions
 
 What `docs/curator.md`, Evolving a harness, describes (schemas 0256 and 0257, `evo_agents/hub/evolve.py`,
-`evo_agents/hub/server/evolve.py`, `evolve_runs.py`, `evolve_report.py`). A writer of the project starts an evolution
+the package `evo_agents/hub/server/evolve/`). A writer of the project starts an evolution
 with `POST /v1/projects/{p}/curator/evolve` (`target` `git` with `repo` and `paths`, each one of the charter's
 `evolve.evolvable_paths`, or `agent_config` with `system_id` and `agent`; `proposal_id` names the accepted proposal
 whose planned change takes the branch), 409 while `evolve.enabled` is false; any reader lists them with `GET
@@ -5005,7 +5005,7 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.today_digest`, every minute: the summary push of Today to each member with a push device who has been away from
   the hub for 8 hours, at their `digest_at` in their time zone (07:30 until they choose), once a local day, when
   something changed since they last looked: a notice `today` delivered to their devices alone
-  (`evo_agents.hub.server.today_digest`, through `evo_agents.hub.server.brief`; `docs/notifications.md`, Today and its
+  (`evo_agents.hub.server.digests.service.today`, through `evo_agents.hub.server.brief`; `docs/notifications.md`, Today and its
   summary push).
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago,
   once the tool figures of each such run are written from them (a run writes them when it ends; this covers the runs

@@ -105,9 +105,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.opportunity_deadlines``).
 - ``hub.today_digest``, every minute: the summary push of Today to each member with a push device who has been away
   from the hub for 8 hours, at the local time they chose, when something changed since they last looked, once a day
-  (``evo_agents.hub.server.today_digest``, through ``evo_agents.hub.server.brief``).
+  (``evo_agents.hub.server.digests.service.today``, through ``evo_agents.hub.server.brief``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
-  (``evo_agents.hub.server.digests``).
+  (``evo_agents.hub.server.digests.service.sessions``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
 - ``hub.context_answer_reuse``, daily at 00:09: the answers loaded into prompts the day before, posted as the signal
@@ -647,7 +647,7 @@ async def prune_audit_rows(context: JobContext, timestamp: int | None = None) ->
 @queue.periodic(cron="23 4 * * *")
 @queue.task(name=jobs.PRUNE_DIGESTS, pass_context=True, queueing_lock=jobs.PRUNE_DIGESTS)
 async def prune_digests(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.digests import prune_digests as prune
+    from evo_agents.hub.server.digests.service.sessions import prune_digests as prune
 
     return await prune(hub(context).engine)
 

@@ -604,7 +604,8 @@ async def record_move(
         await probe_runs.probe_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "evolve":  # it writes no step: its candidates and its end reach the hub through its own routes
-        from evo_agents.hub.server import evolve_runs  # it reads runs through the routes that import this module
+        # it reads runs through the routes that import this module
+        from evo_agents.hub.server.evolve.service import runs as evolve_runs
 
         await evolve_runs.evolve_ended(conn, found, new, reason=reason)
         return None

@@ -61,7 +61,7 @@ from evo_agents.hub.blobs import KIND_LIMITS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.blobs import Mismatch, commit_uploads
-from evo_agents.hub.server.digests import BoundedRoute, SessionId
+from evo_agents.hub.server.digests.models.sessions import BoundedRoute, SessionId
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
