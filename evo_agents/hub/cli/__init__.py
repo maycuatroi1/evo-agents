@@ -8,7 +8,7 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
+attached by ``cli.session`` and the class modules beside it, ``agent`` and ``account-pool`` by ``cli.agent.profiles``, ``chat`` by ``cli_chats``, ``plugin`` by
 ``cli.plugin``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
 ``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
@@ -388,17 +388,17 @@ def _register_team_commands(hsub) -> None:
     register_hooks(hsub)
     register_send(hsub)
 
-    from evo_agents.hub.cli_agents import register_agents
+    from evo_agents.hub.cli.agent.profiles import AGENT
 
-    register_agents(hsub)
+    AGENT.attach(hsub)  # agent, then account-pool
 
-    from evo_agents.hub.cli_systems import register as register_systems
+    from evo_agents.hub.cli.system import SYSTEM
 
-    register_systems(hsub)
+    SYSTEM.attach(hsub)
 
-    from evo_agents.hub.cli_cron import register as register_cron
+    from evo_agents.hub.cli.cron import CRON
 
-    register_cron(hsub)
+    CRON.attach(hsub)
 
     from evo_agents.hub.cli_chats import register_chats
 
@@ -432,9 +432,9 @@ def _register_team_commands(hsub) -> None:
 
     register_signals(hsub)
 
-    from evo_agents.hub.cli_context import register_context
+    from evo_agents.hub.cli.context import CONTEXT
 
-    register_context(hsub)
+    CONTEXT.attach(hsub)
 
     from evo_agents.hub.cli_sessions import register_sessions
 
@@ -485,9 +485,9 @@ def _register_steering_commands(hsub) -> None:
     ORG.attach(hsub)
     AUTONOMY.attach(hsub)
 
-    from evo_agents.hub.cli_browser import register_browser
+    from evo_agents.hub.cli.browser import BROWSER
 
-    register_browser(hsub)
+    BROWSER.attach(hsub)
     from evo_agents.hub.cli.stop import STOP
 
     STOP.attach(hsub)
