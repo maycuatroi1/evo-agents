@@ -15,7 +15,8 @@ turned the kind off (``muted``) gets no such notice; their decisions and every o
 
 ``channel_outputs`` is what a channel cleared for a notification's project may send of its files (``member_channels
 .prepare``): those of a decision, or of a notice of a run's files, never of source tool, at most CHANNEL_OUTPUTS of
-them, each with a presigned GET of its bytes when the job's pass has the blob store (``notifications.PASS_BLOBS``).
+them, each with a presigned GET of its bytes when the job's pass has the blob store
+(``notifications.service.channels.PASS_BLOBS``).
 
 GET and PUT /v1/me/notification-settings read and set the notices the caller turned off, whether their push
 notifications hide details (``hide_details``: only the kind of thing, the project and the link, ``push_payload``), the
@@ -42,9 +43,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, outputs, runs, tables
 from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import audit, push_tiers
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import PASS_BLOBS, Outgoing, notify, one_line, run_link
+from evo_agents.hub.server.notifications.models import Outgoing
+from evo_agents.hub.server.notifications.service.channels import PASS_BLOBS
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
+from evo_agents.hub.server.push.service import tiers as push_tiers
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.hub.tables_push import DEFAULT_DIGEST_AT, TIERS
 
@@ -284,9 +288,9 @@ def _text(kind: str, run_id: int, project: str, files: list) -> tuple[str, str]:
     title = f"{_who(kind, run_id)} sent " + (files[0].name if len(files) == 1 else f"{len(files)} files")
     lines = []
     for row in files[:NAMES_IN_BODY]:
-        line = f"- {one_line(row.name)} ({_size(row.size)})"
+        line = f"- {NOTIFIER.one_line(row.name)} ({_size(row.size)})"
         if row.caption:
-            line += f": {one_line(row.caption, CAPTION_CHARS)}"
+            line += f": {NOTIFIER.one_line(row.caption, CAPTION_CHARS)}"
         lines.append(line)
     if len(files) > NAMES_IN_BODY:
         lines.append(f"- and {len(files) - NAMES_IN_BODY} more")
@@ -341,7 +345,7 @@ async def _rewrite(conn: AsyncConnection, notification_id: int, run, files: list
     title, body = _text(run.kind, run.id, run.project, files)
     n = tables.notifications
     changed = update(n).values(
-        title=one_line(title),
+        title=NOTIFIER.one_line(title),
         body=runs.clip(body, runs.MAX_NOTICE_BODY_BYTES),
         details={"outputs": [f.id for f in files]},
     )
@@ -381,7 +385,7 @@ async def outputs_recorded(conn: AsyncConnection, run_id: int, output_ids: list[
         await _rewrite(conn, found.id, run, await _files(conn, run_id, [*_ids(found.details), *output_ids]))
         return found.id
     title, body = _text(run.kind, run_id, run.project, files)
-    notification_id = await notify(
+    notification_id = await NOTIFIER.notify(
         conn,
         user_id=run.dispatched_by,
         kind="notice",
@@ -391,7 +395,7 @@ async def outputs_recorded(conn: AsyncConnection, run_id: int, output_ids: list[
         title=title,
         body=body,
         details={"outputs": [row.id for row in files]},
-        link=run_link(run.project, run_id),
+        link=NOTIFIER.run_link(run.project, run_id),
     )
     dl = tables.notification_deliveries
     await conn.execute(update(dl).values(next_at=func.now() + GATHER).where(dl.c.notification_id == notification_id))

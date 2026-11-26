@@ -43,7 +43,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row, source_rows
 from evo_agents.hub.server.market_install import Installing, check_trust, install_checked
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugin_publishers import trust
 from evo_agents.hub.server.plugin_store import (
     ADMIN_PAGE,
@@ -463,7 +463,7 @@ async def _remind(conn: AsyncConnection, row, admins: list[int]) -> None:
         f"The hub keeps it on for {lic.GRACE_DAYS} days more, then turns it off; renew it in the market."
     )
     for user_id in admins:
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
@@ -487,7 +487,7 @@ async def _lapse(conn: AsyncConnection, plugin, last, admins: list[int]) -> None
     target = f"license:{last.license_id} plugin={plugin.name} until={last.valid_until.isoformat()}"
     await audit.record(conn, actor_id=None, token_id=None, action=audit.MARKET_LICENSE_LAPSE, target=target)
     for user_id in admins:
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

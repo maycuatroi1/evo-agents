@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import attachments, blob_gc, chats, features, outputs
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server import attachment_store, audit, chat_bridges, hub_settings, member_channels
+from evo_agents.hub.server import attachment_store, audit, chat_bridges, hub_settings
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.chat_access import agent_projects, channel_cleared, chat_access
 from evo_agents.hub.server.chat_runs import hub_access
@@ -45,6 +45,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     refusing,
     session_principal,
 )
+from evo_agents.hub.server.notifications.service import member_channels
 
 NOT_LINKED = "bridge {bridge} is not linked: a chat admin bridges the chat again"
 UNAVAILABLE = "the hub's blob store does not answer now: send the file again later"

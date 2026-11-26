@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import signals
 from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import ACTIVE_STATES
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.srs.repository import people, store
 from evo_agents.hub.server.srs.repository.store import DocumentRow, Settings, VersionRow
@@ -230,7 +230,7 @@ async def tell_reviewers(
         if await _told(conn, user_id, held):
             continue
         mine = shares.get(user_id) or waiting
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
@@ -293,7 +293,7 @@ async def tell_case_reviewers(
     for user_id in await reviewers(conn, project_id, doc, held, settings, [case]):
         if await _told_case(conn, user_id, doc, case):
             continue
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
@@ -363,7 +363,7 @@ async def _tell_case(
     title = f"{where} is approved by {login}" if event == APPROVED else f"{login} asked for changes on {where}"
     path = store.case_path(rules.name, doc.slug, held.number, case.key)
     body = "\n".join([line for line in (note.strip(), store.web_url(path)) if line])
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=author_id,
         kind="notice",
@@ -414,7 +414,7 @@ async def tell_author(
         title = f"{login} asked for changes on {use_case} of {where}"
     else:
         title = f"{login} returned {where} to draft"
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=held.author_id,
         kind="notice",

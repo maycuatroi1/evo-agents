@@ -35,8 +35,8 @@ from evo_agents.hub.server.chat_access import ChatAccess, chat_access, label_adm
 from evo_agents.hub.server.chat_members import ChatId
 from evo_agents.hub.server.chat_views import Chat, chat_view
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.member_channels import live_session, session_live
-from evo_agents.hub.server.notifications import SESSION_ENDED
+from evo_agents.hub.server.notifications.models import SESSION_ENDED
+from evo_agents.hub.server.notifications.repository.channels import live_session, session_live
 from evo_agents.hub.server.security import WEB, CurrentUser, Principal
 
 log = logging.getLogger(__name__)

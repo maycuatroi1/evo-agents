@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import access, features, tables, telegram
 from evo_agents.hub.kg_sources import source_id
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server import chat_graph, hub_settings, member_channels
+from evo_agents.hub.server import chat_graph, hub_settings
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access
 from evo_agents.hub.server.chat_direct import direct_chat
 from evo_agents.hub.server.chat_views import message_rows, profiles_by_id
@@ -41,6 +41,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
 )
 from evo_agents.hub.server.decisions.models import AnswerIn
 from evo_agents.hub.server.decisions.service import answers as decision_answers
+from evo_agents.hub.server.notifications.service import member_channels
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.proposal_models import ProposalAnswer as ProposalAnswerIn
 from evo_agents.hub.server.proposal_reads import answer_proposal_as

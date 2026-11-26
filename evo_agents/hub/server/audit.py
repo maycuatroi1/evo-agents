@@ -30,7 +30,7 @@ AUTH_APP_REVOKE = "auth_app.revoke"
 # A project's admin set its DLP policy (evo_agents.hub.server.dlp_policy): "<project> mode=<m> kinds=<n> keywords=<n>",
 # never a keyword.
 DLP_POLICY = "dlp.policy"
-# A project's admin added, changed or deleted an outbound webhook (evo_agents.hub.server.project_webhooks):
+# A project's admin added, changed or deleted an outbound webhook (evo_agents.hub.server.webhooks):
 # "<project> webhook=<id>", never its URL's query or its secret.
 WEBHOOK_CREATE = "webhook.create"
 WEBHOOK_UPDATE = "webhook.update"

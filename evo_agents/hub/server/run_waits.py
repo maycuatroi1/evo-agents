@@ -49,7 +49,7 @@ from evo_agents.hub.server.decisions.models import Decision, DecisionAsk, Option
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.decisions.service.resume import lock_run_of, resume_parked
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -209,7 +209,7 @@ def woke_message(decision_id: int, reason: str, *, time: datetime | None = None,
         came = f"Decision #{decision_id} (wait) woke: its time came ({time:%Y-%m-%dT%H:%M:%SZ})."
     lines = [
         came,
-        f"It waited for: {one_line(reason, 500)}",
+        f"It waited for: {NOTIFIER.one_line(reason, 500)}",
         *([workflow_waits.WOKE_HINT] if event is not None and event.kind == hub_events.WORKFLOW_RUN else []),
         "Check on the hub that what you waited for is there before you rely on it, and wait again with `evo-agents "
         "worker wait` when it is not.",

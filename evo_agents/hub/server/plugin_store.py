@@ -55,7 +55,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugin_tokens import revoke_tokens
 from evo_agents.hub.server.security import Principal, admin_login
 from evo_agents.plugins import compat, signing
@@ -591,7 +591,7 @@ async def _turn_off(conn: AsyncConnection, row, reason: str, admin_ids: list[int
     )
     details = {"plugin": row.name, "version": row.installed_version, "hub_version": hub_version}
     for user_id in admin_ids:
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

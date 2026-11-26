@@ -259,7 +259,7 @@ async def trip(found, causes: list[tuple[str, str]]) -> None:
 
 async def tell(conn: AsyncConnection, found, cause: str, named: list[str], reason: str, paused: list[int]) -> None:
     """The notice merge_paused, in the Inbox of each admin of the project and on the channels they linked."""
-    from evo_agents.hub.server.notifications import notify  # it reaches the plugins' channels
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER  # it reaches the plugins' channels
 
     project, repo = found.project, found.repo
     lines = [
@@ -272,7 +272,7 @@ async def tell(conn: AsyncConnection, found, cause: str, named: list[str], reaso
     if paused:
         lines += ["", f"Paused: {post_merge.iids(paused)}."]
     for user_id in await after_merge.admins(conn, project.id):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

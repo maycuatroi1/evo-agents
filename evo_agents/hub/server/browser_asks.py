@@ -26,7 +26,7 @@ from evo_agents.hub.server.browser_leases import REFUSALS, set_needs_login, usab
 from evo_agents.hub.server.decisions.models import DecisionAsk, OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -76,7 +76,7 @@ def _ask(name: str, run_id: int, project: str, body: BrowserLoginBody) -> LoginA
     options = [OptionIn(key=key, label=label, description=text) for key, label, text in browser_login.LOGIN_OPTIONS]
     return LoginAsk(
         category=browser_login.CATEGORY,
-        question=browser_login.LOGIN_QUESTION.format(name=one_line(name, 80), run=run_id),
+        question=browser_login.LOGIN_QUESTION.format(name=NOTIFIER.one_line(name, 80), run=run_id),
         context=browser_login.login_context(name, body.url, body.reason, project, run_id),
         options=options,
         recommended=browser_login.LOGIN_DONE,

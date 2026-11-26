@@ -1,12 +1,12 @@
 """Outbound webhooks of a project (plan evo-creative-workspace, step 2, criterion a2; ``evo_agents.hub.webhook_events``
-and ``evo_agents.hub.server.project_webhooks``).
+and ``evo_agents.hub.server.webhooks``).
 
 The checks the step names: a project's admin alone sets its webhooks, whose secret is in the answers that make it
 alone and is stored sealed; the events run.state, chat.message, task.result and curator.proposal reach the outbox of
 the webhooks that take them, in the transaction that made them; a delivery is a POST signed with HMAC-SHA256 under
 the secret, retried with a backoff while its receiver fails, and failed after MAX_ATTEMPTS tries or when its webhook
 is turned off. A webhook's URL names a public host, and each try goes to an address of it that was checked public
-(``evo_agents.hub.server.webhook_delivery``); a pass claims one delivery at a time."""
+(``evo_agents.hub.server.webhooks.service.delivery``); a pass claims one delivery at a time."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents import secret_patterns
 from evo_agents.hub import tables, webhook_events
-from evo_agents.hub.server import webhook_delivery
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.webhooks.service import delivery as webhook_delivery
 from tests.hub import live
 from tests.hub.live import sql
 from tests.hub.test_app_session_auth import client, hub  # noqa: F401 (fixtures)

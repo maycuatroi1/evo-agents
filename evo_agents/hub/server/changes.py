@@ -617,10 +617,10 @@ async def record_merge(
     who = "The hub" if by is None else by.agent
     owner_id = await _owner_of(conn, change.project_id) if by is None else by.user_id
     if owner_id is not None:
-        from evo_agents.hub.server.notifications import notify, run_link
+        from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
         how = "" if by is None else f" for {by.login} in chat run {by.chat_run_id}"
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=owner_id,
             kind="notice",
@@ -640,7 +640,7 @@ async def record_merge(
                 "change_id": change.id,
                 "pr": change.pr_url,
             },
-            link=run_link(project, change.builder_run_id) if change.builder_run_id else None,
+            link=NOTIFIER.run_link(project, change.builder_run_id) if change.builder_run_id else None,
         )
     via = "" if by is None else f" via={by.agent} in chat run {by.chat_run_id}"
     await audit.record(

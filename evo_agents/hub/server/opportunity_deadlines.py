@@ -31,7 +31,7 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import opportunities, tables
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ async def _remind_one(conn: AsyncConnection, opportunity_id: int, project: str, 
     if await conn.scalar(told.limit(1)) is not None:
         return None
     title, ask = _words(code, row.window_until, today, reached)
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=row.owner_id,
         kind="notice",

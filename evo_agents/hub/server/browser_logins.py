@@ -34,7 +34,7 @@ from evo_agents.hub.server.browser_identities import (
 )
 from evo_agents.hub.server.browser_profiles import locked
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import Run
@@ -225,7 +225,7 @@ async def notify_needs_login(conn: AsyncConnection, identity, project: str) -> N
     user_id = identity.owner_id or identity.created_by
     if user_id is None:
         return
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=user_id,
         kind="notice",

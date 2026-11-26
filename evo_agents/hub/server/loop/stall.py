@@ -174,7 +174,7 @@ def _options() -> list[dict]:
 
 async def _ask(conn: AsyncConnection, project_id: int, project: str, item: ItemView, view: View) -> bool:
     """The decision of category loop at the work item's third failure (see the module); False without a run."""
-    from evo_agents.hub.server.notifications import decision_link, notify
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     run_id = await last_run(conn, item)
     owner = await _stands_for(conn, run_id, item.goal_id) if run_id is not None else None
@@ -195,7 +195,7 @@ async def _ask(conn: AsyncConnection, project_id: int, project: str, item: ItemV
     if not await _keep(conn, item, WAITING_HUMAN, "loop_decision", "decision", kept):
         return False
     await _ledger(conn, item.id, ASKED, WAITING_HUMAN, "loop_decision", kept, run_id=run_id)
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=owner,
         kind="decision",
@@ -204,7 +204,7 @@ async def _ask(conn: AsyncConnection, project_id: int, project: str, item: ItemV
         decision_id=decision_id,
         title=f"The Loop of {project}: work item #{item.id} failed {item.failures} times",
         body=f"{question}\n\n" + "\n".join(lines[1:]),
-        link=decision_link(decision_id),
+        link=NOTIFIER.decision_link(decision_id),
     )
     return True
 

@@ -23,8 +23,11 @@ from sqlalchemy import extract, func, select, update
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.config import ConfigError, load_config
-from evo_agents.hub.server import notifications, push_tiers
-from evo_agents.hub.server.push_tiers import BRIEF, INTERRUPT, Facts
+from evo_agents.hub.server.notifications import models as notice_models
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
+from evo_agents.hub.server.push.models import Facts
+from evo_agents.hub.server.push.service import tiers as push_tiers
+from evo_agents.hub.tables_push import BRIEF, INTERRUPT
 from tests.hub.live import sql
 from tests.hub.test_decisions import answered, asked
 from tests.hub.test_notifications import PUSHED, notice
@@ -76,11 +79,11 @@ def project_id(db) -> int:
 
 
 def notified(client, **fields) -> int:
-    """A notification stored through ``notifications.notify``, as the hub's own senders store theirs; its id."""
+    """A notification stored through ``NOTIFIER.notify``, as the hub's own senders store theirs; its id."""
 
     async def store():
         async with client.app.state.engine.begin() as conn:
-            return await notifications.notify(conn, **fields)
+            return await NOTIFIER.notify(conn, **fields)
 
     return client.portal.call(store)
 
@@ -382,7 +385,7 @@ def test_a_held_push_of_a_decision_answered_meanwhile_is_not_sent(client, hub, h
     due_now(hub_db)
     deliver(client)
     assert service.pushes == []
-    assert [row[0::3] for row in device_rows(hub_db)] == [("failed", notifications.DECISION_CLOSED)]
+    assert [row[0::3] for row in device_rows(hub_db)] == [("failed", notice_models.DECISION_CLOSED)]
 
 
 def test_a_test_push_ignores_quiet_hours(client, hub, service):

@@ -1,8 +1,9 @@
-"""The members' channels of core plugins as the hub keeps them, in SQLAlchemy Core on ``evo_agents.hub.tables``: the
-member a channel of a kind speaks for, found by its config; linking and unlinking a channel; the one-time codes a
-channel is linked with (channel_link_codes, schema 0063); what a member may answer from a channel; what a channel's
-class reads of a notification; and the state a channel keeps. The API of core plugins
-(``evo_agents.hub.server.core_plugin_api``) builds on it, and ``docs/plugins.md`` (The core plugin API) is the design.
+"""The members' channels of core plugins: linking and unlinking a channel; the one-time codes a channel is linked with
+(channel_link_codes, schema 0063); what a member may answer from a channel; and what a channel's class reads of a
+notification. ``notifications.repository.channels`` holds their SQL (the member a channel of a kind speaks for, found
+by its config, and the state a channel keeps among it). The API of core plugins
+(``evo_agents.hub.server.core_plugin_api``) builds on both, and ``docs/plugins.md`` (The core plugin API) is the
+design.
 
 A channel is a row of notification_channels: one member, one kind, the config its plugin stores (a chat's ids, say),
 and the web session that linked it (``token_id``). It speaks for its member only while that session lives: the same
@@ -23,89 +24,30 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import and_, bindparam, delete, exists, func, insert, or_, select, update
-from sqlalchemy import null as sqlalchemy_null
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import access, tables, telegram
+from evo_agents.hub import telegram
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server import audit, output_notices
-from evo_agents.hub.server.notifications import SENDING, SESSION_ENDED, Outgoing
-from evo_agents.hub.server.security import WEB
-
-MAX_CONFIG_BYTES = 16 * 1024  # a channel's config, or its state, as JSON
-RESERVED_KEYS = ("disabled_reason", "disabled_at", "state")  # what the hub, not a link, writes into a channel's config
-STATE = "state"
-NOT_YOURS = "the hub has nothing by that for you to answer: it is not of a project you hold a grant on, or not there"
-RESTRICTED_ANSWER = "answer this on the hub: its project keeps its decisions and proposals off this channel"
-FROM_SESSION = (
-    "a channel is linked from a web session only, so a token that leaked cannot link one of its own: sign in on the "
-    "web and link it there"
+from evo_agents.hub.server.notifications.models import (
+    ANSWERABLE,
+    BY_DEFAULT_LABEL,
+    BY_LABEL,
+    BY_PROJECT,
+    LABELLED_ANSWER,
+    MAX_CONFIG_BYTES,
+    NO_USER,
+    NOT_YOURS,
+    RESTRICTED_ANSWER,
+    SESSION_ENDED,
+    Found,
+    Outgoing,
 )
-NO_USER = "the hub has no user {login}"
-LABELLED_ANSWER = "answer this on the hub: the label {label} of decision {decision_id} keeps it off this channel"
-ANSWERABLE = ("decision", "proposal")
-# Why a message goes without its notification's content (``extra["restricted_by"]``, notification_deliveries.withheld)
-BY_LABEL = "label"  # the decision's label sits above the clearance of the channel's sink, or of its plugin
-BY_DEFAULT_LABEL = "default_label"  # a decision without a label: its project keeps it off, by the hub sink as before
-BY_PROJECT = "project"  # a proposal or a notice its project keeps off, or a decision or proposal of no project
-
-
-@dataclass(frozen=True)
-class Found:
-    """A member's channel: who it speaks for, its id and its config as stored."""
-
-    user_id: int
-    login: str
-    channel_id: int
-    config: dict
-
-
-def live_session(row_of):
-    """The web session ``row_of`` (notification_channels or channel_link_codes) is bound to is live: of the same
-    member, neither revoked nor expired."""
-    t = tables.tokens
-    return exists().where(
-        t.c.id == row_of.c.token_id,
-        t.c.user_id == row_of.c.user_id,
-        t.c.kind == WEB,
-        t.c.revoked_at.is_(None),
-        t.c.expires_at > func.now(),
-    )
-
-
-def admin_linked(c):
-    """The channel of notification_channels ``c`` was linked by a hub admin who is still a user: no session, an
-    admin named (``admin_link``)."""
-    return and_(c.c.token_id.is_(None), c.c.linked_by.is_not(None))
-
-
-def channel_live(c):
-    """The channel of notification_channels ``c`` speaks for its member: the web session that linked it lives, or a
-    hub admin linked it."""
-    return or_(live_session(c), admin_linked(c))
-
-
-async def session_live(conn: AsyncConnection, user_id: int, token_id: int | None) -> bool:
-    """Whether ``token_id`` is a live web session of member ``user_id`` now."""
-    if token_id is None:
-        return False
-    t = tables.tokens
-    query = select(t.c.id).where(
-        t.c.id == token_id,
-        t.c.user_id == user_id,
-        t.c.kind == WEB,
-        t.c.revoked_at.is_(None),
-        t.c.expires_at > func.now(),
-    )
-    return (await conn.execute(query)).first() is not None
+from evo_agents.hub.server.notifications.repository import channels
+from evo_agents.hub.server.notifications.service.channels import SENDING
 
 
 def json_object(value, what: str, limit: int = MAX_CONFIG_BYTES) -> dict:
@@ -121,57 +63,12 @@ def json_object(value, what: str, limit: int = MAX_CONFIG_BYTES) -> dict:
     return json.loads(text)
 
 
-def _found(row) -> Found:
-    return Found(row.user_id, row.login, row.id, dict(row.config or {}))
-
-
-def _channels():
-    c, u = tables.notification_channels, tables.users
-    return select(c.c.id, c.c.user_id, u.c.login, c.c.config).join_from(c, u, u.c.id == c.c.user_id)
-
-
-async def member_by_config(
-    conn: AsyncConnection, kind: str, match: Mapping[str, Any], *, live: bool = True
-) -> Found | None:
-    """The channel of ``kind`` whose config holds every key and value of ``match``; with ``live``, only while the web
-    session that linked it lives or a hub admin linked it (``channel_live``), without it whatever became of that
-    session (to unlink it)."""
-    c = tables.notification_channels
-    query = _channels().where(c.c.kind == kind, c.c.config.contains(dict(match)))
-    if live:
-        query = query.where(channel_live(c))
-    row = (await conn.execute(query.order_by(c.c.id).limit(1))).one_or_none()
-    return None if row is None else _found(row)
-
-
-async def linked(conn: AsyncConnection, user_id: int, kind: str):
-    """Member ``user_id``'s channel of ``kind`` as it stands (config, enabled, created_at, and session_live: the web
-    session that linked it lives, or a hub admin linked it), or None."""
-    c = tables.notification_channels
-    live = channel_live(c).label("session_live")
-    query = select(c.c.config, c.c.enabled, c.c.created_at, live).where(c.c.user_id == user_id, c.c.kind == kind)
-    return (await conn.execute(query)).one_or_none()
-
-
 async def user_named(conn: AsyncConnection, login: str):
     """The user (id, login) of ``login`` in any case; 404 when the hub has none."""
-    u = tables.users
-    query = select(u.c.id, u.c.login).where(func.lower(u.c.login) == func.lower(login))
-    found = (await conn.execute(query)).one_or_none()
+    found = await channels.user_named(conn, login)
     if found is None:
         raise HTTPException(404, NO_USER.format(login=login))
     return found
-
-
-async def member_channel(conn: AsyncConnection, kind: str, user_id: int, *, live: bool = True) -> Found | None:
-    """Member ``user_id``'s channel of ``kind``, with ``live`` while the web session that linked it lives or a hub
-    admin linked it."""
-    c = tables.notification_channels
-    query = _channels().where(c.c.kind == kind, c.c.user_id == user_id)
-    if live:
-        query = query.where(channel_live(c))
-    row = (await conn.execute(query)).one_or_none()
-    return None if row is None else _found(row)
 
 
 async def link(
@@ -187,10 +84,10 @@ async def link(
     """Link member ``user_id``'s channel of ``kind`` with ``config``, bound to web session ``token_id``, in place of
     the one they had; another member's channel of the kind whose config has the same values at ``unique_on`` goes.
     403 SESSION_ENDED when the session does not live now. Audited as ``<kind>.link``."""
-    if not await session_live(conn, user_id, token_id):
+    if not await channels.session_live(conn, user_id, token_id):
         raise HTTPException(403, SESSION_ENDED)
     bound = {"config": config, "enabled": True, "token_id": token_id, "linked_by": None}
-    channel_id = await _bind(conn, user_id, kind, bound, unique_on)
+    channel_id = await channels.bind(conn, user_id, kind, bound, unique_on)
     await audit.record(conn, actor_id=user_id, token_id=token_id, action=f"{kind}.link", target=f"{kind} user:{login}")
     return Found(user_id, login, channel_id, dict(config))
 
@@ -212,7 +109,7 @@ async def admin_link(
     admin, ``by=admin``."""
     found = await user_named(conn, login)
     bound = {"config": config, "enabled": True, "token_id": None, "linked_by": actor_id}
-    channel_id = await _bind(conn, found.id, kind, bound, unique_on)
+    channel_id = await channels.bind(conn, found.id, kind, bound, unique_on)
     await audit.record(
         conn,
         actor_id=actor_id,
@@ -221,20 +118,6 @@ async def admin_link(
         target=f"{kind} user:{found.login} by=admin",
     )
     return Found(found.id, found.login, channel_id, dict(config))
-
-
-async def _bind(conn: AsyncConnection, user_id: int, kind: str, bound: dict, unique_on: tuple[str, ...]) -> int:
-    """Member ``user_id``'s channel of ``kind`` made, or replaced, with the columns ``bound``; another member's channel
-    of the kind whose config has the same values at ``unique_on`` goes. The channel's id."""
-    c = tables.notification_channels
-    if unique_on:
-        same = {key: bound["config"][key] for key in unique_on}
-        await conn.execute(delete(c).where(c.c.kind == kind, c.c.user_id != user_id, c.c.config.contains(same)))
-    linked = pg_insert(c).values(user_id=user_id, kind=kind, **bound)
-    linked = linked.on_conflict_do_update(
-        constraint="notification_channels_user_id_kind_key", set_={**bound, "created_at": func.now()}
-    ).returning(c.c.id)
-    return (await conn.execute(linked)).scalar_one()
 
 
 async def unlink(
@@ -248,10 +131,8 @@ async def unlink(
 ) -> bool:
     """Delete member ``user_id``'s channel of ``kind`` and the deliveries waiting for it; whether there was one.
     Audited as ``<kind>.unlink`` done ``by`` the member (web or bot), or by ``actor_id``, a hub admin (admin)."""
-    c, u = tables.notification_channels, tables.users
-    gone = (await conn.execute(delete(c).where(c.c.user_id == user_id, c.c.kind == kind).returning(c.c.id))).all()
-    if gone:
-        login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
+    login = await channels.delete_channel(conn, user_id, kind)
+    if login is not None:
         await audit.record(
             conn,
             actor_id=user_id if actor_id is None else actor_id,
@@ -259,19 +140,7 @@ async def unlink(
             action=f"{kind}.unlink",
             target=f"{kind} user:{login} by={by}",
         )
-    return bool(gone)
-
-
-async def set_state(conn: AsyncConnection, channel_id: int, user_id: int, state: dict) -> bool:
-    """Put ``state`` in the config of channel ``channel_id`` of member ``user_id``, its row locked; False when the
-    channel is gone."""
-    c = tables.notification_channels
-    locked = select(c.c.id).where(c.c.id == channel_id, c.c.user_id == user_id).with_for_update()
-    if (await conn.execute(locked)).first() is None:
-        return False
-    kept = bindparam("state", {STATE: state}, type_=JSONB)
-    await conn.execute(update(c).values(config=c.c.config.op("||")(kept)).where(c.c.id == channel_id))
-    return True
+    return login is not None
 
 
 # The one-time codes
@@ -281,29 +150,18 @@ async def new_link_code(conn: AsyncConnection, *, user_id: int, token_id: int, k
     """A one-time code that links member ``user_id``'s channel of ``kind``, made by web session ``token_id``, and when
     it expires: it lives ``telegram.LINK_SECONDS``, the hub keeps its SHA-256 alone, and it replaces the member's codes
     of the kind not used yet. 403 SESSION_ENDED when the session does not live now."""
-    if not await session_live(conn, user_id, token_id):
+    if not await channels.session_live(conn, user_id, token_id):
         raise HTTPException(403, SESSION_ENDED)
-    codes = tables.channel_link_codes
-    day_ago = func.now() - timedelta(days=1)
-    mine = and_(codes.c.user_id == user_id, codes.c.kind == kind)
-    await conn.execute(
-        delete(codes).where(
-            mine | (codes.c.expires_at < day_ago), codes.c.used_at.is_(None) | (codes.c.used_at < day_ago)
-        )
-    )
     code = telegram.new_code()
-    made = (
-        insert(codes)
-        .values(
-            user_id=user_id,
-            kind=kind,
-            code_hash=telegram.code_hash(code),
-            expires_at=func.now() + timedelta(seconds=telegram.LINK_SECONDS),
-            token_id=token_id,
-        )
-        .returning(codes.c.expires_at)
+    expires_at = await channels.new_link_code(
+        conn,
+        user_id=user_id,
+        token_id=token_id,
+        kind=kind,
+        code_hash=telegram.code_hash(code),
+        seconds=telegram.LINK_SECONDS,
     )
-    return code, (await conn.execute(made)).scalar_one()
+    return code, expires_at
 
 
 async def redeem_link_code(conn: AsyncConnection, kind: str, code: str):
@@ -311,60 +169,18 @@ async def redeem_link_code(conn: AsyncConnection, kind: str, code: str):
     of the kind, was used, expired, or the web session that made it does not live any more."""
     if not isinstance(code, str) or not telegram.LINK_CODE.fullmatch(code):
         return None
-    codes, users = tables.channel_link_codes, tables.users
-    query = (
-        select(codes.c.id, codes.c.user_id, codes.c.token_id, users.c.login)
-        .join_from(codes, users, users.c.id == codes.c.user_id)
-        .where(
-            codes.c.code_hash == telegram.code_hash(code),
-            codes.c.kind == kind,
-            codes.c.used_at.is_(None),
-            codes.c.expires_at > func.now(),
-            live_session(codes),
-        )
-        .with_for_update(of=codes)
-    )
-    row = (await conn.execute(query)).one_or_none()
-    if row is None:
-        return None
-    await conn.execute(update(codes).values(used_at=func.now()).where(codes.c.id == row.id))
-    return row
+    return await channels.redeem_link_code(conn, kind, telegram.code_hash(code))
 
 
 # What a channel may answer and read
 
 
-def project_rules():
-    """A project's name, ladder and hub sink's clearance (NULL without one), as ``telegram.restricted_for`` reads
-    them."""
-    p, ps = tables.projects, tables.project_sinks
-    hub_sink = and_(ps.c.project_id == p.c.id, ps.c.kind == access.HUB_KIND)
-    return select(p.c.name, p.c.levels, p.c.locations, ps.c.clearance).select_from(p.outerjoin(ps, hub_sink))
-
-
 def kept_from(row, level: str, location: str | None, below: bool = False) -> bool:
-    """Whether the project of ``row`` (of ``project_rules``) is kept from a channel cleared for level and location,
-    or for what sits below them (``telegram.restricted_for``); no project is."""
+    """Whether the project of ``row`` (of ``channels.project_rules``) is kept from a channel cleared for level and
+    location, or for what sits below them (``telegram.restricted_for``); no project is."""
     if row is None:
         return True
     return telegram.restricted_for(row.clearance, row.levels, row.locations, level, location, below=below)
-
-
-async def rules_of(conn: AsyncConnection, project: str):
-    """The row of ``project_rules`` of project ``project``, or None."""
-    return (await conn.execute(project_rules().where(tables.projects.c.name == project))).one_or_none()
-
-
-def channel_sink(project_id, channel: str | None):
-    """The clearance of the sink of kind channel named ``channel`` in project ``project_id`` (a column or a value), as
-    a scalar subquery: NULL without one, or without a channel."""
-    ps = tables.project_sinks.alias("channel_sink")
-    return (
-        select(ps.c.clearance)
-        .where(ps.c.project_id == project_id, ps.c.kind == access.CHANNEL_KIND, ps.c.sink_id == (channel or ""))
-        .limit(1)
-        .scalar_subquery()
-    )
 
 
 def effective_label(label: str | None, default_label, levels) -> str | None:
@@ -402,26 +218,7 @@ async def answerable_project(
     (``labelled_kept``, against the sink of kind channel named ``channel``), and 403 RESTRICTED_ANSWER for a decision
     without a label, or a proposal, of a project kept from the channel. Checked before anything else of the decision
     or proposal is read."""
-    item = tables.decisions if kind == "decision" else tables.proposals
-    p, g, ps = tables.projects, tables.grants, tables.project_sinks
-    label = item.c.label if kind == "decision" else sqlalchemy_null()
-    query = (
-        select(
-            p.c.name,
-            p.c.levels,
-            p.c.locations,
-            ps.c.clearance,
-            label.label("label"),
-            channel_sink(p.c.id, channel).label("channel_clearance"),
-        )
-        .select_from(
-            item.join(p, p.c.id == item.c.project_id)
-            .join(g, and_(g.c.project_id == p.c.id, g.c.user_id == user_id))
-            .outerjoin(ps, and_(ps.c.project_id == p.c.id, ps.c.kind == access.HUB_KIND))
-        )
-        .where(item.c.id == item_id)
-    )
-    row = (await conn.execute(query)).one_or_none()
+    row = await channels.answer_rules(conn, user_id, kind, item_id, channel)
     if row is None:
         raise HTTPException(404, NOT_YOURS)
     if row.label is not None:
@@ -430,27 +227,6 @@ async def answerable_project(
     elif kept_from(row, level, location, below):
         raise HTTPException(403, RESTRICTED_ANSWER)
     return row.name
-
-
-def _decision_rules(decision_id: int, channel: str | None):
-    """Decision ``decision_id``'s label, its project's name, ladder, default label and hub sink's clearance, and the
-    clearance of the project's sink of channel ``channel``."""
-    d, p, ps = tables.decisions, tables.projects, tables.project_sinks
-    hub_sink = and_(ps.c.project_id == p.c.id, ps.c.kind == access.HUB_KIND)
-    return (
-        select(
-            d.c.label,
-            d.c.state,
-            p.c.name,
-            p.c.levels,
-            p.c.locations,
-            p.c.default_label,
-            ps.c.clearance,
-            channel_sink(p.c.id, channel).label("channel_clearance"),
-        )
-        .select_from(d.join(p, p.c.id == d.c.project_id).outerjoin(ps, hub_sink))
-        .where(d.c.id == decision_id)
-    )
 
 
 def _redacted(value):
@@ -478,17 +254,43 @@ def _channel_decision(row) -> dict:
     }
 
 
+async def _restriction(
+    conn: AsyncConnection, notification: Outgoing, told: dict, level: str, location: str | None, below: bool
+) -> tuple[bool, str]:
+    """Whether ``notification`` is kept from a channel cleared for ``level`` and ``location``, and by what (BY_LABEL,
+    BY_DEFAULT_LABEL, BY_PROJECT); a decision's label, and its state for an edit, put in ``told``."""
+    sending = SENDING.get()
+    restricted = notification.kind in ANSWERABLE
+    by = BY_PROJECT
+    rules = None
+    if notification.kind == "decision" and notification.decision_id is not None:
+        channel = None if sending is None else sending.channel
+        rules = await channels.decision_rules(conn, notification.decision_id, channel)
+        if "edit" in told and rules is not None:
+            told["edit"]["state"] = rules.state
+    if rules is not None:
+        told["label"] = effective_label(rules.label, rules.default_label, rules.levels)
+        told["label_given"] = rules.label is not None
+        if rules.label is not None:
+            restricted, by = labelled_kept(rules, level, below), BY_LABEL
+        else:
+            restricted, by = kept_from(rules, level, location, below), BY_DEFAULT_LABEL
+    elif notification.project is not None:
+        restricted = kept_from(await channels.rules_of(conn, notification.project), level, location, below)
+    return restricted, by
+
+
 async def prepare(
     conn: AsyncConnection, notification: Outgoing, level: str, location: str | None, below: bool = False
 ) -> Outgoing:
     """``notification`` with what a channel cleared for ``level`` and ``location`` may send of it in ``extra``.
 
     A decision with a label is judged by that label against the clearance of its project's sink of kind channel named
-    as the channel the job's pass delivers to (``notifications.SENDING``), and against ``level`` (``labelled_kept``):
-    no such sink, or no delivery being prepared, keeps it off. A decision without a label, a proposal and a notice
-    keep the rule of the project's hub sink (``kept_from``). One kept off gets ``{"restricted": true,
-    "restricted_by": ...}`` alone: ``label`` (BY_LABEL), ``default_label`` for a decision without a label, ``project``
-    for the rest and for a decision or proposal of no project.
+    as the channel the job's pass delivers to (``notifications.service.channels.SENDING``), and against ``level``
+    (``labelled_kept``): no such sink, or no delivery being prepared, keeps it off. A decision without a label, a
+    proposal and a notice keep the rule of the project's hub sink (``kept_from``). One kept off gets ``{"restricted":
+    true, "restricted_by": ...}`` alone: ``label`` (BY_LABEL), ``default_label`` for a decision without a label,
+    ``project`` for the rest and for a decision or proposal of no project.
 
     Else ``restricted`` is false, with its decision (question, category, plan_id, step_key, options, state, run_kind,
     run_title, the recommended_reason, reversible, undo and evidence of ``decision_models``, an empty list for no
@@ -500,30 +302,14 @@ async def prepare(
 
     A decision's ``extra`` has ``label``, its effective label (its own, else its project's default label's level),
     and ``label_given`` whether it has its own, restricted or not, and its title and body are redacted. A delivery
-    that edits the message of an earlier one (``edit_of``, ``notifications.queue_edits``) adds ``edit``: the
-    ``delivery_id`` and ``external_id`` of that message and the decision's ``state``, so the channel edits it in place
-    of sending a new one."""
+    that edits the message of an earlier one (``edit_of``, ``notifications.service.deliveries.queue_edits``) adds
+    ``edit``: the ``delivery_id`` and ``external_id`` of that message and the decision's ``state``, so the channel
+    edits it in place of sending a new one."""
     sending = SENDING.get()
     told: dict = {}
     if sending is not None and sending.edit_of is not None:
         told["edit"] = {"delivery_id": sending.edit_of, "external_id": sending.edit_external_id, "state": None}
-    restricted = notification.kind in ANSWERABLE
-    by = BY_PROJECT
-    rules = None
-    if notification.kind == "decision" and notification.decision_id is not None:
-        channel = None if sending is None else sending.channel
-        rules = (await conn.execute(_decision_rules(notification.decision_id, channel))).one_or_none()
-        if "edit" in told and rules is not None:
-            told["edit"]["state"] = rules.state
-    if rules is not None:
-        told["label"] = effective_label(rules.label, rules.default_label, rules.levels)
-        told["label_given"] = rules.label is not None
-        if rules.label is not None:
-            restricted, by = labelled_kept(rules, level, below), BY_LABEL
-        else:
-            restricted, by = kept_from(rules, level, location, below), BY_DEFAULT_LABEL
-    elif notification.project is not None:
-        restricted = kept_from(await rules_of(conn, notification.project), level, location, below)
+    restricted, by = await _restriction(conn, notification, told, level, location, below)
     if notification.kind == "decision":  # the title and the body repeat the question
         notification = dataclasses.replace(
             notification, title=redact(notification.title), body=_redacted(notification.body)
@@ -532,85 +318,12 @@ async def prepare(
         return dataclasses.replace(notification, extra={"restricted": True, "restricted_by": by, **told})
     extra: dict = {"restricted": False, **told}
     if notification.decision_id is not None:
-        d, r, u = tables.decisions, tables.runs, tables.users
-        query = select(
-            d.c.question,
-            d.c.category,
-            d.c.plan_id,
-            d.c.step_key,
-            d.c.options,
-            d.c.state,
-            r.c.kind.label("run_kind"),
-            r.c.title.label("run_title"),
-            d.c.recommended_reason,
-            d.c.reversible,
-            d.c.undo,
-            d.c.evidence,
-            d.c.context,
-            d.c.answer_option,
-            u.c.login.label("answered_by"),
-            d.c.answered_via,
-        ).select_from(d.join(r, r.c.id == d.c.run_id).outerjoin(u, u.c.id == d.c.answered_by))
-        row = (await conn.execute(query.where(d.c.id == notification.decision_id))).one_or_none()
+        row = await channels.channel_decision(conn, notification.decision_id)
         labelled = {"label": told.get("label"), "label_given": told.get("label_given", False)}
         extra["decision"] = None if row is None else {**_channel_decision(row), **labelled}
     if notification.proposal_id is not None:
-        p = tables.proposals
-        query = select(p.c.title, p.c.tier, p.c.kind, p.c.lens, p.c.evidence_count, p.c.state)
-        row = (await conn.execute(query.where(p.c.id == notification.proposal_id))).one_or_none()
-        extra["proposal"] = None if row is None else dict(row._mapping)
+        extra["proposal"] = await channels.channel_proposal(conn, notification.proposal_id)
     carried = await output_notices.channel_outputs(conn, notification)
     if carried is not None and carried[1]:
         extra["outputs"], extra["outputs_count"] = carried
     return dataclasses.replace(notification, extra=extra)
-
-
-async def delivered(conn: AsyncConnection, user_id: int, kind: str, external_id: str):
-    """The notification (id, kind, project, decision_id, proposal_id) a channel of ``kind`` of member ``user_id``
-    delivered as ``external_id``, when it is the member's own; None otherwise."""
-    n, dl, c, p = tables.notifications, tables.notification_deliveries, tables.notification_channels, tables.projects
-    query = (
-        select(n.c.id, n.c.kind, p.c.name.label("project"), n.c.decision_id, n.c.proposal_id)
-        .select_from(
-            dl.join(n, n.c.id == dl.c.notification_id)
-            .join(c, c.c.id == dl.c.channel_id)
-            .outerjoin(p, p.c.id == n.c.project_id)
-        )
-        .where(c.c.kind == kind, c.c.user_id == user_id, dl.c.external_id == external_id, n.c.user_id == user_id)
-        .order_by(dl.c.id.desc())
-        .limit(1)
-    )
-    return (await conn.execute(query)).one_or_none()
-
-
-__all__ = [
-    "FROM_SESSION",
-    "LABELLED_ANSWER",
-    "MAX_CONFIG_BYTES",
-    "NOT_YOURS",
-    "NO_USER",
-    "RESERVED_KEYS",
-    "RESTRICTED_ANSWER",
-    "Found",
-    "admin_link",
-    "admin_linked",
-    "answerable_project",
-    "channel_live",
-    "delivered",
-    "json_object",
-    "kept_from",
-    "link",
-    "linked",
-    "live_session",
-    "member_by_config",
-    "member_channel",
-    "new_link_code",
-    "prepare",
-    "project_rules",
-    "redeem_link_code",
-    "rules_of",
-    "session_live",
-    "set_state",
-    "unlink",
-    "user_named",
-]

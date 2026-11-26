@@ -47,7 +47,6 @@ from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import (
     admin,
-    admin_channels,
     app_sessions,
     auth,
     blobs,
@@ -76,6 +75,7 @@ from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, PO
 from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
 from evo_agents.hub.server.memories.routes import restore_router as restore_routes
 from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
+from evo_agents.hub.server.notifications import routes as notifications
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
@@ -329,7 +329,7 @@ def _include_account_routes(app: FastAPI) -> None:
         tokens.router,
         user_emails.router,
         admin.router,
-        admin_channels.router,  # /v1/admin/users/{login}/channels/{kind}
+        notifications.admin_router,  # /v1/admin/users/{login}/channels/{kind}
         invites.router,  # /v1/admin/invites
         invites.accept_router,  # POST /v1/invites/accept
         projects.router,
@@ -486,21 +486,19 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         kg_worker,
         local_runs,
         member_tasks,
-        notification_list,
-        notifications,
         output_content,
         output_notices,
         overview,
-        project_webhooks,
         proposal_reads,
         proposals,
-        push,
         release_claims,
         releases,
         run_outputs,
         today,
     )
     from evo_agents.hub.server.decisions import routes as decisions
+    from evo_agents.hub.server.push import routes as push
+    from evo_agents.hub.server.webhooks import routes as webhooks
 
     for routes in (
         kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
@@ -508,10 +506,10 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         decisions.worker_router,
         local_runs.router,
         local_runs.batch_router,
-        notification_list.router,  # a member reads their notifications
+        notifications.router,  # a member reads their notifications
         notifications.worker_router,
         output_notices.router,  # the notices a member turned off
-        push.router,  # a member's push devices (evo_agents.hub.server.push_store)
+        push.router,  # a member's push devices (evo_agents.hub.server.push)
         push.config_router,  # what a client needs to subscribe, without a sign-in
         overview.router,
         today.router,  # what waits for a member and what changed since they last looked
@@ -531,7 +529,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         doc_versions.chat_router,  # the versions of a document in a chat or a run
         doc_versions.router,
         member_tasks.router,  # tasks a member hands an agent with no Git (task runs with no agent type)
-        project_webhooks.router,  # a project's outbound webhooks (evo_agents.hub.webhook_events)
+        webhooks.router,  # a project's outbound webhooks (evo_agents.hub.webhook_events)
         dlp_policy.router,  # a project's data loss prevention policy (evo_agents.hub.dlp)
     ):
         app.include_router(routes)

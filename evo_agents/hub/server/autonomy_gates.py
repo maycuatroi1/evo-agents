@@ -47,7 +47,7 @@ from evo_agents.hub.autonomy_levels import (
 )
 from evo_agents.hub.server import audit, autonomy_ledger, principals, run_autonomy
 from evo_agents.hub.server.autonomy_ledger import ACTED, ASKED, REFUSED
-from evo_agents.hub.server.notifications import decision_link, notify, one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 APPROVE, REFUSE = "approve", "refuse"
 OPTIONS = [{"key": APPROVE, "label": "Approve: the hub acts"}, {"key": REFUSE, "label": "Refuse: leave it undone"}]
@@ -161,7 +161,9 @@ async def _ask(
     decision_id = found.id if found is not None and found.state not in AGAIN else None
     if decision_id is None:
         decision_id = await _open(conn, said, choice, key, what, approval)
-    reason = f"{what} waits for the principal's answer to decision #{decision_id} ({decision_link(decision_id)})"
+    reason = (
+        f"{what} waits for the principal's answer to decision #{decision_id} ({NOTIFIER.decision_link(decision_id)})"
+    )
     return Verdict(False, ASK, reason, True, said.principal_id, said.project_id, said.run_id, said.klass)
 
 
@@ -181,16 +183,16 @@ async def _open(
     values["approval"] = approval
     inserted = insert(d).values(**values, step_key=key, question=question, context=context, options=OPTIONS)
     decision_id = (await conn.execute(inserted.values(asked_of=asked).returning(d.c.id))).scalar_one()
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=asked,
         kind="decision",
         project_id=said.project_id,
         run_id=said.run_id,
         decision_id=decision_id,
-        title=one_line(f"{said.klass} asks: {what}"),
+        title=NOTIFIER.one_line(f"{said.klass} asks: {what}"),
         body=f"{question}\n\n{context}",
-        link=decision_link(decision_id),
+        link=NOTIFIER.decision_link(decision_id),
     )
     await audit.record(
         conn,
@@ -209,14 +211,14 @@ async def told(conn: AsyncConnection, said: Verdict, key: str, title: str, body:
     if not said.tells:
         return
     for user_id in await principals.told_to(conn, said.principal_id):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
             notice_kind=runs.AUTONOMY_DECISION_CATEGORY,
             project_id=said.project_id,
             run_id=said.run_id,
-            title=one_line(title),
+            title=NOTIFIER.one_line(title),
             body=body
             or f"{said.klass} ({CLASS_NAMES[said.klass]}) is notify for the run's principal: the hub acted, "
             "and tells you.",

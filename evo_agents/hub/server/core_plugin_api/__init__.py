@@ -308,15 +308,16 @@ from evo_agents.hub.server.core_plugin_api._writes import (
     queue_kg_build,
 )
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.member_channels import NOT_YOURS, RESTRICTED_ANSWER
-from evo_agents.hub.server.notifications import (
+from evo_agents.hub.server.notifications.models import (
+    NOT_YOURS,
+    RESTRICTED_ANSWER,
     SESSION_ENDED,
-    Channel,
     ChannelGone,
     Outgoing,
     RetryAfter,
     Undeliverable,
 )
+from evo_agents.hub.server.notifications.service.channels import Channel
 
 API_VERSION: tuple[int, int] = (1, 8)
 

@@ -1,17 +1,17 @@
-"""The tiers of notifications and the quiet hours of members (plan hub-mobile-phase-0, criterion a3), in SQLAlchemy
-Core on notification_preferences (schema 0157). ``docs/notifications.md`` is the design; ``output_notices`` has the
-routes that read and set them (GET and PUT /v1/me/notification-settings).
+"""The tiers of notifications and the quiet hours of members (plan hub-mobile-phase-0, criterion a3), on
+notification_preferences (schema 0157), whose SQL ``push.repository`` holds. ``docs/notifications.md`` is the design;
+``output_notices`` has the routes that read and set them (GET and PUT /v1/me/notification-settings).
 
 **Tiers.** Each kind of notification (KINDS: decision, proposal and each kind of notice) is of one tier for a member:
 interrupt, pushed to their devices; brief, only in Today and the Inbox; or off, in the Inbox alone. The tier decides
 push alone: every notification still goes to the Inbox, the web's bell and the member's channels as before, and a
-notice the member turned off (``output_notices.muted``) still is not sent at all. ``interrupts`` tells ``notifications
-.notify`` whether a notification gets a delivery on each of its member's devices.
+notice the member turned off (``output_notices.muted``) still is not sent at all. ``interrupts`` tells
+``NOTIFIER.notify`` whether a notification gets a delivery on each of its member's devices.
 
 A tier the member chose for a kind (``tiers``) holds for every notification of that kind. Without one, the hub's
 default (``default_tier``) holds: interrupt for a decision asked of the member (the person who answers it,
-``decision_reads.asked_person``), for a run_failed of a run they dispatched (not one of CURATOR_KINDS, which the night shift
-queues on its own), for a release notice of a release that went wrong (any event but ``published``) and for
+``decisions.repository.asked_person``), for a run_failed of a run they dispatched (not one of CURATOR_KINDS, which the
+night shift queues on its own), for a release notice of a release that went wrong (any event but ``published``) and for
 merge_paused, the breaker of a merge queue that stopped a deploy; brief for every other notification, those of a kind
 added later included. DEFAULT_INTERRUPTS are the kinds whose default is interrupt for some of their notifications.
 
@@ -30,26 +30,23 @@ of plan hub-mobile-phase-0 step 5 reads with ``preferences``.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import DateTime, Text, column, exists, func, literal, select, table
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, runs, tables
+from evo_agents.hub import curator, runs
 from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
+from evo_agents.hub.server.push import repository
+from evo_agents.hub.server.push.models import (
+    DEFAULT_INTERRUPTS,
+    FALLBACK_ZONE,
+    KINDS,
+    RELEASED,
+    Facts,
+)
 from evo_agents.hub.tables_push import BRIEF, INTERRUPT, TIERS
 
 log = logging.getLogger(__name__)
-
-KINDS = ("decision", "proposal", *runs.NOTICE_KINDS)  # the kinds of notification a member sets a tier for
-# The kinds whose default tier is interrupt, for the notifications ``default_tier`` names: the rest default to brief.
-DEFAULT_INTERRUPTS = ("decision", "run_failed", "release", "merge_paused")
-RELEASED = "published"  # the event of a release notice of a release that went out (``release_watch``)
-FALLBACK_ZONE = "UTC"  # the time zone of quiet hours whose own Postgres no longer knows (logged)
-PG_TIMEZONES = table("pg_timezone_names", column("name", Text))  # the zones Postgres knows
-PREFERENCES = ("tiers", "quiet_start", "quiet_end", "time_zone", "digest_at")  # the columns ``set_preferences`` sets
 
 
 def kind_of(kind: str, notice_kind: str | None) -> str:
@@ -61,17 +58,6 @@ def kind_default(kind: str) -> str:
     """The tier the hub gives ``kind`` until a member chooses one, as the settings show it: interrupt for the kinds of
     DEFAULT_INTERRUPTS (for the notifications ``default_tier`` names), brief for every other."""
     return INTERRUPT if kind in DEFAULT_INTERRUPTS else BRIEF
-
-
-@dataclass(frozen=True)
-class Facts:
-    """What the hub's default tier of one notification to one member depends on."""
-
-    kind: str  # kind_of the notification
-    asked_of_member: bool = False  # a decision the member answers
-    dispatched_by_member: bool = False  # the notification's run was dispatched by the member
-    run_kind: str | None = None
-    event: str | None = None  # details["event"] of a notice
 
 
 def default_tier(facts: Facts) -> str:
@@ -90,9 +76,7 @@ def default_tier(facts: Facts) -> str:
 
 async def preferences(conn: AsyncConnection, user_id: int):
     """Member ``user_id``'s row of notification_preferences, or None when they chose nothing yet."""
-    p = tables.notification_preferences
-    query = select(p.c.hide_details, *(p.c[name] for name in PREFERENCES)).where(p.c.user_id == user_id)
-    return (await conn.execute(query)).one_or_none()
+    return await repository.preferences(conn, user_id)
 
 
 def chosen_tiers(row) -> dict[str, str]:
@@ -103,15 +87,9 @@ def chosen_tiers(row) -> dict[str, str]:
 
 async def _facts(conn: AsyncConnection, kind: str, user_id: int, run_id, decision_id, details) -> Facts:
     if kind == "decision" and decision_id is not None:
-        # it imports notifications, which imports this
-        from evo_agents.hub.server.decisions.repository import asked_person
-
-        d, r = tables.decisions, tables.runs
-        asked = select(asked_person()).select_from(d.join(r, r.c.id == d.c.run_id)).where(d.c.id == decision_id)
-        return Facts(kind, asked_of_member=(await conn.execute(asked)).scalar_one_or_none() == user_id)
+        return Facts(kind, asked_of_member=await repository.asked_of(conn, decision_id) == user_id)
     if kind == "run_failed" and run_id is not None:
-        r = tables.runs
-        row = (await conn.execute(select(r.c.dispatched_by, r.c.kind).where(r.c.id == run_id))).one_or_none()
+        row = await repository.run_dispatch(conn, run_id)
         if row is not None:
             return Facts(kind, dispatched_by_member=row.dispatched_by == user_id, run_kind=row.kind)
     event = details.get("event") if isinstance(details, dict) else None
@@ -144,7 +122,7 @@ async def interrupts(
 
 async def time_zone_known(conn: AsyncConnection, name: str) -> bool:
     """Whether Postgres knows the time zone ``name``, as the Curator's charter checks its own."""
-    return bool((await conn.execute(select(exists().where(PG_TIMEZONES.c.name == name)))).scalar_one())
+    return await repository.time_zone_known(conn, name)
 
 
 async def held_until(conn: AsyncConnection, *, user_id: int, config=None) -> datetime | None:
@@ -157,22 +135,21 @@ async def held_until(conn: AsyncConnection, *, user_id: int, config=None) -> dat
     if not await time_zone_known(conn, zone):
         log.warning("quiet hours in a time zone Postgres does not know", extra={"user_id": user_id, "zone": zone})
         zone = FALLBACK_ZONE
-    local_now = (await conn.execute(select(func.timezone(zone, func.now())))).scalar_one()
+    local_now = await repository.local_now(conn, zone)
     start, end = curator.parse_time(row.quiet_start), curator.parse_time(row.quiet_end)
     if not curator.in_window(local_now.time(), start, end):
         return None
     local_end = datetime.combine(local_now.date(), end)
     if local_end <= local_now:
         local_end += timedelta(days=1)
-    return (await conn.execute(select(func.timezone(zone, literal(local_end, DateTime()))))).scalar_one()
+    return await repository.from_local(conn, zone, local_end)
 
 
 async def closed(conn: AsyncConnection, decision_id: int | None) -> bool:
     """Whether decision ``decision_id`` is no longer open, so a push of it would ask what nobody asks any more."""
     if decision_id is None:
         return False
-    d = tables.decisions
-    state = (await conn.execute(select(d.c.state).where(d.c.id == decision_id))).scalar_one_or_none()
+    state = await repository.decision_state(conn, decision_id)
     return state is not None and state != "open"
 
 
@@ -182,7 +159,6 @@ async def closed(conn: AsyncConnection, decision_id: int | None) -> bool:
 async def set_preferences(conn: AsyncConnection, user_id: int, values: dict) -> None:
     """Set member ``user_id``'s notification preferences named in ``values`` (PREFERENCES and hide_details), leaving
     the rest as they are; ``tiers`` is merged into the tiers they chose, a kind set to None going back to the default."""
-    p = tables.notification_preferences
     values = dict(values)
     if "tiers" in values:
         tiers = chosen_tiers(await preferences(conn, user_id))
@@ -194,8 +170,4 @@ async def set_preferences(conn: AsyncConnection, user_id: int, values: dict) -> 
         values["tiers"] = tiers
     if not values:
         return
-    chosen = pg_insert(p).values(user_id=user_id, **values)
-    chosen = chosen.on_conflict_do_update(
-        constraint="notification_preferences_pkey", set_={**values, "updated_at": func.now()}
-    )
-    await conn.execute(chosen)
+    await repository.upsert_preferences(conn, user_id, values)

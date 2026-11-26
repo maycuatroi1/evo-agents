@@ -12,7 +12,7 @@ is about, which must be a step of the run's plan (422 for an author run that has
 and the outputs of the run it carries (``output_ids``, 422 for one of another run;
 ``output_store``), which every view of the decision lists with the decision's URL of their bytes. The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
 for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
-``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
+``system`` event in the run's log and notifies the run's owner (``NOTIFIER.notify``); the notification of a
 decision without a plan names the author run and its title instead. A run has at most MAX_OPEN_DECISIONS open at once
 (409). A plan run or an author run whose autonomy card leaves merging (K5) or deploying and releasing (K6) to its
 agent gets 409 for a question of category merge or deploy, or a scope question asking leave to do it, and so does a

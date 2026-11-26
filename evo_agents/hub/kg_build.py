@@ -818,14 +818,16 @@ async def tell_halted(
 ) -> None:
     """Tell the admins and the creator of a project that its builds stopped being queued (HALTED_NOTICE): by default
     because their worker kept dying; ``body`` and ``error`` say otherwise (``kg_build_queue._halted_by_failures``)."""
-    from evo_agents.hub.server.notifications import notify  # notifications import the claim, which imports the KG
+    from evo_agents.hub.server.notifications.service.deliveries import (
+        NOTIFIER,  # notifications import the claim, which imports the KG
+    )
 
     g, p = tables.grants, tables.projects
     admins = await conn.execute(select(g.c.user_id).where(g.c.project_id == project_id, g.c.role == "admin"))
     creator = await conn.scalar(select(p.c.created_by).where(p.c.id == project_id))
     details = {"project": project, "builds_in_a_row": count, **({"error": error} if error is not None else {})}
     for user_id in sorted({*admins.scalars(), *([creator] if creator is not None else [])}):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

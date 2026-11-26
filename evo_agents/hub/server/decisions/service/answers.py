@@ -18,8 +18,9 @@ from evo_agents.hub.server.decisions import repository
 from evo_agents.hub.server.decisions.models import AnswerIn, Decision
 from evo_agents.hub.server.decisions.service import resume
 from evo_agents.hub.server.decisions.service.reads import decision_view, readable_decision, visible
-from evo_agents.hub.server.member_channels import effective_label
-from evo_agents.hub.server.notifications import decision_link, decision_settled, notify, one_line
+from evo_agents.hub.server.notifications.service.deliveries import decision_settled
+from evo_agents.hub.server.notifications.service.member_channels import effective_label
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import write_event
@@ -37,7 +38,7 @@ QUESTION_IN_MESSAGE = 500  # characters of the question the answer's inbox messa
 def answer_message(decision_id: int, category: str, question: str, option: dict | None, text: str | None) -> str:
     """The inbox message that hands the owner's answer to the agent: the decision it answers, the option chosen and
     the owner's own words, within MAX_MESSAGE_BYTES."""
-    lines = [f"Answer to decision #{decision_id} ({category}): {one_line(question, QUESTION_IN_MESSAGE)}"]
+    lines = [f"Answer to decision #{decision_id} ({category}): {NOTIFIER.one_line(question, QUESTION_IN_MESSAGE)}"]
     if option is not None:
         lines.append(f"Chosen option: {option['key']}, {option['label']}.")
     if text is not None:
@@ -73,7 +74,7 @@ async def answer_by_hub(conn: AsyncConnection, run_id: int, row, view: Decision,
     event = {"text": text, "from": "hub", "message_id": message_id, "decision_id": view.id}
     await write_user_message(conn, run_id, event)
     name = found.leased[0]
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=row.dispatched_by,
         kind="notice",
@@ -82,9 +83,9 @@ async def answer_by_hub(conn: AsyncConnection, run_id: int, row, view: Decision,
         run_id=run_id,
         details={"decision_id": view.id},
         title=f"Run #{run_id} got {found.env_var} from your secret {name}",
-        body=f"{one_line(view.question)}\n\n{words}\n\nThe hub answered credential request #{view.id} itself: "
+        body=f"{NOTIFIER.one_line(view.question)}\n\n{words}\n\nThe hub answered credential request #{view.id} itself: "
         "nothing waits on you. Delete or rebind the secret with `evo-agents hub secret` to change what runs get.",
-        link=decision_link(view.id),
+        link=NOTIFIER.decision_link(view.id),
     )
     target = answer_target(row.name, row.plan_id, view.step_key, view.id, run_id, option["key"], row.kind) + " by=hub"
     await Auditor(conn, row.project_id).record(audit.DECISION_ANSWER, target)
@@ -312,7 +313,7 @@ async def _hold(
     await repository.held(conn, decision_id)
     await repository.read_notification(conn, decision_id, user.user_id)
     shown = (
-        f"{user.login} chose {one_line(chosen['label'], 80)} on decision #{decision_id}: it stays open, and the run "
+        f"{user.login} chose {NOTIFIER.one_line(chosen['label'], 80)} on decision #{decision_id}: it stays open, and the run "
         "waits for a later answer"
     )
     await write_event(conn, run_id, {"text": shown, "decision": {"id": decision_id, "held": chosen["key"]}})

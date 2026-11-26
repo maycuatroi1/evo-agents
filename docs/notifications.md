@@ -539,8 +539,11 @@ delivery, with the reason (not linked, turned off, linked after the decision was
 
 ## Routes
 
-`evo_agents/hub/server/decisions/` and `evo_agents/hub/server/notifications.py` hold them, with
-`output_notices.py` (the settings), `push.py` (push devices) and `today.py` (Today) in the same directory.
+`evo_agents/hub/server/decisions/` and `evo_agents/hub/server/notifications/` hold them, with `output_notices.py`
+(the settings), `push/` (push devices), `webhooks/` (a project's outbound webhooks) and `today.py` (Today) in the same
+directory. Each of the three packages goes from its routes to its service to its repository to its models
+(`docs/structure.md`, section Package boundaries); every module that notifies a member calls
+`notifications.service.notifier.NOTIFIER.notify`.
 
 For the worker holding a plan run (or, for `decisions`, an author run), with its `evw_` token and the protocol header
 (`docs/workers.md`); any other run, a run of one step, a review run and a judge run included, gets 404:
@@ -598,9 +601,9 @@ notifications of projects they hold a grant on.
 ## Push to devices
 
 A question an agent asks has to reach its person while they are away from the hub. Push is the hub's own code, not a
-plugin: `push_store.py` keeps the devices, `push_tiers.py` decides what is pushed and when, `push_senders.py` (Web
-Push) and `push_native.py` (APNs and FCM) send, all in `evo_agents/hub/server/`, and `evo_agents/hub/push_payload.py`
-writes what a push says. Deliveries to devices go through the outbox above, with its job, backoff and checks.
+plugin: in `evo_agents/hub/server/push/`, `repository.py` keeps the devices, `service/tiers.py` decides what is
+pushed and when, `service/senders.py` (Web Push) and `service/native.py` (APNs and FCM) send, and
+`evo_agents/hub/push_payload.py` writes what a push says. Deliveries to devices go through the outbox above, with its job, backoff and checks.
 
 ### Devices
 

@@ -33,8 +33,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import extract, func, select, update
 
 from evo_agents.hub import push_payload, tables
-from evo_agents.hub.server import notifications, push_senders, webpush
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.notifications import models as notice_models
+from evo_agents.hub.server.notifications.service import channels as notice_channels
+from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
+from evo_agents.hub.server.push import webpush
+from evo_agents.hub.server.push.service import senders as push_senders
 from tests.hub.live import sql
 from tests.hub.test_decisions import QUESTION, ask
 from tests.hub.test_notifications import PUSHED, notice
@@ -157,7 +161,9 @@ def hub(client, github) -> dict:
 
 def deliver(client) -> dict:
     app = client.app
-    return client.portal.call(lambda: notifications.deliver_notifications(app.state.engine, config=app.state.config))
+    return client.portal.call(
+        lambda: notice_deliveries.deliver_notifications(app.state.engine, config=app.state.config)
+    )
 
 
 def add(client, headers, body: dict):
@@ -260,11 +266,11 @@ def test_push_config_needs_no_sign_in_and_gives_the_vapid_key_and_the_senders_on
 def test_without_a_vapid_key_web_push_is_off_and_the_rest_of_the_outbox_runs(hub_db, tmp_path, github, monkeypatch):
     sent = []
 
-    class FakeChannel(notifications.Channel):
+    class FakeChannel(notice_channels.Channel):
         async def send(self, notification, config):
             sent.append(notification.id)
 
-    monkeypatch.setitem(notifications.CHANNELS, "fake", FakeChannel)
+    monkeypatch.setitem(notice_channels.CHANNELS, "fake", FakeChannel)
     with make_client(hub_db, tmp_path, github) as client:
         assert client.get("/v1/push/config").json() == {
             "vapid_public_key": None,
@@ -516,7 +522,7 @@ def test_a_member_without_a_grant_now_gets_no_push_and_keeps_the_device(client, 
     assert client.delete(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", headers=hub["admin"]).status_code == 204
     deliver(client)
     assert service.pushes == []
-    assert device_deliveries(hub_db) == [("webpush", "failed", 1, notifications.NO_GRANT)]
+    assert device_deliveries(hub_db) == [("webpush", "failed", 1, notice_models.NO_GRANT)]
     assert sql(hub_db, select(func.count()).select_from(DEVICES)) == [(1,)]
 
 

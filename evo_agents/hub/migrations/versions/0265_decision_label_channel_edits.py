@@ -36,7 +36,7 @@ branch_labels = None
 depends_on = None
 
 MAX_LABEL_CHARS = 64  # evo_agents.hub.server.decision_models.MAX_LABEL_CHARS, a copy
-WITHHELD = ("label", "default_label", "project")  # evo_agents.hub.server.member_channels.WITHHELD, a copy
+WITHHELD = ("label", "default_label", "project")  # evo_agents.hub.server.notifications.models.WITHHELD, a copy
 
 col = sa.column
 
