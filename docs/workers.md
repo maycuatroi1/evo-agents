@@ -1955,12 +1955,12 @@ adapters could move to ACP later at little cost, plus four of the hub's own.
 
 | Kind | Written by | What it holds |
 | --- | --- | --- |
-| `agent_message_chunk` | worker | text from the agent |
+| `agent_message_chunk` | worker, hub runtime | text from the agent |
 | `agent_thought_chunk` | worker | the agent's reasoning, when the runtime shows it |
-| `tool_call` | worker | a tool the agent started |
-| `tool_call_update` | worker | progress or the result of that tool |
+| `tool_call` | worker, hub runtime | a tool the agent started |
+| `tool_call_update` | worker, hub runtime | progress or the result of that tool |
 | `plan` | worker | the agent's own task list |
-| `usage_update` | worker | tokens and cost, as the runtime reports them |
+| `usage_update` | worker, hub runtime | tokens and cost, as the runtime reports them |
 | `system` | worker | the daemon's own lines: checkout, verify commands and their exit codes, push |
 | `output` | worker | a runtime event no adapter recognises, kept raw; in a command run, one line of the command's stdout or stderr, `{"stream", "line"}` ([Command runs](#command-runs)) |
 | `user_message` | hub | a message the owner sent |

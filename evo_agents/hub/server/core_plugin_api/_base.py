@@ -83,9 +83,11 @@ def plugin(module: str) -> Plugin:
 # The callers of a plugin's routes
 
 
-def _from_this_hub(request: Request) -> None:
-    """403 unless a write carries the Origin of the hub's public URL."""
-    if request.method not in UNSAFE_METHODS:
+def _from_this_hub(request: Request, user: CurrentUser) -> None:
+    """403 unless a write carries the Origin of the hub's public URL. An app session passes: it arrives only as
+    ``Authorization: Bearer``, which a browser never adds to another site's request, and its app is no page of this hub
+    (``security.Principal.app_session``)."""
+    if request.method not in UNSAFE_METHODS or user.app_session:
         return
     expected = origin_of(request.app.state.config.public_url)
     if expected is None:
@@ -98,7 +100,7 @@ def web_session(request: Request, user: CurrentUser) -> Session:
     """The caller's web session: 403 for any other credential, and for a write whose Origin is not the hub's."""
     if user.kind != WEB:
         raise Refused(403, member_channels.FROM_SESSION)
-    _from_this_hub(request)
+    _from_this_hub(request, user)
     return issue_session(user.user_id, user.login, user.token_id, True, principal=user)
 
 
@@ -112,7 +114,7 @@ def hub_admin(request: Request, user: AdminUser) -> Session:
     """The caller, a hub admin (403 otherwise, as the hub's admin routes answer), with a web session or a machine
     token; a write made with a web session carries the Origin of the hub's public URL."""
     if user.kind == WEB:
-        _from_this_hub(request)
+        _from_this_hub(request, user)
     return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB, admin=True, principal=user)
 
 

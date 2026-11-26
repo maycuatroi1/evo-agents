@@ -849,7 +849,7 @@ caller's role and highest level).
 | Name | What it is |
 | --- | --- |
 | `plugin(__name__)` | the plugin's handle (`Plugin`: its id and the kinds of channel it contributes), for the module asking: the package of the module its entry point names, or one below it; `NotACorePlugin` otherwise. A plugin calls it where it runs, never while its manifest loads |
-| `WebSession` | a dependency of a route: the caller's web session (`Session`); 403 for a machine token, and for a write (POST, PUT, PATCH, DELETE) whose `Origin` is not the origin of `EVO_HUB_PUBLIC_URL`, beside the hub's own `X-Evo-CSRF` |
+| `WebSession` | a dependency of a route: the caller's web session (`Session`); 403 for a machine token, and for a write (POST, PUT, PATCH, DELETE) of the session cookie whose `Origin` is not the origin of `EVO_HUB_PUBLIC_URL`, beside the hub's own `X-Evo-CSRF`; an app session (`Authorization: Bearer`, `docs/hub.md`) writes without that Origin |
 | `Caller` | a dependency of a route: the caller, a member with any credential the hub's own routes take (`Session.web` says whether it is a web session), as `GET /v1/me/telegram` takes it; a web session's write carries the hub's `X-Evo-CSRF` (1.1) |
 | `HubAdmin` | a dependency of a route: the caller, a hub admin (403 otherwise, as the hub's admin routes answer), with a web session or a machine token as those routes take, a web session's write with the hub's `Origin` |
 | `begin(request)`, `hub_config(request)`, `web_url(config, link)` | a transaction on the hub's engine; the hub's config, which a plugin hands the API and never reads; the absolute URL of a page a notification links to |

@@ -20,6 +20,8 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
    stay so for the rounds after, or a round the policy blocks fails the run with what it found, kinds and counts. In the
    first round the message that woke the run and its inbox alone count and block; the earlier messages its prompt shows
    go redacted, counting nothing, so one message is counted once and blocks its own turn alone.
+   Each round writes the model's text, the tool calls with their results and its tokens to the run's log, of the ACP
+   kinds a worker's run writes (``hub_run_events``), so the run's stream shows the turn as it goes.
 5. Its last answer, masked as the worker's reply is, is the agent's reply in the thread (``chat_runs.agent_reply``).
    The turn's tokens and the key's cost go to run_spend, runs.usage and the attributes of the run's invoke_agent span.
 6. A run that asked an agent and waits for the answer parks (waiting, then parked), and the answer wakes it in a new
@@ -45,6 +47,7 @@ from evo_agents.hub.server import (
     dlp_policy,
     gateway_accounts,
     gateway_sync,
+    hub_run_events,
     hub_tools,
     orchestrator,
     system_traces,
@@ -408,6 +411,8 @@ async def _rounds(
         found.tokens["output"] += int(usage.get("completion_tokens") or 0)
         message = ((data.get("choices") or [{}])[0]).get("message") or {}
         calls = message.get("tool_calls") or []
+        answered = [*hub_run_events.chunks(message.get("content")), *map(hub_run_events.tool_call, calls)]
+        await _log(turn, held, [*answered, hub_run_events.usage(held.model, data)])
         if not calls:
             found.reply = message.get("content") or ""
             if not await _between(turn.engine, held.run_id, messages, found.reply):
@@ -418,6 +423,7 @@ async def _rounds(
         for call in calls:
             function = call.get("function") or {}
             result = await hub_tools.call(turn, function.get("name") or "", function.get("arguments") or "{}")
+            await _log(turn, held, [hub_run_events.tool_result(call, result)])
             messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": result})
         if len(turn.asked) > asked:  # an ask or an escalation: the turn ends here, the answer wakes a new one
             found.reply = message.get("content") or ""
@@ -426,6 +432,11 @@ async def _rounds(
     found.exhausted = found.reply is None
     found.reply = found.reply or f"I stopped after {found.rounds} round(s) of this turn without a final answer."
     return found
+
+
+async def _log(turn: hub_tools.Turn, held: Held, events: list[tuple[str, dict]]) -> None:
+    """Write ``events`` to the run's log as the round goes (``hub_run_events``)."""
+    await hub_run_events.write(turn.engine, turn.sealer, held.run_id, held.profile_id, events)
 
 
 async def _between(engine: AsyncEngine, run_id: int, messages: list[dict], reply: str | None) -> bool:
