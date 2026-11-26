@@ -29,7 +29,9 @@ if not pg.DSN:
 
 from sqlalchemy import func, insert, select
 
-from evo_agents.hub import cli_memory, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli import base
+from evo_agents.hub.cli.memory import Memories, MemoryList
 from tests.hub import live
 from tests.hub.test_kg_audience import (
     A,
@@ -216,12 +218,12 @@ def test_memory_list_of_one_agent_profile_through_the_cli(hub, agents, capsys, m
     scout = a_run(hub, agents.studio, "alice", "scout")
     memory = data(write(hub, agents.studio, scout, "orbit-scout.md"))["memory"]
     member = InProcessHub(hub.client, hub.carol)
-    assert [m["id"] for m in cli_memory.listed(member, agent="scout")] == [memory["id"]]
-    assert memory["id"] not in [m["id"] for m in cli_memory.listed(member, project=A)]
+    assert [m["id"] for m in Memories(member).listed(agent="scout")] == [memory["id"]]
+    assert memory["id"] not in [m["id"] for m in Memories(member).listed(project=A)]
 
-    monkeypatch.setattr(cli_memory, "signed_in", lambda: (member, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (member, None))
     args = SimpleNamespace(project=None, agent="@scout", limit=100, json=False)
-    assert cli_memory.cmd_memory_list(args) == 0
+    assert MemoryList()(args) == 0
     shown = capsys.readouterr().out
     assert "orbit-scout.md" in shown and "@scout" in shown
 

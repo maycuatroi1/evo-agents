@@ -11,7 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import cli_loop, kg_graph
+from evo_agents.hub import kg_graph
+from evo_agents.hub.cli import loop as loop_cli
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import commands
 from evo_agents.hub.srs_backlog import DELIVERED, UNDELIVERED, UNKNOWN, UseCase
@@ -71,14 +72,14 @@ def test_the_graph_gives_evidence_for_a_completed_plan_a_done_step_a_commit_a_me
 
 
 def test_baseline_options_are_name_state_pairs_and_the_command_is_in_the_contract():
-    assert cli_loop._fixes(["UC A-1=delivered", "UC B-2=undelivered"], "--set") == {
+    assert loop_cli.fixes(["UC A-1=delivered", "UC B-2=undelivered"], "--set") == {
         "UC A-1": "delivered",
         "UC B-2": "undelivered",
     }
-    assert cli_loop._fixes(["UC A-1=unknown"], "--heading") == {"UC A-1": "unknown"}
+    assert loop_cli.fixes(["UC A-1=unknown"], "--heading") == {"UC A-1": "unknown"}
     for bad in ("UC A-1", "UC A-1=maybe", "=delivered"):
         with pytest.raises(HubError):
-            cli_loop._fixes([bad], "--set")
+            loop_cli.fixes([bad], "--set")
     printed = commands()["hub loop baseline"]["options"]
     flags = {flag for option in printed for flag in option["flags"]}
     assert {
@@ -116,7 +117,7 @@ def test_the_preview_prints_each_state_with_its_evidence_and_says_what_confirmin
             {"code": "UC A-2", "title": "Ship", "state": "unknown", "source": "proposal", "reason": "", "evidence": []},
         ],
     }
-    text = "\n".join(cli_loop._baseline_lines(found))
+    text = "\n".join(loop_cli.baseline_lines(found))
     assert "delivered (1):" in text and "unknown (1):" in text and "commit_merged: repo@abc" in text
     assert "Not confirmed" in text and "--confirm" in text
 

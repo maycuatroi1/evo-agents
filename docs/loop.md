@@ -25,7 +25,7 @@ did, the Curator runs as it did, and every older command and route is there.
 | the decision board, the month's review, the brief | `evo_agents/hub/server/loop/board*.py`, `notices.py` |
 | the routes | `evo_agents/hub/server/loop/routes.py`, `items.py`, `chain.py`; goals in `evo_agents/hub/server/goals.py` |
 | the tables | `evo_agents/hub/tables_goals.py`, `evo_agents/hub/tables_loop.py` (schemas 0091, 0093, 0123 and 0136) |
-| the commands | `evo_agents/hub/cli/goal.py`, `evo_agents/hub/cli_loop.py` |
+| the commands | `evo_agents/hub/cli/goal.py`, `evo_agents/hub/cli/loop.py` |
 
 ## Goal
 

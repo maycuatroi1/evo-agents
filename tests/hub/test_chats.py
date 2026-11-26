@@ -694,7 +694,8 @@ def test_the_chat_label_command_sets_and_unsets_the_level_and_chat_show_json_has
     import argparse
     import json
 
-    from evo_agents.hub import cli_chats
+    from evo_agents.hub.cli import base
+    from evo_agents.hub.cli.chat import ChatLabel, ChatShow
     from evo_agents.hub.client import HubError
 
     class Hub:
@@ -708,7 +709,7 @@ def test_the_chat_label_command_sets_and_unsets_the_level_and_chat_show_json_has
             return answer.json()
 
     def as_(headers):
-        monkeypatch.setattr(cli_chats, "signed_in", lambda: (Hub(headers), None))
+        monkeypatch.setattr(base, "signed_in", lambda: (Hub(headers), None))
 
     chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer"])
 
@@ -719,7 +720,7 @@ def test_the_chat_label_command_sets_and_unsets_the_level_and_chat_show_json_has
                 args.default = True
             else:
                 args.level = value
-        return cli_chats.cmd_label(args)
+        return ChatLabel()(args)
 
     as_(hub["owner"])
     assert label() == 2 and label("public", "--default") == 2
@@ -727,7 +728,7 @@ def test_the_chat_label_command_sets_and_unsets_the_level_and_chat_show_json_has
     assert label("public") == 0
     assert json.loads(capsys.readouterr().out)["label_level"] == "public"
     shown = argparse.Namespace(chat=chat["id"], thread=None, limit=5, json=True)
-    assert cli_chats.cmd_show(shown) == 0
+    assert ChatShow()(shown) == 0
     assert [i["level"] for i in json.loads(capsys.readouterr().out)["chat"]["label"]] == ["public"]
     assert label("internal", json_out=False) == 0 and "internal" in capsys.readouterr().out
     assert label("--default") == 0 and json.loads(capsys.readouterr().out)["label_level"] is None
