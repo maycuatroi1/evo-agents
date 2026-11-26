@@ -28,6 +28,10 @@ export function useRunAgents(events: readonly RunEvent[], showSession: (tab: Ses
     },
     [showSession, open],
   );
+  const openMain = useCallback(() => {
+    if (agent) close();
+    showSession("trace");
+  }, [agent, close, showSession]);
   const showCall = useCallback(
     (call: string) => {
       if (agent) close();
@@ -36,5 +40,5 @@ export function useRunAgents(events: readonly RunEvent[], showSession: (tab: Ses
     },
     [agent, close, setReveal, showSession],
   );
-  return { tasks, profile, viewed, openAgent, showCall };
+  return { tasks, profile, viewed, openAgent, openMain, showCall };
 }

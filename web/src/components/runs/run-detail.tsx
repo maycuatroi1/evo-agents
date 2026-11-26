@@ -41,7 +41,7 @@ import { taskBranch } from "./model";
 import { runControls } from "./run-model";
 import { AGENT_PARAM, useDescribeMove, useSessionTab, useShowDecision, useShowSession, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
-import { RunTasksPanel } from "./run-tasks-panel";
+import { AgentLanes } from "./agent-lanes";
 import { RunTimeline } from "./run-timeline";
 import { RunTraceView, ScreenHead } from "./run-trace-view";
 import { TracePreview } from "./trace-preview";
@@ -105,8 +105,8 @@ function RunPage({ run }: { run: Run }) {
   const traceOutputs = useMemo(() => ({ index: outputs.index, open: outputs.open }), [outputs.index, outputs.open]);
   const working = run.state === "running" && log.status !== "ended";
   // The run's subagents and background commands, read once for the panel, the trace and a subagent's profile.
-  const { tasks: runTaskList, profile, viewed, openAgent, showCall } = useRunAgents(log.events, showSession, setReveal);
-  const tasks = <RunTasksPanel tasks={runTaskList} working={working} onShow={showCall} onOpen={openAgent} />;
+  const { tasks: runTaskList, profile, viewed, openAgent, openMain, showCall } = useRunAgents(log.events, showSession, setReveal);
+  const tasks = <AgentLanes events={log.events} tasks={runTaskList} working={working} onShow={showCall} onOpen={openAgent} onOpenMain={openMain} />;
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   // While the stream (or its fallback) carries the run, it is what the top bar's LiveIndicator follows; before it opens
   // and once it ended, the run's own query (every 5 seconds while active) does.
