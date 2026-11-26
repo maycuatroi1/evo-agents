@@ -151,7 +151,7 @@ def test_a_step_named_that_the_plan_does_not_have_is_an_error():
 def test_a_look_the_hub_could_not_answer_is_skipped_with_one_note():
     hub = FakeHub(
         {"runs": {7: "running"}},
-        HubError("bad gateway", 502),
+        HubError("Internal Server Error", 500),
         Unreachable("cannot reach hub.example.org"),
         {"runs": {7: "running"}},
         {"runs": {7: "done"}},
@@ -159,7 +159,7 @@ def test_a_look_the_hub_could_not_answer_is_skipped_with_one_note():
     result = run_watch(hub, runs=(7,))
     assert result.code == 0 and "  run #7: running -> done" in result.lines
     assert len(result.notes) == 2
-    assert result.notes[0].startswith("note: the hub did not answer (bad gateway)")
+    assert result.notes[0].startswith("note: the hub did not answer (Internal Server Error)")
     assert result.notes[1] == "note: the hub answers again"
 
 
