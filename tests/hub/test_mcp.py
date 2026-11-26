@@ -1373,8 +1373,8 @@ def test_plan_step_with_the_local_run_header_records_the_revision_as_that_runs(h
 
 
 def test_the_hub_backend_of_kg_query_asks_for_the_data():
+    from evo_agents.hub.cli.kg import RemoteSession
     from evo_agents.hub.client import Hub
-    from evo_agents.hub.kg_cli import RemoteSession
 
     hub = FakeHub(mcp_reply)
     try:
@@ -2037,7 +2037,7 @@ def test_inside_a_run_the_proxy_sends_the_worker_token_and_x_evo_run_instead_of_
 def test_inside_a_run_kg_serve_asks_the_hub_as_the_agent_of_the_run(tmp_path, monkeypatch):
     """evo-kg serves the kg_* tools of a run whose session has it: on a machine that is not signed in and knows no
     project for the worktree, it still reads the run's graph on the hub, as evo-hub did."""
-    from evo_agents.hub.kg_cli import BACKENDS, RemoteSession, open_session
+    from evo_agents.hub.cli.kg import BACKENDS, RemoteSession, open_session
     from evo_agents.worker.home import WorkerConfig, WorkerHome
 
     fake = FakeHub(mcp_reply)

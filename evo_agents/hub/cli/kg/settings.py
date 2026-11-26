@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
+from evo_agents.hub.cli.kg import MEASURE_TIMEOUT
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.kg_cli import MEASURE_TIMEOUT
 from evo_agents.kg import settings as kg_settings
 
 

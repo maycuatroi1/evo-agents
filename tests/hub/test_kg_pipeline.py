@@ -10,7 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import kg_coverage, kg_pipeline, kg_upload_cli
+from evo_agents.hub import kg_coverage, kg_pipeline
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.client import HubError
 from tests.hub import pg
 

@@ -26,7 +26,7 @@ def project_name(args) -> str | None:
 
 
 def cmd_scrub(args) -> int:
-    from evo_agents.hub import kg_cli
+    from evo_agents.hub.cli import kg as kg_cli
 
     if args.all and args.project:
         print("error: --all goes without --project", file=sys.stderr)

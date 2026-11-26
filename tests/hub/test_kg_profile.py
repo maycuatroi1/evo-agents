@@ -3,7 +3,7 @@
 import json
 from types import SimpleNamespace
 
-from evo_agents.hub import kg_profile_cli as cli
+from evo_agents.hub.cli.kg import profile as cli
 
 
 class FakeHub:

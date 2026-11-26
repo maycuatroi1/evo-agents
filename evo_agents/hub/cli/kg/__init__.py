@@ -16,10 +16,10 @@ artifacts of graphs older than each project's ``--keep`` newest leave the bucket
 every project, page by page (``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the
 kinds of secret, never a value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
 ``clusters`` lists the clusters of a project's graph the caller can see, and ``clusters show ID`` one of them
-(``evo_agents.hub.kg_clusters_cli``). ``review`` lists the review queue the caller can see, and ``review dismiss FP``
-dismisses one item of it (``evo_agents.hub.kg_review_cli``). ``entities``, inside a run of the project's agent pool, answers with Claude Code
-the entity requests of its latest build (``evo_agents.hub.kg_entities_cli``). ``decisions`` lists the decisions on the graph the caller
-can see, and a writer takes or steps one (``evo_agents.hub.kg_decisions_cli``).
+(``evo_agents.hub.cli.kg.clusters``). ``review`` lists the review queue the caller can see, and ``review dismiss FP``
+dismisses one item of it (``evo_agents.hub.cli.kg.review``). ``entities``, inside a run of the project's agent pool, answers with Claude Code
+the entity requests of its latest build (``evo_agents.hub.cli.kg.entities``). ``decisions`` lists the decisions on the graph the caller
+can see, and a writer takes or steps one (``evo_agents.hub.cli.kg.decisions``).
 
 ``open_session`` picks where kg_* are answered: the hub, always, since graphs are built and read on the hub only. It
 sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
@@ -568,51 +568,55 @@ def register_kg(hsub) -> None:
     _register_graph_commands(ksub)
     _register_cleanup_commands(ksub)
 
-    from evo_agents.hub import kg_clusters_cli
+    from evo_agents.hub.cli.kg import clusters as kg_clusters_cli
 
     kg_clusters_cli.register(ksub)
 
-    from evo_agents.hub import kg_review_cli
+    from evo_agents.hub.cli.kg import review as kg_review_cli
 
     kg_review_cli.register(ksub)
 
-    from evo_agents.hub import kg_decisions_cli
+    from evo_agents.hub.cli.kg import decisions as kg_decisions_cli
 
     kg_decisions_cli.register(ksub)
 
-    from evo_agents.hub import kg_eval_set_cli
+    from evo_agents.hub.cli.kg import eval_set as kg_eval_set_cli
 
     kg_eval_set_cli.register(ksub)
 
-    from evo_agents.hub import kg_optimize_cli
+    from evo_agents.hub.cli.kg import optimize as kg_optimize_cli
 
     kg_optimize_cli.register(ksub)
 
-    from evo_agents.hub import kg_init_cli
+    from evo_agents.hub.cli.kg import init as kg_init_cli
 
     kg_init_cli.register(ksub)
 
-    from evo_agents.hub import kg_profile_cli, kg_semantic_cli, kg_settings_cli, kg_upload_cli
+    from evo_agents.hub.cli.kg import profile as kg_profile_cli
+    from evo_agents.hub.cli.kg import semantic as kg_semantic_cli
+    from evo_agents.hub.cli.kg import settings as kg_settings_cli
+    from evo_agents.hub.cli.kg import upload as kg_upload_cli
 
     kg_profile_cli.register(ksub)
     kg_semantic_cli.register(ksub)
     kg_settings_cli.register(ksub)
     kg_upload_cli.register(ksub)
 
-    from evo_agents.hub import kg_answer_cli, kg_entities_cli
+    from evo_agents.hub.cli.kg import answer as kg_answer_cli
+    from evo_agents.hub.cli.kg import entities as kg_entities_cli
 
     kg_entities_cli.register(ksub)
     kg_answer_cli.register(ksub)
 
-    from evo_agents.hub import kg_entity_map_cli
+    from evo_agents.hub.cli.kg import entity_map as kg_entity_map_cli
 
     kg_entity_map_cli.register(ksub)
 
-    from evo_agents.hub import kg_graphs_cli
+    from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
 
     kg_graphs_cli.register(ksub)
 
-    from evo_agents.hub import kg_branches_cli
+    from evo_agents.hub.cli.kg import branches as kg_branches_cli
 
     kg_branches_cli.register(ksub)
 

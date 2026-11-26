@@ -147,7 +147,7 @@ def test_evolvable_paths_are_harness_files_the_charter_names():
 
 
 def test_asi_of_bounds_each_entry_and_show_prints_a_line_of_each_failed_task(capsys):
-    from evo_agents.hub import evolve_cli
+    from evo_agents.hub.cli.curator import evolve as evolve_cli
 
     traces = {
         "replay:1": {

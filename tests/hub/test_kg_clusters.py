@@ -28,7 +28,8 @@ if not pg.DSN:
 
 from fastapi.testclient import TestClient
 
-from evo_agents.hub import kg_clusters_cli, kg_map
+from evo_agents.hub import kg_map
+from evo_agents.hub.cli.kg import clusters as kg_clusters_cli
 from evo_agents.hub.server.app import create_app
 from evo_agents.kg import clusters as kg_clusters
 from tests.hub.s3 import fake_s3

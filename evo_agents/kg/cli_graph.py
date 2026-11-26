@@ -77,7 +77,7 @@ def _on_hub(args, command, **extra) -> int:
 
 def cmd_profile(args) -> int:
     """``kg profile``: the data profile of the project's newest graph on the hub (``evo-agents hub kg profile``)."""
-    from evo_agents.hub.kg_profile_cli import cmd_profile as on_hub
+    from evo_agents.hub.cli.kg.profile import cmd_profile as on_hub
 
     return _on_hub(args, on_hub, sink=args.sink)
 
@@ -85,8 +85,8 @@ def cmd_profile(args) -> int:
 def cmd_semantic(args) -> int:
     """``kg semantic``: whether the project's graph on the hub holds vectors (``evo-agents hub kg semantic``); with
     ``--mode`` or ``--model``, set them in the project's settings on the hub first. The hub embeds at its next build."""
-    from evo_agents.hub.kg_semantic_cli import cmd_semantic as show
-    from evo_agents.hub.kg_settings_cli import cmd_settings
+    from evo_agents.hub.cli.kg.semantic import cmd_semantic as show
+    from evo_agents.hub.cli.kg.settings import cmd_settings
 
     if args.mode or args.model:
         values = [f"semantic_mode={args.mode}"] * bool(args.mode) + [f"semantic_model={args.model}"] * bool(args.model)
@@ -114,7 +114,7 @@ def _quietly(command):
 def cmd_settings(args) -> int:
     """``kg settings``: show the project's KG settings on the hub, set some (``--set KEY=VALUE``, a reason with
     ``--reason``) or put back the last change (``--undo``), as ``evo-agents hub kg settings`` does."""
-    from evo_agents.hub.kg_settings_cli import cmd_settings as on_hub
+    from evo_agents.hub.cli.kg.settings import cmd_settings as on_hub
 
     return _on_hub(args, on_hub, set=args.set, undo=args.undo, strategy=None, reason=args.reason, figures=args.figures)
 
@@ -122,8 +122,8 @@ def cmd_settings(args) -> int:
 def cmd_init(args) -> int:
     """``kg init``: ask the hub for a kg_init run of the project, in which the Curator configures its graph from its
     data profile (``evo-agents hub kg init``); the run, or the one already in flight."""
+    from evo_agents.hub.cli.kg.init import line_of, path_of
     from evo_agents.hub.client import Hub, HubError, load_credentials
-    from evo_agents.hub.kg_init_cli import line_of, path_of
     from evo_agents.kg.cli import print_json, project_of
 
     project = project_of(args)
@@ -219,7 +219,7 @@ def query_tool(args) -> None:
 
 
 def cmd_query(args) -> int:
-    from evo_agents.hub.kg_cli import open_session
+    from evo_agents.hub.cli.kg import open_session
 
     query_tool(args)
     session = open_session(args.backend, args.project, args.sink)
@@ -245,7 +245,7 @@ def cmd_query(args) -> int:
 
 
 def cmd_serve(args) -> int:
-    from evo_agents.hub.kg_cli import open_session
+    from evo_agents.hub.cli.kg import open_session
     from evo_agents.kg.serve import serve_stdio
 
     return serve_stdio(session=open_session(args.backend, args.project, args.sink))
@@ -262,7 +262,7 @@ def _repo_overrides(pairs: list[str] | None) -> dict[str, Path]:
 
 
 def cmd_eval(args) -> int:
-    from evo_agents.hub.kg_cli import open_session
+    from evo_agents.hub.cli.kg import open_session
     from evo_agents.kg.evaluate import METHODS, evaluate, load_set, project_checkouts, render
 
     try:

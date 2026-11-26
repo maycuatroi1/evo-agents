@@ -25,7 +25,8 @@ import moto.s3.models
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, select, update
 
-from evo_agents.hub import blobs, client, kg_upload_cli, kg_upload_prune, tables
+from evo_agents.hub import blobs, client, kg_upload_prune, tables
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import DEFAULT_KG_UPLOAD_MAX_BYTES, ConfigError, load_config
 from evo_agents.hub.db import make_engine, open_pool

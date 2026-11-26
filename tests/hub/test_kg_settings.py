@@ -207,7 +207,8 @@ def test_a_measure_asks_with_the_current_and_the_candidate_tuning_and_leaves_bui
 
 
 def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, capsys):
-    from evo_agents.hub import kg_cli, kg_settings_cli
+    from evo_agents.hub.cli import kg as kg_cli
+    from evo_agents.hub.cli.kg import settings as kg_settings_cli
 
     calls = []
 

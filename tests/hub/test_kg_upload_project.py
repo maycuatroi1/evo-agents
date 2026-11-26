@@ -24,7 +24,8 @@ if not pg.DSN:
 
 from sqlalchemy import insert, select
 
-from evo_agents.hub import kg_upload_cli, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.client import HubError
 from evo_agents.hub.kg_ingest import config_problems
 from evo_agents.hub.server import kg_upload_project

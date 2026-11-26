@@ -28,8 +28,9 @@ if not pg.DSN:
 
 from sqlalchemy import select
 
-from evo_agents.hub import jobs, kg_upload_cli, kg_upload_extract, tables
+from evo_agents.hub import jobs, kg_upload_extract, tables
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, items_key
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.worker import HubContext, connector, queue
 from tests.hub.test_kg import (
     PROJECT,

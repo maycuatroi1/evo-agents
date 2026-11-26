@@ -28,11 +28,11 @@ night, or of ``--night`` (GET .../curator/figures).
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator change close ID --reason
 TEXT`` closes a change left open with no pull request, such as one whose proposal named no repo, which only an admin of
 the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|show``
-(``evo_agents.hub.replay_cli``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
-(``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
-``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember, and
-``curator probe list|show|add|retire|report`` (``evo_agents.hub.probe_cli``) the probes of proposals and changes. ``curator
-finding|propose`` (``evo_agents.hub.curator_session_cli``) record what a member's own session finds and proposes,
+(``evo_agents.hub.cli.curator.replay``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
+(``evo_agents.hub.cli.curator.history``) the night's history run, the clusters of its facets and the whole history, and
+``curator playbook`` and ``curator earlier`` (``evo_agents.hub.cli.curator.playbook``) what the review runs remember, and
+``curator probe list|show|add|retire|report`` (``evo_agents.hub.cli.curator.probe``) the probes of proposals and changes. ``curator
+finding|propose`` (``evo_agents.hub.cli.curator.session``) record what a member's own session finds and proposes,
 as a review run does. ``curator
 protection`` lists the project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check
 REPO`` checks one now with the Curator's App, which only an admin of the project may (POST
@@ -53,18 +53,18 @@ from urllib.parse import quote, urlencode
 import yaml
 
 from evo_agents.hub.cli.base import project_of
+from evo_agents.hub.cli.curator.evolve import register_evolve
+from evo_agents.hub.cli.curator.history import register_history
+from evo_agents.hub.cli.curator.playbook import register_playbook
+from evo_agents.hub.cli.curator.probe import register_probe
+from evo_agents.hub.cli.curator.replay import register_replay
+from evo_agents.hub.cli.curator.session import register_session
 from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money, period_budget, zone_of
-from evo_agents.hub.curator_session_cli import register_session
-from evo_agents.hub.evolve_cli import register_evolve
 from evo_agents.hub.history import budget_usd as history_budget
-from evo_agents.hub.history_cli import register_history
-from evo_agents.hub.playbook_cli import register_playbook
-from evo_agents.hub.probe_cli import register_probe
 from evo_agents.hub.replay import DEFAULT_TASKS
-from evo_agents.hub.replay_cli import register_replay
 from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, evidence_text
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).

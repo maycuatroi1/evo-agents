@@ -16,18 +16,18 @@ from evo_agents import __version__
 from evo_agents.hub import (
     cli_market,
     contract,
-    kg_cli,
-    kg_entities_cli,
-    kg_graphs_cli,
-    kg_profile_cli,
-    kg_semantic_cli,
-    kg_settings_cli,
     local_send,
     memory,
     skill_sync,
     transcript_sync,
 )
 from evo_agents.hub.cli import inbox as inbox_command
+from evo_agents.hub.cli import kg as kg_cli
+from evo_agents.hub.cli.kg import entities as kg_entities_cli
+from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
+from evo_agents.hub.cli.kg import profile as kg_profile_cli
+from evo_agents.hub.cli.kg import semantic as kg_semantic_cli
+from evo_agents.hub.cli.kg import settings as kg_settings_cli
 from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_writes import ImportResult

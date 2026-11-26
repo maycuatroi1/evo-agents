@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import kg_answer_cli
 from evo_agents.hub import kg_answers as model
+from evo_agents.hub.cli.kg import answer as kg_answer_cli
 from evo_agents.hub.client import HubError
 from tests.hub import pg
 

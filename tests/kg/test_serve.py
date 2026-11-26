@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.hub.kg_cli import open_session
+from evo_agents.hub.cli.kg import open_session
 from evo_agents.kg import explore, serve, serve_impact, serve_walk
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of

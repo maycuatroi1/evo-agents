@@ -31,7 +31,8 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from evo_agents.hub import kg_decisions, kg_decisions_cli, tables
+from evo_agents.hub import kg_decisions, tables
+from evo_agents.hub.cli.kg import decisions as kg_decisions_cli
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.kg_decisions import Kind, State, Step

@@ -156,7 +156,7 @@ def _session_options(parser) -> None:
 
 
 def register_session(csub, with_project) -> None:
-    from evo_agents.hub.curator_cli import PROPOSAL_KEYS
+    from evo_agents.hub.cli.curator import PROPOSAL_KEYS
 
     finding = csub.add_parser(
         "finding", help="record a finding of your own session, with its evidence, as a review run does"

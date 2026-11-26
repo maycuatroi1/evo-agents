@@ -15,8 +15,8 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import kg_push
+from evo_agents.hub.cli.kg import RemoteSession, open_session
 from evo_agents.hub.client import Hub, HubError, Unreachable
-from evo_agents.hub.kg_cli import RemoteSession, open_session
 from evo_agents.hub.kg_ingest import (
     LogProblem,
     config_problems,
@@ -334,7 +334,7 @@ def forgotten(source: str, runs: int, declared: bool, build: dict | None = None)
 
 
 def test_forget_source_takes_each_source_off_once_and_asks_first_at_a_terminal(monkeypatch, capsys):
-    from evo_agents.hub import kg_cli
+    from evo_agents.hub.cli import kg as kg_cli
 
     answers = {
         "docs": forgotten("docs", 3, True, {"id": 7, "status": "queued"}),

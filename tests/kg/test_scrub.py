@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import kg_cli
+from evo_agents.hub.cli import kg as kg_cli
 from evo_agents.kg import scrub as scrub_module
 from evo_agents.kg.redact import redact_file
 from evo_agents.kg.scrub import might_hold_secret, run_summary, secrets_in_json

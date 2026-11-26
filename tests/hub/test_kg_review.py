@@ -32,7 +32,8 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, select
 
-from evo_agents.hub import kg_review_cli, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli.kg import review as kg_review_cli
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.kg_review import Rule

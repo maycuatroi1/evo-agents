@@ -24,7 +24,8 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
-from evo_agents.hub import kg_init_cli, tables
+from evo_agents.hub import tables
+from evo_agents.hub.cli.kg import init as kg_init_cli
 from evo_agents.hub.client import env_credentials
 from evo_agents.hub.kg_health_eval import AGENT_SINK
 from evo_agents.hub.server import kg_run_access

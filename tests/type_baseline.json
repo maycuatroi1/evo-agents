@@ -4320,7 +4320,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/curator_cli.py": [
+        "./evo_agents/hub/cli/curator/__init__.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -4738,7 +4738,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/curator_session_cli.py": [
+        "./evo_agents/hub/cli/curator/session.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -5622,7 +5622,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/history_cli.py": [
+        "./evo_agents/hub/cli/curator/history.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -6068,7 +6068,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/kg_cli.py": [
+        "./evo_agents/hub/cli/kg/__init__.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -6338,7 +6338,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/kg_init_cli.py": [
+        "./evo_agents/hub/cli/kg/init.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -6466,7 +6466,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/kg_optimize_cli.py": [
+        "./evo_agents/hub/cli/kg/optimize.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -6676,7 +6676,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/kg_settings_cli.py": [
+        "./evo_agents/hub/cli/kg/settings.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -6728,7 +6728,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/kg_upload_cli.py": [
+        "./evo_agents/hub/cli/kg/upload.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -7692,7 +7692,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/playbook_cli.py": [
+        "./evo_agents/hub/cli/curator/playbook.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -7878,7 +7878,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/probe_cli.py": [
+        "./evo_agents/hub/cli/curator/probe.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {
@@ -8028,7 +8028,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/release_cli.py": [
+        "./evo_agents/hub/cli/curator/release.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -8146,7 +8146,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/replay_cli.py": [
+        "./evo_agents/hub/cli/curator/replay.py": [
             {
                 "code": "reportOptionalSubscript",
                 "range": {

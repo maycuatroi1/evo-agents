@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub.kg_cli import RemoteSession, open_session
+from evo_agents.hub.cli.kg import RemoteSession, open_session
 from evo_agents.kg import project as project_module
 from evo_agents.kg import serve
 from evo_agents.kg.project import (
