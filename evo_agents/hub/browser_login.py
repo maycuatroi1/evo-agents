@@ -44,7 +44,7 @@ CHOSEN = re.compile(r"Chosen option: ([A-Za-z0-9][A-Za-z0-9_-]{0,31}),")
 
 def chosen_option(message: str) -> str | None:
     """The key of the option chosen in the inbox message that hands a decision's answer to the agent
-    (``server.decisions.answer_message``: its second line); None when the owner answered in words alone."""
+    (``server.decisions.service.answers.answer_message``: its second line); None when the owner answered in words alone."""
     lines = message.split("\n", 2)
     found = CHOSEN.match(lines[1]) if len(lines) > 1 else None
     return found.group(1) if found else None

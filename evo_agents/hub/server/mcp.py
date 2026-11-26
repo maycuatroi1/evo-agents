@@ -70,14 +70,12 @@ from evo_agents.hub.plan_writes import ATTEMPTS, check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import (
     chat_read,
-    decision_reads,
     digests,
     evolve,
     hub_settings,
     intake,
     kg,
     kg_audience,
-    kg_decisions,
     kg_optimize,
     local_runs,
     memories,
@@ -94,6 +92,8 @@ from evo_agents.hub.server import (
     tool_stats,
 )
 from evo_agents.hub.server.history import mcp as history_mcp
+from evo_agents.hub.server.decisions.service import reads as decision_reads
+from evo_agents.hub.server.kg_decisions import service as kg_decisions
 from evo_agents.hub.server.mcp_gate import MAX_BODY, SESSION, McpGate, http_detail, transport_security
 from evo_agents.hub.server.mcp_run import MOUNT
 from evo_agents.hub.server.mcp_text import (
@@ -843,11 +843,11 @@ class HubMcp(MCPServer):
     async def _decision_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)
         await self._readable(caller, project)
-        found = await decision_reads.list_decisions(
-            caller.request,
-            project,
+        found = await decision_reads.listing(
+            caller.request.app.state.engine,
             caller.user,
-            state=[arguments["state"]] if "state" in arguments else [],
+            project,
+            states=[arguments["state"]] if "state" in arguments else [],
             run_id=arguments.get("run_id"),
             plan_id=arguments.get("plan_id"),
             limit=arguments.get("limit", 20),

@@ -63,7 +63,7 @@ from evo_agents.hub import author, runs, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.curator import curator_overview
 from evo_agents.hub.server.curator_models import CuratorOverview
-from evo_agents.hub.server.decision_reads import asked_person
+from evo_agents.hub.server.decisions.repository import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plan_listing import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access

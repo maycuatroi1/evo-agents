@@ -67,7 +67,8 @@ from evo_agents.hub import autonomy, findings, judge, merge_gate, merge_infra, r
 from evo_agents.hub.server import audit, change_tiers, merge_holds, pulls, run_events, run_waits
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import merge_judge as judging
-from evo_agents.hub.server.decisions import OptionIn, store_decision
+from evo_agents.hub.server.decisions.models import OptionIn
+from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.protection import github_target

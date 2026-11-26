@@ -1,5 +1,5 @@
-"""The models of decisions (``evo_agents.hub.server.decisions`` is the routes and the design): what an agent asks, what
-every view of a decision shows, and an answer.
+"""The models of decisions (``evo_agents.hub.server.decisions`` is the design): what an agent asks, what every view of
+a decision shows, an answer, and the limits of the routes that read them.
 
 Besides its question and options, a question may carry why the agent recommends its option (``recommended_reason``,
 only with ``recommended``), whether the act it asks about can be undone (``reversible``) and how (``undo``, only when
@@ -17,10 +17,10 @@ the pull request, its head and the hash of its scope. Its answer opens the gate 
 scope alone; the person asked reads what it is bound to under the context.
 
 A question may carry a label (``label``): a level of its project's ladder, at most the level the grant of the run's
-owner reaches (``decisions.checked_label``, 422 otherwise). Every view shows the effective label (``label``: the
+owner reaches (``service.asks.checked_label``, 422 otherwise). Every view shows the effective label (``label``: the
 decision's own, else the project's default label's level) and whether the agent gave it (``label_given``). The
 channels of core plugins send a decision by that label (``member_channels.prepare``), and ``channel_deliveries`` says
-for each channel whether its message went, why not, or how it failed (``decision_channels``).
+for each channel whether its message went, why not, or how it failed (``service.channels``).
 
 A wait (category wait) shows what it waits for in ``waiting_on`` (``evo_agents.hub.server.waiting_on``), every other
 decision null there.
@@ -32,6 +32,7 @@ import json
 from datetime import datetime
 from typing import Annotated, Literal
 
+from fastapi import Path
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from evo_agents.hub import approval_heads, credential_requests, decision_asks, outputs, runs
@@ -44,6 +45,10 @@ LABEL_CHARS = 200  # an option's label, one line
 MAX_LABEL_CHARS = 64  # a decision's label, a level of its project's ladder (decisions.label, 0265)
 DESCRIPTION_CHARS = 1000  # an option's description
 MAX_OPTIONS_BYTES = 16 * 1024  # all the options of a decision as JSON, as schema 0010 bounds them
+MAX_LIST = 200  # decisions a page of the list holds at most
+MAX_OFFSET = 100_000
+
+DecisionId = Annotated[int, Path(ge=1, le=MAX_ID)]
 
 OptionKey = Annotated[str, Field(pattern=runs.OPTION_KEY, description="letters, digits, _ and -, at most 32")]
 EvidenceRef = Annotated[str, Field(min_length=1, max_length=decision_asks.MAX_REF_CHARS)]
@@ -116,7 +121,7 @@ MERGE_CATEGORY = "merge"
 
 
 class DecisionAsk(BaseModel):
-    category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")
+    category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")  # pyright: ignore[reportInvalidTypeForm]
     question: str = Field(min_length=1, max_length=runs.MAX_QUESTION_CHARS)
     context: str | None = Field(
         default=None,
@@ -227,9 +232,9 @@ class DecisionAsk(BaseModel):
             if option.description is not None:
                 entry["description"] = option.description
             if option.key == self.recommended:
-                entry["recommended"] = True
+                entry["recommended"] = True  # pyright: ignore[reportArgumentType]
             if option.waits:
-                entry["waits"] = True
+                entry["waits"] = True  # pyright: ignore[reportArgumentType]
             stored.append(entry)
         return stored
 
@@ -300,12 +305,12 @@ class Decision(BaseModel):
     id: int
     project: str
     run_id: int = Field(description="the plan run or author run the decision belongs to")
-    run_state: Literal[runs.SHOWN_STATES]
+    run_state: Literal[runs.SHOWN_STATES]  # pyright: ignore[reportInvalidTypeForm]
     plan_id: str | None = Field(
         description="the run's plan when its agent asked; null for an author run that had put no plan yet"
     )
     step_key: str | None = Field(description="the step it is about, when the agent named one")
-    category: Literal[runs.SHOWN_DECISION_CATEGORIES]
+    category: Literal[runs.SHOWN_DECISION_CATEGORIES]  # pyright: ignore[reportInvalidTypeForm]
     question: str
     context: str | None = Field(description="markdown")
     options: list[DecisionOption]
@@ -316,7 +321,7 @@ class Decision(BaseModel):
     evidence: list[str] = Field(
         default_factory=list, description=f"what the question rests on, as refs: {decision_asks.FORMS}"
     )
-    state: Literal[runs.DECISION_STATES]
+    state: Literal[runs.DECISION_STATES]  # pyright: ignore[reportInvalidTypeForm]
     owner: str = Field(description="the login of the run's owner")
     asked_of: str = Field(
         description="the login of the person asked, who answers it: the principal of its run, or the person an intern "
