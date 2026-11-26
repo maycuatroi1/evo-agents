@@ -152,10 +152,12 @@ them; each family has a fallback face with next/font's metrics, so the swap move
 | `small` | 13 / 18 px | 400 | `text-[13px] leading-[18px]` | secondary lines, descriptions, chip labels |
 | `caption` | 12 / 16 px | 400 | `text-xs` | timestamps, column headers, helper text |
 | `overline` | 11 / 16 px, 0.06em, uppercase | 600 | `text-[11px] leading-4 font-semibold tracking-[0.06em] uppercase` | sidebar and palette group labels only |
+| `prose` | 15 / 24 px | 400 | `max-w-[80ch] text-[15px] leading-6` | what a person wrote or reads as text: an agent's words and thinking, a prompt, a sub-agent's report, a step report; about 80 characters a line |
 | `metric` | 24 / 30 px, -0.01em | 600 | `text-2xl leading-[30px] font-semibold tabular-nums` | the metric strip, progress headers |
 | `code` | 13 / 20 px | 400 | `font-mono text-[13px] leading-5` | log lines, commands, inline code, the terminal |
 | `code-small` | 12 / 16 px | 400 | `font-mono text-xs` | identifiers in chips and cells |
 
+- Nothing is set under 12 px on the run page: the `overline` and `kbd` 11 px stay in the sidebar and palette. Mono on the run page is for commands, paths, ids and figures (`code` 13 px, times and durations `caption` 12 px); a tool's output keeps its dark block in `code`.
 - Mono is for values, never for titles: a plan's title is `page-title`; its id sits in the breadcrumb and details.
 - A number that lines up in a column, a count or a duration uses `tabular-nums`.
 - Inputs, text areas and selects use 16 px below 768 px (`text-base md:text-sm`, `max-md:text-base` on

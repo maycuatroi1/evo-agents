@@ -15,8 +15,8 @@ import type { TraceContext } from "./trace-rows";
 
 /** The agent's words in the trace (agent-trace.tsx): its thinking folded, its message as Markdown, a step's report as a card. */
 
-const reportProse = (text: string) => <SafeMarkdown className="text-[13px] leading-5" testId="trace-report-text">{text}</SafeMarkdown>;
-const message = (text: string) => <SafeMarkdown className="leading-[21px]" testId="trace-message">{text}</SafeMarkdown>;
+const reportProse = (text: string) => <SafeMarkdown className="max-w-[80ch] text-[15px] leading-6" testId="trace-report-text">{text}</SafeMarkdown>;
+const message = (text: string) => <SafeMarkdown className="max-w-[80ch] text-[15px] leading-6" testId="trace-message">{text}</SafeMarkdown>;
 
 export function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" }>; context: TraceContext }) {
   const t = useTranslations("runs.detail.trace");
@@ -26,7 +26,7 @@ export function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "
     <Row icon={Bot} look="agent" at={item.at} head={<Who>{t("agent")}</Who>}>
       <div className="flex min-w-0 flex-col gap-2">
         {thought ? (
-          <details className="group/thought min-w-0 text-[13px] leading-[19px] text-muted-foreground" data-testid="trace-thought">
+          <details className="group/thought min-w-0 max-w-[80ch] text-[15px] leading-6 text-muted-foreground" data-testid="trace-thought">
             <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-fg-subtle select-none hover:text-foreground max-md:min-h-11 [&::-webkit-details-marker]:hidden">
               <Brain className="size-3.5" aria-hidden="true" />
               {thought.ms >= 1000 ? t("thought", { duration: short(thought.ms) }) : t("thoughtBrief")}

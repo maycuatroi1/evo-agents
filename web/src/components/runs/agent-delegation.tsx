@@ -67,12 +67,12 @@ function DelegatedAgent({ tool, task, context }: { tool: ToolCall; task: RunTask
         ) : null}
       </div>
       {brief.length ? (
-        <p className="line-clamp-3 text-[13px] leading-5 whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]" data-testid="trace-delegation-brief">
+        <p className="line-clamp-3 text-[15px] leading-6 whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]" data-testid="trace-delegation-brief">
           {brief.join("\n")}
         </p>
       ) : null}
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-x-3 gap-y-2">
-        <p className="min-w-0 flex-1 text-[13px] leading-5 [overflow-wrap:anywhere]" data-testid="trace-delegation-outcome">
+        <p className="min-w-0 flex-1 text-[15px] leading-6 [overflow-wrap:anywhere]" data-testid="trace-delegation-outcome">
           {result.length ? (
             <>
               <span className="font-medium text-foreground">{t("reported")} </span>

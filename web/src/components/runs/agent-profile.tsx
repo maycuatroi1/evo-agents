@@ -95,7 +95,7 @@ function Result({ task, active }: { task: RunTask; active: boolean }) {
       {text}
     </SafeMarkdown>
   );
-  const prose = (text: string) => <SafeMarkdown className="text-[13px] leading-5">{text}</SafeMarkdown>;
+  const prose = (text: string) => <SafeMarkdown className={PROSE}>{text}</SafeMarkdown>;
   if (task.result) {
     return (
       <div className="min-w-0" data-testid="agent-profile-result">
@@ -113,7 +113,7 @@ function Result({ task, active }: { task: RunTask; active: boolean }) {
       {ask ? (
         <section className="flex min-w-0 flex-col gap-2 rounded-lg border bg-muted/40 p-3" aria-label={t("askedFor")} data-testid="agent-profile-ask">
           <h3 className="text-[13px] leading-5 font-semibold text-foreground">{t("askedFor")}</h3>
-          <SafeMarkdown className="text-[13px] leading-5">{ask}</SafeMarkdown>
+          <SafeMarkdown className={PROSE}>{ask}</SafeMarkdown>
         </section>
       ) : null}
     </div>
