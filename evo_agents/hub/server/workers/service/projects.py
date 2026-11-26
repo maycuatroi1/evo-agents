@@ -1,5 +1,5 @@
 """The projects a worker serves (``tables.worker_projects``): who may name them, and how its owner changes them in place
-with PATCH /v1/workers/{id} (``evo_agents.hub.server.workers``).
+with PATCH /v1/workers/{id} (``evo_agents.hub.server.workers.routes.workers``).
 
 A worker serves the projects of its pairing or registration, each one its owner held the writer role on then
 (``writable``: 404 for a project they cannot see, 403 below writer). Its owner changes them in place by giving the whole

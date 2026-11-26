@@ -51,7 +51,7 @@ from evo_agents.hub.server.secrets import (
     writable_projects,
 )
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 log = logging.getLogger(__name__)
 

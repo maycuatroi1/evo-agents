@@ -30,7 +30,7 @@ from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import and_, case, func, literal, select, tuple_, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import audit, run_access, workers
+from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.admin import (
     LOGIN_NAME,
     PROJECT_NAME,
@@ -42,6 +42,7 @@ from evo_agents.hub.server.admin import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
+from evo_agents.hub.server.workers.routes import workers
 
 log = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 """``evo-agents hub org worker list|share|unshare``: whom a shared worker is shared with, over /v1/org/workers
-(``evo_agents.hub.server.worker_shares``; plan credential-sharing, criterion a5).
+(``evo_agents.hub.server.workers.service.shares``; plan credential-sharing, criterion a5).
 
 ``list`` prints the caller's live workers (every live one for a hub admin): owner, name, whether it is shared, the
 units it is narrowed to and what the newest report of its doctor found. ``share WORKER --unit SLUG`` narrows a worker

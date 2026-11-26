@@ -93,7 +93,7 @@ from evo_agents.hub.server.runs.models.placement import PoolName
 from evo_agents.hub.server.sealing import Sealer, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_views import CredentialShare, shares_of
-from evo_agents.hub.server.worker_models import LINE, WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import LINE, WORKER_NAME
 
 log = logging.getLogger(__name__)
 

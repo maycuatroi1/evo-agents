@@ -32,10 +32,11 @@ from sqlalchemy import delete, extract, func, insert, literal, select, table, up
 from evo_agents.harness import plan_digest
 from evo_agents.hub import autonomy_card, jobs, runs, runtime_metrics, spend_store, tables
 from evo_agents.hub.config import ConfigError, load_config
-from evo_agents.hub.server import run_reaper, run_state, update_now, worker_placement
+from evo_agents.hub.server import run_reaper, run_state, update_now
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import claim_rules
 from evo_agents.hub.server.runs.service import claims as run_claims
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 from evo_agents.hub.worker import queue
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.fake_github import Account

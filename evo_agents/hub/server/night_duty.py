@@ -23,7 +23,7 @@ from evo_agents.hub.server import agent_placement, kg_shared_pool
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.models.placement import selector_of
 from evo_agents.hub.server.runs.service.dispatch import Pinned, unfit
-from evo_agents.hub.server.worker_placement import Placement, columns
+from evo_agents.hub.server.workers.repository.placement import Placement, columns
 
 
 def _fresh(w):

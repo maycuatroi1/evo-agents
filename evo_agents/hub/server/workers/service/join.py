@@ -21,12 +21,12 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import cache, tables
-from evo_agents.hub.server import audit, worker_pools
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import same
-from evo_agents.hub.server.worker_models import JoinRequest, WorkerCredential
-from evo_agents.hub.server.workers import (
+from evo_agents.hub.server.workers.models.workers import JoinRequest, WorkerCredential
+from evo_agents.hub.server.workers.routes.workers import (
     CODE_LENGTH,
     MAX_WRONG_TRIES,
     REFUSED_CODE,
@@ -39,6 +39,7 @@ from evo_agents.hub.server.workers import (
     normal_code,
     pairing_secret,
 )
+from evo_agents.hub.server.workers.service import pools as worker_pools
 
 log = logging.getLogger(__name__)
 

@@ -58,7 +58,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.sealing import Sealer, agent_secret_aad
 from evo_agents.hub.server.secrets import NO_KEY, bound_names
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 log = logging.getLogger(__name__)
 

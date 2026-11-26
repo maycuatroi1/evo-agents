@@ -49,9 +49,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import POOL_PREFIX
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser, Principal, hash_token
-from evo_agents.hub.server.worker_models import WORKER_NAME
-from evo_agents.hub.server.worker_placement import Placement, all_labels, columns
-from evo_agents.hub.server.worker_pool_models import (
+from evo_agents.hub.server.workers.models.pools import (
     POOL_PATH_NAME,
     IssuedJoinToken,
     JoinToken,
@@ -61,7 +59,9 @@ from evo_agents.hub.server.worker_pool_models import (
     PoolRequest,
     PoolUpdate,
 )
-from evo_agents.hub.server.worker_projects import serve, served, writable
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
+from evo_agents.hub.server.workers.repository.placement import Placement, all_labels, columns
+from evo_agents.hub.server.workers.service.projects import serve, served, writable
 
 log = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@
 - PUT /v1/org/workers/{worker_id}/units/{slug}: narrow the worker to unit ``slug``, which must be live (422 otherwise,
   ``credential_shares.live_unit``), and make it shared when it was not. A unit it is narrowed to already changes
   nothing and is not audited. 409 with the reason when its newest doctor report is older than 48 hours, missing or
-  has a high finding (``evo_agents.hub.server.worker_doctor``).
+  has a high finding (``evo_agents.hub.server.workers.service.doctor``).
 - DELETE /v1/org/workers/{worker_id}/units/{slug}: take the unit back (404 when the worker is not narrowed to it).
   Taking back its last unit also turns sharing off, so narrowing a worker never ends with it shared with every writer.
 
@@ -35,7 +35,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.credential_shares import live_unit
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.worker_doctor import doctor_fresh, share_refusal
+from evo_agents.hub.server.workers.service.doctor import doctor_fresh, share_refusal
 
 log = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ imports, so a later change to them takes a new revision. Every statement is an A
 expressions.
 
 A daemon that says the feature doctor_report runs ``evo-agents worker doctor`` when it starts and every 24 hours and
-sends what it found (plan credential-sharing, criterion a6; ``evo_agents.hub.server.worker_doctor``). workers keeps the
+sends what it found (plan credential-sharing, criterion a6; ``evo_agents.hub.server.workers.service.doctor``). workers keeps the
 newest report: doctor_at, when the hub took it; doctor_high and doctor_medium, how many of its findings are of each
 severity; doctor_findings, the findings themselves (code, severity, detail). A worker narrowed to units of the org
 chart takes the runs of their members only while that report has no high finding, and a report with a high one sends

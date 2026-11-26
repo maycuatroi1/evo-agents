@@ -12,7 +12,7 @@ project. worker_join_tokens holds the join tokens of a pool: the hex SHA-256 of 
 expires, how many machines it takes (1 to MAX_USES) and how many joined with it, never more, and when it was revoked.
 workers.pool_id names the pool a node joined, NULL for a worker paired or registered; a pool with nodes is not deleted
 under them. The bounds below are copies of ``evo_agents.hub.runs.MAX_SLOTS`` and of
-``evo_agents.hub.server.worker_pool_models`` as of this revision, never imports, so a later change takes a new
+``evo_agents.hub.server.workers.models.pools`` as of this revision, never imports, so a later change takes a new
 revision. Only tables and a column are added.
 
 Going back drops the column and the three tables, which is the schema 0147 runs on: its hub has no pools, and the

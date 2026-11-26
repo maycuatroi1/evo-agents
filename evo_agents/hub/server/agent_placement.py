@@ -29,9 +29,10 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import kg_shared_pool, worker_placement
+from evo_agents.hub.server import kg_shared_pool
 from evo_agents.hub.server.profile_store import POOL_PREFIX
 from evo_agents.hub.server.runs.models.placement import POOL_KEY, normalized
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 EMPTY_NOTICE = "agent_pool_empty"  # runs.NOTICE_KINDS
 

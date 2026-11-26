@@ -97,7 +97,7 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # The owner changed the worker's settings; the target names each field that changed, "<field>=<was>-><is>", after
 # "worker:<id> name=<n> owner=<login>": "slots=1->4 labels=[]->[gpu,mac] name=old->new", never a token.
 WORKER_UPDATE = "worker.update"
-# Worker pools (evo_agents.hub.server.worker_pools), "pool:<id> name=<n>" first: a member created one, changed its
+# Worker pools (evo_agents.hub.server.workers.service.pools), "pool:<id> name=<n>" first: a member created one, changed its
 # settings ("<field>=<was>-><is>" as WORKER_UPDATE), created a join token of it ("join_token:<id> hours=<h>
 # max_uses=<n>") or revoked one ("join_token:<id>"), or deleted the pool; never the token.
 WORKER_POOL_CREATE = "worker_pool.create"
@@ -117,7 +117,7 @@ WORKER_UPDATE_NOW_CANCEL = "worker.update_now_cancel"
 WORKER_BROWSER_INSTALL = "worker.browser_install"
 WORKER_BROWSER_INSTALL_CANCEL = "worker.browser_install_cancel"
 # The owner or a hub admin narrowed a shared worker to a unit of the org chart, or took the unit back
-# (evo_agents.hub.server.worker_shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
+# (evo_agents.hub.server.workers.service.shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
 # " shared=false->true" when sharing turned the worker shared, " shared=true->false" when its last unit went.
 WORKER_SHARE = "worker.share"
 WORKER_UNSHARE = "worker.unshare"

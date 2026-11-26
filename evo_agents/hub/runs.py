@@ -243,7 +243,7 @@ MAX_BROWSERS = 64  # the most browser runs a worker may say it holds at once
 BROWSER_INSTALL = "browser_install"
 # a daemon that runs `evo-agents worker doctor` when it starts and every 24 hours and sends what it found (POST
 # /v1/worker/doctor; evo_agents.worker.doctor_report): only a worker whose newest report is fresh and has no high
-# finding may be narrowed to units of the org chart (evo_agents.hub.server.worker_doctor)
+# finding may be narrowed to units of the org chart (evo_agents.hub.server.workers.service.doctor)
 DOCTOR_REPORT = "doctor_report"
 DOCTOR_EVERY_SECONDS = 24 * 3600  # how often the daemon sends a doctor report, besides when it starts
 DOCTOR_FRESH_SECONDS = 48 * 3600  # a worker is narrowed to a unit only with a report this recent

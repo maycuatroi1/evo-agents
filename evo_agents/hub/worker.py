@@ -24,7 +24,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
   with the hub as actor, and the leases still out of the runs of every person whose primary seat ended are taken back
   and their GitHub tokens revoked (``evo_agents.hub.server.org_expiry``).
 - ``hub.reap_pool_nodes``, hourly: each worker pool node offline longer than its pool's ``reap_after_days`` is
-  revoked as its owner's revoke would, with the hub as actor (``evo_agents.hub.server.worker_reaper``); workers
+  revoked as its owner's revoke would, with the hub as actor (``evo_agents.hub.server.workers.service.reaper``); workers
   outside a pool are left alone.
 - ``hub.hub_turn``: one turn of a chat run of an agent that runs on the hub (runtime ``hub``), deferred by the api
   when the run queues: the model answers through the hub's gateway with the tools of the hub runtime, bounded in

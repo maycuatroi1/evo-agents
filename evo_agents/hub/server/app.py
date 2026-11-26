@@ -446,7 +446,9 @@ def _include_kg_routes(app: FastAPI) -> None:
 
 
 def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
-    from evo_agents.hub.server import worker_join, worker_pools, workers
+    from evo_agents.hub.server.workers.routes import workers
+    from evo_agents.hub.server.workers.service import join as worker_join
+    from evo_agents.hub.server.workers.service import pools as worker_pools
 
     app.include_router(workers.router)
     app.include_router(worker_pools.router)
@@ -548,8 +550,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         org,
         protection,
         transcripts,
-        worker_doctor,
-        worker_shares,
     )
     from evo_agents.hub.server.changes import routes as change_routes
     from evo_agents.hub.server.digests import routes as digests
@@ -561,6 +561,8 @@ def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.probes.routes import runs as probe_runs
     from evo_agents.hub.server.proposal_plans import routes as proposal_plans
     from evo_agents.hub.server.replays import routes as replay_routes
+    from evo_agents.hub.server.workers.service import doctor as worker_doctor
+    from evo_agents.hub.server.workers.service import shares as worker_shares
 
     for routes in (
         change_routes.router,

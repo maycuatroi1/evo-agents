@@ -68,7 +68,7 @@ from evo_agents.hub.server.sealing import Sealed, agent_provider_aad
 from evo_agents.hub.server.secrets import sealer_of, unique_names
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_views import shares_of
-from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 log = logging.getLogger(__name__)
 

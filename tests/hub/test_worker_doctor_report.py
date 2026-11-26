@@ -1,4 +1,4 @@
-"""The doctor reports of workers (``evo_agents.hub.server.worker_doctor``), as criterion a6 of plan credential-sharing
+"""The doctor reports of workers (``evo_agents.hub.server.workers.service.doctor``), as criterion a6 of plan credential-sharing
 names them: schema 0108 and going back; POST /v1/worker/doctor keeps the newest report of the worker whose token sent
 it, redacted, and the list of workers shows it; narrowing a worker to a unit answers 409 with the reason without a
 report, with one older than 48 hours or with a high finding; a report with a high finding stops a narrowed worker

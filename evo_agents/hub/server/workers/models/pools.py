@@ -1,4 +1,4 @@
-"""The models of the pool API of ``evo_agents.hub.server.worker_pools``: what creating and changing a pool take, what a
+"""The models of the pool API of ``evo_agents.hub.server.workers.service.pools``: what creating and changing a pool take, what a
 pool and its nodes show, and the join tokens of a pool, with the bounds schema 0148 holds them to."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from evo_agents.hub import runs
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.worker_doctor import CODE_PATTERN
+from evo_agents.hub.server.workers.service.doctor import CODE_PATTERN
 
 POOL_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
 # The name in a path: an agent's pool is ``agent-<handle>``, up to 106 characters (0189).

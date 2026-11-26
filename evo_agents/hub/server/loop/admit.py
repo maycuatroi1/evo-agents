@@ -171,7 +171,8 @@ async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[s
     serving the project, holding every label, and owned by a writer of the project (their runs go in the owner's
     name). The best of them, the most free slots, stands for the pick; its free slots are those of all of them, less
     the runs queued for the pool that no worker holds yet (a run of an agent is placed on its pool, not pinned)."""
-    from evo_agents.hub.server import worker_placement  # it reaches the runs package, which imports the Loop
+    # it reaches the runs package, which imports the Loop
+    from evo_agents.hub.server.workers.repository import placement as worker_placement
 
     asked = ", ".join(selector)
     w, wp, g, r = tables.workers, tables.worker_projects, tables.grants, tables.runs

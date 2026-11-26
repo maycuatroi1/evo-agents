@@ -99,7 +99,7 @@ from evo_agents.hub.server.security import (
     issue_token,
     keyed_digest,
 )
-from evo_agents.hub.server.worker_models import (
+from evo_agents.hub.server.workers.models.workers import (
     DispatchFrom,
     HostFacts,
     Pairing,
@@ -110,10 +110,10 @@ from evo_agents.hub.server.worker_models import (
     WorkerRegistration,
     WorkerUpdate,
 )
-from evo_agents.hub.server.worker_placement import Placement, all_labels, pool_name
-from evo_agents.hub.server.worker_placement import columns as placement_columns
-from evo_agents.hub.server.worker_projects import serve, served
-from evo_agents.hub.server.worker_projects import writable as _writable
+from evo_agents.hub.server.workers.repository.placement import Placement, all_labels, pool_name
+from evo_agents.hub.server.workers.repository.placement import columns as placement_columns
+from evo_agents.hub.server.workers.service.projects import serve, served
+from evo_agents.hub.server.workers.service.projects import writable as _writable
 
 log = logging.getLogger(__name__)
 

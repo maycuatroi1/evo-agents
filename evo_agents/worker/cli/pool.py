@@ -1,5 +1,5 @@
 """``evo-agents worker pool``: the worker pools of the member signed in on this machine, and their join tokens, with
-the machine token of ``evo-agents hub login`` (/v1/worker-pools, ``evo_agents.hub.server.worker_pools``).
+the machine token of ``evo-agents hub login`` (/v1/worker-pools, ``evo_agents.hub.server.workers.service.pools``).
 
 - ``pool create NAME --project P``: a new pool, with the slots, labels, taints, accepted doctor findings and offline
   days before reaping its nodes take.

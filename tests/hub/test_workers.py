@@ -54,7 +54,7 @@ from evo_agents.hub.log import scrub
 from evo_agents.hub.server import audit, profile_store
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import MACHINE, WORKER, authenticate, hash_token
-from evo_agents.hub.server.workers import CROCKFORD, RefusalLimit, normal_code
+from evo_agents.hub.server.workers.routes.workers import CROCKFORD, RefusalLimit, normal_code
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_run

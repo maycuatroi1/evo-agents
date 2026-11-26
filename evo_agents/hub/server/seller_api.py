@@ -42,7 +42,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_store import fetch_bundle
 from evo_agents.hub.server.projects import PRINTABLE
 from evo_agents.hub.server.seller import NOT_SELLING, expire_orders, own_keys, seller_key, selling
-from evo_agents.hub.server.workers import client_address
+from evo_agents.hub.server.workers.routes.workers import client_address
 from evo_agents.plugins import compat
 from evo_agents.plugins import license as lic
 from evo_agents.plugins.manifest import PLUGIN_ID

@@ -12,8 +12,8 @@ from sqlalchemy import and_, exists, func, literal, or_, select
 
 from evo_agents.hub import org, profiles, runs, tables
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import worker_placement
 from evo_agents.hub.server.runs.models import available
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 OFFLINE = func.make_interval(0, 0, 0, 0, 0, 0, runs.OFFLINE_AFTER_SECONDS)
 WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
@@ -49,7 +49,7 @@ def unit_admits(worker_id, principal_id):
     """Whether the units worker ``worker_id`` is narrowed to (``tables.worker_shares``) let it take a run of member
     ``principal_id`` (each a value or a column): it has none, or the member's live primary seat is in one of them or
     below one, with no unit above the seat archived nor a cohort above it ended (``org.Chart.ended``), and the newest
-    doctor report of the worker has no high finding (``evo_agents.hub.server.worker_doctor``)."""
+    doctor report of the worker has no high finding (``evo_agents.hub.server.workers.service.doctor``)."""
     ws, u, chain = tables.worker_shares, tables.org_units, _seat_chains()
     doctored = tables.workers.alias("doctored")
     clear = exists().where(doctored.c.id == worker_id, doctored.c.doctor_high == 0)

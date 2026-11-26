@@ -62,7 +62,6 @@ from evo_agents.hub.server import (
     run_access_rules,
     run_events,
     task_dispatch,
-    worker_shares,
 )
 from evo_agents.hub.server import org as org_routes
 from evo_agents.hub.server.canvas import routes as canvas_routes
@@ -77,6 +76,7 @@ from evo_agents.hub.server.runs.service import dispatch
 from evo_agents.hub.server.security import RUN, Principal
 from evo_agents.hub.server.srs.models import doc as srs_doc
 from evo_agents.hub.server.srs.service import reviews as srs_reviews
+from evo_agents.hub.server.workers.service import shares as worker_shares
 from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.account_pool_setup import give_account_pool

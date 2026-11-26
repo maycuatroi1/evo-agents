@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import credentials
-from evo_agents.hub.server.workers import end_worker
+from evo_agents.hub.server.workers.routes.workers import end_worker
 
 log = logging.getLogger(__name__)
 

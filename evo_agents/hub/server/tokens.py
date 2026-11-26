@@ -19,9 +19,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import audit, run_access, workers
+from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, CurrentUser, delete_session_cookie, revoke_token
+from evo_agents.hub.server.workers.routes import workers
 
 log = logging.getLogger(__name__)
 

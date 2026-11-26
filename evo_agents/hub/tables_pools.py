@@ -3,7 +3,7 @@ attributes (``tables.worker_pools``, ``tables.worker_pool_projects``, ``tables.w
 there.
 
 worker_pools holds each pool a member made for machines that join with a join token instead of a pairing code
-(``evo_agents.hub.server.worker_pools``): its owner, its name (unique among the owner's pools in any case), the slots,
+(``evo_agents.hub.server.workers.service.pools``): its owner, its name (unique among the owner's pools in any case), the slots,
 labels and taints every node takes, the codes of doctor findings the pool accepts (``evo_agents.worker.doctor``), the
 days a node stays offline before the hub revokes it (1 to 90), and when it was made and last changed.
 worker_pool_projects lists the projects the nodes of a pool serve. worker_join_tokens holds the join tokens of a pool:

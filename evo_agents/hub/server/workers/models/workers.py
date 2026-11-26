@@ -1,4 +1,4 @@
-"""The models of the worker API of ``evo_agents.hub.server.workers``: what a pairing, a join and a registration take,
+"""The models of the worker API of ``evo_agents.hub.server.workers.routes.workers``: what a pairing, a join and a registration take,
 what a worker shows (GET /v1/workers, GET /v1/workers/{id}) and what PATCH /v1/workers/{id} changes, with the bounds
 of names, labels and one-line texts that other modules of the hub check the same way."""
 

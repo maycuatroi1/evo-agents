@@ -29,7 +29,7 @@ autonomy_stops (0116) holds every stop of autonomy S4, never deleted: the scope 
 unit it names, the reason, who stopped and when, who lifted it and when (NULL while it holds).
 
 worker_shares (0107, ``tables.worker_shares``) holds the units a shared worker is narrowed to: the worker, the unit, who
-added the row and when (``evo_agents.hub.server.worker_shares``).
+added the row and when (``evo_agents.hub.server.workers.service.shares``).
 """
 
 from __future__ import annotations

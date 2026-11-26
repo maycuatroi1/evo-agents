@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import guard, ops_events, proofs, runs, spend_store, tables
-from evo_agents.hub.server import browser_install, token_strategy, update_now, worker_placement
+from evo_agents.hub.server import browser_install, token_strategy, update_now
 from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -38,6 +38,7 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
