@@ -6,14 +6,16 @@ a flag sets it over the policy as it is now, ``--reset`` drops it so the default
 ``quota-pacing``, ``--hard-reserve-pct`` is the share of a weekly window kept back while another account has more and
 ``--five-hour-ceiling-pct`` the five-hour use above which an account waits while a cooler one is ready. Standard
 library only.
+
+The command is :class:`AccountPolicy`, a class of ``evo_agents.clikit``, over the gateway
+``cli.secret.resources.AccountPolicies``; :func:`out_of_bounds` and :func:`policy_lines` are its rules and its view.
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
-from urllib.parse import quote
 
+from evo_agents.clikit import Arg, Result, Text, UsageError, returns_object
 from evo_agents.hub.accounts import (
     MAX_COOLDOWN_SECONDS,
     MAX_FAILOVERS,
@@ -22,10 +24,9 @@ from evo_agents.hub.accounts import (
     QUOTA_PACING,
     STRATEGIES,
 )
-from evo_agents.hub.cli.base import client_command, print_json, signed_in, when
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext, when
+from evo_agents.hub.cli.secret.resources import AccountPolicies
 
-EXIT_USAGE = 2
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = (
     "strategy",
@@ -53,11 +54,6 @@ BOUNDS = {
 }
 
 
-def _usage_error(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
-
-
 def out_of_bounds(given: dict, bounds: dict = BOUNDS) -> str | None:
     """Why a number of ``given`` is not one the hub takes; None when each is."""
     for key, value in given.items():
@@ -67,90 +63,93 @@ def out_of_bounds(given: dict, bounds: dict = BOUNDS) -> str | None:
     return None
 
 
-def _policy_path(project: str) -> str:
-    return f"/v1/account-policies/{quote(project, safe='')}"
-
-
-def _print_policy(policy: dict) -> None:
+def policy_lines(policy: dict) -> list[str]:
+    """What ``account policy`` prints of a policy."""
     failover = f"on, at most {policy['max_failovers']} time(s)" if policy["failover"] else "off"
     origin = f"set {when(policy['updated_at'])} UTC" if policy["updated_at"] else "the defaults"
-    print(
+    lines = [
         f"Project {policy['project']} ({origin}): strategy {policy['strategy']}, cooldown "
         f"{policy['cooldown_seconds']} s, failover {failover}."
-    )
+    ]
     if policy["strategy"] == QUOTA_PACING:
-        print(
+        lines.append(
             f"  Quota pacing: reserve {policy.get('hard_reserve_pct')}% of a weekly window, five-hour ceiling "
             f"{policy.get('five_hour_ceiling_pct')}%."
         )
+    return lines
 
 
-@client_command
-def cmd_account_policy(args) -> int:
-    given = {key: getattr(args, key) for key in POLICY_FLAGS if getattr(args, key) is not None}
-    if args.reset and given:
-        return _usage_error("--reset drops the policy: give it alone")
-    if (refusal := out_of_bounds(given)) is not None:
-        return _usage_error(refusal)
-    hub, _ = signed_in()
-    path = _policy_path(args.project)
-    if args.reset:
-        hub.call("DELETE", path)
-        policy = hub.call("GET", path)
-    elif given:
-        now = hub.call("GET", path) or {}
-        policy = hub.call("PUT", path, {**{key: now[key] for key in POLICY_FLAGS if key in now}, **given})
-    else:
-        policy = hub.call("GET", path)
-    if args.json:
-        print_json(policy)
-    else:
-        _print_policy(policy or {})
-    return 0
+def given_flags(args: argparse.Namespace) -> dict:
+    """The fields of the policy the flags of ``args`` set."""
+    return {key: getattr(args, key) for key in POLICY_FLAGS if getattr(args, key) is not None}
 
 
-def register_policy(asub) -> None:
-    """``account policy PROJECT``, added to the subparsers ``asub`` of ``hub account``."""
-    policy = asub.add_parser(
-        "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"
+class AccountPolicy(HubCommand):
+    name = "policy"
+    help = "show your policy for a project; with a flag, set it over the policy as it is now"
+    arguments = (
+        Arg("project", metavar="PROJECT"),
+        Arg(
+            "--strategy",
+            choices=STRATEGIES,
+            help="how a run picks among your accounts; quota-pacing spends the weekly quota that resets soonest first",
+        ),
+        Arg(
+            "--cooldown",
+            dest="cooldown_seconds",
+            type=int,
+            metavar="SECONDS",
+            help="how long an account cools down after a usage limit that gave no reset time",
+        ),
+        Arg(
+            "--failover",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="whether a run that hits a usage limit goes on with another account",
+        ),
+        Arg(
+            "--max-failovers",
+            type=int,
+            metavar="N",
+            help=f"0 to {MAX_FAILOVERS}: at most how many times a run moves on",
+        ),
+        Arg(
+            "--hard-reserve-pct",
+            type=int,
+            metavar="PCT",
+            help=f"0 to {MAX_PCT}, quota-pacing: the share of a weekly window kept back while another account has more",
+        ),
+        Arg(
+            "--five-hour-ceiling-pct",
+            type=int,
+            metavar="PCT",
+            help=f"1 to {MAX_PCT}, quota-pacing: the five-hour use above which an account waits while a cooler one is "
+            "ready",
+        ),
+        Arg("--reset", action="store_true", help="drop your policy: the defaults hold again"),
     )
-    policy.add_argument("project", metavar="PROJECT")
-    policy.add_argument(
-        "--strategy",
-        choices=STRATEGIES,
-        help="how a run picks among your accounts; quota-pacing spends the weekly quota that resets soonest first",
-    )
-    policy.add_argument(
-        "--cooldown",
-        dest="cooldown_seconds",
-        type=int,
-        metavar="SECONDS",
-        help="how long an account cools down after a usage limit that gave no reset time",
-    )
-    policy.add_argument(
-        "--failover",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="whether a run that hits a usage limit goes on with another account",
-    )
-    policy.add_argument(
-        "--max-failovers",
-        type=int,
-        metavar="N",
-        help=f"0 to {MAX_FAILOVERS}: at most how many times a run moves on",
-    )
-    policy.add_argument(
-        "--hard-reserve-pct",
-        type=int,
-        metavar="PCT",
-        help=f"0 to {MAX_PCT}, quota-pacing: the share of a weekly window kept back while another account has more",
-    )
-    policy.add_argument(
-        "--five-hour-ceiling-pct",
-        type=int,
-        metavar="PCT",
-        help=f"1 to {MAX_PCT}, quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
-    )
-    policy.add_argument("--reset", action="store_true", help="drop your policy: the defaults hold again")
-    json_option(policy, returns_object(*POLICY_KEYS, schema="AccountPolicy"))
-    policy.set_defaults(func=cmd_account_policy)
+    output = returns_object(*POLICY_KEYS, schema="AccountPolicy")
+
+    def check(self, args: argparse.Namespace) -> None:
+        given = given_flags(args)
+        if args.reset and given:
+            raise UsageError("--reset drops the policy: give it alone")
+        if (refusal := out_of_bounds(given)) is not None:
+            raise UsageError(refusal)
+
+    def run(self, ctx: HubContext) -> Result:
+        policies, project, given = AccountPolicies.of(ctx), ctx.args.project, given_flags(ctx.args)
+        if ctx.args.reset:
+            policies.delete(project)
+            policy = policies.get(project)
+        elif given:
+            now = policies.get(project) or {}
+            policy = policies.put(project, {**{key: now[key] for key in POLICY_FLAGS if key in now}, **given})
+        else:
+            policy = policies.get(project)
+        if ctx.args.json:
+            return Result(policy)
+        return Result(policy, Text(*policy_lines(policy or {})))
+
+
+ACCOUNT_POLICY = AccountPolicy()

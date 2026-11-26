@@ -7,18 +7,18 @@ both.
 workers of theirs (``--worker``, repeatable), to the nodes of their worker pools (``--pool``, repeatable) or to any
 worker of theirs (``--anywhere``), exactly one of the three. Its kind, target, projects, end and shares stay. It prints
 the secret as ``secret list`` shows a row of it (``SECRET_COLUMNS``, ``secret_row``), or the hub's answer with
-``--json``."""
+``--json``. The command is :class:`SecretBind`, a class of ``evo_agents.clikit`` (docs/structure.md, section Command
+classes), over the gateway ``cli.secret.resources.Secrets``."""
 
 from __future__ import annotations
 
-import sys
-from urllib.parse import quote
+import argparse
 
-from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Result, Table, UsageError, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext, when
+from evo_agents.hub.cli.secret.resources import Secrets
 from evo_agents.hub.credentials import FORGE_KIND, SECRET_NAME
 
-EXIT_USAGE = 2
 BOTH = "give --worker or --pool, not both: a pool covers each of its nodes already"
 # The keys of a secret in `hub secret list --json` and `hub secret bind --json` (the contract, `evo-agents hub contract
 # print`).
@@ -41,9 +41,9 @@ SECRET_KEYS = (
 SECRET_COLUMNS = ("NAME", "KIND", "TARGET", "PROJECTS", "WORKERS", "EXPIRES (UTC)", "UPDATED (UTC)")
 
 
-def add_pool_flag(parser, runs: str = "get") -> None:
-    """``--pool NAME``, repeatable, on ``parser``; ``runs`` is the verb of the help ("get" or "take")."""
-    parser.add_argument(
+def pool_arg(runs: str = "get") -> Arg:
+    """``--pool NAME``, repeatable; ``runs`` is the verb of the help ("get" or "take")."""
+    return Arg(
         "--pool",
         action="append",
         metavar="NAME",
@@ -79,10 +79,6 @@ def bound_to(args, existing: dict | None) -> dict:
 # A secret as `hub secret list` shows it
 
 
-def secret_path(name: str) -> str:
-    return f"/v1/secrets/{quote(name, safe='')}"
-
-
 def target_text(secret: dict) -> str:
     """What the secret answers for: its variable (and the environment it is labelled for), or its URL prefix."""
     if secret["kind"] == "env":
@@ -116,35 +112,43 @@ def rebinding(args) -> dict:
     return {"workers": args.worker or []}
 
 
-@client_command
-def cmd_bind(args) -> int:
-    if not SECRET_NAME.fullmatch(args.name):
-        print(f"error: {args.name!r} is not a secret's name", file=sys.stderr)
-        return EXIT_USAGE
-    hub, _ = signed_in()
-    secret = hub.call("PATCH", secret_path(args.name), rebinding(args))
-    if args.json:
-        print_json(secret)
-    else:
-        table(SECRET_COLUMNS, [secret_row(secret)])
-    return 0
+def check_secret_name(name: str) -> None:
+    """UsageError for what cannot be the name of a secret, said as ``secret bind`` and ``hub account`` say it."""
+    if not SECRET_NAME.fullmatch(name):
+        raise UsageError(f"{name!r} is not a secret's name")
 
 
-def register_bind(ssub) -> None:
-    """``hub secret bind`` on ``ssub``, the subcommands of ``hub secret``."""
-    bind = ssub.add_parser(
-        "bind",
-        help="bind a secret to other workers or pools of yours, or to any worker; its value and the rest stay",
-    )
-    bind.add_argument("name", metavar="NAME")
-    where = bind.add_mutually_exclusive_group(required=True)
-    where.add_argument(
+WHERE = (
+    Arg(
         "--worker",
         action="append",
         metavar="NAME",
         help="only runs on this worker of yours get it; repeat it for several; not with --pool",
-    )
-    add_pool_flag(where)
-    where.add_argument("--anywhere", action="store_true", help="clear its binding: runs on any worker of yours get it")
-    json_option(bind, returns_object(*SECRET_KEYS, schema="Secret"))
-    bind.set_defaults(func=cmd_bind)
+    ),
+    pool_arg(),
+    Arg("--anywhere", action="store_true", help="clear its binding: runs on any worker of yours get it"),
+)
+
+
+class SecretBind(HubCommand):
+    name = "bind"
+    help = "bind a secret to other workers or pools of yours, or to any worker; its value and the rest stay"
+    arguments = (Arg("name", metavar="NAME"),)
+    output = returns_object(*SECRET_KEYS, schema="Secret")
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        where = parser.add_mutually_exclusive_group(required=True)
+        for arg in WHERE:
+            where.add_argument(*arg.flags, **arg.options)
+
+    def check(self, args: argparse.Namespace) -> None:
+        check_secret_name(args.name)
+
+    def run(self, ctx: HubContext) -> Result:
+        secret = Secrets.of(ctx).rebind(ctx.args.name, rebinding(ctx.args))
+        if ctx.args.json:
+            return Result(secret)
+        return Result(secret, Table(SECRET_COLUMNS, [secret_row(secret)]))
+
+
+SECRET_BIND = SecretBind()

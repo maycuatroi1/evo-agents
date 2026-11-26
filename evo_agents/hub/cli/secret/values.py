@@ -1,6 +1,9 @@
 """The checks of a secret's name, day and value, and the reading of a value that is never printed: what ``hub
 secret``, ``hub account``, ``hub agent account``, ``hub plugin config`` and ``hub decision`` share. Standard library
-only, like the rest of the client."""
+only, like the rest of the client.
+
+:class:`Refused` is a :class:`evo_agents.clikit.UsageError`, so a class command that meets one prints ``error: <why>``
+and exits 2, as for any other option that cannot be."""
 
 from __future__ import annotations
 
@@ -9,12 +12,13 @@ import re
 import sys
 from datetime import UTC, datetime
 
+from evo_agents.clikit import UsageError
 from evo_agents.hub.credentials import FORGE_KIND, MAX_SECRET_BYTES, SECRET_NAME
 
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
-class Refused(Exception):
+class Refused(UsageError):
     """The arguments or the value cannot make a secret; ``str`` says why, never with the value."""
 
 
