@@ -14,19 +14,15 @@ from typing import Any, ClassVar
 from urllib.parse import quote
 
 from evo_agents.clikit import Arg, Result, Table, Text, Views, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext
-from evo_agents.hub.client import Hub
+from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes
 
 CATALOG_KEYS = ("source", "groups", "providers")
 
 
-class ModelCatalog:
+class ModelCatalog(HubRoutes):
     """GET /v1/model-catalog: the providers of the hub's model catalog (Gateway)."""
 
-    path = "/v1/model-catalog"
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
+    base = "model-catalog"
 
     def get(self, group: str | None) -> Any:
         return self.hub.call("GET", self.path + (f"?group={quote(group)}" if group else ""))

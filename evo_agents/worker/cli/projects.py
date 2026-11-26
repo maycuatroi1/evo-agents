@@ -14,6 +14,7 @@ signed in to its hub, and its daemon takes the list from the settings of its nex
 from __future__ import annotations
 
 from evo_agents.clikit import Arg, Result, Text
+from evo_agents.hub.api import paths
 from evo_agents.hub.cli.run.workers import worker_id as named_worker
 from evo_agents.hub.client import Hub, HubError, load_credentials
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
@@ -50,7 +51,7 @@ class Projects(WorkerCommand):
     def run(self, ctx: WorkerContext) -> Result:
         args = ctx.args
         hub, worker_id, home, config = target_of(ctx)
-        path = f"/v1/workers/{worker_id}"
+        path = paths.worker(worker_id)
         worker = object_of(hub, "GET", path)
         served = list(worker.get("projects") or [])
         added, removed = list(dict.fromkeys(args.add or [])), list(dict.fromkeys(args.remove or []))

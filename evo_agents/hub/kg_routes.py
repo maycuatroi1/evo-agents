@@ -1,7 +1,7 @@
 """The routes of a project's knowledge graph on the hub that the ``hub kg`` commands ask, one gateway each.
 
-- :class:`KgResource` is the gateway to one collection under /v1/kg/{project}: the one place that quotes the project
-  and the parts of a path. :class:`Builds`, :class:`Sources`, :class:`Uploads`, :class:`AnswerJobs` and
+- :class:`KgResource` (``evo_agents.hub.api.kg.KgCollection``, the base the ``hub kg`` commands share) is the gateway
+  to one collection under /v1/kg/{project}: the one place that quotes the project and the parts of a path. :class:`Builds`, :class:`Sources`, :class:`Uploads`, :class:`AnswerJobs` and
   :class:`InitRuns` are its collections, :class:`GraphHealth` the measures of the graph the Curator takes
   (/v1/projects/{project}/curator/kg-health).
 - :class:`KgAdmin` holds the routes of a hub admin, which name no project in their path: prune, scrub and purge,
@@ -21,9 +21,11 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, ClassVar
-from urllib.parse import quote, urlencode
+from typing import Any
 
+from evo_agents.hub.api import paths, route
+from evo_agents.hub.api.kg import KgCollection
+from evo_agents.hub.api.kg import asked as asked
 from evo_agents.hub.client import Hub, HubError, put_presigned_part, transient
 from evo_agents.hub.kg_hub_sync import wait_for
 from evo_agents.hub.kg_push import PUT_ATTEMPTS, PUT_DELAYS
@@ -39,42 +41,11 @@ PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blo
 SCRUB_TIMEOUT = 600.0  # seconds one page of a scrub, or one purge, may take: it reads objects in the blob store
 PURGE_BATCH = 500  # hashes in one purge request; the hub takes 1000
 MEASURE_TIMEOUT = 600.0  # seconds a measure may take: the hub opens the graph and asks the questions twice
+KG_POOL = route("admin/kg-pool")
+SCRUB = route("admin/kg/scrub")
 
 
-def asked(hub: Hub, method: str, path: str, body: dict | None = None, timeout: float | None = None) -> Any:
-    """``hub.call`` with the body and timeout only when there are any."""
-    if body is None:
-        return hub.call(method, path) if timeout is None else hub.call(method, path, timeout=timeout)
-    return hub.call(method, path, body) if timeout is None else hub.call(method, path, body, timeout=timeout)
-
-
-class KgResource:
-    """One collection of a project's graph on the hub (Gateway): ``<prefix>/<project>/<collection>``."""
-
-    prefix: ClassVar[str] = "/v1/kg"
-    collection: ClassVar[str]
-
-    def __init__(self, hub: Hub, project: str):
-        self.hub = hub
-        self.project = project
-
-    @property
-    def root(self) -> str:
-        """``<prefix>/<project>``, the project quoted whole."""
-        return f"{self.prefix}/{quote(self.project, safe='')}"
-
-    def path(self, *parts: Any, **query: Any) -> str:
-        """``<root>/<collection>/<part>...?<query>``, each part quoted whole; a query value of None is left out."""
-        tail = "".join(f"/{quote(str(part), safe='')}" for part in parts)
-        given = {name: value for name, value in query.items() if value is not None}
-        return f"{self.root}/{self.collection}{tail}" + (f"?{urlencode(given)}" if given else "")
-
-    def call(self, method: str, *parts: Any, body: dict | None = None, **query: Any) -> Any:
-        return asked(self.hub, method, self.path(*parts, **query), body)
-
-    def web(self, *parts: Any) -> str:
-        """The page of the hub that shows the project's graph, or ``parts`` below it."""
-        return f"{self.hub.url}/p/{quote(self.project, safe='')}/kg" + "".join(f"/{part}" for part in parts)
+KgResource = KgCollection  # the shared base of a project's graph routes, by the name its importers know
 
 
 class Builds(KgResource):
@@ -106,7 +77,7 @@ class Sources(KgResource):
 class GraphHealth(KgResource):
     """GET /v1/projects/{p}/curator/kg-health: the health of a project's graph over time, as the hub measures it."""
 
-    prefix = "/v1/projects"
+    base = "projects"
     collection = "curator/kg-health"
 
     def measures(self, limit: int) -> dict:
@@ -114,7 +85,7 @@ class GraphHealth(KgResource):
 
 
 class InitRuns(KgResource):
-    """/v1/kg/{p}/init: the kg_init runs of a project, in which the Curator configures its graph."""
+    """The kg_init runs (under /v1/kg/{p}/init) of a project, in which the Curator configures its graph."""
 
     collection = "init"
 
@@ -133,7 +104,7 @@ class InitRuns(KgResource):
 
 
 class AnswerJobs(KgResource):
-    """/v1/kg/{p}/answers: the jobs that ask a file of questions of the graph, and their answers."""
+    """The jobs (under /v1/kg/{p}/answers) that ask a file of questions of the graph, and their answers."""
 
     collection = "answers"
 
@@ -191,7 +162,7 @@ def put_part(url: str, path: Path, offset: int, size: int) -> None:
 
 
 class Uploads(KgResource):
-    """/v1/kg/{p}/uploads: archives sent as sources of the graph, and the flow that follows each."""
+    """The archives (under /v1/kg/{p}/uploads) sent as sources of the graph, and the flow that follows each."""
 
     collection = "uploads"
 
@@ -243,24 +214,24 @@ class KgAdmin:
 
     def project_names(self) -> list[str]:
         """Every project on the hub."""
-        return [project["name"] for project in self.hub.call("GET", "/v1/projects") or []]
+        return [project["name"] for project in self.hub.call("GET", paths.PROJECTS) or []]
 
     def prune(self, project: str | None, keep: int | None, dry_run: bool, graph_files: bool) -> dict:
         body = {"project": project, "keep": keep, "dry_run": dry_run, "graph_files": graph_files}
-        return asked(self.hub, "POST", "/v1/admin/kg/prune", body, PRUNE_TIMEOUT)
+        return asked(self.hub, "POST", route("admin/kg/prune"), body, PRUNE_TIMEOUT)
 
     def init_all(self) -> dict:
         """A kg_init run asked for every project with a knowledge config."""
-        return self.hub.call("POST", "/v1/admin/kg-init", {}) or {}
+        return self.hub.call("POST", route("admin/kg-init"), {}) or {}
 
     def pool(self) -> dict:
-        return self.hub.call("GET", "/v1/admin/kg-pool") or {}
+        return self.hub.call("GET", KG_POOL) or {}
 
     def set_pool(self, owner: str, pool: str) -> dict:
-        return self.hub.call("PUT", "/v1/admin/kg-pool", {"owner": owner, "pool": pool}) or {}
+        return self.hub.call("PUT", KG_POOL, {"owner": owner, "pool": pool}) or {}
 
     def clear_pool(self) -> dict:
-        return self.hub.call("DELETE", "/v1/admin/kg-pool") or {}
+        return self.hub.call("DELETE", KG_POOL) or {}
 
     def scrub(self, project: str, progress: Callable[[str], None] | None = None) -> dict:
         """Every page of POST /v1/admin/kg/scrub for ``project``, added up; ``purged`` is None until a purge."""
@@ -276,7 +247,7 @@ class KgAdmin:
         after = None
         while True:
             body = {"project": project, **({"after": after} if after else {})}
-            page = asked(self.hub, "POST", "/v1/admin/kg/scrub", body, SCRUB_TIMEOUT) or {}
+            page = asked(self.hub, "POST", SCRUB, body, SCRUB_TIMEOUT) or {}
             for key in ("scanned", "scanned_bytes", "missing"):
                 report[key] += page[key]
             report["found"] += page["found"]
@@ -294,7 +265,7 @@ class KgAdmin:
         purged = {"purged": [], "kept": [], "builds": 0, "deleted": 0, "deleted_bytes": 0, "pending": 0}
         for start in range(0, len(old), PURGE_BATCH):
             body = {"project": report["project"], "sha256": old[start : start + PURGE_BATCH]}
-            answer = asked(self.hub, "POST", "/v1/admin/kg/scrub/purge", body, SCRUB_TIMEOUT)
+            answer = asked(self.hub, "POST", route("admin/kg/scrub/purge"), body, SCRUB_TIMEOUT)
             for key in ("purged", "kept", "builds", "deleted", "deleted_bytes"):
                 purged[key] += answer[key]
             purged["pending"] = answer["pending"]

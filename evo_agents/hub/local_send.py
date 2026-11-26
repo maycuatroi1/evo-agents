@@ -34,9 +34,9 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
 
 from evo_agents.hub import hooks, local_outputs, local_store, local_sync, outputs
+from evo_agents.hub.api.project import LocalRuns
 from evo_agents.hub.client import (
     FILE_MODE,
     Hub,
@@ -204,7 +204,7 @@ class Sender:
         if isinstance(found, str):
             return
         project, run_id = found
-        base = f"/v1/projects/{quote(project, safe='')}/local-runs/{run_id}"
+        base = LocalRuns(self.hub, project).path(run_id)
         self.stage_all(queue)
         try:
             self.switch(queue, base)

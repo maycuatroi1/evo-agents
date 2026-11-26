@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.harness import MANIFEST, SKILL_REGISTRY
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, HubError, write_atomic
 from evo_agents.hub.registration import place
 
@@ -135,7 +136,7 @@ def pull(hub: Hub, registry: Path | None = None, workspace: Path | None = None) 
     """Write the clusters of the hub projects the caller sees into ``registry``."""
     path = (registry or default_registry()).expanduser()
     result = PullResult(path)
-    projects = hub.call("GET", "/v1/projects")
+    projects = hub.call("GET", paths.PROJECTS)
     if not isinstance(projects, list):
         raise HubError(f"the hub at {hub.url} did not answer with a list of projects")
     wanted, names = [], set()

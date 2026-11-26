@@ -22,8 +22,9 @@ import hashlib
 import httpx
 
 from evo_agents import __version__
+from evo_agents.hub.api import paths
 
-API = "/v1/seller-api"
+API = paths.SELLER_API
 ORDER_SECRET_HEADER = "X-Evo-Order-Secret"
 HUB_ID_HEADER = "X-Evo-Hub-Id"
 LICENSE_SCHEME = "License"

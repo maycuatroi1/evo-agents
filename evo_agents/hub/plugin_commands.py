@@ -14,9 +14,10 @@ import json
 from importlib.metadata import entry_points
 from pathlib import Path
 
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, HubError, hub_dir, load_credentials
 
-PATH = "/v1/cli/plugins"
+PATH = paths.CLI_PLUGINS
 CACHE_FILE = "cli-plugins.json"
 VERSION = 1
 ENTRY_POINT_GROUP = "evo_agents.plugins"  # evo_agents.plugins.core

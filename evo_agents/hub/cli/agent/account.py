@@ -34,9 +34,8 @@ from urllib.parse import urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, returns_array, returns_object
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
-from evo_agents.hub.cli.base import PROJECT, PROJECT_HELP, HubCommand, HubContext, ProjectResource, when
+from evo_agents.hub.cli.base import PROJECT, PROJECT_HELP, HubCommand, HubContext, HubRoutes, ProjectResource, when
 from evo_agents.hub.cli.secret.values import Refused, check_name, check_value, expires_at, read_value
-from evo_agents.hub.client import Hub
 from evo_agents.hub.credentials import env_name_refusal
 from evo_agents.hub.curator import money
 
@@ -81,13 +80,10 @@ class AgentAccounts(ProjectResource):
         return self.call(method, handle.removeprefix("@"), "accounts", name, body=body)
 
 
-class ListedAccounts:
+class ListedAccounts(HubRoutes):
     """GET /v1/agent-accounts: the accounts of the agents of every project the member holds a grant on (Gateway)."""
 
-    path = "/v1/agent-accounts"
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
+    base = "agent-accounts"
 
     def list(self, query: dict) -> Any:
         return self.hub.call("GET", self.path + ("?" + urlencode(query) if query else ""))

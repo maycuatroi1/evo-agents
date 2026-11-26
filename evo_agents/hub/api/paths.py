@@ -19,6 +19,9 @@ WORKER_POOLS = route("worker-pools")
 SKILLS = route("skills")
 NOTIFICATIONS = route("me/notifications")
 MEMORIES = route("memories")
+CLI_PLUGINS = route("cli/plugins")
+GUARD_POLICY = route("guard/policy")
+SELLER_API = route("seller-api")
 
 
 def project(name: str) -> str:

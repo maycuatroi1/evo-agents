@@ -16,9 +16,9 @@ import argparse
 import json
 import sys
 import time
-from urllib.parse import quote
 
 from evo_agents.hub import client
+from evo_agents.hub.api import route
 from evo_agents.kg import post_search
 
 QUIET = (401, 403, 404, 409)  # no token the hub takes, no grant, no such project, no graph yet: nothing to add
@@ -36,7 +36,7 @@ def ask(project: str, body: dict, deadline: float) -> list[str]:
         return []
     hub = client.Hub(credentials.url, credentials.token, timeout=left)
     try:
-        answer = hub.call("POST", f"/v1/kg/{quote(project, safe='')}/grep-links", body, timeout=left)
+        answer = hub.call("POST", route("kg", project, "grep-links"), body, timeout=left)
     except client.Unreachable:
         if time.monotonic() >= deadline:
             raise post_search.Timeout from None

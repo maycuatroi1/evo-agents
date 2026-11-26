@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
+from evo_agents.hub.api import paths, query_string
 from evo_agents.hub.client import (
     HOME_VARIABLE,
     Credentials,
@@ -151,7 +152,7 @@ def age_minutes(value: str | None, now: datetime) -> int | None:
 
 
 def _project_path(project: str) -> str:
-    return f"/v1/projects/{quote(project, safe='')}"
+    return paths.project(project)
 
 
 def _option_hint(decision: dict) -> str:
@@ -430,8 +431,8 @@ def gather_one(
     inbox = HubInbox(login.url, login.login)
     hub = login.hub()
     try:
-        names = [p["name"] for p in hub.call("GET", "/v1/projects") if p.get("role")]
-        notes = hub.call("GET", f"/v1/me/notifications?{urlencode({'unread': 'true', 'limit': MAX_PAGE})}")
+        names = [p["name"] for p in hub.call("GET", paths.PROJECTS) if p.get("role")]
+        notes = hub.call("GET", paths.NOTIFICATIONS + query_string({"unread": "true", "limit": MAX_PAGE}))
     except HubError as exc:
         inbox.error = str(exc)
         return inbox
@@ -518,7 +519,7 @@ def locate(ref: Ref, found: list[Login], first: str | None = None) -> tuple[Logi
         if ref.project:
             names = [ref.project]
         else:
-            names = [p["name"] for p in hub.call("GET", "/v1/projects") if p.get("role")]
+            names = [p["name"] for p in hub.call("GET", paths.PROJECTS) if p.get("role")]
             if first in names:
                 names.remove(first)
                 names.insert(0, first)

@@ -22,14 +22,15 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from evo_agents.hub import runs
+from evo_agents.hub.api import paths, skills
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.skill_sync import Report, SkillSync
 
 log = logging.getLogger(__name__)
 
 POOL_LABEL = "pool="
-SKILLS = "/v1/skills"
-WORKER_SKILLS = "/v1/worker/skills"
+SKILLS = paths.SKILLS
+WORKER_SKILLS = skills.WORKER_SKILLS
 
 
 def pool_of(labels: Sequence[str]) -> str | None:
@@ -46,7 +47,7 @@ class NodeHub(Hub):
         super().__init__(url, token, headers={runs.PROTOCOL_HEADER: runs.PROTOCOL_VERSION}, **options)
 
     def call(self, method: str, path: str, body: dict | None = None, *, timeout: float | None = None):
-        if method == "GET" and path == "/v1/projects":
+        if method == "GET" and path == paths.PROJECTS:
             return []  # a node syncs no project skills: their harnesses are not on it
         if path == SKILLS or path.startswith((SKILLS + "?", SKILLS + "/global/")):
             path = WORKER_SKILLS + path[len(SKILLS) :]

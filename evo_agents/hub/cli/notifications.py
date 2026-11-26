@@ -17,9 +17,8 @@ from typing import ClassVar
 from urllib.parse import urlencode
 
 from evo_agents.clikit import Arg, Result, Table, Text, UsageError, Views, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext, call_object, when
+from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, call_object, when
 from evo_agents.hub.cli.decision import MAX_LIST, one_line
-from evo_agents.hub.client import Hub
 from evo_agents.hub.runs import NOTIFICATION_KINDS
 
 TITLE_CHARS = 60  # of a notification's title in the notification table
@@ -36,13 +35,10 @@ QUERY_KEYS = {  # each option that filters the list, with the key of the query i
 }
 
 
-class MyNotifications:
+class MyNotifications(HubRoutes):
     """The signed-in member's notifications: GET /v1/me/notifications, .../count and POST .../read (Gateway)."""
 
-    path = "/v1/me/notifications"
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
+    base = "me/notifications"
 
     def list(self, query: list[tuple[str, object]]) -> dict:
         return call_object(self.hub, "GET", self.path + (f"?{urlencode(query)}" if query else ""))

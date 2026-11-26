@@ -163,3 +163,23 @@ def test_retry_policy_async_never_retries_a_cancellation():
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(RetryPolicy(tries=5, retry_on=(BaseException,)).acall(cancelled, sleep=nap))
     assert calls == [1]
+
+
+def test_retry_policy_waits_what_the_error_asks_and_tells_of_each_wait():
+    class Busy(OSError):
+        def __init__(self, after):
+            super().__init__("busy")
+            self.retry_after = after
+
+    errors = [Busy(7.0), Busy(None)]
+
+    def flaky():
+        if errors:
+            raise errors.pop(0)
+        return "ok"
+
+    waits, told = [], []
+    policy = RetryPolicy(Fixed(2.0), tries=3, retry_on=(OSError,), asked=lambda exc: getattr(exc, "retry_after", None))
+    assert policy.call(flaky, sleep=waits.append, retrying=lambda exc, seconds: told.append(seconds)) == "ok"
+    assert waits == [7.0, 2.0]
+    assert told == [7.0, 2.0]

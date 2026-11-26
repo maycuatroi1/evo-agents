@@ -17,6 +17,7 @@ import shlex
 from pathlib import Path
 
 from evo_agents import guard_check
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, HubError, hub_dir
 from evo_agents.infra.files import JsonFile
 from evo_agents.private_names import Policy
@@ -40,7 +41,7 @@ def take(hub: Hub) -> str | None:
     read, else None. A hub that does not answer leaves the policy kept here, which goes on applying."""
     path = policy_path()
     try:
-        data = hub.call("GET", "/v1/guard/policy")
+        data = hub.call("GET", paths.GUARD_POLICY)
     except HubError as exc:
         if exc.status == 404:  # a hub without the guard plugin's route
             path.unlink(missing_ok=True)

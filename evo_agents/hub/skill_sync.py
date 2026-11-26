@@ -58,11 +58,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote, urlencode
 
 from evo_agents import __version__, filelock
 from evo_agents.harness import MANIFEST
 from evo_agents.hub.access import ProjectRules, Refused
+from evo_agents.hub.api import paths
+from evo_agents.hub.api.skills import Skills
 from evo_agents.hub.client import LOOPBACK, Hub, HubError, hub_dir, write_atomic
 from evo_agents.hub.registry import cluster_of, default_registry, read_registry
 from evo_agents.hub.skills import (
@@ -125,8 +126,7 @@ def parse_scope(text: str, *, any_project: bool = False) -> tuple[str, str | Non
 
 
 def skill_path(project: str | None, name: str) -> str:
-    base = "/v1/skills/global" if project is None else f"/v1/skills/projects/{quote(project, safe='')}"
-    return f"{base}/{quote(name, safe='')}"
+    return Skills().skill(project, name)
 
 
 def runtime_dir(runtime: str, home: Path, env: Mapping[str, str]) -> Path:
@@ -222,13 +222,13 @@ def get_bundle(url: str, size: int) -> bytes:
 def _preflight(hub: Hub, project: str | None) -> None:
     """HubError when the hub would refuse the version, before any byte is sent."""
     if project is None:
-        me = hub.call("GET", "/v1/auth/whoami")
+        me = hub.call("GET", paths.WHOAMI)
         if not isinstance(me, dict) or not me.get("admin"):
             raise HubError(
                 "publishing a global skill needs a hub admin; pass --scope project:NAME to publish into a project"
             )
         return
-    info = hub.call("GET", f"/v1/projects/{quote(project, safe='')}")
+    info = hub.call("GET", paths.project(project))
     try:
         rules = ProjectRules(project, info["levels"], info["locations"], info["sinks"], info["default_label"])
         rules.check_push(None, info.get("role"))
@@ -261,7 +261,7 @@ def publish(
     _preflight(hub, project)
     holder = {} if project is None else {"project": project}
     item = {"sha256": bundle.sha256, "size": bundle.size, "kind": KIND}
-    asked = hub.call("POST", "/v1/blobs/uploads", {**holder, "items": [item]})
+    asked = hub.call("POST", paths.BLOB_UPLOADS, {**holder, "items": [item]})
     uploads = asked.get("uploads") if isinstance(asked, dict) else None
     if not isinstance(uploads, list) or any(
         not isinstance(u, dict) or u.get("sha256") != bundle.sha256 for u in uploads
@@ -269,7 +269,7 @@ def publish(
         raise HubError(f"the hub at {hub.url} did not answer the upload request with this bundle")
     for ticket in uploads:  # none when the holder has the bundle already
         put_bundle(ticket.get("url"), bundle.data)
-        hub.call("POST", "/v1/blobs/commit", {**holder, "upload_ids": [ticket["upload_id"]]})
+        hub.call("POST", paths.BLOB_COMMIT, {**holder, "upload_ids": [ticket["upload_id"]]})
     body = {"sha256": bundle.sha256, "size": bundle.size}
     if source_repo is not None:
         body.update(source_repo=source_repo, source_commit=source_commit)
@@ -302,8 +302,7 @@ def set_audience(hub: Hub, name: str, audience: str) -> dict:
 
 
 def list_skills(hub: Hub, scope: str | None = None, project: str | None = None) -> list[dict]:
-    params = {key: value for key, value in (("scope", scope), ("project", project)) if value}
-    found = hub.call("GET", "/v1/skills" + (f"?{urlencode(params)}" if params else ""))
+    found = hub.call("GET", Skills(hub).path(scope=scope or None, project=project or None))
     if not isinstance(found, list):
         raise HubError(f"the hub at {hub.url} did not answer with a list of skills")
     return found
@@ -516,7 +515,7 @@ class SkillSync:
     # Entry point
 
     def run(self) -> Report:
-        projects = self.hub.call("GET", "/v1/projects")
+        projects = self.hub.call("GET", paths.PROJECTS)
         if not isinstance(projects, list):
             raise HubError(f"the hub at {self.hub.url} did not answer with a list of projects")
         wanted = [Wanted.read(item, self.hub.url) for item in list_skills(self.hub)]

@@ -41,6 +41,7 @@ from sqlalchemy import ARRAY, Text, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
+from evo_agents.hub.api import host as host_api
 from evo_agents.hub.feature_rule import feature_on
 from evo_agents.plugins.core import CorePlugin, builtin_plugins, core_plugins
 from evo_agents.plugins.manifest import PERMISSIONS, Manifest, read_manifest
@@ -113,9 +114,7 @@ class PluginHostClient:
 
         body = {"method": method, "params": params, "timeout": timeout}
         try:
-            response = await (await self._http()).post(
-                f"/v1/host/plugins/{plugin}/call", json=body, timeout=timeout + 5
-            )
+            response = await (await self._http()).post(host_api.plugin_call(plugin), json=body, timeout=timeout + 5)
         except httpx.HTTPError as exc:
             raise PluginHostUnavailable(f"the plugin host did not answer: {exc}") from None
         if response.status_code == 503:  # what the host says may hold a start's error: for an admin, not a member
@@ -134,7 +133,7 @@ class PluginHostClient:
         import httpx
 
         try:
-            response = await (await self._http()).get("/v1/host/backends", timeout=10)
+            response = await (await self._http()).get(host_api.BACKENDS, timeout=10)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise PluginHostUnavailable(f"the plugin host did not answer: {exc}") from None

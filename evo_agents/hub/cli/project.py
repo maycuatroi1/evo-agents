@@ -38,20 +38,20 @@ COLUMNS = ("PROJECT", "ROLE", "MAX LEVEL", "HUB SINK", "REPOS", "UPDATED (UTC)")
 class Projects(HubRoutes):
     """GET /v1/projects, PUT /v1/projects/{p}, and POST .../archive and .../unarchive (Gateway)."""
 
-    path = "/v1/projects"
+    base = "projects"
 
     @staticmethod
-    def of(project: str) -> str:
+    def one(project: str) -> str:
         return f"/{quote(project, safe='')}"
 
     def list(self, archived: bool) -> list[dict]:
         return self.call("GET", "?archived=true" if archived else "")
 
     def register(self, project: str, body: dict) -> dict:
-        return self.call("PUT", self.of(project), body)
+        return self.call("PUT", self.one(project), body)
 
     def change_state(self, project: str, action: str) -> dict:
-        return self.call("POST", f"{self.of(project)}/{action}")
+        return self.call("POST", f"{self.one(project)}/{action}")
 
 
 def hub_sink(project: dict) -> str:

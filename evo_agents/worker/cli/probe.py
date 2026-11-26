@@ -19,6 +19,7 @@ import sys
 
 from evo_agents.clikit import Arg, Group, Result, Text
 from evo_agents.hub import probes
+from evo_agents.hub.api import WorkerRun
 from evo_agents.hub.redact import redact
 from evo_agents.worker.agent_input import read_text
 from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext
@@ -81,7 +82,7 @@ class ProbeAdd(AgentCommand):
             body["replaces"] = args.replaces
         ctx.check()
         run_id = ctx.run_id
-        probe = ctx.with_hub(lambda hub: hub.call("POST", f"/v1/worker/runs/{run_id}/probes", body))
+        probe = ctx.with_hub(lambda hub: WorkerRun(hub, run_id).call("POST", "probes", body=body))
         replaced = f", in place of probe #{args.replaces}" if args.replaces is not None else ""
         said = (
             f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}{replaced}."

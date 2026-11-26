@@ -29,6 +29,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from evo_agents.hub.api import V1
 from evo_agents.kg.serve import TOOLS as KG_TOOLS
 
 INSTANCE = "instance"
@@ -36,6 +37,11 @@ PROJECT = "project"
 LAYERS = (INSTANCE, PROJECT)
 
 _PROJECT = r"(?P<project>[a-z0-9][a-z0-9-]{0,99})"  # admin.PROJECT_NAME, as a group of a route's path
+
+
+def _owned(*heads: str) -> re.Pattern:
+    """The paths at and below ``/v1/<head>/...``, whole; each head a regex (the routes' constant parts, ``_PROJECT``)."""
+    return re.compile(re.escape(V1) + "".join(f"/{head}" for head in heads) + "(?:/.*)?")
 
 
 @dataclass(frozen=True)
@@ -55,11 +61,11 @@ class Feature:
 
 
 FEATURES = (
-    Feature("chats", (INSTANCE,), (re.compile(r"/v1/chats(?:/.*)?"),), frozenset({"chat_message", "chat_thread"})),
+    Feature("chats", (INSTANCE,), (_owned("chats"),), frozenset({"chat_message", "chat_thread"})),
     Feature(
         "curator",
         LAYERS,
-        (re.compile(rf"/v1/projects/{_PROJECT}/curator(?:/.*)?"),),
+        (_owned("projects", _PROJECT, "curator"),),
         frozenset(
             {
                 "curator_figures",
@@ -77,16 +83,16 @@ FEATURES = (
     Feature(
         "kg",
         LAYERS,
-        (re.compile(rf"/v1/kg/{_PROJECT}(?:/.*)?"), re.compile(rf"/v1/worker/kg/{_PROJECT}(?:/.*)?")),
+        (_owned("kg", _PROJECT), _owned("worker/kg", _PROJECT)),
         frozenset(tool["name"] for tool in KG_TOOLS),
     ),
-    Feature("market", (INSTANCE,), (re.compile(r"/v1/market(?:/.*)?"),)),
-    Feature("seller", (INSTANCE,), (re.compile(r"/v1/seller(?:/.*)?"),), default=False),
+    Feature("market", (INSTANCE,), (_owned("market"),)),
+    Feature("seller", (INSTANCE,), (_owned("seller"),), default=False),
     *(
         Feature(
             name,
             LAYERS,
-            (re.compile(rf"/v1/x/{name}/{_PROJECT}(?:/.*)?"),),
+            (_owned("x", name, _PROJECT),),
             default=False,
             tool_prefixes=(f"{name}__",),
         )

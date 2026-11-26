@@ -21,6 +21,7 @@ import sys
 
 from evo_agents.clikit import Arg, Group, Result, Text
 from evo_agents.hub import playbook
+from evo_agents.hub.api import WorkerRun
 from evo_agents.hub.review import LENSES
 from evo_agents.worker.agent_input import evidence_items
 from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext
@@ -34,7 +35,7 @@ def _send(ctx: AgentRunContext, op: str, body: dict) -> dict:
     """POST the delta ``body`` for the review run of EVO_RUN_ID; the hub's entry."""
     ctx.check()
     run_id = ctx.run_id
-    return ctx.with_hub(lambda hub: hub.call("POST", f"/v1/worker/runs/{run_id}/playbook", {"op": op, **body}))
+    return ctx.with_hub(lambda hub: WorkerRun(hub, run_id).call("POST", "playbook", body={"op": op, **body}))
 
 
 def _text(value: str | None, what: str, limit: int) -> str | None:

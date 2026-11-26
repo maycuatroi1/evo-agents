@@ -23,9 +23,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
-from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Stderr, Table, Text, View, returns_array, returns_object
+from evo_agents.hub.api import route
 from evo_agents.hub.cli.base import HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.client import HubError
 
@@ -62,11 +62,7 @@ class ProjectCollection(ProjectResource):
     """A collection of a project's API whose query leaves out a value of None or False."""
 
     def path(self, *parts: Any, **query: Any) -> str:
-        path = "/" + "/".join(
-            quote(str(part), safe="") for part in ("v1", "projects", self.project, self.collection, *parts)
-        )
-        given = {key: value for key, value in query.items() if value not in (None, False)}
-        return f"{path}?{urlencode(given)}" if given else path
+        return super().path(*parts, query={key: value for key, value in query.items() if value not in (None, False)})
 
 
 class Signals(ProjectCollection):
@@ -75,7 +71,7 @@ class Signals(ProjectCollection):
     collection = "signals"
 
     def push(self, batch: dict) -> Any:
-        return self.hub.call("POST", f"/v1/signals/{quote(self.project, safe='')}", batch)
+        return self.hub.call("POST", route("signals", self.project), batch)
 
     def list(self, query: dict) -> list[dict]:
         return self.call("GET", **query)

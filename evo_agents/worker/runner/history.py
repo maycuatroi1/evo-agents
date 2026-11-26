@@ -20,11 +20,12 @@ ends done with the usage of every session added up, having pushed nothing.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, history
-from evo_agents.worker.hubapi import OUTAGE_TRIES, Backoff, HubProblem
+from evo_agents.worker.hubapi import OUTAGE_TRIES, HubProblem, hub_retry
 from evo_agents.worker.runner import access
 from evo_agents.worker.runner.common import RunFailed, cut, wait_or
 from evo_agents.worker.runner.conversation import Conversation
@@ -210,19 +211,18 @@ class HistoryRun:
         run = self.run
         hub = run.daemon.hub
         send = hub.history_next if what == "next" else hub.history_report
-        backoff, tried = Backoff(), 0
-        while True:
-            tried += 1
-            try:
-                return await send(run.id, body, run.history_key)
-            except HubProblem as exc:
-                # A slow or redeployed hub fails one call, not the night's run: tried again with the backoff. A report
-                # sent twice is the same: a facet of the same fingerprint is stored again, a named group stays named.
-                if not transient(exc) or tried >= OUTAGE_TRIES:
-                    raise RunFailed(f"the hub did not answer the history run's {what}: {exc}") from None
-                delay = exc.retry_after if exc.retry_after is not None else backoff.next()
-                await wait_or(run.daemon.hard_stop, delay)
-                run.check()
+
+        async def pause(seconds: float) -> None:
+            await wait_or(run.daemon.hard_stop, seconds)
+            run.check()
+
+        # A slow or redeployed hub fails one call, not the night's run: tried again with the backoff. A report sent
+        # twice is the same: a facet of the same fingerprint is stored again, a named group stays named.
+        policy = replace(hub_retry(OUTAGE_TRIES), retry_on=lambda exc: isinstance(exc, HubProblem) and transient(exc))
+        try:
+            return await policy.acall(lambda: send(run.id, body, run.history_key), sleep=pause)
+        except HubProblem as exc:
+            raise RunFailed(f"the hub did not answer the history run's {what}: {exc}") from None
 
     async def report(self, body: dict) -> None:
         found = await self.call("report", body)

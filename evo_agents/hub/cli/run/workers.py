@@ -4,6 +4,7 @@ workers). Standard library only, like the rest of the client."""
 
 from __future__ import annotations
 
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import HubError
 
 
@@ -13,7 +14,7 @@ def worker_id(hub, login: str, worker: str) -> int:
     them (several: name it ``owner/name``)."""
     if worker.isascii() and worker.isdigit():
         return int(worker)
-    rows = [row for row in hub.call("GET", "/v1/workers") if row.get("revoked_at") is None]
+    rows = [row for row in hub.call("GET", paths.WORKERS) if row.get("revoked_at") is None]
     owner, slash, name = worker.rpartition("/")
     if slash:
         found = [row["id"] for row in rows if row["name"] == name and row["owner"] == owner]

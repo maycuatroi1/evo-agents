@@ -24,6 +24,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from evo_agents.guard_check import ENV, SHIM_ENV
+from evo_agents.hub.api import WorkerRoutes
 from evo_agents.infra.files import JsonFile
 from evo_agents.private_names import Policy
 
@@ -103,7 +104,7 @@ async def take(hub, root: Path, digest: str) -> bool:
         clear(root)
         log.info("guard policy removed: the hub guards nothing")
         return True
-    data = await hub.call("GET", "/v1/worker/guard/policy")
+    data = await hub.call("GET", WorkerRoutes(hub).path("guard", "policy"))
     if not isinstance(data, dict):
         raise ValueError("the hub answered no guard policy")
     write(root, data)

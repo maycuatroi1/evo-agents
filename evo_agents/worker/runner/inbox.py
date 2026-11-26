@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.worker import attachments
 from evo_agents.worker.adapter import AgentFinished
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import transitions
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, log, wait_or
 
@@ -88,16 +88,15 @@ class Inbox:
     async def ack(self, ack: int) -> None:
         """Mark the inbox's messages up to ``ack`` delivered, trying a few times."""
         run = self.run
-        backoff = Backoff()
-        for _ in range(HARD_STOP_TRIES + 1):
-            try:
-                await run.daemon.hub.inbox(run.id, ack=ack)
-                return
-            except Unreachable:
-                await wait_or(run.daemon.hard_stop, backoff.next())
-            except HubProblem as exc:
-                log.warning("inbox not acknowledged", extra={"run_id": run.id, "error": str(exc)})
-                return
+        try:
+            await hub_retry(HARD_STOP_TRIES + 1).acall(
+                lambda: run.daemon.hub.inbox(run.id, ack=ack),  # pyright: ignore[reportOptionalMemberAccess]
+                sleep=lambda seconds: wait_or(run.daemon.hard_stop, seconds),
+            )
+        except Unreachable:
+            pass  # left unacknowledged, as before: nothing more to do
+        except HubProblem as exc:
+            log.warning("inbox not acknowledged", extra={"run_id": run.id, "error": str(exc)})
 
     def ack_pending(self) -> None:
         """The agent that started has the messages its prompt carries: mark them delivered."""

@@ -158,9 +158,10 @@ def user_name(uid: int) -> str:
 
 def hub_whoami(url: str, token: str) -> dict:
     """``GET /v1/auth/whoami`` of ``url`` as ``token``; HubError when the hub refuses or does not answer."""
+    from evo_agents.hub.api import paths
     from evo_agents.hub.client import Hub
 
-    answer = Hub(url, token, timeout=WHOAMI_TIMEOUT).call("GET", "/v1/auth/whoami")
+    answer = Hub(url, token, timeout=WHOAMI_TIMEOUT).call("GET", paths.WHOAMI)
     return answer if isinstance(answer, dict) else {}
 
 

@@ -1,49 +1,29 @@
 """The gateways of the ``hub kg`` commands to a project's graph API on the hub (``/v1/kg/<project>/...``).
 
-:class:`KgResource` is :class:`~evo_agents.hub.cli.base.ProjectResource` for the graph routes: the one place that
-quotes the project and the parts of a path under ``/v1/kg``. Each command module declares the collection it asks
+:class:`KgResource` is ``evo_agents.hub.api.kg.KgCollection``, the graph routes' shared base, as these commands
+call it (a call without a body still passes ``None``): the one place that quotes the project and the parts of a path
+under ``/v1/kg``. Each command module declares the collection it asks
 (``KgBranches``, ``KgSettings``, ...) on top of it; :class:`KgTools` asks the kg tools (``kg_status``) as the hub
 answers them over HTTP. Standard library only.
 """
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
-from urllib.parse import quote, urlencode
+from typing import Any
 
 from evo_agents.clikit import Arg
-from evo_agents.hub.cli.base import ProjectResource, call_object
+from evo_agents.hub.api.kg import KgCollection
+from evo_agents.hub.cli.base import call_object
 
 KG_PROJECT = Arg("--project", required=True, help="project name on the hub")
 SINK = Arg("--sink", help="sink whose clearance applies (default: the agent session's)")
 
 
-class KgResource(ProjectResource):
+class KgResource(KgCollection):
     """One collection of a project's graph on the hub: ``/v1/kg/<project>/<collection>/<part>...?<query>``. An empty
     ``collection`` puts the parts right after the project."""
 
-    collection: ClassVar[str] = ""
-
-    def path(self, *parts: Any, safe: str = "", **query: Any) -> str:
-        """Each part quoted whole (but for the characters in ``safe``); a query value of None is left out."""
-        head = f"/v1/kg/{quote(self.project, safe='')}" + (f"/{self.collection}" if self.collection else "")
-        tail = "".join(f"/{quote(str(part), safe=safe)}" for part in parts)
-        given = {name: value for name, value in query.items() if value is not None}
-        return head + tail + (f"?{urlencode(given)}" if given else "")
-
-    def call(
-        self,
-        method: str,
-        *parts: Any,
-        body: dict | None = None,
-        timeout: float | None = None,
-        safe: str = "",
-        **query: Any,
-    ) -> Any:
-        path = self.path(*parts, safe=safe, **query)
-        if timeout is None:
-            return self.hub.call(method, path, body)
-        return self.hub.call(method, path, body, timeout=timeout)
+    body_always = True
 
     def object(self, method: str, *parts: Any, body: dict | None = None, **query: Any) -> dict:
         """The hub's answer, for a route that answers a JSON object; HubError when it did not."""

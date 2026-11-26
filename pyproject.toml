@@ -327,6 +327,18 @@ environment, an error to raise through Git.fail), or keep the code that needs a 
 docs/structure.md, section Shared infrastructure."""
 
 [[tool.importlinter.contracts]]
+id = "hub-api-standalone"
+name = "evo_agents.hub.api, the gateway every client of the hub shares, imports neither the hub server, the CLI nor the worker"
+type = "forbidden"
+source_modules = ["evo_agents.hub.api"]
+forbidden_modules = ["evo_agents.hub.server", "evo_agents.hub.cli", "evo_agents.cli", "evo_agents.worker"]
+broken_contract_guidance = """\
+evo_agents.hub.api writes the paths of the hub's API for every client: the CLI's synchronous Hub and the worker's \
+asynchronous WorkerHub alike, on members' machines without the hub-server extra. It takes its client as an argument \
+(anything with call(method, path, body)), so it needs none of them. Keep what needs one in that package. See \
+docs/structure.md, section Hub API gateway."""
+
+[[tool.importlinter.contracts]]
 id = "core-plugins-by-entry-point"
 name = "No package of evo_agents imports evo_agents.core_plugins: the hub reaches a core plugin through its manifest"
 type = "forbidden"

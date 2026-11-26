@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.worker.hubapi import Backoff
+from evo_agents.worker.hubapi import hub_retry
 from evo_agents.worker.runner import history as history_runner
 from tests.worker.test_plan_runs import (
     machine,  # noqa: F401 (a fixture)
@@ -172,7 +172,7 @@ def test_history_run_with_nothing_to_read_starts_no_agent(machine):  # noqa: F81
 
 
 def test_history_run_asks_again_while_the_hub_does_not_answer_its_next(machine, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(history_runner, "Backoff", lambda: Backoff(first=0.01))
+    monkeypatch.setattr(history_runner, "hub_retry", lambda tries: hub_retry(tries, first=0.01))
     machine.scenarios({"history": [{"say": "never"}]})
     found = {}
 

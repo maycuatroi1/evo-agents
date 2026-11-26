@@ -29,6 +29,7 @@ from typing import Any
 from urllib.parse import quote
 
 from evo_agents.clikit import Arg, Group, Result, Stderr, Table, Text, UsageError, Views, returns_array, returns_object
+from evo_agents.hub.api import route
 from evo_agents.hub.cli.base import EXIT_FAILED, HubCommand, HubContext, ProjectResource
 from evo_agents.hub.client import Hub
 from evo_agents.hub.provider_accounts import API_FORMATS
@@ -68,7 +69,7 @@ NOTHING_TO_CHANGE = "nothing to change: give --base-url, --model, --project, --w
 class ProviderAccounts:
     """A member's provider accounts: /v1/provider-accounts and the routes below it (Gateway)."""
 
-    root = "/v1/provider-accounts"
+    root = route("provider-accounts")
 
     def __init__(self, hub: Hub):
         self.hub = hub

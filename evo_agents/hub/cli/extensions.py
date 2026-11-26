@@ -40,6 +40,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import NOTHING, Arg, Group, JsonOutput, Result, Table, Text, View, json_text
+from evo_agents.hub.api import route
 from evo_agents.hub.cli.base import HubCommand, HubContext
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.plugin_commands import (  # noqa: F401 (moved there; the callers take them from here)
@@ -171,9 +172,7 @@ def request_of(plugin: str, command: dict, values: dict, render: str | None = No
         else:
             body[arg["name"]] = value
     path = HOLE.sub(lambda found: holes[found[1]], http["path"]).lstrip("/")
-    base = f"/v1/x/{quote(plugin, safe='')}"
-    if command.get("project"):
-        base += f"/{quote(values['project'], safe='')}"
+    base = route("x", plugin, *([values["project"]] if command.get("project") else []))
     full = f"{base}/{path}" if path else base
     if render:
         query.append(("render", render))

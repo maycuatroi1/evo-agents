@@ -30,9 +30,9 @@ from urllib.parse import urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Text, UsageError
 from evo_agents.hub import autonomy_levels
+from evo_agents.hub.api import route
 from evo_agents.hub.autonomy_levels import CLASSES, LEVELS
-from evo_agents.hub.cli.base import HubCommand, HubContext, call_object
-from evo_agents.hub.client import Hub
+from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, call_object
 from evo_agents.hub.contract import returns_object
 from evo_agents.hub.credentials import RUN_REACH_GROUPS
 
@@ -105,14 +105,11 @@ def show_lines(view: dict) -> list[str]:
     return lines
 
 
-class Autonomy:
+class Autonomy(HubRoutes):
     """The autonomy routes of the hub: GET /v1/autonomy, PUT /v1/autonomy/prefs, GET and PUT
     /v1/autonomy/run-reach, and PUT /v1/org/ceilings (Gateway)."""
 
-    path = "/v1/autonomy"
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
+    base = "autonomy"
 
     def view(self, **named: str | None) -> dict:
         query = urlencode({key: value for key, value in named.items() if value is not None})
@@ -122,7 +119,7 @@ class Autonomy:
         return call_object(self.hub, "PUT", f"{self.path}/prefs", body)
 
     def set_ceiling(self, body: dict) -> dict:
-        return call_object(self.hub, "PUT", "/v1/org/ceilings", body)
+        return call_object(self.hub, "PUT", route("org/ceilings"), body)
 
     def run_reach(self) -> dict:
         return call_object(self.hub, "GET", f"{self.path}/run-reach")

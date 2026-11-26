@@ -21,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from evo_agents.hub.api import route
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.kg_push import PushReport, push_all, push_project
 
@@ -140,15 +141,13 @@ def hub_status(project: str | None, sink: str | None = None, timeout: float | No
     """(text, status) of kg_status of ``project``'s graph as the hub answers it to ``sink`` (the agent session's by
     default), for ``kg status`` and the SessionStart hook. Raises ProjectError, and HubError when the hub refuses or
     does not answer within ``timeout``."""
-    from urllib.parse import quote
-
     from evo_agents.hub import client  # looked up when asked, so a test's hub is the one used
 
     name = hub_name(project)
     credentials = client.load_credentials()
     hub = client.Hub(credentials.url, credentials.token)
     body = {"arguments": {}, **({"sink": sink} if sink else {})}
-    found = hub.call("POST", f"/v1/kg/{quote(name, safe='')}/tools/kg_status", body, timeout=timeout) or {}
+    found = hub.call("POST", route("kg", name, "tools", "kg_status"), body, timeout=timeout) or {}
     if found.get("isError"):
         text = " ".join(block.get("text", "") for block in found.get("content", []))
         raise HubError(text.removeprefix("error: ") or "the hub refused kg_status")

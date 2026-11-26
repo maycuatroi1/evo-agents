@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import release_runs, releases, runs
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, origin, push, verify
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, RunFailed, push_cause, wait_or
 from evo_agents.worker.runner.conversation import Conversation
@@ -267,20 +267,19 @@ class ReleaseRun:
         """Tell the hub the run pushed ``body``'s branch, trying a few times; RunFailed when it does not take it or
         does not answer, since nothing lands then."""
         run, branch = self.run, body["branch"]
-        backoff = Backoff()
-        for _ in range(HARD_STOP_TRIES + 1):
-            try:
-                await run.daemon.hub.release_branch(run.id, body)
-                run.note(
-                    f"The hub took {branch} of {body['repo']}: it opens the pull request, merges it and tags the merge "
-                    "commit once the run is done."
-                )
-                return
-            except Unreachable:
-                await wait_or(run.daemon.hard_stop, backoff.next())
-            except HubProblem as exc:
-                raise RunFailed(f"the hub did not take the push of {branch}: {exc}") from None
-        raise RunFailed(f"the hub did not answer: the push of {branch} was not told, so nothing lands")
+        try:
+            await hub_retry(HARD_STOP_TRIES + 1).acall(
+                lambda: run.daemon.hub.release_branch(run.id, body),  # pyright: ignore[reportOptionalMemberAccess]
+                sleep=lambda seconds: wait_or(run.daemon.hard_stop, seconds),
+            )
+        except Unreachable:
+            raise RunFailed(f"the hub did not answer: the push of {branch} was not told, so nothing lands") from None
+        except HubProblem as exc:
+            raise RunFailed(f"the hub did not take the push of {branch}: {exc}") from None
+        run.note(
+            f"The hub took {branch} of {body['repo']}: it opens the pull request, merges it and tags the merge "
+            "commit once the run is done."
+        )
 
     # What the parts every kind shares ask of it
 

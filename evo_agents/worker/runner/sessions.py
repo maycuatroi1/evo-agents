@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import handoff, run_prompts, runs
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.worker.hubapi import OUTAGE_TRIES, Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import OUTAGE_TRIES, HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner.common import RunFailed, cut, now, wait_or
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS, summary_of
 from evo_agents.worker.runner.verify import RESULT_MAX_BYTES
@@ -332,23 +332,21 @@ class StepSessions:
         """The plan as the hub holds it now and its revision, read again with the backoff while the hub does not
         answer; RunFailed when it refuses, or after PLAN_TRIES reads without an answer."""
         run = self.run
-        backoff = Backoff()
-        problem: Exception | None = None
-        for _ in range(PLAN_TRIES):
-            try:
-                view = await run.daemon.hub.plan(run.id)
-            except Unreachable as exc:
-                problem = exc
-                await wait_or(run.daemon.hard_stop, backoff.next())
-                run.check()
-                continue
-            except HubProblem as exc:
-                raise RunFailed(f"the plan was not read from the hub before the next step's session: {exc}") from None
-            body = view.get("body") if isinstance(view, dict) else None
-            if not isinstance(body, dict):
-                raise RunFailed("the hub answered the plan of the run without its body")
-            revision = view.get("revision")
-            return body, revision if isinstance(revision, int) else None
-        raise RunFailed(
-            f"the hub did not answer {PLAN_TRIES} reads of the plan before the next step's session: {problem}"
-        )
+
+        async def pause(seconds: float) -> None:
+            await wait_or(run.daemon.hard_stop, seconds)
+            run.check()
+
+        try:
+            view = await hub_retry(PLAN_TRIES).acall(lambda: run.daemon.hub.plan(run.id), sleep=pause)  # pyright: ignore[reportOptionalMemberAccess]
+        except Unreachable as exc:
+            raise RunFailed(
+                f"the hub did not answer {PLAN_TRIES} reads of the plan before the next step's session: {exc}"
+            ) from None
+        except HubProblem as exc:
+            raise RunFailed(f"the plan was not read from the hub before the next step's session: {exc}") from None
+        body = view.get("body") if isinstance(view, dict) else None
+        if not isinstance(body, dict):
+            raise RunFailed("the hub answered the plan of the run without its body")
+        revision = view.get("revision")
+        return body, revision if isinstance(revision, int) else None
