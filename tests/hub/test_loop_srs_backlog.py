@@ -18,7 +18,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import cli_goals, srs_backlog
+from evo_agents.hub import srs_backlog
+from evo_agents.hub.cli import goal as goal_cli
 from evo_agents.hub.contract import commands
 from evo_agents.hub.server.loop import srs_rules
 from evo_agents.hub.server.loop.model import GoalView, ItemView, View
@@ -104,30 +105,27 @@ def test_a_plan_names_a_use_case_as_a_whole_word_outside_its_non_goals_and_holds
 
 
 def test_goal_set_takes_the_srs_document_and_its_heading_and_clears_them_together():
-    def args(**given) -> SimpleNamespace:
-        names = [*cli_goals.GIVEN_FIELDS, *cli_goals.METRIC_OPTIONS, "if_revision", "note", "status"]
-        base = {name: None for name in names} | {f"no_{name}": False for name in (*cli_goals.CLEARED_FIELDS, "metric")}
-        return SimpleNamespace(**{**base, **given})
+    def change(**given) -> goal_cli.GoalChange:
+        names = [*goal_cli.GIVEN_FIELDS, *goal_cli.METRIC_OPTIONS, "if_revision", "note", "status"]
+        base = {name: None for name in names} | {f"no_{name}": False for name in (*goal_cli.CLEARED_FIELDS, "metric")}
+        return goal_cli.GoalChange(SimpleNamespace(**{**base, **given}))
 
-    body, why = cli_goals._body(
-        args(
-            statement="Ship the SRS",
-            srs_document="demo-shop",
-            srs_heading="2.1. Orders",
-            metric="srs.backlog.open",
-            aggregate="last",
-            comparator="<=",
-            target=0.0,
-        ),
-        {},
-    )
-    assert why is None and (body["srs_document"], body["srs_heading"]) == ("demo-shop", "2.1. Orders")
+    body = change(
+        statement="Ship the SRS",
+        srs_document="demo-shop",
+        srs_heading="2.1. Orders",
+        metric="srs.backlog.open",
+        aggregate="last",
+        comparator="<=",
+        target=0.0,
+    ).body({})
+    assert (body["srs_document"], body["srs_heading"]) == ("demo-shop", "2.1. Orders")
     held = {"statement": "Ship", "srs_document": "demo-shop", "srs_heading": "2.1. Orders", "status": "active"}
-    kept, _ = cli_goals._body(args(rank=2), held)
+    kept = change(rank=2).body(held)
     assert (kept["srs_document"], kept["srs_heading"]) == ("demo-shop", "2.1. Orders"), "left out: kept"
-    cleared, _ = cli_goals._body(args(no_srs_document=True), held)
+    cleared = change(no_srs_document=True).body(held)
     assert "srs_document" not in cleared and "srs_heading" not in cleared
-    assert cli_goals._conflict(args(srs_document="x", no_srs_document=True)) is not None
+    assert change(srs_document="x", no_srs_document=True).conflict() is not None
     printed = commands()["hub goal set"]["options"]
     flags = {flag for option in printed for flag in option["flags"]}
     assert {"--srs-document", "--no-srs-document", "--srs-heading", "--no-srs-heading"} <= flags

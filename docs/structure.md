@@ -45,7 +45,7 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | Contract | Rule | Exceptions today |
 | --- | --- | --- |
 | `worker-not-hub-server` | nothing `evo_agents.worker` imports reaches `evo_agents.hub.server`, directly or through another module | the parser of `worker plan`, which borrows the hub CLI's JSON option and plan keys (2) |
-| `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.schedule` |
+| `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.cli_links`, `kg.cli_prune`, `kg.cli_scrub` |
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
@@ -132,3 +132,26 @@ more than they call the rest of the module. The sections a module marks with com
 
 A name that starts with an underscore belongs to its module. When another module needs it, give it a public name in
 its module (drop the underscore and update the callers), or move it into a module both import.
+
+## Command classes
+
+New commands are classes of `evo_agents.clikit`, the command kit every package shares (standard library only, it
+imports no other package of evo_agents). The commands written as `cmd_*` functions with a `register_*` function move
+over one group at a time; `hub goal` is the first (`evo_agents/hub/cli/goal.py`).
+
+| Class | Pattern | What it does |
+| --- | --- | --- |
+| `Command` | Command, Template Method | `__call__` checks the options (`check`), builds the context, runs `run`, maps a failure the package knows to its exit status (`failed`) and shows the result. A command writes `run` and the hooks it needs. |
+| `ListCommand` | Template Method | `fetch` the items and turn each into a `row` under `columns`. |
+| `Group` | Composite | A command word holding commands and groups; it builds its argparse subtree. |
+| `Legacy` | Adapter | A `register_*(subparsers)` function as a node of a `Group`, while a package moves over. |
+| `Result`, `View` (`Text`, `Table`, `Views`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. |
+| `Arg` | Value Object | An argument as a value; options many commands share are constants (`PROJECT`), never mixins. |
+| `HubCommand`, `HubContext` (`evo_agents/hub/cli/base.py`) | Dependency injection | The signed-in hub client and the project, built on first use; a `HubError` becomes `error: ...` and the exit status `client.exit_status` gives it. Tests patch `base.signed_in` once. |
+| `ProjectResource` (same module) | Gateway | One collection of a project's API: the one place that quotes the project and the parts of a path. Commands ask their resource and never build `/v1/...` paths. |
+
+Keep inheritance to two levels below `Command` (a kind of command or a package's base, then the command), keep the
+logic of the domain out of the command (in the resource, a value object such as `GoalChange`, or the domain module),
+and list the children of a `Group` by hand rather than registering classes by import. `configure` sets the defaults
+`json_option` sets, so `evo-agents hub contract` reads a class command as it reads a function: a command moved
+unchanged leaves `tests/hub/golden/cli-contract.json` as it was, options in the same order.
