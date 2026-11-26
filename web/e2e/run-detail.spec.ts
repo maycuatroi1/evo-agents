@@ -1405,6 +1405,81 @@ test("the Trace groups each tool call with its result by what it did, opens a fa
   await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}$`));
 });
 
+test("plan first: the side column opens on the decision, then the plan with its current step open, and Hub access comes after Usage", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const id = "first-plan";
+  await seedPlanRunPlan(me, project);
+  const body = planRunBody(id);
+  const api = bearerClient(await machineToken(me));
+  await call(
+    api.PUT("/v1/projects/{project}/plans/{plan_id}", {
+      params: { path: { project, plan_id: id } },
+      body: {
+        body: {
+          ...body,
+          acceptance: [
+            { id: "a1", criterion: "The dialog opens", status: "met" },
+            { id: "a2", criterion: "The dialog starts the run", status: "pending" },
+          ],
+          steps: body.steps.map((step) =>
+            step.id === 2
+              ? { ...step, done_when: "A person starts a plan run from the dialog", acceptance: ["a1", "a2"] }
+              : step,
+          ),
+        },
+        area: "active",
+      },
+    }),
+  );
+  const { live, run, decision } = await planRunUnderway(me, project, uniqueName("first"), {
+    waiting: true,
+    dispatch: { plan_id: id, as_me: true },
+  });
+  await sendEvents(live, run.id, [
+    {
+      kind: "plan",
+      body: {
+        entries: [
+          { content: "Read the plan", status: "completed" },
+          { content: "Write the dialog", status: "in_progress" },
+          { content: "Run the tests", status: "pending" },
+        ],
+      },
+    },
+    { kind: "usage_update", body: { input_tokens: 41200, output_tokens: 6800 } },
+  ]);
+
+  await open(page, runPath(project, run.id));
+  const soFar = main(page).getByTestId("step-so-far");
+  await expect(soFar).toContainText("Step 2 so far");
+  await expect(soFar.getByTestId("so-far-done")).toContainText("Read the plan");
+  await expect(soFar.getByTestId("so-far-now")).toContainText("Write the dialog");
+  await expect(soFar.getByTestId("so-far-next")).toContainText("Run the tests");
+  await expect(soFar.getByTestId("so-far-line")).toContainText("the agent's checklist");
+
+  await openRunDetails(page);
+  const aside = main(page).getByTestId("run-aside");
+  const order = await aside.evaluate((node) =>
+    ["run-decisions", "run-plan-steps", "run-usage", "run-access"].map((testId) => {
+      const found = node.querySelector(`[data-testid="${testId}"]`);
+      return found ? [...node.querySelectorAll("*")].indexOf(found) : -1;
+    }),
+  );
+  expect(order.every((index) => index >= 0), `a card is missing: ${order}`).toBe(true);
+  expect(order, "decision, plan, usage, Hub access").toEqual([...order].sort((a, b) => a - b));
+  expect(decision).not.toBeNull();
+
+  const plan = aside.getByTestId("run-plan-steps");
+  await expect(plan.getByTestId("run-step-done-when")).toContainText("A person starts a plan run from the dialog");
+  await expect(plan.getByTestId("run-step-criteria-count")).toHaveText("1 of 2 criteria met");
+  await expect(plan.getByTestId("run-step-criterion")).toHaveCount(2);
+  await expect(plan.getByTestId("run-step-criterion").first()).toHaveAttribute("data-met", "true");
+});
+
 test("a plan run's trace says what the agent asked, and Answer leads to the decision's card", async ({
   page,
   member,
