@@ -4878,6 +4878,7 @@ A receiver checks the signature and refuses a timestamp far from its clock:
 ```python
 import hashlib, hmac
 
+
 def valid(secret: str, timestamp: str, body: bytes, header: str) -> bool:
     expected = hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(header, "sha256=" + expected)
