@@ -39,8 +39,9 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, ledger, ops_events, review, tables, tiers
-from evo_agents.hub.server import audit, change_tiers, skill_release
+from evo_agents.hub.server import audit, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
+from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.shift_hours import cancel_queued
 
 log = logging.getLogger(__name__)
@@ -192,7 +193,7 @@ async def propose_revert(conn: AsyncConnection, change, proposal, found: dict, a
     """Propose reverting the merge commit of ``change`` (of ``proposal``), whose figures got worse (``found``); the new
     proposal's id. Its owner gets it in the Inbox."""
     from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-    from evo_agents.hub.server.proposals import proposal_link
+    from evo_agents.hub.server.review_inbox import proposal_link
 
     p = tables.proposals
     paths = [

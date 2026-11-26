@@ -33,7 +33,7 @@ and the owner alone makes the change. ``tier_of`` computes it from these:
 
 The tier is the highest of them, and ``Tier.reasons`` says which rule gave each raise, in words for the owner. The hub
 computes it for a proposal from its paths, then again from the paths its pull request really changes, which only ever
-raises it (``evo_agents.hub.server.change_tiers``); a protected path stays tier 3 whatever else says.
+raises it (``evo_agents.hub.server.changes.service.tiers``); a protected path stays tier 3 whatever else says.
 
 One rule lowers the tier a change merges with, never its proposal's (``replay_tier``): a change of a kind of
 REPLAY_KINDS whose pull request edits a harness alone (the files of one skill, AGENTS.md and CLAUDE.md files:

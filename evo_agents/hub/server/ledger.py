@@ -6,14 +6,15 @@ outcome of a merged change and the revert it proposes.
 (``tests/hub/test_curator_ledger.py`` reads the hub's code for one). The hub adds a line when a review run records a
 proposal (``proposal_recorded``: ``proposed``, or ``dropped`` as a repeat of a rejected one, with the figures that set
 it off, ``trigger_for``), when an admin answers it (``proposal_answered``), when its draft becomes the Curator's plan or
-cannot (``change_recorded``), and at each move of its change (``change_moved``, from ``change_views.set_change``): built by
-its Builder, its pull request opened, judged (by the Judge, or by the hub's own detector of score hacking), merged (by the
-hub, by the agent of the proposal's thread for its owner, or by hand), left open for its owner with why, or closed (by a
-member, by the hub for a branch that changes no file, or by its Builder, which drops it with a reason and keeps what it
-measured under ``details.note``); a Builder that ends otherwise adds ``build_failed``
-(``build_failed``). The hub's merge of a change whose replays won keeps their verdict under ``details.replay`` and,
-when it releases a global skill, the skill under ``details.release``; ``evo_agents.hub.server.skill_release`` adds the
-line ``skill_release`` once it published the skill, or its version before again after a revert.
+cannot (``change_recorded``), and at each move of its change (``change_moved``, from
+``changes.service.moves.set_change``): built by its Builder, its pull request opened, judged (by the Judge, or by the
+hub's own detector of score hacking), merged (by the hub, by the agent of the proposal's thread for its owner, or by
+hand), left open for its owner with why, or closed (by a member, by the hub for a branch that changes no file, or by its
+Builder, which drops it with a reason and keeps what it measured under ``details.note``); a Builder that ends otherwise
+adds ``build_failed`` (``build_failed``). The hub's merge of a change whose replays won keeps their verdict under
+``details.replay`` and, when it releases a global skill, the skill under ``details.release``;
+``evo_agents.hub.server.skill_release`` adds the line ``skill_release`` once it published the skill, or its version
+before again after a revert.
 
 GET /v1/projects/{p}/curator/proposals/{id}/ledger lists the lines of a proposal the caller may read (as GET
 .../proposals/{id} reads it), oldest first, with when the hub counts the figures of its merged change again
@@ -416,7 +417,7 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
             conn, **line, action="closed", actor="curator", what=f"The hub closed change #{row.id}: {row.reason}"
         )
         return
-    if new == "closed" and extra.get("actor") == "agent":  # its Builder dropped it (``change_routes.drop_change``)
+    if new == "closed" and extra.get("actor") == "agent":  # its Builder dropped it (``changes.routes.drop_change``)
         run_id = extra["run_id"]
         await append(
             conn,
@@ -486,7 +487,8 @@ async def _replayed_merge(conn: AsyncConnection, row, details: dict, what: str) 
     """The details and the words of the hub's merge of change ``row`` once its replays won at the head it merged
     (``change_tiers.replay_verdict``): the verdict under ``replay`` and, when the merge releases a global skill
     (``skill_release.wanted``), the skill under ``release``; as they were otherwise."""
-    from evo_agents.hub.server import change_tiers, skill_release  # skill_release writes through this module
+    from evo_agents.hub.server import skill_release  # skill_release writes through this module
+    from evo_agents.hub.server.changes.service import tiers as change_tiers
 
     found = await change_tiers.replay_verdict(conn, row.id, row.head_sha)
     if not found["won"]:
@@ -560,8 +562,8 @@ async def show_ledger(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> Ledger:
     """The ledger of a proposal: what happened to it, line by line, oldest first."""
-    from evo_agents.hub.server.proposal_reads import readable_proposal  # it writes lines through this module
-    from evo_agents.hub.server.proposals import require_reader
+    from evo_agents.hub.server.proposals.service.reads import readable_proposal  # it writes lines through this module
+    from evo_agents.hub.server.proposals.service.record import require_reader
 
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)

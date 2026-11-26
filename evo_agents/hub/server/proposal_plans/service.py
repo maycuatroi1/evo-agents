@@ -11,20 +11,22 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import judge
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import change_repos
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict
 from evo_agents.hub.server.base.scope import Noun, ProjectScope
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.change_views import Change, change_view
+from evo_agents.hub.server.changes.models.views import Change
+from evo_agents.hub.server.changes.repository.repos import record_repos
+from evo_agents.hub.server.changes.repository.views import change_view
+from evo_agents.hub.server.changes.service import repos as change_repos
 from evo_agents.hub.server.plans.models import PLAN_CREATE, PlanError
 from evo_agents.hub.server.plans.service import schema_checked, store
 from evo_agents.hub.server.probes.service import probes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.proposal_plans.repository import STORE
-from evo_agents.hub.server.proposal_reads import readable_proposal
-from evo_agents.hub.server.proposals import planned_tiers_of
+from evo_agents.hub.server.proposals.service.reads import readable_proposal
+from evo_agents.hub.server.proposals.service.record import planned_tiers_of
 from evo_agents.hub.server.protection import reason_line, repo_origins
 from evo_agents.hub.server.security import Principal
 
@@ -172,7 +174,7 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
     rows = made.pop("rows")
     change_id = await _record(conn, access, user, proposal, made)
     if rows:
-        await change_repos.record_repos(conn, access.project_id, change_id, rows, made["branch"])
+        await record_repos(conn, access.project_id, change_id, rows, made["branch"])
     await probes.attach(conn, proposal.id, change_id)
     await ledger_lines.change_recorded(conn, change_id)
     log.info("curator plan made", extra={"project": access.name, "plan_id": made["plan_id"], "change_id": change_id})
@@ -227,7 +229,7 @@ async def replan_stuck(conn: AsyncConnection, access: ProjectAccess, user: Princ
     rows = made.pop("rows")
     await STORE.planned(conn, found.id, made)
     if rows:
-        await change_repos.record_repos(conn, access.project_id, found.id, rows, made["branch"])
+        await record_repos(conn, access.project_id, found.id, rows, made["branch"])
     target = (
         f"{access.name}/{made['plan_id']} proposal:{proposal.id} change:{found.id} branch={made['branch']} "
         f"replaces={found.state}"

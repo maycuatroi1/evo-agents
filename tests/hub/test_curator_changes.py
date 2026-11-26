@@ -33,8 +33,8 @@ from sqlalchemy import delete, func, select, update
 from evo_agents.hub import judge, runs, tables
 from evo_agents.hub.cli.curator import CHANGE_KEYS
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.change_views import JudgeInputs
-from evo_agents.hub.server.changes import advance
+from evo_agents.hub.server.changes.models.views import JudgeInputs
+from evo_agents.hub.server.changes.service.job import advance
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
@@ -355,7 +355,7 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
 def test_curator_plan_a_prose_verify_stored_before_the_check_is_mended_by_a_write(world, monkeypatch):
     prose = f"{VERIFY}; and a unit test with a fake hub that checks it"
     with monkeypatch.context() as before:  # the hub of 2026-11-07 took `and` for a program
-        before.setattr("evo_agents.hub.server.proposals.shell_problem", lambda command: None)
+        before.setattr("evo_agents.hub.server.proposals.service.record.shell_problem", lambda command: None)
         before.setattr("evo_agents.hub.plans.shell_problem", lambda command: None)
         accepted(world, plan={**DRAFT, "steps": [{**DRAFT["steps"][0], "verify": prose}]})
     owner = world.headers["owner"]
@@ -918,7 +918,7 @@ def test_judge_the_pull_request_opens_and_the_judge_reads_the_change_and_its_hid
 def queue_now(world, which: str):
     """``changes.queue_builder`` or ``queue_judge`` called as the night shift calls them, past the schedule's own
     gate (which waits while any run of the schedule is queued or held), so their own rule is what answers."""
-    from evo_agents.hub.server import change_shift
+    from evo_agents.hub.server.changes.service import shift as change_shift
     from evo_agents.hub.server.collect import Gate
     from evo_agents.hub.server.curator.repository.shift import due_schedules
     from evo_agents.hub.server.curator.service.shift import writer_access
@@ -1222,7 +1222,7 @@ def test_merge_a_tier_0_change_the_judge_passed_at_its_head_with_ci_green(world)
 
 
 def test_changes_pass_once_leaves_a_change_another_hand_merged_while_it_read_github(world, monkeypatch):
-    from evo_agents.hub.server import changes as module
+    from evo_agents.hub.server.changes.service import job as module
 
     through_the_judge(world)
     world.github.ci(HEAD, runs=GREEN, statuses=SUCCESS)
@@ -1243,12 +1243,12 @@ def test_changes_pass_once_leaves_a_change_another_hand_merged_while_it_read_git
 
 
 def test_changes_pass_once_reopens_nothing_another_hand_moved(world):
-    from evo_agents.hub.server import changes as module
+    from evo_agents.hub.server.changes.service import job as module
 
     through_the_judge(world)
     row = SimpleNamespace(**one_change(world))  # the change as the pass read it
     sql(world.db, update(tables.curator_changes).values(state="merged", merged_at=func.now()))
-    found = world.client.portal.call(module._reopen, world.app.state.engine, row, "the Judge did not pass it")
+    found = world.client.portal.call(module.reopen, world.app.state.engine, row, "the Judge did not pass it")
     assert found == module.MOVED and one_change(world)["state"] == "merged"
 
 

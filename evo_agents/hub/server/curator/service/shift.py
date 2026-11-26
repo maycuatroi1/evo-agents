@@ -225,7 +225,10 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary. A dependency failing
     of an infra cause holds off the kinds of run that use it alone (``infra_breaker``): ``infra`` when that left
     nothing to queue."""
-    from evo_agents.hub.server.change_shift import queue_builder, queue_judge  # it queues runs through this module
+    from evo_agents.hub.server.changes.service.shift import (  # it queues runs through this module
+        queue_builder,
+        queue_judge,
+    )
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
     from evo_agents.hub.server.evolve.service.runs import queue_evolve  # it queues runs through this module
     from evo_agents.hub.server.history.service.runs import queue_history  # it queues runs through this module

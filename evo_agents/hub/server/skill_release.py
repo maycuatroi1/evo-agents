@@ -1,7 +1,7 @@
 """The global skills the hub publishes from the Curator's changes it merged, and the version before it publishes again.
 
-A change the hub merged because its replays won (``evo_agents.hub.server.change_tiers``) keeps their verdict on its
-ledger line ``merged`` (``evo_agents.hub.server.ledger``) and, when it releases a skill, what (``wanted``): the one
+A change the hub merged because its replays won (``evo_agents.hub.server.changes.service.tiers``) keeps their verdict on
+its ledger line ``merged`` (``evo_agents.hub.server.ledger``) and, when it releases a skill, what (``wanted``): the one
 skill directory arm b of its replays ran with (``replay.verdict``'s paths), when the hub has a global skill of that
 directory's name whose latest version came from the change's repo, ``source_repo`` as ``evo-agents hub skills publish
 --source-repo`` writes it. A skill of a project, or a global skill published from elsewhere or from nowhere named, is

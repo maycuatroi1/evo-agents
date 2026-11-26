@@ -20,7 +20,8 @@ from evo_agents.hub.server.probes.service import fixes, runs
 from evo_agents.hub.server.probes.service.probes import held_row, shown, store
 from evo_agents.hub.server.probes.service.report import local_today
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.proposals import held_review_run, project_repos, writer_of
+from evo_agents.hub.server.proposals.repository.record import project_repos
+from evo_agents.hub.server.proposals.service.record import held_review_run, writer_of
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.security import Principal
 

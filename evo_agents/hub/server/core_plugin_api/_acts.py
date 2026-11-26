@@ -46,8 +46,8 @@ from evo_agents.hub.server.decisions.models import AnswerIn
 from evo_agents.hub.server.decisions.service import answers as decision_answers
 from evo_agents.hub.server.notifications.service import member_channels
 from evo_agents.hub.server.profile_store import by_handle
-from evo_agents.hub.server.proposal_models import ProposalAnswer as ProposalAnswerIn
-from evo_agents.hub.server.proposal_reads import answer_proposal_as
+from evo_agents.hub.server.proposals.models import ProposalAnswer as ProposalAnswerIn
+from evo_agents.hub.server.proposals.service.reads import answer_proposal_as
 from evo_agents.hub.server.security import Principal
 
 READS, WRITES = "chats:read", "chats:write"

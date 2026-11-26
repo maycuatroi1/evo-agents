@@ -8,11 +8,11 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.server.change_views import Change
+from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.curator.models.threads import CuratorAnswerIn, CuratorMergeIn
 from evo_agents.hub.server.curator.service import threads
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.proposal_models import Proposal
+from evo_agents.hub.server.proposals.service.shapes import Proposal
 from evo_agents.hub.server.runs.models import REFUSALS, RunId
 from evo_agents.hub.server.security import CurrentUser
 

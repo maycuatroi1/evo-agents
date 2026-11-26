@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, evolve, runs
 from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
-from evo_agents.hub.server.change_views import charter_of
+from evo_agents.hub.server.changes.repository.views import charter_of
 from evo_agents.hub.server.evolve.models import (
     ArmIn,
     ArmOut,

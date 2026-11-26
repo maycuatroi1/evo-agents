@@ -29,7 +29,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import curator, jobs, ledger, runs, tables
 from evo_agents.hub.server.outcomes import measure_outcomes
-from evo_agents.hub.server.proposals import _check_draft
+from evo_agents.hub.server.proposals.service.record import check_draft
 from evo_agents.hub.worker import queue
 from tests.hub.fake_github import FakePull
 from tests.hub.live import sql
@@ -233,7 +233,7 @@ def test_outcome_revert_draft_is_an_outcome_plan_the_hub_takes():
         pr_url="https://github.com/o/r/pull/1",
         reason="the figures got worse: x",
     )
-    _check_draft(draft)  # plan.schema.json, in outcome steps
+    check_draft(draft)  # plan.schema.json, in outcome steps
     (step,) = draft["steps"]
     assert draft["id"] == "revert-7-a-wait-helper" and step["repo"] == "evo-agents"
     assert step["verify"] == ledger.revert_verify(sha) and f"{sha}^1" in step["verify"]

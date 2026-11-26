@@ -1137,14 +1137,15 @@ def test_the_github_token_of_a_review_run_reads_only(app_review):
 def test_with_a_knowledge_graph_a_code_path_it_lacks_is_kept_unmatched_and_what_a_change_reaches_counts_for_its_tier(
     review, monkeypatch
 ):
-    from evo_agents.hub.server import proposals as proposal_routes
+    from evo_agents.hub.server.changes.service.tiers import GraphView
+    from evo_agents.hub.server.proposals.service import record as proposal_routes
 
     asked = []
 
     async def graph(request, owner, access, targets):
         asked.append((owner.login, sorted(targets)))
         reached = {("evo-agents", "curator.yaml"), ("evo-agents", "evo_agents/hub/runs.py")}
-        return proposal_routes.GraphView(frozenset({"evo-agents:gone.py"}), frozenset(reached))
+        return GraphView(frozenset({"evo-agents:gone.py"}), frozenset(reached))
 
     monkeypatch.setattr(proposal_routes, "graph_view", graph)
     client, worker = review.client, review.worker
@@ -1175,7 +1176,7 @@ def test_graph_view_reads_kg_impact_as_the_hub_answers_it(monkeypatch):
     from fastapi import HTTPException
 
     from evo_agents.hub.server import kg
-    from evo_agents.hub.server import proposals as proposal_routes
+    from evo_agents.hub.server.proposals.service import record as proposal_routes
 
     answers, audiences = [], []
 

@@ -1,7 +1,7 @@
 """A protected file a change reaches in the knowledge graph makes it tier 3 only when the diff breaks what that file
 uses; an evolvable harness file that is protected merges at tier 0 once the Judge passed it and its replays won. The
-model first, then the hub reading a pull request for it (``evo_agents.hub.server.change_tiers``), whose world, GitHub
-and helpers are ``tests.hub.test_curator_changes``' and ``tests.hub.test_replay_merge``'."""
+model first, then the hub reading a pull request for it (``evo_agents.hub.server.changes.service.tiers``), whose world,
+GitHub and helpers are ``tests.hub.test_curator_changes``' and ``tests.hub.test_replay_merge``'."""
 
 import pytest
 
@@ -14,7 +14,8 @@ if pg.DSN:
     from sqlalchemy import select, update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server import change_tiers, changes
+    from evo_agents.hub.server.changes.service import job as changes
+    from evo_agents.hub.server.changes.service import tiers as change_tiers
     from tests.hub.live import sql
     from tests.hub.test_change_tiers import MERGE_BASE, project_id
     from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (a fixture)
@@ -173,7 +174,7 @@ def test_a_protected_harness_file_the_charter_lists_evolvable_merges_at_tier_0_o
     world, monkeypatch, listed
 ):
     if not listed:  # the sign of a protected path is a gate of its own; an evolvable harness file raises none
-        monkeypatch.setattr(changes, "_signs_of", lambda *args: [])
+        monkeypatch.setattr(changes, "signs_of", lambda *args: [])
     tasks = suite(world)
     evolving(world, listed)
     proposal = accepted(world, kind="skill", paths=SKILL_PATHS)

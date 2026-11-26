@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import replay
 from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.base.errors import Unprocessable
-from evo_agents.hub.server.change_views import set_change
+from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.evolve.models import ReportIn, reason_text
 from evo_agents.hub.server.evolve.repository import candidates, evolutions, tasks
 from evo_agents.hub.server.evolve.repository.evolutions import set_row

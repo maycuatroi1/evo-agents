@@ -12,7 +12,7 @@ from evo_agents.hub import curator, evolve
 from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
-from evo_agents.hub.server.change_views import charter_of
+from evo_agents.hub.server.changes.repository.views import charter_of
 from evo_agents.hub.server.evolve.models import EVOLVE_START, EvolveStart, reason_text
 from evo_agents.hub.server.evolve.repository import evolutions
 from evo_agents.hub.server.evolve.service.runs import pick_tasks, queue_run, settings_of

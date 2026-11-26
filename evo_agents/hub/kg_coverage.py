@@ -203,7 +203,7 @@ def compare_files(source: Mapping, tree: Mapping[str, str], held: Mapping[str, s
 def off_paths(source: Mapping, tree: Mapping[str, str], held: Mapping[str, str]) -> dict:
     """The paths ``compare_files`` counts as missing, stale and deleted, each list sorted, MAX_OFF_PATHS of them in
     all, and whether there were more (``cut``): what the tier rules read of a path whose file the graph lacks or holds
-    older than the default branch (``evo_agents.hub.server.change_tiers``)."""
+    older than the default branch (``evo_agents.hub.server.changes.service.tiers``)."""
     branch = {path: sha for path, sha in tree.items() if read_by(source, path)}
     found = {
         "missing": sorted(set(branch) - set(held)),

@@ -1,4 +1,4 @@
-"""The Curator's changes that work in several repos (``evo_agents.hub.server.changes`` describes those of one).
+"""The Curator's changes that work in several repos (``evo_agents.hub.server.changes.service.job`` describes those of one).
 
 An accepted proposal whose draft and paths name several repos of the project, each on GitHub, becomes one plan in them
 all (``judge.curator_repos_plan``), ordered owner before consumer by the project's seams (``project_seams``: the
@@ -25,13 +25,17 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import diff_signs, judge, tables
-from evo_agents.hub.kg_graph_rows import MAIN
-from evo_agents.hub.server import audit, autonomy_gates, change_tiers
-from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
+from evo_agents.hub import diff_signs, judge
+from evo_agents.hub.server import audit, autonomy_gates
+from evo_agents.hub.server.changes.repository import job as job_store
+from evo_agents.hub.server.changes.repository import repos as store
+from evo_agents.hub.server.changes.repository.repos import repos_of
+from evo_agents.hub.server.changes.repository.views import change_of_plan, charter_of, plan_body, raise_tier
+from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.protection import github_target, reason_line, ruleset_wait
 
@@ -60,27 +64,8 @@ def draft_seams(draft) -> list[tuple[str, str]]:
 async def project_seams(conn: AsyncConnection, project_id: int, draft) -> list[tuple[str, str]]:
     """(owner, consumer) of each seam the project registered, as its knowledge graph's main branch has it (a Seam
     ``owned_by`` one repo and ``consumed_by`` others), then those of ``draft``."""
-    e = tables.kg_edges
-    owned, consumed = e.alias("owned"), e.alias("consumed")
-    query = (
-        select(owned.c.dst.label("owner"), consumed.c.dst.label("consumer"))
-        .join_from(
-            owned,
-            consumed,
-            (consumed.c.project_id == owned.c.project_id)
-            & (consumed.c.branch_id == owned.c.branch_id)
-            & (consumed.c.src == owned.c.src),
-        )
-        .where(
-            owned.c.project_id == project_id,
-            owned.c.branch_id == MAIN,
-            owned.c.rel == "owned_by",
-            consumed.c.rel == "consumed_by",
-        )
-        .order_by(owned.c.src, consumed.c.dst)
-    )
     pairs = []
-    for row in (await conn.execute(query)).all():
+    for row in await store.seam_edges(conn, project_id):
         if row.owner.startswith("repo:") and row.consumer.startswith("repo:"):
             pairs.append((row.owner.removeprefix("repo:"), row.consumer.removeprefix("repo:")))
     return pairs + draft_seams(draft)
@@ -99,36 +84,9 @@ def repo_rows(ordered: list[str], seams) -> list[dict]:
     ]
 
 
-async def record_repos(conn: AsyncConnection, project_id: int, change_id: int, rows: list[dict], branch: str) -> None:
-    """A row of curator_change_repos for each of ``rows`` (``repo_rows``), on GitHub, waiting for its pull request."""
-    cr = tables.curator_change_repos
-    values = [
-        {"project_id": project_id, "change_id": change_id, "branch": branch, "forge": "github", **row} for row in rows
-    ]
-    await conn.execute(insert(cr), values)
-
-
-async def repos_of(conn: AsyncConnection, change_id: int) -> list:
-    """The rows of change ``change_id``'s repos in plan order, each with its repo's origin; none for a change in one
-    repo."""
-    cr, pr = tables.curator_change_repos, tables.project_repos
-    query = (
-        select(cr, pr.c.origin)
-        .join_from(cr, pr, (pr.c.project_id == cr.c.project_id) & (pr.c.name == cr.c.repo), isouter=True)
-        .where(cr.c.change_id == change_id)
-        .order_by(cr.c.position)
-    )
-    return list((await conn.execute(query)).all())
-
-
 async def repo_names(conn: AsyncConnection, change) -> list[str]:
     """The repos ``change`` works in, in plan order: its own alone for a change in one repo."""
     return [row.repo for row in await repos_of(conn, change.id)] or [change.repo]
-
-
-async def _set_row(conn: AsyncConnection, row_id: int, **values) -> None:
-    cr = tables.curator_change_repos
-    await conn.execute(update(cr).values(**values, updated_at=func.now()).where(cr.c.id == row_id))
 
 
 def overlay(change, row, **more) -> SimpleNamespace:
@@ -156,11 +114,7 @@ async def in_focus(conn: AsyncConnection, change) -> Any:
     judges now; ``change`` itself otherwise."""
     if change is None or change.judge_run_id is None:
         return change
-    cr = tables.curator_change_repos
-    query = select(cr).where(
-        cr.c.change_id == change.id, cr.c.judge_run_id == change.judge_run_id, cr.c.state == "judging"
-    )
-    row = (await conn.execute(query)).first()
+    row = await store.judging_row(conn, change.id, change.judge_run_id)
     return change if row is None else overlay(change, row)
 
 
@@ -194,11 +148,11 @@ class PullInputs:
 async def open_pulls(engine: AsyncEngine, app, change, reader: change_tiers.GraphReader) -> str:
     """Open the pull request of each repo of built ``change`` that waits for one; the change waits for its Judge once
     none does. Its outcome: opened, signs, nothing, refused, or MOVED."""
-    from evo_agents.hub.server import changes
+    from evo_agents.hub.server.changes.service import job
 
     async with engine.begin() as conn:
         rows = await repos_of(conn, change.id)
-    inputs = PullInputs(*await changes._pull_inputs(engine, change))
+    inputs = PullInputs(*await job.pull_inputs(engine, change))
     outcome = "opened"
     for row in rows:
         if row.state == "pr_pending":
@@ -211,16 +165,17 @@ async def open_pulls(engine: AsyncEngine, app, change, reader: change_tiers.Grap
 
 
 async def _open_repo(engine: AsyncEngine, app, change, row, inputs: PullInputs, reader) -> str:
-    """Open ``row``'s pull request (``changes.opener``), read its files for signs and the tier, and keep it."""
-    from evo_agents.hub.server import changes, pulls
+    """Open ``row``'s pull request (``job.opener``), read its files for signs and the tier, and keep it."""
+    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.changes.service import job
 
     target, view = github_target(row.origin), overlay(change, row)
     if target is None:
         async with engine.begin() as conn:
-            await _set_row(conn, row.id, state="open", reason="its repo has no origin on GitHub")
+            await store.set_row(conn, row.id, state="open", reason="its repo has no origin on GitHub")
             await set_change(conn, change.id, state="open", reason=f"repo {row.repo} has no origin on GitHub")
         return "refused"
-    opened = changes.opener(engine, app, target, view, inputs.title, inputs.project, inputs.signed)
+    opened = job.opener(engine, app, target, view, inputs.title, inputs.project, inputs.signed)
     try:
         found = await pulls.with_token(app, target.owner, target.name, "open", opened)
     except GitHubRefused as exc:
@@ -231,7 +186,7 @@ async def _open_repo(engine: AsyncEngine, app, change, row, inputs: PullInputs, 
     if found["pull"] is None:
         async with engine.begin() as conn:
             why = f"its branch changes nothing against {found['base']}: no pull request and no Judge"
-            await _set_row(conn, row.id, state="closed", reason=why)
+            await store.set_row(conn, row.id, state="closed", reason=why)
         return "nothing"
     made = found["pull"]
     number, head = made.get("number"), (made.get("head") or {}).get("sha")
@@ -239,11 +194,11 @@ async def _open_repo(engine: AsyncEngine, app, change, row, inputs: PullInputs, 
         raise GitHubUnavailable("GitHub answered without the pull request's number and head")
 
     async def read(token: str):
-        return await changes._files_of(app, token, target, number, made.get("changed_files"))
+        return await job.files_of(app, token, target, number, made.get("changed_files"))
 
     files, cut = await pulls.with_token(app, target.owner, target.name, "read", read)
     diff = diff_signs.from_github_files(files)
-    signs = changes._signs_of(diff, view, inputs.charter, repo_body(inputs.body, row.repo), cut)
+    signs = job.signs_of(diff, view, inputs.charter, repo_body(inputs.body, row.repo), cut)
     facts = await change_tiers.pull_facts(engine, app, view, target, diff_signs.changed_paths(diff), made, reader)
     return await _pull_kept(engine, change, row, made, signs, facts, inputs)
 
@@ -251,7 +206,7 @@ async def _open_repo(engine: AsyncEngine, app, change, row, inputs: PullInputs, 
 async def _pull_kept(engine: AsyncEngine, change, row, made: dict, signs, facts, inputs: PullInputs) -> str:
     """Keep pull request ``made`` of ``row``: the repo waits for its Judge, or with ``signs`` fails at once and puts the
     proposal at tier 3."""
-    from evo_agents.hub.server import changes
+    from evo_agents.hub.server.changes.service import job
 
     head, url = made["head"]["sha"], made.get("html_url")
     async with engine.begin() as conn:
@@ -270,14 +225,14 @@ async def _pull_kept(engine: AsyncEngine, change, row, made: dict, signs, facts,
             tier = 3
         else:
             values["state"] = "judge_pending"
-        await _set_row(conn, row.id, **values)
+        await store.set_row(conn, row.id, **values)
         if tier > locked.tier:
             await set_change(conn, change.id, tier=tier)
         await audit.record(
             conn,
             actor_id=None,
             token_id=None,
-            action=changes.PULL,
+            action=job.PULL,
             target=f"{inputs.project}/{change.plan_id} change:{change.id} repo={row.repo} pr={url}",
             project_id=change.project_id,
         )
@@ -307,25 +262,8 @@ async def _after_pulls(conn: AsyncConnection, change) -> str:
 # The Judge, one repo at a time
 
 
-async def next_to_judge(conn: AsyncConnection, change_id: int):
-    """The first repo of change ``change_id`` in plan order that waits for its Judge; None for a change in one repo."""
-    cr = tables.curator_change_repos
-    query = select(cr).where(cr.c.change_id == change_id, cr.c.state == "judge_pending").order_by(cr.c.position)
-    return (await conn.execute(query.limit(1))).first()
-
-
 async def judge_queued(conn: AsyncConnection, row_id: int, run_id: int) -> None:
-    await _set_row(conn, row_id, state="judging", judge_run_id=run_id, reason=None)
-
-
-async def judge_left(conn: AsyncConnection, change_id: int, run_id: int, state: str, why: str | None) -> None:
-    """The repo judge run ``run_id`` judged ended without a verdict: it waits for a Judge again, or is left ``open``."""
-    cr = tables.curator_change_repos
-    await conn.execute(
-        update(cr)
-        .values(state=state, judge_attempts=cr.c.judge_attempts + 1, reason=why, updated_at=func.now())
-        .where(cr.c.change_id == change_id, cr.c.judge_run_id == run_id, cr.c.state == "judging")
-    )
+    await store.set_row(conn, row_id, state="judging", judge_run_id=run_id, reason=None)
 
 
 def _judged_values(rows) -> dict:
@@ -340,7 +278,7 @@ async def judged_repo(conn: AsyncConnection, change, values: dict) -> None:
     """The verdict ``values`` of the judge run of ``change`` (``overlay`` of its repo): on that repo's row; the change
     waits for the Judge of its next repo, or is judged once every repo is."""
     kept = {key: values[key] for key in ("passed", "verdict", "head_sha")}
-    await _set_row(conn, change.repo_row_id, state="judged", judge_key=None, **kept)
+    await store.set_row(conn, change.repo_row_id, state="judged", judge_key=None, **kept)
     rows = await repos_of(conn, change.id)
     moved = {"judge_key": None, "judge_attempts": 0, "reason": None}
     if "tier" in values:
@@ -363,41 +301,39 @@ async def move_on(engine: AsyncEngine, app, curator_app, change, reader: change_
 
 
 async def _write_checks(engine: AsyncEngine, app, change, rows) -> None:
-    from evo_agents.hub.server import changes
+    from evo_agents.hub.server.changes.service import job
 
     for row in rows:
         target = github_target(row.origin)
         if row.state != "judged" or row.check_run_id is not None or not judge.is_sha(row.head_sha) or not target:
             continue
         external = f"curator-change:{change.id}:{row.repo}"
-        found = await changes.check_run(app, target, row.head_sha, bool(row.passed), row.verdict or {}, external)
+        found = await job.check_run(app, target, row.head_sha, bool(row.passed), row.verdict or {}, external)
         async with engine.begin() as conn:
-            await _set_row(conn, row.id, check_run_id=found)
+            await store.set_row(conn, row.id, check_run_id=found)
 
 
 async def merge_repos(engine: AsyncEngine, app, curator_app, change, reader: change_tiers.GraphReader) -> str:
     """Write each repo's check run, then merge the pull request of each repo in plan order once its owners' are
-    merged, as ``changes._merge`` merges one; a repo that waits leaves its consumers waiting too."""
-    from evo_agents.hub.server import changes
+    merged, as ``job._merge`` merges one; a repo that waits leaves its consumers waiting too."""
+    from evo_agents.hub.server.changes.service import job
 
     async with engine.begin() as conn:
         rows = await repos_of(conn, change.id)
     await _write_checks(engine, app, change, rows)
     if not change.passed:
         failures = (change.verdict or {}).get("failures") or []
-        return await changes._reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
+        return await job.reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
     async with engine.begin() as conn:
         charter = await charter_of(conn, change.project_id)
         tier, waits = await change_tiers.merge_tier(conn, change)
-        pl = tables.plans
-        query = select(pl.c.body).where(pl.c.project_id == change.project_id, pl.c.plan_id == change.plan_id)
-        body = (await conn.execute(query)).scalar_one_or_none() or {}
-        paused = await changes.night_paused(conn, change.project_id)
-    if tier not in changes._auto(charter):
+        body = await plan_body(conn, change.project_id, change.plan_id)
+        paused = await job_store.night_paused(conn, change.project_id)
+    if tier not in job.auto(charter):
         why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
-        return await changes._reopen(engine, change, why)
+        return await job.reopen(engine, change, why)
     if paused:
-        return await changes._reopen(engine, change, changes.PAUSED, "paused")
+        return await job.reopen(engine, change, job.PAUSED, "paused")
     states = {row.repo: "merged" if row.state in LANDED else row.state for row in rows}
     ordered, waiting = [row.repo for row in rows], []
     for row in rows:
@@ -421,66 +357,61 @@ async def _waits(engine: AsyncEngine, change, waiting: list[str]) -> str:
     """``wait`` with why as the change's reason while a repo waits; ``merged`` once none does."""
     if not waiting:
         return "merged"
-    c = tables.curator_changes
     async with engine.begin() as conn:
         why = reason_line("; ".join(waiting))
-        await conn.execute(update(c).values(reason=why).where(c.c.id == change.id, c.c.state == "judged"))
+        await store.set_judged_reason(conn, change.id, why)
     return "wait"
 
 
 async def _merge_repo(engine: AsyncEngine, app, curator_app, change, row, charter, body, reader) -> tuple[str, str]:
-    """Merge ``row``'s pull request as ``changes._merge`` merges a change's: (merged, wait with why, or the outcome of
+    """Merge ``row``'s pull request as ``job._merge`` merges a change's: (merged, wait with why, or the outcome of
     the change left open)."""
-    from evo_agents.hub.server import changes
+    from evo_agents.hub.server.changes.service import job
 
     view = overlay(change, row)
-    read = await changes.merge_read(engine, app, curator_app, view, charter, repo_body(body, row.repo), reader)
+    read = await job.merge_read(engine, app, curator_app, view, charter, repo_body(body, row.repo), reader)
     decided, reasons = judge.merge_decision(read.facts)
     if decided == "wait":
         return "wait", f"{row.repo}: {'; '.join(reasons)}"
     if decided == "open":
-        return await changes._reopen(engine, change, reason_line(f"{row.repo}: {'; '.join(reasons)}")), ""
+        return await job.reopen(engine, change, reason_line(f"{row.repo}: {'; '.join(reasons)}")), ""
     view = overlay(change, row, base_branch=read.facts.default_branch)
-    act = changes.merge_act(view, read)
+    act = job.merge_act(view, read)
     async with engine.begin() as conn:
-        if not await changes._unchanged(conn, change):
+        if not await job_store.unchanged(conn, change):
             return MOVED, ""
-        paused = await changes.night_paused(conn, change.project_id)
+        paused = await job_store.night_paused(conn, change.project_id)
         said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
     if paused or said is None:
-        return await changes._reopen(engine, change, changes.PAUSED, "paused"), ""
+        return await job.reopen(engine, change, job.PAUSED, "paused"), ""
     if not said.act:
         kept = "wait" if said.waits else None
-        return await changes._reopen(engine, change, reason_line(said.reason), kept), ""
+        return await job.reopen(engine, change, reason_line(said.reason), kept), ""
     try:
-        merged = await changes.merge_at_head(app, view, read.facts.tier)
+        merged = await job.merge_at_head(app, view, read.facts.tier)
     except GitHubRefused as exc:
-        return await changes._reopen(engine, change, reason_line(f"GitHub refused the merge of {row.repo}: {exc}")), ""
+        return await job.reopen(engine, change, reason_line(f"GitHub refused the merge of {row.repo}: {exc}")), ""
     async with engine.begin() as conn:
         return await _record_repo_merge(conn, change, view, merged, read, act), ""
 
 
 async def _record_repo_merge(conn: AsyncConnection, change, view, merged: str, read, act: dict) -> str:
-    """``view``'s repo merged as commit ``merged``; the change is merged (``changes.record_merge``) once each repo is."""
-    from evo_agents.hub.server import changes
+    """``view``'s repo merged as commit ``merged``; the change is merged (``job.record_merge``) once each repo is."""
+    from evo_agents.hub.server.changes.service import job
 
-    c = tables.curator_changes
-    state = select(c.c.state).where(c.c.id == change.id).with_for_update()
-    if (await conn.execute(state)).scalar_one_or_none() != "judged":  # an agent or a person moved it meanwhile
+    if await job_store.locked_state(conn, change.id) != "judged":  # an agent or a person moved it meanwhile
         return MOVED
-    await _set_row(conn, view.repo_row_id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None)
+    await store.set_row(conn, view.repo_row_id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None)
     if all(row.state in LANDED for row in await repos_of(conn, change.id)):
-        await changes.record_merge(conn, view, merged, read, act)
+        await job.record_merge(conn, view, merged, read, act)
         log.info("curator change merged in its repos", extra={"change_id": change.id, "sha": merged})
         return "merged"
-    project = (
-        await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
-    ).scalar_one()
+    project = await job_store.project_name(conn, change.project_id)
     await audit.record(
         conn,
         actor_id=None,
         token_id=None,
-        action=changes.MERGE,
+        action=job.MERGE,
         target=f"{project}/{change.plan_id} change:{change.id} repo={view.repo} pr={view.pr_url} sha={merged}",
         project_id=change.project_id,
     )

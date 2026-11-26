@@ -47,8 +47,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, replay, runs
-from evo_agents.hub.server import audit, change_tiers
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
+from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.night_cost import kind_cost
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access

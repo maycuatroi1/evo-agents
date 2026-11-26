@@ -28,7 +28,7 @@ edit (``{repo, path}``, each a repo of the project), the findings it rests on (o
 at least one of the two, and a draft plan: a plan of plan.schema.json in outcome steps, each step with ``what``,
 ``verify`` and a non-empty ``acceptance`` list (422 otherwise, with what the schema says). The hub computes its tier
 with ``tiers.tier_of`` from the charter's protected paths, the paths, the paths the knowledge graph says those reach
-(when the project has one), why the graph cannot tell for some (``change_tiers.unknown_paths``: at least tier 1), and
+(when the project has one), why the graph cannot tell for some (``changes.service.tiers.unknown_paths``: at least tier 1), and
 the kind, and keeps the reasons. A proposal whose fingerprint is that of a proposal
 rejected in the last REJECTED_DAYS days is stored ``dropped``, with ``duplicate_of`` naming it, unless its evidence (its
 own and its findings') counts at least EVIDENCE_FACTOR times the rejected one's. A review run records at most
@@ -59,8 +59,9 @@ again, gets a thread in the project's triage chat whose agent answers it for the
 (``evo_agents.hub.server.memories.service.promotion``): accepting it writes a shared memory, and makes no plan. Recording a
 proposal and answering it each add a line to its ledger (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
 ``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
-The routes that read findings and proposals and answer a proposal live in ``evo_agents.hub.server.proposal_reads``,
-the models in ``evo_agents.hub.server.proposal_models``.
+The routes live in ``evo_agents.hub.server.proposals.routes`` (``record``, and ``reads``, which read findings and
+proposals and answer a proposal through ``service.reads``), the SQL in ``proposals.repository``, the models in
+``evo_agents.hub.server.proposals.models``.
 
 A proposal may carry a probe (``evo_agents.hub.server.probes``): a task in a repo it changes, from a base commit, and a
 one-line verify that exits 0 when an agent given the task does not repeat the mistake. One whose evidence cites an entry
@@ -75,64 +76,48 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
 from types import SimpleNamespace
-from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
-from pydantic import Field
-from sqlalchemy import func, insert, null, select
+from fastapi import HTTPException, Request
+from sqlalchemy import null
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
-from evo_agents.hub import judge, review, runs, tables, tiers, webhook_events
+from evo_agents.hub import judge, review, runs, tiers, webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PLAN_ID, VERIFY_RULE, PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import (
-    change_tiers,
     earlier,
     facet_figures,
     system_curation,
 )
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
-from evo_agents.hub.server.change_views import Change
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.changes.models.views import Change
+from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.changes.service.tiers import graph_view
 from evo_agents.hub.server.history.service import search as history_search
 from evo_agents.hub.server.kg_audience import person_audience
 from evo_agents.hub.server.memories.service import promotion as memory_promotion
-from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probes.service import fixes as probe_fixes
 from evo_agents.hub.server.probes.service import probes as stored_probes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.proposal_models import (
-    EvidenceIn,
-    Finding,
-    FindingIn,
-    NightFiguresView,
-    Proposal,
-    ProposalIn,
-)
-from evo_agents.hub.server.review_inbox import proposal_link, review_ended  # noqa: F401 (imported from here)
+from evo_agents.hub.server.proposals.models import EvidenceIn, Finding, FindingIn, NightFiguresView
+from evo_agents.hub.server.proposals.repository import record as store
+from evo_agents.hub.server.proposals.repository.record import project_repos
+from evo_agents.hub.server.proposals.service.shapes import Proposal, ProposalIn
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, RunId
+from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
-from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, WEB, Principal
 from evo_agents.hub.verify_words import shell_problem
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
 
 SHOWN_PROBLEMS = 5
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
-REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
-READ_REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404)}
 
 
 # The run and its owner
@@ -149,15 +134,7 @@ class _ReviewRun:
 async def held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -> _ReviewRun:
     """The review run ``run_id`` the worker of ``user`` holds, its row locked; 404 for any other run."""
     worker_id = (await worker_of(conn, user))[0]
-    r, p, u = tables.runs, tables.projects, tables.users
-    query = (
-        select(r.c.state, r.c.worker_id, r.c.kind, r.c.project_id, p.c.name, r.c.dispatched_by, u.c.login)
-        .join_from(r, p, p.c.id == r.c.project_id)
-        .join(u, u.c.id == r.c.dispatched_by)
-        .where(r.c.id == run_id)
-        .with_for_update(of=r)
-    )
-    row = (await conn.execute(query)).one_or_none()
+    row = await store.review_run_row(conn, run_id)
     if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if row.kind != "review":
@@ -180,14 +157,7 @@ async def session_review_run(conn: AsyncConnection, user: Principal, project: st
             "a session records findings and proposals with a member's credential; a review run's agent uses "
             "POST /v1/worker/runs/{id}/findings and .../proposals",
         )
-    r, p = tables.runs, tables.projects
-    query = (
-        select(r.c.state, r.c.kind, r.c.dispatched_by, r.c.project_id, p.c.name)
-        .join_from(r, p, p.c.id == r.c.project_id)
-        .where(r.c.id == run_id)
-        .with_for_update(of=r)
-    )
-    row = (await conn.execute(query)).one_or_none()
+    row = await store.local_run_row(conn, run_id)
     if (
         row is None
         or row.name != project
@@ -204,7 +174,7 @@ async def session_review_run(conn: AsyncConnection, user: Principal, project: st
     return _ReviewRun(run_id, row.project_id, row.name, owner)
 
 
-def _night_only(body) -> None:
+def night_only(body) -> None:
     if body.fix_of is not None:
         raise _refused(
             "fix_of", "a fix proposal answers a probe assigned to the night's review run; a session gives none"
@@ -225,11 +195,6 @@ async def writer_of(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
 
 def _refused(where: str, why: str) -> HTTPException:
     return HTTPException(422, f"{where}: {why}; nothing was recorded")
-
-
-async def project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
-    pr = tables.project_repos
-    return set((await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id))).scalars())
 
 
 def _readable_run(row, plans: list[str], owner_id: int) -> bool:
@@ -255,7 +220,6 @@ async def resolve(
     conn: AsyncConnection, request: Request, run: _ReviewRun, access: ProjectAccess, items: list[EvidenceIn]
 ) -> list[dict]:
     """Each piece of ``items`` as the hub found it, with ``resolved`` saying how; 422 for the first it cannot find."""
-    r = tables.runs
     plans = await visible_plans(conn, access, None)
     repos = await project_repos(conn, run.project_id)
     code = [f"{item.repo}:{item.path}" for item in items if item.kind == "code"]
@@ -275,10 +239,7 @@ async def resolve(
         elif item.kind == "memory":
             found.append(await memory_promotion.evidence(conn, run.project_id, run.project, access, held, item, where))
         elif item.kind == "run":
-            query = select(r.c.event_seq, r.c.kind, r.c.plan_id, r.c.dispatched_by).where(
-                r.c.id == item.run_id, r.c.project_id == run.project_id
-            )
-            row = (await conn.execute(query)).one_or_none()
+            row = await store.cited_run(conn, item.run_id, run.project_id)
             if row is None or not _readable_run(row, plans, run.owner.user_id):
                 raise _refused(where, f"project {run.project} has no run {item.run_id}")
             if item.seq > row.event_seq:
@@ -303,54 +264,20 @@ async def resolve(
 # Findings
 
 
-def findings_query():
-    f = tables.findings
-    return select(
-        f.c.id,
-        f.c.run_id,
-        f.c.lens,
-        f.c.severity,
-        f.c.title,
-        f.c.body,
-        f.c.evidence,
-        f.c.created_at,
-        f.c.fix_of,
-        f.c.label,
-    )
-
-
 def finding_view(project: str, row) -> Finding:
     data = {key: value for key, value in row._mapping.items() if key != "label"}
     return Finding(project=project, **data)
 
 
-@worker_router.post("/runs/{run_id}/findings", status_code=201, response_model=Finding, responses=REFUSALS)
-async def record_finding(request: Request, run_id: RunId, body: FindingIn, user: CurrentUser) -> Finding:
-    """Record a finding of the review run this worker holds, with evidence the hub finds."""
-    return await _record_finding(request, body, lambda conn: held_review_run(conn, user, run_id))
-
-
-class SessionFindingIn(FindingIn):
-    run_id: int = Field(ge=1, le=MAX_ID, description="the local run of your session that records it")
-
-
-@router.post("/{project}/curator/findings", status_code=201, response_model=Finding, responses=REFUSALS)
-async def record_session_finding(
-    request: Request, project: ProjectName, body: SessionFindingIn, user: CurrentUser
-) -> Finding:
-    """Record a finding of your own session, in its local run, as a review run's agent records one."""
-    _night_only(body)
-    return await _record_finding(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
-
-
-async def _record_finding(request: Request, body: FindingIn, held) -> Finding:
-    f = tables.findings
+async def record_finding(request: Request, body: FindingIn, held) -> Finding:
+    """Record finding ``body`` of the run ``held`` finds (a review run, or a session's local run), with evidence the
+    hub finds."""
     async with request.app.state.engine.begin() as conn:
         run = await held(conn)
         run_id = run.id
         access = await writer_of(conn, run)
         label = access.push_label()
-        recorded = (await conn.execute(select(func.count()).where(f.c.run_id == run_id))).scalar_one()
+        recorded = await store.findings_of_run(conn, run_id)
         if recorded >= review.MAX_FINDINGS:
             raise HTTPException(
                 409, f"run {run_id} recorded {review.MAX_FINDINGS} findings already, the most a run may"
@@ -372,13 +299,13 @@ async def _record_finding(request: Request, body: FindingIn, held) -> Finding:
             "label": label,
             "fix_of": body.fix_of,
         }
-        finding_id = (await conn.execute(insert(f).values(**values).returning(f.c.id))).scalar_one()
+        finding_id = await store.insert_finding(conn, values)
         await write_event(
             conn,
             run_id,
             {"text": f"finding #{finding_id} ({body.lens}, {body.severity}): {body.title}", "finding": finding_id},
         )
-        row = (await conn.execute(findings_query().where(f.c.id == finding_id))).one()
+        row = await store.finding_row(conn, finding_id)
     log.info("finding recorded", extra={"run_id": run_id, "finding_id": finding_id, "lens": body.lens})
     return finding_view(run.project, row)
 
@@ -386,7 +313,7 @@ async def _record_finding(request: Request, body: FindingIn, held) -> Finding:
 # Proposals
 
 
-def _check_draft(plan: dict) -> None:
+def check_draft(plan: dict) -> None:
     """422 unless ``plan`` is a draft plan of plan.schema.json written in outcome steps."""
     where = "the draft plan"
     try:
@@ -426,85 +353,23 @@ def _check_draft(plan: dict) -> None:
             raise _refused(where, f"the verify of step {key} {unrunnable}; {VERIFY_RULE}")
 
 
-async def _charter_body(conn: AsyncConnection, project_id: int) -> dict:
-    c = tables.charters
-    query = select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
-    return (await conn.execute(query)).scalar_one_or_none() or {}
-
-
 async def planned_tiers_of(conn: AsyncConnection, project_id: int) -> tuple[int, ...]:
     """The tiers whose accepted proposals become the Curator's plans in the project, as its newest charter says
     (``judge.planned_tiers``): tiers 0 to 2 for a project without a charter or a charter that names none."""
-    return judge.planned_tiers(await _charter_body(conn, project_id))
+    return judge.planned_tiers(await store.charter_body(conn, project_id))
 
 
 async def _finding_evidence(conn: AsyncConnection, access: ProjectAccess, ids: list[int]) -> int:
     """How many pieces of evidence findings ``ids`` of the project hold; 422 for one the owner cannot see."""
     if not ids:
         return 0
-    f = tables.findings
-    rows = (
-        await conn.execute(
-            select(f.c.id, f.c.label, func.jsonb_array_length(f.c.evidence).label("pieces")).where(
-                f.c.project_id == access.project_id, f.c.id.in_(ids)
-            )
-        )
-    ).all()
+    rows = await store.finding_pieces(conn, access.project_id, ids)
     through = access.rules.hub_sink.sink if access.rules.hub_sink else None
     seen = {row.id: row.pieces for row in rows if through is not None and access.visible(row.label, through)}
     missing = [str(item) for item in ids if item not in seen]
     if missing:
         raise _refused("finding_ids", f"project {access.name} has no finding {', '.join(missing)}")
     return sum(seen.values())
-
-
-async def _rejected_like(conn: AsyncConnection, project_id: int, fingerprint: str):
-    p = tables.proposals
-    query = (
-        select(p.c.id, p.c.evidence_count)
-        .where(
-            p.c.project_id == project_id,
-            p.c.fingerprint == fingerprint,
-            p.c.state == "rejected",
-            p.c.answered_at >= func.now() - timedelta(days=tiers.REJECTED_DAYS),
-        )
-        .order_by(p.c.answered_at.desc())
-        .limit(1)
-    )
-    return (await conn.execute(query)).one_or_none()
-
-
-def proposals_query():
-    p, u = tables.proposals, tables.users.alias("answerer")
-    return select(
-        p.c.id,
-        p.c.run_id,
-        p.c.lens,
-        p.c.kind,
-        p.c.title,
-        p.c.tier,
-        p.c.state,
-        p.c.evidence_count,
-        p.c.duplicate_of,
-        u.c.login.label("answered_by"),
-        p.c.answered_at,
-        p.c.deferred_until,
-        p.c.inbox_at,
-        p.c.created_at,
-        p.c.summary,
-        p.c.paths,
-        p.c.impacted,
-        p.c.tier_reasons,
-        p.c.finding_ids,
-        p.c.evidence,
-        p.c.draft.label("plan"),
-        p.c.note,
-        p.c.label,
-        p.c.revert_of,
-        p.c.fix_of,
-        p.c.promotion,
-        p.c.system_change,
-    ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
 def proposal_view(
@@ -551,27 +416,6 @@ async def _fix_assigned(conn: AsyncConnection, run: _ReviewRun, access: ProjectA
     return found
 
 
-@worker_router.post("/runs/{run_id}/proposals", status_code=201, response_model=Proposal, responses=REFUSALS)
-async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, user: CurrentUser) -> Proposal:
-    """Record a proposal of the review run this worker holds: the hub resolves its evidence, checks its draft plan,
-    computes its tier and drops it when it repeats a proposal rejected lately."""
-    return await _record_proposal(request, body, lambda conn: held_review_run(conn, user, run_id))
-
-
-class SessionProposalIn(ProposalIn):
-    run_id: int = Field(ge=1, le=MAX_ID, description="the local run of your session that records it")
-
-
-@router.post("/{project}/curator/proposals", status_code=201, response_model=Proposal, responses=REFUSALS)
-async def record_session_proposal(
-    request: Request, project: ProjectName, body: SessionProposalIn, user: CurrentUser
-) -> Proposal:
-    """Record a proposal of your own session, in its local run, as a review run's agent records one: the same
-    evidence, draft plan, tier and repeat checks."""
-    _night_only(body)
-    return await _record_proposal(request, body, lambda conn: session_review_run(conn, user, project, body.run_id))
-
-
 async def _announce(conn, proposal_id: int, values: dict) -> None:
     """The ledger's line of proposal ``proposal_id`` just stored with ``values``, and its curator.proposal for the
     project's webhooks."""
@@ -580,16 +424,17 @@ async def _announce(conn, proposal_id: int, values: dict) -> None:
     await webhook_events.enqueue(conn, "curator.proposal", values["project_id"], {"proposal_id": proposal_id, **said})
 
 
-async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal:
+async def record_proposal(request: Request, body: ProposalIn, held) -> Proposal:
+    """Record proposal ``body`` of the run ``held`` finds: the hub resolves its evidence, checks its draft plan,
+    computes its tier and drops it when it repeats a proposal rejected lately."""
     if body.plan is not None:
-        _check_draft(body.plan)
-    p = tables.proposals
+        check_draft(body.plan)
     async with request.app.state.engine.begin() as conn:
         run = await held(conn)
         run_id = run.id
         access = await writer_of(conn, run)
         label = access.push_label()
-        recorded = (await conn.execute(select(func.count()).where(p.c.run_id == run_id))).scalar_one()
+        recorded = await store.proposals_of_run(conn, run_id)
         if recorded >= review.MAX_PROPOSALS:
             raise HTTPException(
                 409, f"run {run_id} recorded {review.MAX_PROPOSALS} proposals already, the most a run may"
@@ -617,7 +462,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
         impacted = sorted(graph.impacted) if graph is not None else None
         unknown = await change_tiers.unknown_paths(conn, run.project_id, paths, graph)
-        charter = await _charter_body(conn, run.project_id)
+        charter = await store.charter_body(conn, run.project_id)
         tier = tiers.tier_of(
             body.kind,
             paths,
@@ -628,7 +473,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
             evolvable=tiers.evolvable_paths(charter),
         )  # no diff yet (api None): a protected file reached makes it at most tier 2
         fingerprint = tiers.fingerprint(body.kind, paths, body.title)
-        rejected = await _rejected_like(conn, run.project_id, fingerprint)
+        rejected = await store.rejected_like(conn, run.project_id, fingerprint)
         dropped = rejected is not None and tiers.drops(count, rejected.evidence_count)
         values = {
             "project_id": run.project_id,
@@ -653,7 +498,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
             "fix_of": body.fix_of,
             "system_change": null() if change is None else change,
         }
-        proposal_id = (await conn.execute(insert(p).values(**values).returning(p.c.id))).scalar_one()
+        proposal_id = await store.insert_proposal(conn, values)
         if body.probe is not None:
             await stored_probes.store(
                 conn,
@@ -673,7 +518,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
         from evo_agents.hub.server.curator.service.threads import on_open  # it answers through this module
 
         await on_open(conn, proposal_id)
-        row = (await conn.execute(proposals_query().where(p.c.id == proposal_id))).one()
+        row = await store.proposal_row(conn, proposal_id)
         probe = await stored_probes.of_proposal(conn, run.project, proposal_id, shown=False)
     log.info(
         "proposal recorded",
@@ -690,25 +535,12 @@ def require_reader(access: ProjectAccess) -> None:
         raise HTTPException(403, f"reading the Curator of project {access.name} needs a grant on it")
 
 
-@router.get("/{project}/curator/figures", response_model=NightFiguresView, responses=READ_REFUSALS)
-async def show_figures(
-    request: Request,
-    project: ProjectName,
-    user: CurrentUser,
-    night: Annotated[date | None, Query(description="the night, the local date its window opened; the latest")] = None,
-    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
-) -> NightFiguresView:
+async def night_figures(engine, user: Principal, project: str, night, sink: str | None) -> NightFiguresView:
     """The figures curator.collect counted for a night of the project: the latest, or ``night``'s."""
-    cf = tables.curator_figures
-    async with request.app.state.engine.begin() as conn:
+    async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
-        query = select(cf.c.night, cf.c.since, cf.c.until, cf.c.run_id, cf.c.figures, cf.c.created_at).where(
-            cf.c.project_id == access.project_id
-        )
-        if night is not None:
-            query = query.where(cf.c.night == night)
-        row = (await conn.execute(query.order_by(cf.c.night.desc()).limit(1))).one_or_none()
+        row = await store.night_figures(conn, access.project_id, night)
     if row is None or not plan_service.sees(access, access.rules.default_label, sink):
         which = f"for the night of {night.isoformat()}" if night else "yet"
         raise HTTPException(404, f"project {project} has no figures {which}: curator.collect counts them at night")

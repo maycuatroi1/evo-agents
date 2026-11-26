@@ -37,7 +37,7 @@ from evo_agents.hub.server.probes.models import runs as probe_runs
 from evo_agents.hub.server.probes.service import probes as service
 from evo_agents.hub.server.probes.service import writes
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.proposal_models import ItemId
+from evo_agents.hub.server.proposals.models import ItemId
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.runs.models import MAX_ID, RunId
 from evo_agents.hub.server.security import CurrentUser

@@ -2864,7 +2864,7 @@ its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint 
 that loosen a test, change a plan's verify or change CI are tier 3, always. In a project with a graph on the hub, a
 path the graph has no file for, one the latest measure of its health found missing, stale or deleted (each source's
 `off`, below), or any path while the graph cannot be read, makes it at least tier 1, the reason saying which
-(`evo_agents/hub/server/change_tiers.py`). A protected file the graph says a path reaches (`kg_impact`) makes a
+(`evo_agents/hub/server/changes/service/tiers.py`). A protected file the graph says a path reaches (`kg_impact`) makes a
 proposal at least tier 2; once its pull request is open, tier 3 only when the diff removes or changes the signature of
 a module-level name that file uses (`evo_agents/hub/api_surface.py`, at most 40 files read a pull request), or the hub
 could not read it. A proposal like one the owner rejected in
@@ -2987,15 +2987,15 @@ test or verify weakened (`instruction_weakened`, `judge.weakened`: a line added 
 verify, lint or CI unless it forbids that, or more lines about them removed than added), and a binary or unknown file
 where tests, CI, configuration or a harness live. A list of files GitHub cuts short (more than it lists, or fewer
 than the pull request says it changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The
-files also give the proposal its tier again (`change_tiers.retier`: `tiers.tier_of` over the paths the pull request really changes, what the graph says
-they reach and cannot tell, read as the night shift's owner, and for kind `kg_source` what it does to each
-knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the head and compared key by key,
-which only ever raises it), at the pull request and again before a merge, so a proposal of docs whose pull request
-changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`, `refresh`, `include`,
-`exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read of the file stays
-with the change (`curator_changes.knowledge`). A change of kind `docs`, `skill` or `global_config` whose diff edits a
-harness alone (the files of one skill directory, AGENTS.md and CLAUDE.md files) merges as tier 0 once its replays won
-(The Curator's replays, below; `tiers.replay_tier`), its proposal keeping the tier its rules gave.
+files also give the proposal its tier again (`changes.service.tiers.retier`: `tiers.tier_of` over the paths the pull
+request really changes, what the graph says they reach and cannot tell, read as the night shift's owner, and for kind
+`kg_source` what it does to each knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the
+head and compared key by key, which only ever raises it), at the pull request and again before a merge, so a proposal of
+docs whose pull request changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`,
+`refresh`, `include`, `exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read
+of the file stays with the change (`curator_changes.knowledge`). A change of kind `docs`, `skill` or `global_config`
+whose diff edits a harness alone (the files of one skill directory, AGENTS.md and CLAUDE.md files) merges as tier 0 once
+its replays won (The Curator's replays, below; `tiers.replay_tier`), its proposal keeping the tier its rules gave.
 Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
 project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
 the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
@@ -3037,16 +3037,16 @@ keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
 
-**A change in several repos** (schema 0256, `evo_agents/hub/server/change_repos.py`). An accepted proposal whose paths
-and draft name several repos of the project, each on GitHub, becomes one plan in them all (`judge.curator_repos_plan`),
-the repos ordered owner before consumer by the seams of the project's graph, and a row of `curator_change_repos` for
-each, with the repos merged before it. The change itself keeps the first repo. The Builder waits until the ruleset of
-each repo was checked; after it the hub opens a pull request in each repo, queues the judge runs one repo at a time (each
-judge run's inputs and verdict are of its own repo), and merges a repo's pull request only once each repo it depends on
-merged (`merge_waits`). The change is judged when every repo's Judge passed and merged when every pull request merged.
-A write of the plan that drops or adds a repo, or a step in a repo the plan does not name, is refused (409). The
-change's view lists its repos (`repos`: each with its position, `depends_on`, state, pull request and verdict; empty for
-a change in one repo).
+**A change in several repos** (schema 0256, `evo_agents/hub/server/changes/service/repos.py`). An accepted proposal
+whose paths and draft name several repos of the project, each on GitHub, becomes one plan in them all
+(`judge.curator_repos_plan`), the repos ordered owner before consumer by the seams of the project's graph, and a row of
+`curator_change_repos` for each, with the repos merged before it. The change itself keeps the first repo. The Builder
+waits until the ruleset of each repo was checked; after it the hub opens a pull request in each repo, queues the judge
+runs one repo at a time (each judge run's inputs and verdict are of its own repo), and merges a repo's pull request only
+once each repo it depends on merged (`merge_waits`). The change is judged when every repo's Judge passed and merged when
+every pull request merged. A write of the plan that drops or adds a repo, or a step in a repo the plan does not name, is
+refused (409). The change's view lists its repos (`repos`: each with its position, `depends_on`, state, pull request and
+verdict; empty for a change in one repo).
 
 ## The Curator's replays
 
@@ -3100,10 +3100,10 @@ cost and turns, `saving` (arm b's share lower) and the harness `paths` arm b ran
 **What the replays decide.** They won when at least `replay.MIN_HOLDOUT` (6) such tasks are in, and arm b passed more
 of them than arm a, or as many with a mean cost or turns at least `replay.MIN_SAVING` (10%) lower. A change of kind
 `docs`, `skill` or `global_config` whose pull request edits a harness alone and whose replays won merges as tier 0 when
-the Judge and CI pass and the charter's `auto_merge` holds 0 (`change_tiers.merge_tier`, `retier`); one with too few
-replays, replays that lost, or another file keeps its tier, and the reason it stays open names its replays' verdict.
-A replay done that makes the replays of a change the Judge passed and the hub left open win puts the change back to
-`judged`, and the next pass reads its pull request again.
+the Judge and CI pass and the charter's `auto_merge` holds 0 (`changes.service.tiers.merge_tier`, `retier`); one with
+too few replays, replays that lost, or another file keeps its tier, and the reason it stays open names its replays'
+verdict. A replay done that makes the replays of a change the Judge passed and the hub left open win puts the change
+back to `judged`, and the next pass reads its pull request again.
 
 **A global skill's release.** The hub's merge of such a change names, on its ledger line `merged`, the verdict
 (`details.replay`) and, when the one skill directory arm b ran with is a global skill of the hub whose latest version

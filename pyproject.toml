@@ -238,7 +238,7 @@ ignore_imports = [
     "evo_agents.hub.deliverer -> evo_agents.hub.server.notifications.service.deliveries",
     # `hub worker`, the hub's job runner, runs jobs whose code lives with the server.
     "evo_agents.hub.worker -> evo_agents.hub.server.brief",
-    "evo_agents.hub.worker -> evo_agents.hub.server.changes",
+    "evo_agents.hub.worker -> evo_agents.hub.server.changes.service.job",
     "evo_agents.hub.worker -> evo_agents.hub.server.collect",
     "evo_agents.hub.worker -> evo_agents.hub.server.context_answer_reuse",
     "evo_agents.hub.worker -> evo_agents.hub.server.curator.service.shift",
@@ -531,8 +531,8 @@ exhaustive = true
 broken_contract_guidance = """\
 In evo_agents.hub.server.proposal_plans a route handler only passes the request's parts and the app's engine to a \
 public function of the service, which checks the caller (CuratorAdmins) and decides; the repository (ChangeStore) \
-reads and writes curator_changes. Its shapes are the changes' (evo_agents.hub.server.change_views). Move the code \
-that reaches up into the layer that needs it. Other modules import the service, never the routes. A new module of \
+reads and writes curator_changes. Its shapes are the changes' (evo_agents.hub.server.changes.models.views). Move \
+the code that reaches up into the layer that needs it. Other modules import the service, never the routes. A new module of \
 the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
@@ -771,6 +771,42 @@ routes and the MCP tool import neither each other. Move the code that reaches up
 check or a refusal into the service, a query into the repository, a shape into the models. Other modules import the \
 service, the MCP tool and the models, never the routes. A new module of the package goes into one of the four \
 layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-changes-layers"
+name = "The Curator's changes go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.changes"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.changes a route handler only passes the request's parts and the app's engine or state to a \
+public function of the service (judge, manage), which checks the caller and decides; the job curator.changes, the \
+night shift's side, the tiers, a change in several repos, a change's moves in the ledger and what a run of the \
+Curator gets are the service's too (job, shift, watch, tiers, repos, moves, policy); the repository holds the SQL of \
+curator_changes, curator_change_repos and what a change reads of its proposal, plan, charter and runs, and imports \
+no module of the hub that reaches the service (the ledger is one: moves writes it); the models (the API's shapes, \
+CuratorPolicy) import none of them. Move the code that reaches up into the layer that needs it: a check or a message \
+into the service, a query into the repository, a shape into the models. Other modules import the service, the \
+repository's reads and the models, never the routes. A new module of the package goes into one of the four layers. \
+See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-proposals-layers"
+name = "The Curator's findings and proposals go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.proposals"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.proposals a route handler only passes the request's parts to a public function of the \
+service (record, reads), which checks the run or the caller, resolves the evidence and decides; the repository holds \
+the SQL of the findings, the proposals and the night's figures; the models (the API's shapes) import none of them, \
+nor a module of the hub that reaches the service: a shape that holds such a module's models, as a proposal holds a \
+probe and a system change, goes into service.shapes. Move the code that reaches up into the layer that needs it: a \
+check or a message into the service, a query into the repository, a shape into the models. Other modules import the \
+service and the models, never the routes. A new module of the package goes into one of the four layers. See \
+docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

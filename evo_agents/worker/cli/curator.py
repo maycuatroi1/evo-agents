@@ -14,7 +14,7 @@ it decides).
   close that change before its pull request opens, for the member who dispatched the run, an admin of the project:
   the way to end a change its measurements or its owner's decision say not to land, instead of a commit that reverts
   it. The reason, one line, becomes the change's; the note (``-`` reads stdin), what the run measured, is kept whole
-  in the ledger line of the drop (POST /v1/worker/runs/{id}/curator/drop, ``change_routes.drop_change``).
+  in the ledger line of the drop (POST /v1/worker/runs/{id}/curator/drop, ``changes.routes.drop_change``).
 
 It reads the run from EVO_RUN_ID like ``worker chat``; ``answer`` and ``merge`` are ``ChatCommand``s, for a chat run
 only, ``drop`` for a plan run only. The hub refuses what is outside the frame (another proposal than the thread's, an owner

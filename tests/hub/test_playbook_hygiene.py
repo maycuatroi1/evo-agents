@@ -42,7 +42,7 @@ if pg.DSN:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server.change_views import set_change
+    from evo_agents.hub.server.changes.service.moves import set_change
     from tests.hub.live import sql
     from tests.hub.test_history_runs import lab  # noqa: F401 (lab is a fixture)
     from tests.hub.test_history_search import held_review, two_sessions
