@@ -22,11 +22,11 @@ import json
 import math
 import random
 from collections.abc import Callable
-from urllib.parse import quote
 
 import aiohttp
 
 from evo_agents import __version__
+from evo_agents.hub.api import WorkerRoutes, WorkerRun
 from evo_agents.hub.client import HubError, check_url
 from evo_agents.hub.client import Unreachable as HubUnreachable
 from evo_agents.hub.runs import CLAIM_WAIT_SECONDS, PROTOCOL_HEADER, PROTOCOL_VERSION
@@ -94,6 +94,17 @@ class Backoff(retry.Backoff):
 
     def __init__(self, first: float = FIRST_DELAY, most: float = MOST_DELAY, jitter: float = 0.2):
         super().__init__(retry.Exponential(first, most, jitter, random.uniform))
+
+
+def hub_retry(tries: int | None, *, first: float = FIRST_DELAY, most: float = MOST_DELAY) -> retry.RetryPolicy:
+    """Up to ``tries`` tries of a call of the hub while no answer comes (``Unreachable``), waiting as ``Backoff``
+    does, or what the hub's ``Retry-After`` asks; a ``Refused`` raises at once."""
+    return retry.RetryPolicy(
+        retry.Exponential(first, most, 0.2, random.uniform),
+        tries,
+        (Unreachable,),
+        asked=lambda error: getattr(error, "retry_after", None),
+    )
 
 
 def _judge_key(key: str | None) -> dict:
@@ -223,44 +234,52 @@ class WorkerHub:
         except aiohttp.ClientError as exc:
             raise Unreachable(f"cannot reach {self.url}: {type(exc).__name__}: {exc}") from None
 
+    def worker(self, *parts, **query) -> str:
+        """The path of a route of the worker protocol (``evo_agents.hub.api.WorkerRoutes``)."""
+        return WorkerRoutes(self).path(*parts, **query)
+
+    def run(self, run_id: int, *parts, **query) -> str:
+        """The path of a route of run ``run_id`` (``evo_agents.hub.api.WorkerRun``)."""
+        return WorkerRun(self, run_id).path(*parts, **query)
+
     # The protocol
 
     async def join(self, code: str | None, host: dict, *, token: str | None = None) -> dict:
         """A new worker for a pairing code, or for a pool's join token instead."""
         secret = {"code": code} if token is None else {"token": token}
-        return await self.call("POST", "/v1/worker/join", {**secret, **host})
+        return await self.call("POST", self.worker("join"), {**secret, **host})
 
     async def claim(self, wait_s: float = CLAIM_WAIT_SECONDS) -> dict | None:
-        answer = await self.call("POST", "/v1/worker/claim", {"wait_s": wait_s}, timeout=wait_s + CLAIM_SLACK)
+        answer = await self.call("POST", self.worker("claim"), {"wait_s": wait_s}, timeout=wait_s + CLAIM_SLACK)
         return answer.get("run") if isinstance(answer, dict) else None
 
     async def heartbeat(self, body: dict) -> dict:
-        return await self.call("POST", "/v1/worker/heartbeat", body)
+        return await self.call("POST", self.worker("heartbeat"), body)
 
     async def merged(self, run_ids: list[int]) -> list[int]:
         """Of ``run_ids``, ended runs whose worktrees this worker keeps, those whose work the hub knows merged."""
-        answer = await self.call("POST", "/v1/worker/merged", {"runs": run_ids})
+        answer = await self.call("POST", self.worker("merged"), {"runs": run_ids})
         found = answer.get("merged") if isinstance(answer, dict) else None
         return [item for item in found or [] if isinstance(item, int) and not isinstance(item, bool)]
 
     async def doctor(self, body: dict) -> dict:
         """Send the findings of the machine's doctor (``evo_agents.worker.doctor_report``)."""
-        return await self.call("POST", "/v1/worker/doctor", body)
+        return await self.call("POST", self.worker("doctor"), body)
 
     async def report(self, run_id: int, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/state", body)
+        return await self.call("POST", self.run(run_id, "state"), body)
 
     async def events(self, run_id: int, events: list[dict]) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/events", {"events": events})
+        return await self.call("POST", self.run(run_id, "events"), {"events": events})
 
     async def inbox(self, run_id: int, ack: int | None = None) -> list[dict]:
         body = {} if ack is None else {"ack": ack}
-        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/inbox", body)
+        answer = await self.call("POST", self.run(run_id, "inbox"), body)
         return list(answer.get("messages") or []) if isinstance(answer, dict) else []
 
     async def attachment(self, run_id: int, attachment_id: int, write: Callable[[bytes], None]) -> None:
         """The bytes of a file a person attached to a message the run's agent may read, handed to ``write``."""
-        path = f"/v1/worker/runs/{int(run_id)}/attachments/{int(attachment_id)}/content"
+        path = self.run(run_id, "attachments", int(attachment_id), "content")
         await self.download(path, write)
 
     # The leases of a run (docs/credentials.md): the answer holds their values, which no caller logs
@@ -268,12 +287,12 @@ class WorkerHub:
     async def credentials(self, run_id: int) -> dict:
         """``{leases, missing}`` of a run this worker holds; asked again, the same leases, a GitHub token near its end
         replaced."""
-        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/credentials")
+        answer = await self.call("POST", self.run(run_id, "credentials"))
         return answer if isinstance(answer, dict) else {}
 
     async def release_credentials(self, run_id: int) -> dict:
         """Give back every lease this worker holds of the run, in whatever state it is; ``{revoked}``."""
-        answer = await self.call("DELETE", f"/v1/worker/runs/{int(run_id)}/credentials")
+        answer = await self.call("DELETE", self.run(run_id, "credentials"))
         return answer if isinstance(answer, dict) else {}
 
     # The profiles of a run's browser identities (evo_agents.worker.browser.profiles): no caller logs one
@@ -281,7 +300,7 @@ class WorkerHub:
     async def browser_profile(self, run_id: int, identity_id: int) -> dict:
         """One browser identity of a run this worker holds: its name, domains, version and profile (base64 or
         null)."""
-        path = f"/v1/worker/runs/{int(run_id)}/browser-profile"
+        path = self.run(run_id, "browser-profile")
         answer = await self.call("POST", path, {"identity_id": int(identity_id)}, timeout=UPLOAD_TIMEOUT)
         return answer if isinstance(answer, dict) else {}
 
@@ -290,30 +309,28 @@ class WorkerHub:
     ) -> dict:
         """Send the profile ``archive`` of a browser identity of the run as the version after ``base_version``;
         ``{identity_id, version}``."""
-        query = f"base_version={int(base_version)}"
-        if chromium_version:
-            query += f"&chromium_version={quote(chromium_version, safe='')}"
-        path = f"/v1/worker/runs/{int(run_id)}/browser-profile/{int(identity_id)}?{query}"
+        query = {"base_version": int(base_version), "chromium_version": chromium_version or None}
+        path = self.run(run_id, "browser-profile", int(identity_id), **query)
         headers = {"Content-Type": "application/octet-stream"}
         answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
         return answer if isinstance(answer, dict) else {}
 
     async def browser_needs_login(self, run_id: int, identity_id: int, cause: str) -> dict:
         """Say that the run's Chromium could not use the identity's profile (``cause``); ``{identity_id, status}``."""
-        path = f"/v1/worker/runs/{int(run_id)}/browser-profile/{int(identity_id)}/needs-login"
+        path = self.run(run_id, "browser-profile", int(identity_id), "needs-login")
         answer = await self.call("POST", path, {"cause": cause})
         return answer if isinstance(answer, dict) else {}
 
     async def browser_login(self, run_id: int, body: dict) -> dict:
         """Ask the run's dispatcher to sign in on one of its browser identities (or, for a run that cannot wait, fail
         the run): ``{outcome, decision_id, message}``."""
-        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/browser-login", body)
+        answer = await self.call("POST", self.run(run_id, "browser-login"), body)
         return answer if isinstance(answer, dict) else {}
 
     async def local_browser_login(self, body: dict) -> dict:
         """Open a login of a browser identity on this worker's own machine, with no run (``browser_local``): the
         identity (made when ``body`` says how) and its profile, as ``browser_profile`` answers, with ``project``."""
-        answer = await self.call("POST", "/v1/worker/browser-identities/login", body, timeout=UPLOAD_TIMEOUT)
+        answer = await self.call("POST", self.worker("browser-identities", "login"), body, timeout=UPLOAD_TIMEOUT)
         return answer if isinstance(answer, dict) else {}
 
     async def save_local_browser_profile(
@@ -321,10 +338,8 @@ class WorkerHub:
     ) -> dict:
         """Send the profile ``archive`` a local login made as the version after ``base_version``; ``{identity_id,
         version}``."""
-        query = f"base_version={int(base_version)}"
-        if chromium_version:
-            query += f"&chromium_version={quote(chromium_version, safe='')}"
-        path = f"/v1/worker/browser-identities/{int(identity_id)}/profile?{query}"
+        query = {"base_version": int(base_version), "chromium_version": chromium_version or None}
+        path = self.worker("browser-identities", int(identity_id), "profile", **query)
         headers = {"Content-Type": "application/octet-stream"}
         answer = await self.call("PUT", path, archive, timeout=UPLOAD_TIMEOUT, headers=headers)
         return answer if isinstance(answer, dict) else {}
@@ -332,131 +347,127 @@ class WorkerHub:
     async def rate_limit(self, run_id: int, body: dict) -> dict:
         """Say what the agent's CLI said of the account behind a lease of the run (``evo_agents.worker.runner.limits``):
         ``{action, secret_id, failovers, ...}``; an older hub without the route answers 404 (Refused)."""
-        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/rate-limit", body)
+        answer = await self.call("POST", self.run(run_id, "rate-limit"), body)
         return answer if isinstance(answer, dict) else {}
 
     # A plan run: its plan, its steps, its decisions and its notices
 
     async def plan(self, run_id: int) -> dict:
-        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/plan")
+        return await self.call("GET", self.run(run_id, "plan"))
 
     async def put_plan(self, run_id: int, body: dict) -> dict:
         """An author run's plan put on the hub: ``body`` holds ``body`` and, to replace the plan, ``if_revision``."""
-        return await self.call("PUT", f"/v1/worker/runs/{int(run_id)}/plan", body)
+        return await self.call("PUT", self.run(run_id, "plan"), body)
 
     async def chat(self, run_id: int, text: str) -> dict:
         """The last message of a turn of an author run's agent, kept as a message of the run's chat; a chat run's,
         its reply in the thread of its group chat."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/chat", {"text": text})
+        return await self.call("POST", self.run(run_id, "chat"), {"text": text})
 
     async def in_chats(self, run_id: int, route: str, body: dict) -> dict:
         """What the agent of run ``run_id`` does in group chats (``evo_agents.hub.server.chat_agents``): ``route``
         is chat/messages, chat/reactions, chat/mentions, chats, chat/pulls for the daemon's push of a chat run, or
         chat/repos for a repo the daemon opens in a chat run for its agent, or agent/asks for a chat run's agent asking an
         agent of another project (``agent_asks``), or agent/reads for its reads of another project (``agent_reads``)."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/{route}", body)
+        return await self.call("POST", self.run(run_id, *route.split("/")), body)
 
     async def release_branch(self, run_id: int, body: dict) -> dict:
         """Tell the hub release run ``run_id`` pushed ``body``: its repo, branch release/<version>, head, version and
         the agent's Decision line (``evo_agents.hub.server.release_claims``)."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/release/branch", body)
+        return await self.call("POST", self.run(run_id, "release", "branch"), body)
 
     async def step(self, run_id: int, key: str, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/steps/{quote(str(key), safe='')}", body)
+        return await self.call("POST", self.run(run_id, "steps", key), body)
 
     async def decision(self, run_id: int, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/decisions", body)
+        return await self.call("POST", self.run(run_id, "decisions"), body)
 
     async def wait(self, run_id: int, body: dict) -> dict:
         """Wait, in plan run ``run_id``, for a time or an event of the hub (``evo_agents.hub.server.run_waits``)."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/waits", body)
+        return await self.call("POST", self.run(run_id, "waits"), body)
 
     async def merge_check(self, run_id: int, body: dict) -> dict:
         """Have the hub judge plan run ``run_id``'s pull request at its head (``evo_agents.hub.server.merge_check``)."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-check", body)
+        return await self.call("POST", self.run(run_id, "merge-check"), body)
 
     async def notice(self, run_id: int, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/notices", body)
+        return await self.call("POST", self.run(run_id, "notices"), body)
 
     async def backup(self, run_id: int, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/backups", body)
+        return await self.call("POST", self.run(run_id, "backups"), body)
 
     async def autonomy_act(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/autonomy-acts", body, timeout=timeout)
+        return await self.call("POST", self.run(run_id, "autonomy-acts"), body, timeout=timeout)
 
     async def merge_gate(self, run_id: int, body: dict, *, timeout: float = TIMEOUT) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-gate", body, timeout=timeout)
+        return await self.call("POST", self.run(run_id, "merge-gate"), body, timeout=timeout)
 
     # A review run: its findings and proposals
 
     async def finding(self, run_id: int, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/findings", body)
+        return await self.call("POST", self.run(run_id, "findings"), body)
 
     async def proposal(self, run_id: int, body: dict) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/proposals", body)
+        return await self.call("POST", self.run(run_id, "proposals"), body)
 
     # A judge run: what it reads, and its verdict, each with the run's own key, which its claim handed the daemon. The
     # answer of judge_inputs holds the project's hidden checks, which no caller writes to a file, an event or a log
     # line.
 
     async def judge_inputs(self, run_id: int, key: str | None) -> dict:
-        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/judge", headers=_judge_key(key))
+        return await self.call("GET", self.run(run_id, "judge"), headers=_judge_key(key))
 
     async def verdict(self, run_id: int, body: dict, key: str | None) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/verdict", body, headers=_judge_key(key))
+        return await self.call("POST", self.run(run_id, "verdict"), body, headers=_judge_key(key))
 
     async def merge_judge_inputs(self, run_id: int, key: str | None) -> dict:
         """What a judge run of the hub's merge queue reads, with the run's own key."""
-        return await self.call("GET", f"/v1/worker/runs/{int(run_id)}/merge-judge", headers=_judge_key(key))
+        return await self.call("GET", self.run(run_id, "merge-judge"), headers=_judge_key(key))
 
     async def merge_verdict(self, run_id: int, body: dict, key: str | None) -> dict:
         """The verdict of a judge run of the hub's merge queue, with the run's own key."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/merge-verdict", body, headers=_judge_key(key))
+        return await self.call("POST", self.run(run_id, "merge-verdict"), body, headers=_judge_key(key))
 
     async def replay(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST one arm of a replay run, or why it replays nothing, with the run's own key."""
         from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
         headers = {REPLAY_KEY_HEADER: key} if key else {}
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/replay", body, headers=headers)
+        return await self.call("POST", self.run(run_id, "replay"), body, headers=headers)
 
     async def probe(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST one session of a probe run, or why its probe is stale, with the run's own key."""
         from evo_agents.hub.probes import PROBE_KEY_HEADER
 
         headers = {PROBE_KEY_HEADER: key} if key else {}
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/probe", body, headers=headers)
+        return await self.call("POST", self.run(run_id, "probe"), body, headers=headers)
 
     # An evolve run: what it evolves, the baseline arms it ran, each candidate it measured and how it ended, each with
     # the run's own key. The inputs hold the select tasks' verify commands, which no caller hands the proposer.
 
     async def evolve_inputs(self, run_id: int, key: str | None) -> dict:
         """GET what an evolve run evolves, its tasks and the cached baseline arms, with the run's own key."""
-        return _object(await self.call("GET", f"/v1/worker/runs/{int(run_id)}/evolve", headers=_evolve_key(key)))
+        return _object(await self.call("GET", self.run(run_id, "evolve"), headers=_evolve_key(key)))
 
     async def evolve_arm(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST the result of a baseline arm the run ran, for the hub's arm cache, with the run's own key."""
-        return _object(
-            await self.call("POST", f"/v1/worker/runs/{int(run_id)}/evolve/arm", body, headers=_evolve_key(key))
-        )
+        return _object(await self.call("POST", self.run(run_id, "evolve", "arm"), body, headers=_evolve_key(key)))
 
     async def evolve_candidate(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST a candidate the run measured, with the run's own key: its id and the Pareto front after it."""
-        path = f"/v1/worker/runs/{int(run_id)}/evolve/candidate"
+        path = self.run(run_id, "evolve", "candidate")
         return _object(await self.call("POST", path, body, headers=_evolve_key(key)))
 
     async def evolve_report(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST how the evolution ended (its best candidate, the branch and commit it wrote), with the run's own key."""
-        return _object(
-            await self.call("POST", f"/v1/worker/runs/{int(run_id)}/evolve/report", body, headers=_evolve_key(key))
-        )
+        return _object(await self.call("POST", self.run(run_id, "evolve", "report"), body, headers=_evolve_key(key)))
 
     async def history_next(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST for the next batch of a history run, with the run's own key."""
         from evo_agents.hub.history import HISTORY_KEY_HEADER
 
         headers = {HISTORY_KEY_HEADER: key} if key else {}
-        path = f"/v1/worker/runs/{int(run_id)}/history/next"
+        path = self.run(run_id, "history", "next")
         return await self.call("POST", path, body, headers=headers, timeout=HISTORY_TIMEOUT)
 
     async def history_report(self, run_id: int, body: dict, key: str | None) -> dict:
@@ -464,32 +475,32 @@ class WorkerHub:
         from evo_agents.hub.history import HISTORY_KEY_HEADER
 
         headers = {HISTORY_KEY_HEADER: key} if key else {}
-        path = f"/v1/worker/runs/{int(run_id)}/history/report"
+        path = self.run(run_id, "history", "report")
         return await self.call("POST", path, body, headers=headers, timeout=HISTORY_TIMEOUT)
 
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})
+        return await self.call("POST", self.run(run_id, "uploads"), {"items": items})
 
     async def commit_blobs(self, run_id: int, upload_ids: list[str]) -> dict:
         body = {"upload_ids": upload_ids}
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/blobs", body, timeout=UPLOAD_TIMEOUT)
+        return await self.call("POST", self.run(run_id, "blobs"), body, timeout=UPLOAD_TIMEOUT)
 
     # The outputs of a run (evo_agents.hub.outputs, docs/workers.md "Outputs")
 
     async def output_settings(self, run_id: int) -> dict:
         """``{tool_images, max_file_bytes, max_outputs, max_run_bytes, outputs, bytes, ...}`` of a run this worker
         holds; an older hub without the route answers 404 (Refused)."""
-        answer = await self.call("GET", f"/v1/worker/runs/{int(run_id)}/output-settings")
+        answer = await self.call("GET", self.run(run_id, "output-settings"))
         return answer if isinstance(answer, dict) else {}
 
     async def output_uploads(self, run_id: int, items: list[dict]) -> dict:
         """The presigned PUTs of the outputs ``items`` ({sha256, size, source}) whose bytes the project lacks."""
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/output-uploads", {"items": items})
+        return await self.call("POST", self.run(run_id, "output-uploads"), {"items": items})
 
     async def record_outputs(self, run_id: int, items: list[dict]) -> dict:
         """Commit the uploads of ``items`` and record them as outputs of the run: ``{outputs, added}``, in order."""
         body = {"outputs": items}
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/outputs", body, timeout=UPLOAD_TIMEOUT)
+        return await self.call("POST", self.run(run_id, "outputs"), body, timeout=UPLOAD_TIMEOUT)
 
     async def put(self, url: str, data: bytes) -> None:
         """PUT ``data`` to a presigned URL of the blob store. The URL is a credential until it expires: an error

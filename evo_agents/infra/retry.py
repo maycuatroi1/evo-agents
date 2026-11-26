@@ -70,9 +70,13 @@ class RetryPolicy:
     delays: Delays = field(default_factory=lambda: Fixed(0.0))
     tries: int | None = 3
     retry_on: tuple[type[BaseException], ...] | Callable[[BaseException], bool] = (Exception,)
+    # the seconds an error asks to wait itself (an HTTP Retry-After), or None to wait what ``delays`` says
+    asked: Callable[[BaseException], float | None] | None = None
 
-    def delay(self, failures: int) -> float:
-        return self.delays(failures)
+    def delay(self, failures: int, error: BaseException | None = None) -> float:
+        """The seconds to wait after ``failures`` failures, the last of them ``error``."""
+        wanted = self.asked(error) if self.asked is not None and error is not None else None
+        return self.delays(failures) if wanted is None else wanted
 
     def retries(self, error: BaseException, failures: int) -> bool:
         """Whether a call that failed ``failures`` times now (this one included) with ``error`` goes again."""
@@ -82,8 +86,15 @@ class RetryPolicy:
             return isinstance(error, self.retry_on)
         return self.retry_on(error)
 
-    def call(self, fn: Callable[[], T], *, sleep: Callable[[float], object] | None = None) -> T:
-        """``fn()`` under the policy, waiting with ``sleep`` (time.sleep, looked up at each wait) between tries."""
+    def call(
+        self,
+        fn: Callable[[], T],
+        *,
+        sleep: Callable[[float], object] | None = None,
+        retrying: Callable[[BaseException, float], object] | None = None,
+    ) -> T:
+        """``fn()`` under the policy, waiting with ``sleep`` (time.sleep, looked up at each wait) between tries;
+        ``retrying(error, seconds)`` is told of each wait before it."""
         failures = 0
         while True:
             try:
@@ -92,10 +103,17 @@ class RetryPolicy:
                 failures += 1
                 if not self.retries(error, failures):
                     raise
-                (sleep or time.sleep)(self.delay(failures - 1))
+                seconds = self.delay(failures - 1, error)
+                if retrying is not None:
+                    retrying(error, seconds)
+                (sleep or time.sleep)(seconds)
 
     async def acall(
-        self, fn: Callable[[], Awaitable[T]], *, sleep: Callable[[float], Awaitable[object]] | None = None
+        self,
+        fn: Callable[[], Awaitable[T]],
+        *,
+        sleep: Callable[[float], Awaitable[object]] | None = None,
+        retrying: Callable[[BaseException, float], object] | None = None,
     ) -> T:
         """``await fn()`` under the policy, as ``call``, with asyncio.sleep; a cancellation is never retried."""
         failures = 0
@@ -108,7 +126,10 @@ class RetryPolicy:
                 failures += 1
                 if not self.retries(error, failures):
                     raise
-                await (sleep or asyncio.sleep)(self.delay(failures - 1))
+                seconds = self.delay(failures - 1, error)
+                if retrying is not None:
+                    retrying(error, seconds)
+                await (sleep or asyncio.sleep)(seconds)
 
 
 class Backoff:
