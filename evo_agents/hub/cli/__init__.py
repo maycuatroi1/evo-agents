@@ -11,7 +11,7 @@ The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``
 attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
 ``cli.plugin``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
-``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
+``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli.problem``, ``opportunity`` by ``cli.opportunity``, ``intake`` by ``cli_intake``, ``merge`` by
 ``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
 package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
 document; ``hub contract check`` does not. The commands of plugins (``pm``, ``crm`` and ``marketing`` of the core
@@ -459,13 +459,13 @@ def _register_steering_commands(hsub) -> None:
 
     GOAL.attach(hsub)
 
-    from evo_agents.hub.cli_problems import register_problems
+    from evo_agents.hub.cli.problem import PROBLEM
 
-    register_problems(hsub)
+    PROBLEM.attach(hsub)
 
-    from evo_agents.hub.cli_opportunities import register_opportunities
+    from evo_agents.hub.cli.opportunity import OPPORTUNITY
 
-    register_opportunities(hsub)
+    OPPORTUNITY.attach(hsub)
 
     from evo_agents.hub.cli_intake import register_intake
 
