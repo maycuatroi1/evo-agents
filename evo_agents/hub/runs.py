@@ -431,7 +431,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
 # autonomy: a gate of the hub acted for a run whose class is notify, told to the run's principal
 # run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
-# sends to the run's owner (``server.output_notices``)
+# sends to the run's owner (``server.outputs.service.notices``)
 # curator_probe_report: the weekly report of a project's probes, on Monday at the charter's brief_at, to the owner of its
 # night shift's schedule (``server.probe_report``)
 OUTPUT_NOTICE = "run_outputs"

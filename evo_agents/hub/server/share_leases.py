@@ -65,12 +65,12 @@ from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credential_shares import ALL, UNIT, USER
 from evo_agents.hub.credentials import LEASED_KINDS
 from evo_agents.hub.server import (
+    account_views,
     kg_shared_pool,
     org_store,
     worker_placement,  # a module: importing it may reach this one before it is whole
 )
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
-from evo_agents.hub.server.account_views import month_start, usage_cost
 
 ESTIMATE_USD = Decimal("1.00")  # what a run under a share is taken to cost before any of its runs reported a cost
 MIN_ESTIMATE_USD = Decimal("0.01")
@@ -350,10 +350,10 @@ def _spent(share_id: int, run_id: int):
         select(cl.c.run_id)
         .where(cl.c.share_id == share_id, cl.c.run_id != run_id)
         .group_by(cl.c.run_id)
-        .having(func.min(cl.c.issued_at) >= month_start())
+        .having(func.min(cl.c.issued_at) >= account_views.month_start())
         .subquery()
     )
-    cost = usage_cost(r.c.usage)
+    cost = account_views.usage_cost(r.c.usage)
     return select(
         func.coalesce(func.sum(cost), 0).label("spent"),
         func.count().filter(cost > 0).label("costed"),

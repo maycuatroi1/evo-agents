@@ -31,7 +31,7 @@ from evo_agents.hub.server import merge_check as checks
 from evo_agents.hub.server import merge_comments, pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.protection import github_target
 
 log = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ async def _tell(conn: AsyncConnection, project, row, record: dict) -> None:
     """Open the notice of the project's owner about a merge with problems."""
     what = f"pull request #{row.number} of {row.repo}"
     lines = [f"- {line}" for line in record["problems"]]
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=project.owner_id,
         kind="notice",

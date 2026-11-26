@@ -197,7 +197,7 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
 
 def _slot_wanted():
     """Whether a run of tables.runs, waiting, holds a slot a queued run waits for: a run is queued pinned to its node
-    (a chat run of a pool whose nodes were all busy, ``chat_runs._pool_worker``), and the node holds as many runs as it
+    (a chat run of a pool whose nodes were all busy, ``chats.service.runs._pool_worker``), and the node holds as many runs as it
     has slots."""
     r, w = tables.runs, tables.workers
     queued, held = tables.runs.alias("queued"), tables.runs.alias("held")

@@ -54,9 +54,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import autonomy_gates, changes, chat_agents, merge_gate, triage
+from evo_agents.hub.server import autonomy_gates, changes, merge_gate, triage
 from evo_agents.hub.server.change_views import Change, change_view, change_with_origin
-from evo_agents.hub.server.chat_runs import agent_access, chat_run, hub_reply, post_agent
+from evo_agents.hub.server.chats.service import agents as chat_agents
+from evo_agents.hub.server.chats.service.agents import AgentRun
+from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
@@ -114,7 +116,7 @@ class CuratorMerged(BaseModel):
 class Frame:
     """What an answer acts on: the chat run, its thread, the proposal, its project and the owner it answers for."""
 
-    agent: chat_agents.AgentRun
+    agent: AgentRun
     chat_run_id: int
     chat_id: int
     root_id: int

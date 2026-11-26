@@ -216,7 +216,9 @@ def _notice(project: str, upload_id: int, found: KgPipeline) -> tuple[str, str]:
 async def _tell_one(conn: AsyncConnection, row, project: str) -> str | None:
     """Notify the sender and the admins of the end of upload ``row``'s flow and mark it told; what it ended as, None
     while it moves."""
-    from evo_agents.hub.server.notifications import notify  # notifications import the claim, which imports the KG
+    from evo_agents.hub.server.notifications.service.notifier import (
+        NOTIFIER,  # notifications import the claim, which imports the KG
+    )
 
     found = await read(conn, project, row)
     if found.state not in model.ENDED:
@@ -235,7 +237,7 @@ async def _tell_one(conn: AsyncConnection, row, project: str) -> str | None:
     details = {"upload": row.id, "state": found.state, "phase": found.phase, "build": found.build_id}
     told: set[int] = {*admins, *([row.created_by] if row.created_by is not None else [])}
     for user_id in sorted(told):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

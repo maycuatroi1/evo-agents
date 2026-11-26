@@ -448,10 +448,10 @@ async def history_ended(conn: AsyncConnection, found: RunStep, new: str, *, reas
     """A history run that failed sends its owner the notice run_failed; what it wrote stays."""
     if new != "failed" or found.project_id is None:
         return
-    from evo_agents.hub.server.notifications import notify, run_link
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     why = found.error or reason
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=found.dispatcher_id,
         kind="notice",
@@ -461,7 +461,7 @@ async def history_ended(conn: AsyncConnection, found: RunStep, new: str, *, reas
         title=f"History run #{found.run_id} failed",
         body=why,
         details={"run_kind": "history", "error": why},
-        link=run_link(found.project, found.run_id),
+        link=NOTIFIER.run_link(found.project, found.run_id),
     )
 
 

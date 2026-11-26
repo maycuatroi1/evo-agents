@@ -1,7 +1,7 @@
 """What the hub keeps of the Telegram channel's model for itself: the one-time link codes of members' channels
-(``evo_agents.hub.server.member_channels``, schema 0063), what may reach a channel outside the hub (``restricted``,
-``restricted_for``), the words of a minimal message (``what_waits``), and the absolute URL of a page a notification
-links to (``web_url``). Pure functions on the standard library.
+(``evo_agents.hub.server.notifications.service.member_channels``, schema 0063), what may reach a channel outside the hub
+(``restricted``, ``restricted_for``), the words of a minimal message (``what_waits``), and the absolute URL of a page a
+notification links to (``web_url``). Pure functions on the standard library.
 
 The rest of the model, the bot's commands, the data of its buttons and the messages it sends, is the core plugin
 telegram's (``evo_core_plugins.telegram.model`` of the distribution evo-agents-core-plugins, which

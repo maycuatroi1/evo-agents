@@ -39,8 +39,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, findings, merge_infra, runs, tables
-from evo_agents.hub.server import chat_agents, triage
-from evo_agents.hub.server.chat_runs import agent_access, chat_run, hub_reply, post_agent
+from evo_agents.hub.server import triage
+from evo_agents.hub.server.chats.service import agents as chat_agents
+from evo_agents.hub.server.chats.service.agents import AgentRun
+from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
@@ -288,7 +290,7 @@ async def tell(conn: AsyncConnection, row, text: str) -> None:
 class Frame:
     """What the agent of a held check's thread acts on: its chat run, the thread, the check and the owner."""
 
-    agent: chat_agents.AgentRun
+    agent: AgentRun
     chat_run_id: int
     chat_id: int
     root_id: int

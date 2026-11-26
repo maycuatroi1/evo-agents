@@ -2,8 +2,8 @@
 
 When a trace's work chat opens (``work_chats.open_work``), the hub posts one message of its own in the root thread, the
 thread of the trace's first message: ``system_traces.card_message_id`` names it, and every read of it carries the card
-as its ``work`` part (``chat_views.messages_view``). A move that changes what the card shows (a run of the trace moving,
-``chat_runs.chat_run_moved``; a decision of one asked or answered, ``decisions``; the entry agent's ``work set``) writes
+as its ``work`` part (``chats.service.views.messages_view``). A move that changes what the card shows (a run of the trace moving,
+``chats.service.runs.chat_run_moved``; a decision of one asked or answered, ``decisions``; the entry agent's ``work set``) writes
 a ``message_changed`` event for it in the root chat, whose streams then read it again: a chat event, woken through
 ``evo_agents.hub.wake`` as every chat event is, so it needs no event bus. ``system_traces.card_state`` keeps the key of
 what the card showed (``work_status.card_state``), so a move that changes nothing on it writes no event. A change of the
@@ -34,16 +34,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, system_context, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, system_traces, work_chats, work_status
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
-from evo_agents.hub.server.chat_members import ChatId
-from evo_agents.hub.server.chat_runs import hub_reply
-from evo_agents.hub.server.chat_store import write_event
+from evo_agents.hub.server import audit, system_traces, work_status
+from evo_agents.hub.server.chats.models.agents import REFUSALS
+from evo_agents.hub.server.chats.models.members import ChatId
+from evo_agents.hub.server.chats.repository.store import write_event
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
+from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.work_status import WorkCard
+from evo_agents.hub.server.work_chats import service as work_chats
+from evo_agents.hub.server.work_status_models import Outcome, WorkCard
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ class WorkSetIn(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=TITLE_CHARS, description="a short name of the work")
     goal: str | None = Field(None, min_length=1, max_length=system_context.BRIEF_FIELD_CHARS)
     done_when: str | None = Field(None, min_length=1, max_length=system_context.BRIEF_FIELD_CHARS)
-    outcome: work_status.Outcome | None = Field(
+    outcome: Outcome | None = Field(
         None, description="met or not_met: whether the work reached its done-when, recorded before the final answer"
     )
     left: str | None = Field(

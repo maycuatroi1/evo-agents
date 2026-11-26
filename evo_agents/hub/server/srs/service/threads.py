@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import signals
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.srs import BA
 from evo_agents.hub.server.srs.models.doc import Document, Item
@@ -198,7 +198,7 @@ async def told(
         "item_code": thread.root.item_code,
     }
     for user_id in sorted(people):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

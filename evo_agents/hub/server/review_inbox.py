@@ -14,7 +14,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, runs, tables
-from evo_agents.hub.server.notifications import notify, run_link
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import RunStep
 
 log = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ async def review_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
         await playbook.exposed(conn, found.run_id, project_id)
     if new == "failed":
         error = found.error or reason
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=found.dispatcher_id,
             kind="notice",
@@ -61,7 +61,7 @@ async def review_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
             title=f"Review run #{found.run_id} of {found.project} failed",
             body=error,
             details={"run_kind": "review", "error": error},
-            link=run_link(found.project, found.run_id),
+            link=NOTIFIER.run_link(found.project, found.run_id),
         )
     c, p = tables.charters, tables.proposals
     charter = (
@@ -82,7 +82,7 @@ async def review_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
     ).all()
     for row in waiting:
         await conn.execute(update(p).values(inbox_at=func.now()).where(p.c.id == row.id))
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=found.dispatcher_id,
             kind="proposal",

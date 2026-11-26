@@ -1,7 +1,7 @@
 """The members' channels of a core plugin through the API: finding the member a channel speaks for, linking and
 unlinking it, where a member's link stands, one-time link codes, the state a channel keeps, and what a channel's class
-sends of a notification. Private to ``core_plugin_api``; ``evo_agents.hub.server.member_channels`` holds the
-queries."""
+sends of a notification. Private to ``core_plugin_api``; ``evo_agents.hub.server.notifications`` holds the members'
+channels (``service.member_channels``) and their queries (``repository.channels``)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, tables
-from evo_agents.hub.server import member_channels
 from evo_agents.hub.server.core_plugin_api._types import (
     Clearance,
     LinkCode,
@@ -34,15 +33,23 @@ from evo_agents.hub.server.core_plugin_api._types import (
     own_session,
     refusing,
 )
-from evo_agents.hub.server.member_channels import FROM_SESSION, MAX_CONFIG_BYTES, RESERVED_KEYS
-from evo_agents.hub.server.notifications import SESSION_ENDED, Outgoing
+from evo_agents.hub.server.notifications.models import (
+    FROM_SESSION,
+    MAX_CONFIG_BYTES,
+    RESERVED_KEYS,
+    SESSION_ENDED,
+    Found,
+    Outgoing,
+)
+from evo_agents.hub.server.notifications.repository import channels as channel_rows
+from evo_agents.hub.server.notifications.service import member_channels
 
 MAX_MATCH_KEYS = 8
 UNLINKED = "this channel is not linked any more: its member links it again"
 TURNED_OFF = "turned off"  # the reason of a channel turned off without one
 
 
-def _member(plugin: Plugin, kind: str, found: member_channels.Found) -> Member:
+def _member(plugin: Plugin, kind: str, found: Found) -> Member:
     return issue_member(plugin.id, kind, found.user_id, found.login, found.channel_id, found.config)
 
 
@@ -63,7 +70,7 @@ async def find_member(
     default), only while the web session that linked the channel lives, or when a hub admin linked it with no session
     (``PUT /v1/admin/users/{login}/channels/{kind}``). ``live=False`` is for unlinking alone."""
     own_kind(own_plugin(plugin), kind)
-    found = await member_channels.member_by_config(conn, kind, _match(match), live=live)
+    found = await channel_rows.member_by_config(conn, kind, _match(match), live=live)
     return None if found is None else _member(plugin, kind, found)
 
 
@@ -154,7 +161,7 @@ async def linked_channel(conn: AsyncConnection, plugin: Plugin, session: Session
     linked it ended; a channel a hub admin linked has no session to end); None when there is none."""
     own_kind(own_plugin(plugin), kind)
     own_session(session)
-    row = await member_channels.linked(conn, session.user_id, kind)
+    row = await channel_rows.linked(conn, session.user_id, kind)
     if row is None:
         return None
     config = dict(row.config or {})
@@ -172,7 +179,7 @@ async def set_channel_state(conn: AsyncConnection, member: Member, state: Mappin
     channel was unlinked since."""
     own_member(member)
     kept = member_channels.json_object(state, "a channel's state", MAX_CONFIG_BYTES)
-    if not await member_channels.set_state(conn, member.channel_id, member.user_id, kept):
+    if not await channel_rows.set_state(conn, member.channel_id, member.user_id, kept):
         raise Refused(404, UNLINKED)
 
 
@@ -183,7 +190,7 @@ async def direct_chat_member(conn: AsyncConnection, plugin: Plugin, kind: str, c
     c = tables.chats
     query = select(c.c.direct_user_id).where(c.c.id == chat_id, c.c.kind == chats.DIRECT)
     user_id = (await conn.execute(query)).scalar_one_or_none()
-    found = None if user_id is None else await member_channels.member_channel(conn, kind, user_id)
+    found = None if user_id is None else await channel_rows.member_channel(conn, kind, user_id)
     return None if found is None else _member(plugin, kind, found)
 
 
@@ -191,7 +198,7 @@ async def delivered_notification(conn: AsyncConnection, member: Member, external
     """The member's own notification their channel delivered as ``external_id`` (what the class's ``send``
     answered); None for any other."""
     own_member(member)
-    row = await member_channels.delivered(conn, member.user_id, member.kind, external_id)
+    row = await channel_rows.delivered(conn, member.user_id, member.kind, external_id)
     if row is None:
         return None
     return NotificationRef(row.id, row.kind, row.project, row.decision_id, row.proposal_id)

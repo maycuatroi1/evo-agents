@@ -1,11 +1,11 @@
-"""Group chats on the hub (``evo_agents.hub.server.chats``, ``chat_members``, ``chat_store``), as criteria a6 and a7
-of the plan agent-profiles-group-chat name them: a member creates a chat with people and agents; only members read it
-and write to it; adding an agent of a project needs the writer role on it, and adding a person needs a grant that
-clears the label of every project with an agent in the chat; messages have threads; mentions are read once and kept
-with the message (a person by login, an agent by handle, a project's name naming its default agent); a person
-mentioned or added gets a notice, which names the chat and links to it only in a restricted chat; reactions are one
-row per message, person or agent and emoji, counted by emoji; the reactions of a run's agent follow the run by rule;
-and a message without a mention of an agent makes no run and asks no model. The stream and the command line are in
+"""Group chats on the hub (``evo_agents.hub.server.chats.service.chats``, ``chats.service.members``, ``chats.repository.store``), as criteria
+a6 and a7 of the plan agent-profiles-group-chat name them: a member creates a chat with people and agents; only members
+read it and write to it; adding an agent of a project needs the writer role on it, and adding a person needs a grant
+that clears the label of every project with an agent in the chat; messages have threads; mentions are read once and kept
+with the message (a person by login, an agent by handle, a project's name naming its default agent); a person mentioned
+or added gets a notice, which names the chat and links to it only in a restricted chat; reactions are one row per
+message, person or agent and emoji, counted by emoji; the reactions of a run's agent follow the run by rule; and a
+message without a mention of an agent makes no run and asks no model. The stream and the command line are in
 ``tests.hub.test_chat_stream``; the runs mentions make in ``tests.hub.test_chat_runs``."""
 
 from functools import partial
@@ -22,8 +22,9 @@ from sqlalchemy import func, select, update
 
 from evo_agents.hub import chats, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_store import insert_message, status_reaction
+from evo_agents.hub.server.chats.repository.store import status_reaction
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.security import Principal
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import ADMIN, sql

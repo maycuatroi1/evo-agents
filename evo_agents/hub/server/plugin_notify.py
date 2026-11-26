@@ -9,7 +9,7 @@ call); a body that is wrong, or a ``link`` outside the plugin's pages and the pr
 ``to`` names logins and/or the roles ``admins`` (the project's admins), ``writers`` (its writers and admins) and
 ``members`` (everyone who holds a grant). Each of them with a grant on the project gets one notification of kind notice,
 notice_kind ``plugin_notice``, whose details name the plugin, its version, the ``topic`` and the ``key``; the
-notifications go to the outbox in the transaction of the call (``notifications.notify``), so the web's Inbox and each
+notifications go to the outbox in the transaction of the call (``NOTIFIER.notify``), so the web's Inbox and each
 channel of the member receive them as any notice. A login without a grant is dropped and named in the answer. The
 route has no rate limit.
 
@@ -34,7 +34,8 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import TITLE_CHARS, notify
+from evo_agents.hub.server.notifications.models import TITLE_CHARS
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.task_dispatch import plugin_of_request
 
 log = logging.getLogger(__name__)
@@ -183,7 +184,7 @@ async def send_notice(
         chosen, skipped = await _recipients(conn, enabled.project_id, body.to)
         details = {"plugin": enabled.name, "version": enabled.installed_version, "topic": body.topic, "key": body.key}
         for row in chosen:
-            await notify(
+            await NOTIFIER.notify(
                 conn,
                 user_id=row.id,
                 kind="notice",

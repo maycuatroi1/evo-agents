@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import goals as hub_goals
 from evo_agents.hub import signals, tables
 from evo_agents.hub.plugin_calls import enabled_query
-from evo_agents.hub.server import agent_types, notifications
+from evo_agents.hub.server import agent_types
 from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server.core_plugin_api._base import AUDIT_WORD, HUB_FAMILIES, MAX_AUDIT_TARGET
 from evo_agents.hub.server.core_plugin_api._reads import MAX_ROWS, enabled_project
@@ -34,6 +34,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
 )
 from evo_agents.hub.server.core_plugin_api._writes import SIGNAL_DAYS, plugin_pusher
 from evo_agents.hub.server.loop import view
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.server.signals.models import SignalIn
 
@@ -202,7 +203,7 @@ async def notify_admins(
     found = []
     for user_id in await _admins(conn, project_id):
         found.append(
-            await notifications.notify(
+            await NOTIFIER.notify(
                 conn,
                 user_id=user_id,
                 kind="notice",

@@ -12,7 +12,7 @@ any edge the spec has no interacts edge for, with the reason the ask gave or non
 The system of a run (``of_run``) is its trace's, at the revision the trace started under; for a run in no trace, the
 system whose entry agent it is, else the latest system of a trace in its chat that has its profile, else the first
 system of the project that has it (``system_for``). ``system_for`` also gives the version of a profile a new session
-pins (``chat_runs._pinned``).
+pins (``chats.service.runs._pinned``).
 
 ``execute_tool`` spans record what a run does through the hub: an ask (with the brief fields present), a mention, a
 forward, a query of a knowledge graph (``gen_ai.data_source.id``), and a refusal. Each write notifies CHANNEL with

@@ -48,7 +48,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute, and queued by each transaction that stores a notification: the
   notification deliveries that are due, each handed to its channel's class, tried again with a backoff and failed
-  after 5 tries (``evo_agents.hub.server.notifications``).
+  after 5 tries (``evo_agents.hub.server.notifications.service.deliveries``).
 - ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, the outputs of
   source tool of those runs that no question or chat message carries (``evo_agents.hub.output_prune``), and the sealed
   values of the GitHub tokens leased to runs that are past their end.
@@ -411,7 +411,7 @@ async def recover_runs(context: JobContext, timestamp: int | None = None) -> dic
     name=jobs.DELIVER_NOTIFICATIONS, pass_context=True, queueing_lock=jobs.DELIVER_NOTIFICATIONS, queue=jobs.LEASE
 )
 async def deliver_notifications(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.notifications import deliver_notifications as deliver
+    from evo_agents.hub.server.notifications.service.deliveries import deliver_notifications as deliver
 
     found = hub(context)
     return await deliver(found.engine, config=found.config, blobs=found.blobs)
@@ -540,7 +540,7 @@ async def deliver_plugin_events(context: JobContext, timestamp: int | None = Non
     queue=jobs.DELIVERY_QUEUE,
 )
 async def deliver_webhooks(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.webhook_delivery import deliver
+    from evo_agents.hub.server.webhooks.service.delivery import deliver
 
     found = hub(context)
     assert found.engine is not None  # the hub's worker opens its engine before its first job

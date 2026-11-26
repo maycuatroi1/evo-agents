@@ -1,0 +1,173 @@
+"""The tiers of notifications and the quiet hours of members (plan hub-mobile-phase-0, criterion a3), on
+notification_preferences (schema 0157), whose SQL ``push.repository`` holds. ``docs/notifications.md`` is the design;
+``output_notices`` has the routes that read and set them (GET and PUT /v1/me/notification-settings).
+
+**Tiers.** Each kind of notification (KINDS: decision, proposal and each kind of notice) is of one tier for a member:
+interrupt, pushed to their devices; brief, only in Today and the Inbox; or off, in the Inbox alone. The tier decides
+push alone: every notification still goes to the Inbox, the web's bell and the member's channels as before, and a
+notice the member turned off (``output_notices.muted``) still is not sent at all. ``interrupts`` tells
+``NOTIFIER.notify`` whether a notification gets a delivery on each of its member's devices.
+
+A tier the member chose for a kind (``tiers``) holds for every notification of that kind. Without one, the hub's
+default (``default_tier``) holds: interrupt for a decision asked of the member (the person who answers it,
+``decisions.repository.asked_person``), for a run_failed of a run they dispatched (not one of CURATOR_KINDS, which the
+night shift queues on its own), for a release notice of a release that went wrong (any event but ``published``) and for
+merge_paused, the breaker of a merge queue that stopped a deploy; brief for every other notification, those of a kind
+added later included. DEFAULT_INTERRUPTS are the kinds whose default is interrupt for some of their notifications.
+
+**Quiet hours.** A member may set quiet hours, from ``quiet_start`` to ``quiet_end`` (HH:MM, past midnight when the end
+is not after the start), in their time zone (an IANA name, the hub's EVO_HUB_WEB_TIME_ZONE until they choose one).
+The job hub.deliver_notifications asks ``held_until`` before it pushes to a device: inside the quiet hours a push waits
+until they end, a decision's too. Its run parked meanwhile costs nothing: the hub parks every run that waits
+(``run_reaper.park_waiting``), and the answer resumes it in its session. The check runs at the delivery, not when the
+notification is stored, so quiet hours set or changed meanwhile hold. A push of a decision that is no longer open by
+then is not sent (``closed``).
+
+``digest_at`` is the local time of the member's summary push (DEFAULT_DIGEST_AT until they choose one), which the job
+of plan hub-mobile-phase-0 step 5 reads with ``preferences``.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta
+
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import curator, runs
+from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
+from evo_agents.hub.server.push import repository
+from evo_agents.hub.server.push.models import (
+    DEFAULT_INTERRUPTS,
+    FALLBACK_ZONE,
+    KINDS,
+    RELEASED,
+    Facts,
+)
+from evo_agents.hub.tables_push import BRIEF, INTERRUPT, TIERS
+
+log = logging.getLogger(__name__)
+
+
+def kind_of(kind: str, notice_kind: str | None) -> str:
+    """The kind a notification's tier is chosen for: its notice's kind for a notice, else its own."""
+    return notice_kind if kind == "notice" and notice_kind else kind
+
+
+def kind_default(kind: str) -> str:
+    """The tier the hub gives ``kind`` until a member chooses one, as the settings show it: interrupt for the kinds of
+    DEFAULT_INTERRUPTS (for the notifications ``default_tier`` names), brief for every other."""
+    return INTERRUPT if kind in DEFAULT_INTERRUPTS else BRIEF
+
+
+def default_tier(facts: Facts) -> str:
+    """The hub's tier for one notification to a member who chose none for its kind (the module)."""
+    if facts.kind == "decision":
+        return INTERRUPT if facts.asked_of_member else BRIEF
+    if facts.kind == "run_failed":
+        mine = facts.dispatched_by_member and facts.run_kind not in runs.CURATOR_KINDS
+        return INTERRUPT if mine else BRIEF
+    if facts.kind == "release":
+        return BRIEF if facts.event == RELEASED else INTERRUPT
+    if facts.kind == "merge_paused":
+        return INTERRUPT
+    return BRIEF
+
+
+async def preferences(conn: AsyncConnection, user_id: int):
+    """Member ``user_id``'s row of notification_preferences, or None when they chose nothing yet."""
+    return await repository.preferences(conn, user_id)
+
+
+def chosen_tiers(row) -> dict[str, str]:
+    """The tiers a member chose (their preferences' ``tiers``), each a kind of KINDS and one of TIERS."""
+    found = row.tiers if row is not None and isinstance(row.tiers, dict) else {}
+    return {kind: tier for kind, tier in found.items() if kind in KINDS and tier in TIERS}
+
+
+async def _facts(conn: AsyncConnection, kind: str, user_id: int, run_id, decision_id, details) -> Facts:
+    if kind == "decision" and decision_id is not None:
+        return Facts(kind, asked_of_member=await repository.asked_of(conn, decision_id) == user_id)
+    if kind == "run_failed" and run_id is not None:
+        row = await repository.run_dispatch(conn, run_id)
+        if row is not None:
+            return Facts(kind, dispatched_by_member=row.dispatched_by == user_id, run_kind=row.kind)
+    event = details.get("event") if isinstance(details, dict) else None
+    return Facts(kind, event=event if isinstance(event, str) else None)
+
+
+async def interrupts(
+    conn: AsyncConnection,
+    *,
+    user_id: int,
+    kind: str,
+    notice_kind: str | None = None,
+    run_id: int | None = None,
+    decision_id: int | None = None,
+    details: dict | None = None,
+) -> bool:
+    """Whether a notification of ``kind`` (and ``notice_kind``) to member ``user_id`` is of the interrupt tier for
+    them, so it is pushed to their devices (the module)."""
+    key = kind_of(kind, notice_kind)
+    chosen = chosen_tiers(await preferences(conn, user_id)).get(key)
+    if chosen is not None:
+        return chosen == INTERRUPT
+    if key not in DEFAULT_INTERRUPTS:
+        return False
+    return default_tier(await _facts(conn, key, user_id, run_id, decision_id, details)) == INTERRUPT
+
+
+# Quiet hours
+
+
+async def time_zone_known(conn: AsyncConnection, name: str) -> bool:
+    """Whether Postgres knows the time zone ``name``, as the Curator's charter checks its own."""
+    return await repository.time_zone_known(conn, name)
+
+
+async def held_until(conn: AsyncConnection, *, user_id: int, config=None) -> datetime | None:
+    """Until when member ``user_id``'s quiet hours hold a push to their devices, on a hub configured with ``config``;
+    None when it goes now (the module)."""
+    row = await preferences(conn, user_id)
+    if row is None or row.quiet_start is None or row.quiet_end is None:
+        return None
+    zone = row.time_zone or getattr(config, "web_time_zone", None) or DEFAULT_WEB_TIME_ZONE
+    if not await time_zone_known(conn, zone):
+        log.warning("quiet hours in a time zone Postgres does not know", extra={"user_id": user_id, "zone": zone})
+        zone = FALLBACK_ZONE
+    local_now = await repository.local_now(conn, zone)
+    start, end = curator.parse_time(row.quiet_start), curator.parse_time(row.quiet_end)
+    if not curator.in_window(local_now.time(), start, end):
+        return None
+    local_end = datetime.combine(local_now.date(), end)
+    if local_end <= local_now:
+        local_end += timedelta(days=1)
+    return await repository.from_local(conn, zone, local_end)
+
+
+async def closed(conn: AsyncConnection, decision_id: int | None) -> bool:
+    """Whether decision ``decision_id`` is no longer open, so a push of it would ask what nobody asks any more."""
+    if decision_id is None:
+        return False
+    state = await repository.decision_state(conn, decision_id)
+    return state is not None and state != "open"
+
+
+# Setting them
+
+
+async def set_preferences(conn: AsyncConnection, user_id: int, values: dict) -> None:
+    """Set member ``user_id``'s notification preferences named in ``values`` (PREFERENCES and hide_details), leaving
+    the rest as they are; ``tiers`` is merged into the tiers they chose, a kind set to None going back to the default."""
+    values = dict(values)
+    if "tiers" in values:
+        tiers = chosen_tiers(await preferences(conn, user_id))
+        for kind, tier in values["tiers"].items():
+            if tier is None:
+                tiers.pop(kind, None)
+            else:
+                tiers[kind] = tier
+        values["tiers"] = tiers
+    if not values:
+        return
+    await repository.upsert_preferences(conn, user_id, values)

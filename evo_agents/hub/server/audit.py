@@ -30,7 +30,7 @@ AUTH_APP_REVOKE = "auth_app.revoke"
 # A project's admin set its DLP policy (evo_agents.hub.server.dlp_policy): "<project> mode=<m> kinds=<n> keywords=<n>",
 # never a keyword.
 DLP_POLICY = "dlp.policy"
-# A project's admin added, changed or deleted an outbound webhook (evo_agents.hub.server.project_webhooks):
+# A project's admin added, changed or deleted an outbound webhook (evo_agents.hub.server.webhooks):
 # "<project> webhook=<id>", never its URL's query or its secret.
 WEBHOOK_CREATE = "webhook.create"
 WEBHOOK_UPDATE = "webhook.update"
@@ -157,7 +157,7 @@ WORK_SET = "work.set"  # the entry agent of a system set the title, goal or done
 WORK_HANDLED = "work.handled"  # a member of a trace's work chat marked its work handled (work_cards, Mark as handled)
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
-# The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the
+# The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.outputs): the
 # run's target, then " output:<id>", never its name or its bytes.
 RUN_OUTPUT_DELETE = "run.output_delete"
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
@@ -169,7 +169,7 @@ RUN_OPEN_REPO = "run.open_repo"
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
 NOTIFICATION_READ = "notification.read"  # a member marked notifications read: "notifications:<id>,<id>" or ":all"
-# A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.output_notices).
+# A member turned kinds of notice on or off: "notifications:settings run_outputs=off" (server.outputs.service.notices).
 NOTIFICATION_SETTINGS = "notification.settings"
 # A member added a push device, or it went: removed by the member, or by the hub when its push service no longer knew
 # it or its sign-in ended. "push_device:<id> kind=<kind> user=<login> by=<member|hub>", never its endpoint or token.
@@ -272,23 +272,24 @@ BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did
 # relayed, never a key, a text, a URL or a frame.
 BROWSER_VIEW = "browser.view"  # the dispatcher opened the run's browser in the live view, or the view ended
 BROWSER_CONTROL = "browser.control"  # in a view, the dispatcher got the browser to drive (mode human), or gave it back
-# Group chats (evo_agents.hub.server.chats); the target is "chat:<id>", then "person:<login>", "agent:@<handle>" or
-# "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's project.
+# Group chats (evo_agents.hub.server.chats.service.chats); the target is "chat:<id>", then "person:<login>",
+# "agent:@<handle>" or "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's
+# project.
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with
 CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 # A writer on a project shared its part of a chat's label with people of the chat who hold no grant that clears it, in
-# the project: "chat:<id> shared:<login>,<login>" (evo_agents.hub.server.chat_access).
+# the project: "chat:<id> shared:<login>,<login>" (evo_agents.hub.server.chats.service.access).
 CHAT_SHARE = "chat.share"
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 # A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
 CHAT_IMAGE = "chat.image"
 # An admin of every project of a chat's agents set the level of its label, or took it off: "chat:<id> label:<level>" or
-# "chat:<id> label:default" (evo_agents.hub.server.chat_labels).
+# "chat:<id> label:default" (evo_agents.hub.server.chats.service.labels).
 CHAT_LABEL = "chat.label"
 # A group chat was bridged to a group of a core plugin's channel, by the code of a chat admin's web session, or the
 # bridge was taken off: "chat:<id> bridge:<id> kind:<kind>", an unlink followed by `` via=<web|cli|bot|admin>``
-# (evo_agents.hub.server.chat_bridges).
+# (evo_agents.hub.server.chats.service.bridges).
 CHAT_BRIDGE = "chat.bridge"
 CHAT_UNBRIDGE = "chat.unbridge"
 # The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
@@ -354,7 +355,7 @@ PLUGIN_CONFIG = "plugin.config"
 # " rollback-to=v<n>"; never a value.
 SETTINGS_BRANDING = "settings.branding"
 SETTINGS_FEATURES = "settings.features"
-# An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.run_outputs):
+# An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.outputs):
 # "<project>/outputs tool_images=on|off".
 SETTINGS_OUTPUTS = "settings.outputs"
 # A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:

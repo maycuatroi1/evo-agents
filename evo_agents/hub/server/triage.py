@@ -5,13 +5,13 @@ When a run of kind step, plan or author ends ``failed``, ``open_thread`` finds o
 agent in it, and writes the first message of the thread: what the hub knows of the failure (state, cause and whether the
 hub guessed it, error, plan and step, repo and branch, the last verify, links to the run's page, log and diff, and who
 could run it again: ``runs.service.candidates``) and, last, the mention of the agent, which starts a chat run for the
-owner at hop 1 (``chat_runs.hand_work``: the writer role and a worker of the owner decide, and a refusal is said in
+owner at hop 1 (``chats.service.runs.hand_work``: the writer role and a worker of the owner decide, and a refusal is said in
 the thread). A run has one thread: ``run_triage`` holds it, so a second call finds it. Review, judge,
 chat and local runs open none, so the failure of a chat run of triage starts no triage. The switch of a project is
 ``projects.triage_enabled``; the hub's ``chats`` feature must be on. The first message names the plan and the step, so
 each thread says which plan it is about.
 
-Everyone in the project's chat clears its label, which holds the project's default label (``chat_access``), so they read
+Everyone in the project's chat clears its label, which holds the project's default label (``chats.service.access``), so they read
 by grant what is labelled at or below it, as the project's runs on no plan are. A plan whose label is not at or below it
 (a higher level or location, a label that names another project or cannot be read), or that is no longer on the hub,
 keeps a chat of its own, "Triage: <plan>", as every plan had before (``_apart``): there its failures reach the owners of
@@ -59,12 +59,16 @@ from evo_agents.hub import chats, features, runs, tables, triage_rules
 from evo_agents.hub.access import UNTRUSTED
 from evo_agents.hub.accounts import account_state
 from evo_agents.hub.server import audit, hub_settings
-from evo_agents.hub.server.chat_access import NOT_A_MEMBER, ChatAccess, chat_access, projects_by_id
-from evo_agents.hub.server.chat_members import label_now, label_problems, put_agent, put_person
-from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
-from evo_agents.hub.server.chat_store import add_member, insert_mentions, insert_message, member_event
-from evo_agents.hub.server.chat_views import person_author
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.access import NOT_A_MEMBER, ChatAccess
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.models.views import person_author
+from evo_agents.hub.server.chats.repository.access import projects_by_id
+from evo_agents.hub.server.chats.repository.store import add_member, insert_mentions, member_event
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.members import label_now, label_problems, put_agent, put_person
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
 from evo_agents.hub.server.profile_store import by_id, ensure_default
 from evo_agents.hub.server.run_state import RunStep, run_step
 from evo_agents.hub.server.runs.service.candidates import candidates_of

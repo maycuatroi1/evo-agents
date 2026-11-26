@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ async def _notify_owner(conn: AsyncConnection, row, findings: list[DoctorFinding
         "it is shared with until a report has no high finding; your own runs go on. Run `evo-agents worker doctor` on "
         "the machine to see how to fix each."
     )
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=row.owner_id,
         kind="notice",

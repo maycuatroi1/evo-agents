@@ -52,13 +52,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import chats, runs, system_context, tables, triage_rules
 from evo_agents.hub.server import audit, system_traces
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access
-from evo_agents.hub.server.chat_agents import AgentRun
-from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
-from evo_agents.hub.server.chat_runs import Hand, chat_run, hand_mentions, hub_reply
-from evo_agents.hub.server.chat_store import add_member, insert_mentions, insert_message, member_event
-from evo_agents.hub.server.chat_views import person_author
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.models.views import person_author
+from evo_agents.hub.server.chats.repository.store import add_member, insert_mentions, member_event
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.agents import AgentRun
+from evo_agents.hub.server.chats.service.members import label_now, put_agent, put_person
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import chat_run, hand_mentions, hub_reply
 from evo_agents.hub.server.profile_store import Profile, by_handle
 from evo_agents.hub.server.run_state import RunStep
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -320,7 +323,9 @@ async def open_ops(
 async def _thread_chat(conn: AsyncConnection, ask: Ask, person: Principal, lead: Profile) -> ChatAccess:
     """The chat a thread of ``ask`` opens in: the work chat of its trace (``work_chats``), else the ops chat of its
     system, which a line in the work chat names when the Orchestrator may not be in it."""
-    from evo_agents.hub.server import work_chats  # it hands work through chat_runs, as this module does
+    from evo_agents.hub.server.work_chats import (
+        service as work_chats,  # it hands work through chat_runs, as this module does
+    )
 
     trace = None
     if ask.found.trace_id is not None and ask.found.run_id is not None:
@@ -752,7 +757,9 @@ async def escalate(conn: AsyncConnection, sealer, run: AgentRun, body: EscalateI
         )
     else:
         shown = f"escalation: {refusal}"
-    from evo_agents.hub.server import work_chats  # it hands work through chat_runs, as this module does
+    from evo_agents.hub.server.work_chats import (
+        service as work_chats,  # it hands work through chat_runs, as this module does
+    )
 
     await work_chats.say(conn, run.run_id, (chat.chat_id, chat.root_id), runs.clip(shown, 4000))
     log.info(

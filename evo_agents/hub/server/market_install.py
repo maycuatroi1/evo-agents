@@ -45,7 +45,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.blobs import blob_store, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugin_grants import check_admin
 from evo_agents.hub.server.plugin_publishers import SIGNER, check_may_trust, trust
 from evo_agents.hub.server.plugin_store import (
@@ -411,7 +411,7 @@ async def request_install(
             project_id=access.project_id,
         )
         for admin_id in await hub_admin_ids(conn, config.admins):
-            await notify(
+            await NOTIFIER.notify(
                 conn,
                 user_id=admin_id,
                 kind="notice",

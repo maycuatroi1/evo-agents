@@ -19,8 +19,8 @@ scope alone; the person asked reads what it is bound to under the context.
 A question may carry a label (``label``): a level of its project's ladder, at most the level the grant of the run's
 owner reaches (``service.asks.checked_label``, 422 otherwise). Every view shows the effective label (``label``: the
 decision's own, else the project's default label's level) and whether the agent gave it (``label_given``). The
-channels of core plugins send a decision by that label (``member_channels.prepare``), and ``channel_deliveries`` says
-for each channel whether its message went, why not, or how it failed (``service.channels``).
+channels of core plugins send a decision by that label (``notifications.service.member_channels.prepare``), and
+``channel_deliveries`` says for each channel whether its message went, why not, or how it failed (``service.channels``).
 
 A wait (category wait) shows what it waits for in ``waiting_on`` (``evo_agents.hub.server.waiting_on``), every other
 decision null there.
@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator, model_validat
 
 from evo_agents.hub import approval_heads, credential_requests, decision_asks, outputs, runs
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
-from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.outputs.models import RunOutput
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
 from evo_agents.hub.server.waiting_on import WaitingOn
 

@@ -28,9 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import plugin_calls, plugin_events, profiles, question_runs, tables
 from evo_agents.hub.question_runs import MAX_ASKER_CHARS, MAX_REF_CHARS
-from evo_agents.hub.server import agent_placement, audit, member_channels
+from evo_agents.hub.server import agent_placement, audit
 from evo_agents.hub.server.agent_types import enabled_type, type_left
-from evo_agents.hub.server.chat_runs import project_repos
+from evo_agents.hub.server.chats.repository.runs import project_repos
+from evo_agents.hub.server.notifications.repository.channels import project_rules, rules_of
+from evo_agents.hub.server.notifications.service.member_channels import kept_from
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_state import move_run, notify_queued
@@ -76,8 +78,8 @@ async def _fit_problem(conn: AsyncConnection, enabled, row) -> str | None:
 
 
 async def _kept(conn: AsyncConnection, project: str, level: str, location: str | None, below: bool) -> bool:
-    rules = await member_channels.rules_of(conn, project)
-    return member_channels.kept_from(rules, level, location, below)
+    rules = await rules_of(conn, project)
+    return kept_from(rules, level, location, below)
 
 
 async def _queue(conn: AsyncConnection, enabled, row, question: str, left: float) -> int:
@@ -210,9 +212,9 @@ def _asked_view(before, project: str, name: str, ref: str, *, made: bool) -> dic
 
 def _question_select():
     """A question with its run's state and failure cause, its type's name, and its project's name, ladder, default
-    label and hub sink's clearance (``member_channels.project_rules``)."""
+    label and hub sink's clearance (``notifications.repository.channels.project_rules``)."""
     q, r, t, pl = tables.agent_questions, tables.runs, tables.project_agent_types, tables.plugins
-    rules = member_channels.project_rules().subquery()
+    rules = project_rules().subquery()
     return (
         select(
             q.c.id,
@@ -248,7 +250,7 @@ def _cleared_now(found) -> bool:
     level = cleared.get("level")
     if not isinstance(level, str):
         return False
-    return not member_channels.kept_from(found, level, cleared.get("location"), cleared.get("below") is True)
+    return not kept_from(found, level, cleared.get("location"), cleared.get("below") is True)
 
 
 def _answer(found) -> dict:

@@ -1,6 +1,6 @@
 """Agent systems in the database (``evo_agents.hub.tables_systems``): a system as the hub holds it, its revisions, what
 of the project its spec names, and the version a system pins for its entry agent, for the routes of
-``agent_systems`` and for the chat runs (``chat_runs``).
+``agent_systems`` and for the chat runs (``chats.service.runs``).
 
 A spec is checked (``system_spec.check`` and ``check_refs``) and pinned (``system_spec.pin``) before it is written; the
 store writes it whole as the next revision, with its revision row and the profile that is its entry agent, in the

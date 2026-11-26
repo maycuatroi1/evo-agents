@@ -1,5 +1,5 @@
-"""What the list of chats and a chat's people show of their faces (``evo_agents.hub.server.chat_summaries``,
-``chat_views``), as criterion a4 of the plan agent-direct-chats names it: ChatSummary keeps its fields and adds the
+"""What the list of chats and a chat's people show of their faces (``evo_agents.hub.server.chats.service.summaries``,
+``chats.models.views``), as criterion a4 of the plan agent-direct-chats names it: ChatSummary keeps its fields and adds the
 chat's kind, image, the agent of a direct chat, a few members other than the reader and the last message of its main
 line, as one short line without markdown whose text a reader who does not clear its label never gets; a person in a
 chat, on a message and in an event carries their GitHub avatar, none for a login that never signed in; and GET
@@ -109,7 +109,9 @@ def test_a_chat_last_message_the_reader_does_not_clear_keeps_its_text_hidden(cli
 
 
 def test_the_chat_summary_takes_as_many_queries_for_six_chats_as_for_one(client, hub, hub_db):
-    from evo_agents.hub.server.chat_summaries import chat_summaries  # after the app: its imports go round otherwise
+    from evo_agents.hub.server.chats.service.summaries import (
+        chat_summaries,  # after the app: its imports go round otherwise
+    )
 
     user = group_chats.principal(hub_db, OWNER)
 

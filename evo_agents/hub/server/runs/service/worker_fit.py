@@ -1,8 +1,8 @@
 """Which workers of a member can take a run of an agent profile now, and why one cannot: the workers of a member that
 serve a project, and those other members share in it (``shared_in``), with what each holds, whether it is online and
 what its last heartbeat says (``workers_of``), and the reasons a worker is no fit (``worker_problems``). A chat run
-(``evo_agents.hub.server.chat_runs``) picks its worker with the first reason, and the candidates to run a failed run
-again (``service.candidates``) list them all."""
+(``evo_agents.hub.server.chats.service.runs``) picks its worker with the first reason, and the candidates to run a
+failed run again (``service.candidates``) list them all."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def lacks_agent_home(row, profile, runtime: str = "any") -> bool:
 
 
 # The one reason a node cannot take a run now that passes on its own: a chat run of a pool whose ready nodes only lack
-# a slot queues on the first of them (``chat_runs._pool_worker``) rather than being refused.
+# a slot queues on the first of them (``chats.service.runs._pool_worker``) rather than being refused.
 NO_FREE_SLOT = "has no free slot"
 
 

@@ -4,7 +4,7 @@ approval made (criterion a8 of plan srs-conflicts-and-tasks).
 
 The hub lists it in a session whose project enabled the plugin, and checks its arguments against the manifest's
 schema first. It acts for a person: the agent of a chat run for the person who mentioned the agent, the origin of the
-chain (``chat_runs.ChatRun.dispatcher_id``), also when the run went to the worker of its agent type's run_as; the agent
+chain (``chats.models.runs.ChatRun.dispatcher_id``), also when the run went to the worker of its agent type's run_as; the agent
 of the task run of @ba that splits the frame tasks of an approved SRS version or use case
 (``hub.server.srs.service.auto_tasks``) for the member whose approval made it approved, whom the hub keeps for that run
 (srs_approval_tasks.approved_by by split_run_id, or srs_use_case_releases.released_by by the split run its ``tasks``

@@ -4106,72 +4106,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/attachments.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 84,
-                    "endColumn": 92,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 98,
-                    "endColumn": 111,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 89,
-                    "endColumn": 102,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 111,
-                    "endColumn": 118,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 102,
-                    "endColumn": 109,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 46,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 108,
-                    "endColumn": 115,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/auth.py": [
             {
                 "code": "reportOptionalMemberAccess",
@@ -4186,48 +4120,6 @@
                 "range": {
                     "startColumn": 53,
                     "endColumn": 55,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/author_chat.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 78,
-                    "endColumn": 86,
                     "lineCount": 1
                 }
             }
@@ -6720,371 +6612,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/chat_agents.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 55,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 108,
-                    "endColumn": 116,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 92,
-                    "endColumn": 100,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 107,
-                    "endColumn": 115,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 92,
-                    "endColumn": 100,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 101,
-                    "endColumn": 109,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 84,
-                    "endColumn": 92,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 38,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_bridges.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 98,
-                    "endColumn": 106,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 80,
-                    "endColumn": 88,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_direct.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 57,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_events.py": [
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 76,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 70,
-                    "endColumn": 78,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportPossiblyUnboundVariable",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportPossiblyUnboundVariable",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportPossiblyUnboundVariable",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_graph.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 42,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 63,
-                    "endColumn": 66,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_images.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 63,
-                    "endColumn": 75,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 66,
-                    "endColumn": 79,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_labels.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 63,
-                    "endColumn": 71,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 66,
-                    "endColumn": 74,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_members.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 72,
-                    "endColumn": 80,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 73,
-                    "endColumn": 81,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 71,
-                    "endColumn": 79,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 72,
-                    "endColumn": 80,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_read.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 57,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 57,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 42,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 42,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 86,
-                    "endColumn": 99,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_runs.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 56,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 58,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 42,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 66,
-                    "endColumn": 79,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 82,
-                    "endColumn": 89,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 61,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chat_views.py": [
+        "./evo_agents/hub/server/chats/models/views.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -7188,70 +6716,168 @@
                     "endColumn": 50,
                     "lineCount": 1
                 }
+            }
+        ],
+        "./evo_agents/hub/server/chats/routes/author.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 78,
+                    "endColumn": 86,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/chats/routes/events.py": [
+            {
+                "code": "reportPossiblyUnboundVariable",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 31,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportPossiblyUnboundVariable",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 23,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportPossiblyUnboundVariable",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 23,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/chats/service/direct.py": [
+            {
+                "code": "reportReturnType",
+                "range": {
+                    "startColumn": 11,
+                    "endColumn": 62,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/chats/service/graph.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 42,
+                    "endColumn": 45,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 63,
+                    "endColumn": 66,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/chats/service/read.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 63,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 63,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 57,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 57,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 42,
+                    "endColumn": 59,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/chats/service/runs.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 37,
+                    "endColumn": 44,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 58,
+                    "endColumn": 63,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 44,
+                    "endColumn": 48,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 42,
+                    "endColumn": 49,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 66,
+                    "endColumn": 79,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 82,
+                    "endColumn": 89,
+                    "lineCount": 1
+                }
             },
             {
                 "code": "reportReturnType",
                 "range": {
                     "startColumn": 11,
-                    "endColumn": 44,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/chats.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 65,
-                    "endColumn": 73,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 57,
-                    "endColumn": 65,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 70,
-                    "endColumn": 78,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 92,
-                    "endColumn": 100,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 98,
-                    "endColumn": 106,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 100,
-                    "endColumn": 108,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 75,
+                    "endColumn": 40,
                     "lineCount": 1
                 }
             }
@@ -11492,104 +11118,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/notifications.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 62,
-                    "endColumn": 78,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 72,
-                    "endColumn": 77,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/opportunity_deadlines.py": [
             {
                 "code": "reportArgumentType",
@@ -11902,190 +11430,6 @@
                 "range": {
                     "startColumn": 58,
                     "endColumn": 66,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/output_content.py": [
-            {
-                "code": "reportGeneralTypeIssues",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 103,
-                    "endColumn": 110,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 105,
-                    "endColumn": 112,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 94,
-                    "endColumn": 101,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/output_notices.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 43,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 43,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/output_store.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/output_views.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 35,
                     "lineCount": 1
                 }
             }
@@ -13980,41 +13324,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/push.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/push_native.py": [
+        "./evo_agents/hub/server/push/service/native.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -14136,7 +13446,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/push_senders.py": [
+        "./evo_agents/hub/server/push/service/senders.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -15170,120 +14480,6 @@
                 "range": {
                     "startColumn": 93,
                     "endColumn": 101,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/run_outputs.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 83,
-                    "endColumn": 96,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 83,
-                    "endColumn": 96,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 85,
-                    "endColumn": 98,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 35,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 35,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 96,
-                    "endColumn": 109,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 78,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 99,
-                    "endColumn": 112,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 97,
-                    "endColumn": 110,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 87,
-                    "endColumn": 100,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 88,
-                    "endColumn": 101,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 27,
                     "lineCount": 1
                 }
             }

@@ -23,7 +23,7 @@ transaction of its own that holds the project's row of loop_states, at the local
 
 Each goes to a member who holds a grant on the project, once: the hub looks for the notice of that month (or day) it
 sent them already, by its details. The web, Telegram and the other channels get them as any notice
-(``notifications.notify``); Telegram shows a kind it does not know as a notice with its title and link.
+(``NOTIFIER.notify``); Telegram shows a kind it does not know as a notice with its title and link.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from evo_agents.hub.server.loop import adopt
 from evo_agents.hub.server.loop.board_items import board_path, line
 from evo_agents.hub.server.loop.model import DISPATCHED, DONE_EVENT, WAITING_HUMAN
 from evo_agents.hub.server.loop.view import loop_zone, reached
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 log = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ async def _goal_review(conn: AsyncConnection, project_id: int, project: str, loc
     title = f"Review the goals of {project} for {month}: {_plural(len(active), 'active goal')}"
     title += f", {late} past the deadline" if late else ""
     for user_id in to:
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
@@ -245,7 +245,7 @@ async def _loop_brief(conn: AsyncConnection, project_id: int, project: str, loca
     title = f"Loop of {project}: {handed} handed out, {done} done, {waiting} waiting for a person"
     details = {"day": day, "handed_out": handed, "done": done, "waiting": waiting}
     for user_id in to:
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",
@@ -277,7 +277,7 @@ async def _srs_adopt(conn: AsyncConnection, project_id: int, project: str) -> in
         )
         details = {"held": key, "goal": held.goal, "plan": held.plan, "use_cases": list(held.use_cases)}
         for user_id in to:
-            await notify(
+            await NOTIFIER.notify(
                 conn,
                 user_id=user_id,
                 kind="notice",

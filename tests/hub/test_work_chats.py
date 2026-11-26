@@ -26,8 +26,8 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import chats, tables
-from evo_agents.hub.server import work_chats
 from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.work_chats import service as work_chats
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_agent_delegation import KB, KB_AGENT, kb_node, kb_project
@@ -705,7 +705,7 @@ def test_a_home_mention_of_two_agents_of_one_system_makes_one_run_of_its_entry_a
 def test_work_set_records_outcome(client, hub, hub_db):
     import argparse
 
-    from evo_agents.hub.server import work_status
+    from evo_agents.hub.server import work_status_models
     from evo_agents.worker.cli import work as work_command
 
     parser = argparse.ArgumentParser(prog="evo-agents worker")
@@ -727,12 +727,12 @@ def test_work_set_records_outcome(client, hub, hub_db):
     done = in_chats(client, studio, parent, "work", body)
     assert done.status_code == 200, done.text
     assert (done.json()["outcome"], done.json()["left"]) == tuple(body.values())
-    assert done.json()["status"] in work_status.STATUSES
+    assert done.json()["status"] in work_status_models.STATUSES
     assert card_events(hub_db, chat["id"], message_id) == before + 1, "the outcome changed the card"
     listed = {item["id"]: item for item in client.get("/v1/chats", headers=hub["owner"]).json()}
     brief = listed[work]["work"]
     assert (brief["outcome"], brief["left"]) == tuple(body.values()), "the list carries the outcome"
-    assert brief["status"] in work_status.STATUSES
+    assert brief["status"] in work_status_models.STATUSES
 
     again = in_chats(client, studio, parent, "work", {"title": "Retry loop"})
     assert again.json()["outcome"] == "not_met", "a field not given keeps its value"

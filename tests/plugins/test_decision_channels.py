@@ -22,7 +22,7 @@ import importlib
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import member_channels
+from evo_agents.hub.server.notifications.models import LABELLED_ANSWER
 from tests.hub import live
 from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)
 from tests.hub.live import sql
@@ -126,7 +126,7 @@ def test_a3_a_label_above_the_channels_sink_goes_as_the_link_and_the_channel_ans
     assert (entry["state"], entry["withheld"]) == ("sent", "label")
     assert entry["reason"] == f"its label internal keeps its content off {KIND}: the message links to the hub"
     assert said(northwind.client, button(f"d:{decision_id}:postgres")) == "refused"
-    told = member_channels.LABELLED_ANSWER.format(label="internal", decision_id=decision_id)
+    told = LABELLED_ANSWER.format(label="internal", decision_id=decision_id)
     assert told in northwind.fake.last()["text"]
     after = shown(northwind, decision_id)
     assert (after["state"], after["answered_via"]) == ("open", None)

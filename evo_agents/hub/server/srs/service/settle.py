@@ -11,8 +11,8 @@ version makes a second delivery, or a second call, find the first's. ``repositor
 
 The chat is of kind settle (``evo_agents.hub.chats.SETTLE``) with @ba as its agent: every message of a person wakes it
 without an @, from a member who only reads the project too, on a worker of the type's run_as as every run of @ba
-(``evo_agents.hub.server.chat_runs``), within the chat's budget and hops. Its creator is the version's author, or the
-type's run_as when the author holds no grant that clears the chat's label any more. The hub invites by rule
+(``evo_agents.hub.server.chats.service.runs``), within the chat's budget and hops. Its creator is the version's author,
+or the type's run_as when the author holds no grant that clears the chat's label any more. The hub invites by rule
 (``_invited``):
 
 - the author of the version;
@@ -49,13 +49,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, features, runs
 from evo_agents.hub.server import audit, hub_settings
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access, projects_by_id, uncleared
-from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
-from evo_agents.hub.server.chat_notices import notice_added
-from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
-from evo_agents.hub.server.chat_store import add_member, insert_mentions, insert_message, member_event
-from evo_agents.hub.server.chat_views import person_author
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.models.views import person_author
+from evo_agents.hub.server.chats.repository.access import projects_by_id
+from evo_agents.hub.server.chats.repository.store import add_member, insert_mentions, member_event
+from evo_agents.hub.server.chats.service.access import chat_access, uncleared
+from evo_agents.hub.server.chats.service.members import label_now, put_agent, put_person
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.notices import notice_added
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.server.srs.models.doc import SrsError
@@ -338,7 +342,7 @@ async def _ask(
     conn: AsyncConnection, chat: ChatAccess, profile: Profile, run_as: Principal, message_id: int, body: str
 ) -> int | None:
     """Hand the first message, the hub's, to @ba for the type's run_as (hop 1), whom a run woken by a message of the
-    hub acts for (``chat_runs.chat_run``); the chat run it made, if any. A refusal (the budget, a worker) is said in
+    hub acts for (``chats.service.runs.chat_run``); the chat run it made, if any. A refusal (the budget, a worker) is said in
     the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, run_as, [profile.handle])
     hand = Hand(chat, message_id, message_id, profile, run_as.user_id, run_as.login, MACHINE, 1, HUB, body)

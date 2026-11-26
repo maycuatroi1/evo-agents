@@ -415,7 +415,8 @@ def test_the_api_shows_the_latest_version_next_to_the_pinned_one(client, hub):
 
 @needs_pg
 def test_a_profile_is_the_entry_agent_of_one_system_and_its_chat_runs_take_the_pinned_version(client, hub):
-    from evo_agents.hub.server import chat_runs, profile_store, system_store
+    from evo_agents.hub.server import profile_store, system_store
+    from evo_agents.hub.server.chats.service import runs as chat_runs
 
     assert client.put(systems_path(hub, "support"), json={"spec": SPEC}, headers=hub["owner"]).status_code == 200
     other = client.put(systems_path(hub, "second"), json={"spec": SPEC}, headers=hub["owner"])

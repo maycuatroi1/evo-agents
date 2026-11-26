@@ -1,4 +1,4 @@
-"""Deleting outputs of runs (``evo_agents.hub.outputs``): one a member deletes (``evo_agents.hub.server.run_outputs``),
+"""Deleting outputs of runs (``evo_agents.hub.outputs``): one a member deletes (``evo_agents.hub.server.outputs``),
 and those of source tool that go with their run's events (the job hub.prune_run_events, through
 ``evo_agents.hub.server.run_reaper.prune_run_events``).
 

@@ -360,11 +360,11 @@ async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
     owner the notice run_failed."""
     if new not in runs.TERMINAL_STATES or found.project_id is None:
         return
-    from evo_agents.hub.server.notifications import notify, run_link
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     if new == "failed":
         error = found.error or reason
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=found.dispatcher_id,
             kind="notice",
@@ -374,7 +374,7 @@ async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
             title=await merge_gate.judge_run_title(conn, found.run_id, found.plan_id),
             body=error,
             details={"run_kind": "judge", "plan_id": found.plan_id, "error": error},
-            link=run_link(found.project, found.run_id),
+            link=NOTIFIER.run_link(found.project, found.run_id),
         )
     change = await change_of_plan(conn, found.project_id, found.plan_id, lock=True)
     if change is None or change.state != "judging" or change.judge_run_id != found.run_id:

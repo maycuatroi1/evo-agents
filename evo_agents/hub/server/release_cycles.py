@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, release_ci, releases, runs, tables
 from evo_agents.hub.server import audit, triage
 from evo_agents.hub.server.night_cost import usage_cost
-from evo_agents.hub.server.notifications import decision_link, notify, one_line
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 
@@ -251,7 +251,7 @@ async def ask_owner(conn: AsyncConnection, cycle_id: int) -> int:
     lines, last_run = await _facts(conn, found)
     question = runs.clip(
         f"Release cycle #{cycle_id} of {found.project} stopped: "
-        f"{one_line(found.stop_reason or '', QUESTION_REASON_CHARS)} Go on, close the cycle, or pause the release "
+        f"{NOTIFIER.one_line(found.stop_reason or '', QUESTION_REASON_CHARS)} Go on, close the cycle, or pause the release "
         "schedule?",
         runs.MAX_QUESTION_CHARS,
     )
@@ -271,19 +271,19 @@ async def ask_owner(conn: AsyncConnection, cycle_id: int) -> int:
             .returning(d.c.id)
         )
     ).scalar_one()
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=found.owner_id,
         kind="decision",
         project_id=found.project_id,
         run_id=last_run,
         decision_id=decision_id,
-        title=f"Release cycle #{cycle_id} of {found.project} stopped: {one_line(found.stop_reason or '')}",
+        title=f"Release cycle #{cycle_id} of {found.project} stopped: {NOTIFIER.one_line(found.stop_reason or '')}",
         body=f"{question}\n\n" + "\n".join(lines[1:]),
-        link=decision_link(decision_id),
+        link=NOTIFIER.decision_link(decision_id),
     )
     asked = (
-        f"{found.owner} decides in decision #{decision_id} ({decision_link(decision_id)}): go on, close the cycle, or "
+        f"{found.owner} decides in decision #{decision_id} ({NOTIFIER.decision_link(decision_id)}): go on, close the cycle, or "
         "pause the release schedule. Nothing goes on until then."
     )
     thread = await triage.project_thread(
@@ -310,7 +310,7 @@ async def notify_release(
     conn: AsyncConnection, found, *, event: str, title: str, body: str, run_id: int | None, details: dict
 ) -> int:
     """Send the owner of cycle ``found`` (``cycle_of``) a notice of kind release about ``event``."""
-    return await notify(
+    return await NOTIFIER.notify(
         conn,
         user_id=found.owner_id,
         kind="notice",

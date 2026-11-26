@@ -86,7 +86,9 @@ async def infra_of(conn: AsyncConnection, due, now: datetime) -> Infra:
 async def _tell_owner(conn: AsyncConnection, due, outage: curator.Outage, most: int) -> None:
     """Tell the owner of schedule ``due`` once that ``outage`` used its probes of the day: once for each run of failures
     in a row (none since ``outage.since`` names the dependency)."""
-    from evo_agents.hub.server.notifications import notify  # it reads runs through the routes that import this module
+    from evo_agents.hub.server.notifications.service.notifier import (
+        NOTIFIER,  # it reads runs through the routes that import this module
+    )
 
     n = tables.notifications
     told = exists().where(
@@ -105,7 +107,7 @@ async def _tell_owner(conn: AsyncConnection, due, outage: curator.Outage, most: 
         f"goes at {outage.retry_at.isoformat(timespec='minutes')}. Fix the cause (an account's login, a runtime on the "
         "pool's nodes, the hub) and the next probe closes it."
     )
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=due.owner_id,
         kind="notice",

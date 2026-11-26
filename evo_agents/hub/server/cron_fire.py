@@ -19,7 +19,7 @@ as the owner, in a savepoint, and a refusal of the hub's checks is the fire's re
 
 - ``agent``: a hub message in a new thread of the job's chat (the owner's direct chat with the agent when it names
   none) that names the job and the owner, holds the prompt and mentions the agent, handed on as the owner's own
-  mention is (``chat_runs.hand_mentions``: role, mentioned_by, seat, pool, the agent in the chat). A refusal is said in
+  mention is (``chats.service.runs.hand_mentions``: role, mentioned_by, seat, pool, the agent in the chat). A refusal is said in
   the thread too;
 - ``plan``: a plan run, with the checks of ``hub run plan`` (``dispatch.queue_plan_run``). A plan with no pending step
   pauses the job;
@@ -45,13 +45,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import chats, command_runs, cron, cron_store, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.agent_tasking import project_role
-from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
-from evo_agents.hub.server.chat_store import insert_mentions, insert_message
-from evo_agents.hub.server.chats import resolve_mentions
+from evo_agents.hub.server.chats.models.runs import Hand
+from evo_agents.hub.server.chats.repository.store import insert_mentions
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.direct import direct_chat
+from evo_agents.hub.server.chats.service.messages import resolve_mentions
+from evo_agents.hub.server.chats.service.posting import insert_message
+from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
 from evo_agents.hub.server.command_dispatch import command_workers, queue_command_run
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.runs.models import PlanRunDispatch
@@ -287,7 +289,7 @@ async def _breaker(conn: AsyncConnection, job: cron_store.Job) -> str | None:
 async def _pause(conn: AsyncConnection, job: cron_store.Job, reason: str) -> None:
     """Pause ``job`` as the hub, for ``reason``, and tell its owner."""
     await cron_store.pause(conn, job.id, None, reason)
-    await notify(
+    await NOTIFIER.notify(
         conn,
         user_id=job.owner_id,
         kind="notice",

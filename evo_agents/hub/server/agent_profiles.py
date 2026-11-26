@@ -10,7 +10,7 @@ that project's default profile, which the registration of the project created an
 permissions stay all and its instructions empty (422), while its name, description, colour, starters and avatar may
 change. A handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a
 version of its plugin (``agent_packs.pinned``; the default profile attaches none). Its starters are at most
-``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chat_home``). ``runs_on`` says where its runs run, worker
+``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chats.service.home``). ``runs_on`` says where its runs run, worker
 (the default) or hub; the hub only stores it so far. Every edit that
 changes something, the avatar and the packs included, raises the version by one and writes the version row; PATCH with
 ``if_version`` other than the version now is 409, nothing changed. Deleting sets ``deleted_at``: the profile takes no
@@ -52,7 +52,14 @@ from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_v
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.browser_identities import retire_profile_identities
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.profile_store import Profile, create_pool, profile_of, profile_select, write_version
+from evo_agents.hub.server.profile_store import (
+    Profile,
+    create_pool,
+    icon_url,
+    profile_of,
+    profile_select,
+    write_version,
+)
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -242,12 +249,6 @@ class AgentVersion(BaseModel):
 
 
 # Reading
-
-
-def icon_url(profile: Profile) -> str | None:
-    if profile.avatar_sha256 is None:
-        return None
-    return f"/v1/projects/{profile.project}/agents/{profile.handle}/avatar?v={profile.avatar_sha256[:16]}"
 
 
 def agent_view(profile: Profile) -> Agent:

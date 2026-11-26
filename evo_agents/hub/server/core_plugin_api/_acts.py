@@ -14,11 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import access, features, tables, telegram
 from evo_agents.hub.kg_sources import source_id
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server import chat_graph, hub_settings, member_channels
-from evo_agents.hub.server.chat_access import ChatAccess, chat_access
-from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chat_views import message_rows, profiles_by_id
-from evo_agents.hub.server.chats import ChatMessageIn, deliver_message, visible_message
+from evo_agents.hub.server import hub_settings
+from evo_agents.hub.server.chats.models.access import ChatAccess
+from evo_agents.hub.server.chats.models.messages import ChatMessageIn
+from evo_agents.hub.server.chats.repository.views import message_rows, profiles_by_id
+from evo_agents.hub.server.chats.service import graph as chat_graph
+from evo_agents.hub.server.chats.service.access import chat_access
+from evo_agents.hub.server.chats.service.direct import direct_chat
+from evo_agents.hub.server.chats.service.messages import deliver_message, visible_message
 from evo_agents.hub.server.core_plugin_api._base import project_grants
 from evo_agents.hub.server.core_plugin_api._types import (
     AgentRef,
@@ -41,6 +44,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
 )
 from evo_agents.hub.server.decisions.models import AnswerIn
 from evo_agents.hub.server.decisions.service import answers as decision_answers
+from evo_agents.hub.server.notifications.service import member_channels
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.proposal_models import ProposalAnswer as ProposalAnswerIn
 from evo_agents.hub.server.proposal_reads import answer_proposal_as
@@ -272,7 +276,7 @@ async def agents(conn: AsyncConnection, member: Member) -> list[AgentRef]:
 async def chat_history_items(conn: AsyncConnection, plugin: Plugin, project: str) -> KgSourceAnswer:
     """What the plugin's source of the knowledge graph answers a build of ``project``: the messages of the group chats
     whose label holds a part of the project, with their threads and chats, labels and audiences, as the hub makes them
-    (``evo_agents.hub.server.chat_graph``); nothing while the project does not grant the plugin chats:read."""
+    (``evo_agents.hub.server.chats.service.graph``); nothing while the project does not grant the plugin chats:read."""
     own_plugin(plugin)
     p = tables.projects
     project_id = (await conn.execute(select(p.c.id).where(p.c.name == project))).scalar_one_or_none()

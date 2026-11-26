@@ -19,7 +19,7 @@ export function projectOrder(projects: readonly string[], first: string | null =
 
 /**
  * The agents the visitor may add to a chat or chat with: those not deleted of each project they write to
- * (`chat_members`: adding an agent of project P needs the writer role on P), the projects in name order (`first`, the
+ * (`chats.service.members`: adding an agent of project P needs the writer role on P), the projects in name order (`first`, the
  * project the shell shows, ahead) and each one's default agent first. A project whose agents could not be read is
  * named in `failed`, so the form can say so, and `retry` reads them again.
  */

@@ -40,8 +40,8 @@ for its owner's answer, holding its worker's slot, before the reaper (the job hu
 it (``runs.DECISION_WAIT_SECONDS``, 10 minutes, by default); the end-to-end tests shorten it to see a run parked and
 resumed.
 EVO_HUB_WEB_TIME_ZONE, the time zone of the dates the web renders (Asia/Ho_Chi_Minh by default), is also the time
-zone of a member's quiet hours and summary push until they choose one (``evo_agents.hub.server.push_tiers``): an IANA
-name such as Asia/Tokyo.
+zone of a member's quiet hours and summary push until they choose one (``evo_agents.hub.server.push.service.tiers``): an
+IANA name such as Asia/Tokyo.
 
 deploy/hub/docker-compose.yml passes the api and the worker every variable read here except those the image sets
 (EVO_HUB_HOST, EVO_HUB_PORT, EVO_HUB_DATA_DIR) and those only tests point elsewhere (the GitHub and Telegram URLs and
@@ -71,15 +71,15 @@ secrets. Without either the channel is off: linking answers 503, the webhook 404
 and the hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the
 hub at a fake one.
 
-Web Push (``evo_agents.hub.server.webpush``) is optional too. EVO_HUB_VAPID_PRIVATE_KEY is the hub's VAPID key, the
+Web Push (``evo_agents.hub.server.push.webpush``) is optional too. EVO_HUB_VAPID_PRIVATE_KEY is the hub's VAPID key, the
 private scalar of a P-256 key in base64url (32 bytes, 43 characters), registered as a secret; the public key browsers
 subscribe with is derived from it. EVO_HUB_VAPID_SUBJECT is where a push service may reach the hub's operator, a
 mailto: or https: URL, EVO_HUB_PUBLIC_URL when unset. Without the key, or without a subject and a public URL, Web Push
 is off: GET /v1/push/config says so, a delivery to a browser fails at once, and the rest of the outbox runs as before.
-Pushes to the hub's apps (``evo_agents.hub.server.push_native``) are optional the same way, each sender on its own.
-APNs takes EVO_HUB_APNS_KEY_ID and EVO_HUB_APNS_TEAM_ID (10 characters of A-Z and 0-9 each, as Apple shows them) and
-EVO_HUB_APNS_PRIVATE_KEY, the .p8 file of that key (a P-256 key in PEM, where ``\\n`` may stand for each line break),
-registered as a secret; a device names its app's topic and its environment itself. FCM takes
+Pushes to the hub's apps (``evo_agents.hub.server.push.service.native``) are optional the same way, each sender on its
+own. APNs takes EVO_HUB_APNS_KEY_ID and EVO_HUB_APNS_TEAM_ID (10 characters of A-Z and 0-9 each, as Apple shows them)
+and EVO_HUB_APNS_PRIVATE_KEY, the .p8 file of that key (a P-256 key in PEM, where ``\\n`` may stand for each line
+break), registered as a secret; a device names its app's topic and its environment itself. FCM takes
 EVO_HUB_FCM_SERVICE_ACCOUNT, the JSON key file of a Google service account that may send Firebase Cloud Messaging, on
 one line or in base64, registered as a secret with its private key. Without all of a sender's variables that sender
 is off, as Web Push is without its key; a malformed one is a ConfigError naming it, never showing it.

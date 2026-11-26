@@ -47,7 +47,6 @@ from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import (
     admin,
-    admin_channels,
     app_sessions,
     auth,
     blobs,
@@ -76,6 +75,7 @@ from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, PO
 from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
 from evo_agents.hub.server.memories.routes import restore_router as restore_routes
 from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
+from evo_agents.hub.server.notifications import routes as notifications
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
@@ -329,7 +329,7 @@ def _include_account_routes(app: FastAPI) -> None:
         tokens.router,
         user_emails.router,
         admin.router,
-        admin_channels.router,  # /v1/admin/users/{login}/channels/{kind}
+        notifications.admin_router,  # /v1/admin/users/{login}/channels/{kind}
         invites.router,  # /v1/admin/invites
         invites.accept_router,  # POST /v1/invites/accept
         projects.router,
@@ -452,7 +452,9 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.include_router(worker_pools.router)
     app.include_router(worker_join.worker_router)
 
-    from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats
+    from evo_agents.hub.server import listen, run_events, runs, tool_stats
+    from evo_agents.hub.server.chats.routes import author as author_chat
+    from evo_agents.hub.server.chats.service.events import ChatStreams
 
     app.include_router(runs.router)
     app.include_router(runs.worker_router)
@@ -468,7 +470,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     # the event streams of runs, and of group chats
     app.state.run_streams, app.state.chat_streams = (
         run_events.RunStreams(app.state.listener),
-        chat_events.ChatStreams(app.state.listener),
+        ChatStreams(app.state.listener),
     )
     app.state.trace_streams = system_trace_views.TraceStreams(app.state.listener)  # the live traces of systems
     # the in-RAM graphs of the projects, swapped on each build's notice on kg_graph
@@ -479,28 +481,24 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.state.join_limit = cache.Window(app.state.cache, "join", app.state.join_refusals)  # ...or shared on Redis
 
     from evo_agents.hub.server import (
-        attachments,
         curator,
         dlp_policy,
         doc_versions,
         kg_worker,
         local_runs,
         member_tasks,
-        notification_list,
-        notifications,
-        output_content,
-        output_notices,
         overview,
-        project_webhooks,
         proposal_reads,
         proposals,
-        push,
         release_claims,
         releases,
-        run_outputs,
         today,
     )
+    from evo_agents.hub.server.attachments import routes as attachments
     from evo_agents.hub.server.decisions import routes as decisions
+    from evo_agents.hub.server.outputs import routes as outputs
+    from evo_agents.hub.server.push import routes as push
+    from evo_agents.hub.server.webhooks import routes as webhooks
 
     for routes in (
         kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
@@ -508,10 +506,10 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         decisions.worker_router,
         local_runs.router,
         local_runs.batch_router,
-        notification_list.router,  # a member reads their notifications
+        notifications.router,  # a member reads their notifications
         notifications.worker_router,
-        output_notices.router,  # the notices a member turned off
-        push.router,  # a member's push devices (evo_agents.hub.server.push_store)
+        outputs.notice_router,  # the notices a member turned off
+        push.router,  # a member's push devices (evo_agents.hub.server.push)
         push.config_router,  # what a client needs to subscribe, without a sign-in
         overview.router,
         today.router,  # what waits for a member and what changed since they last looked
@@ -521,17 +519,17 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         proposal_reads.router,  # reading findings and proposals, and answering one
         releases.router,  # the daily release of a project (evo_agents.hub.releases)
         release_claims.worker_router,  # the branch a release run pushed (evo_agents.hub.release_runs)
-        run_outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
-        run_outputs.worker_router,
-        output_content.router,  # their bytes
-        output_content.chat_router,
+        outputs.router,  # the outputs of runs (evo_agents.hub.outputs) and a project's switch of tool images
+        outputs.worker_router,
+        outputs.content_router,  # their bytes
+        outputs.chat_router,
         attachments.router,  # the files people attach to messages (evo_agents.hub.attachments)
         attachments.chat_router,
         attachments.worker_router,
         doc_versions.chat_router,  # the versions of a document in a chat or a run
         doc_versions.router,
         member_tasks.router,  # tasks a member hands an agent with no Git (task runs with no agent type)
-        project_webhooks.router,  # a project's outbound webhooks (evo_agents.hub.webhook_events)
+        webhooks.router,  # a project's outbound webhooks (evo_agents.hub.webhook_events)
         dlp_policy.router,  # a project's data loss prevention policy (evo_agents.hub.dlp)
     ):
         app.include_router(routes)
@@ -620,17 +618,6 @@ def _include_member_routes(app: FastAPI) -> None:
         browser_leases,
         browser_local,
         browser_logins,
-        chat_agents,
-        chat_bridges,
-        chat_direct,
-        chat_events,
-        chat_home,
-        chat_images,
-        chat_labels,
-        chat_members,
-        chat_people,
-        chat_read,
-        chats,
         claude_sign_in,
         context_answer_reuse,
         credential_shares,
@@ -680,6 +667,17 @@ def _include_member_routes(app: FastAPI) -> None:
         work_cards,
         worker_autonomy,
     )
+    from evo_agents.hub.server.chats.routes import agents as chat_agents
+    from evo_agents.hub.server.chats.routes import bridges as chat_bridges
+    from evo_agents.hub.server.chats.routes import chats
+    from evo_agents.hub.server.chats.routes import direct as chat_direct
+    from evo_agents.hub.server.chats.routes import events as chat_events
+    from evo_agents.hub.server.chats.routes import home as chat_home
+    from evo_agents.hub.server.chats.routes import images as chat_images
+    from evo_agents.hub.server.chats.routes import labels as chat_labels
+    from evo_agents.hub.server.chats.routes import members as chat_members
+    from evo_agents.hub.server.chats.routes import people as chat_people
+    from evo_agents.hub.server.chats.routes import read as chat_read
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
@@ -728,7 +726,7 @@ def _include_member_routes(app: FastAPI) -> None:
         plugin_srs_api.router,  # srs:read
         plugin_chats_api.router,  # chats:write and chats:read, in the chats of the project's agents
         task_dispatch.worker_router,
-        chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
+        chat_people.router,  # before chats.routes.chats.router, whose GET /{chat_id} would take /people
         chats.router,
         chat_direct.router,
         plan_systems.router,  # a plan handed to a system's entry agent, in the caller's direct chat with it

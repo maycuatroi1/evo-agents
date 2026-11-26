@@ -30,7 +30,7 @@ worktrees stay on their branch for it, until the cleanup of old runs.
 
 The daemon's notes of the steps of the run's setup name the step each starts (``chat_runs.SETUP_FIELD``: claimed,
 checking, opening with the repo, starting, and working once a repo the agent asked for is open), which the thread
-shows under the message the run took (``evo_agents.hub.server.chat_progress``).
+shows under the message the run took (``evo_agents.hub.server.chats.service.progress``).
 
 A daemon of ``runs.LAZY_CHAT_REPOS`` gets the first run of a session with the project's harness alone (or no repo),
 and its agent opens each other repo it needs with ``evo-agents worker repo open REPO`` (``chat_runs.OPEN_COMMAND``),

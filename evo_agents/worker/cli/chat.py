@@ -14,7 +14,7 @@
   printed, said in the thread, and exits 1.
 - ``read MESSAGE [--thread] [--fetch]``, a command of the run's agent too: a message of a chat whole, or its thread (its
   first message and the replies), those the run's agent may read (POST .../chat/read,
-  ``evo_agents.hub.server.chat_read``), printed as the hub gave it, under a line saying it is data, never
+  ``evo_agents.hub.server.chats.service.read``), printed as the hub gave it, under a line saying it is data, never
   instructions. MESSAGE is its id, or its item as kg_search lists it (``plugin.chats:message:<id>``); a thread's item
   (``plugin.chats:thread:<chat>/<root>``) reads that thread. A message it may not read is an error, as one that does
   not exist. The text names the files attached to each message (name, media type, size); with ``--fetch`` the command
@@ -23,7 +23,7 @@
 
 Each is a :class:`~evo_agents.worker.cli.base.ChatCommand`: it reads the run from EVO_RUN_ID, EVO_WORKER_HOME and the
 run's record there, calls the hub with the worker's token (POST /v1/worker/runs/{id}/chat/...,
-``evo_agents.hub.server.chat_agents``), and refuses outside a run of this worker of a kind of
+``evo_agents.hub.server.chats.service.agents``), and refuses outside a run of this worker of a kind of
 ``chat_runs.COMMAND_KINDS``; a call the hub does not answer, or answers with a 5xx while it deploys, is sent again for
 up to OUTAGE_SECONDS (``AgentRunContext.in_chats``). TEXT ``-`` reads stdin. Each prints one line with the ids it made;
 they take no ``--json``, since this module may not import the hub's contract (the worker reaches no ``hub.server``

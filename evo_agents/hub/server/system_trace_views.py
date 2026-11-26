@@ -44,14 +44,14 @@ from evo_agents.hub.server import (
     work_status,
 )
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.chat_access import chat_access
+from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser, Principal, still_live
-from evo_agents.hub.server.work_status import WorkBrief, WorkStatus, WorkWaiting
+from evo_agents.hub.server.work_status_models import WorkBrief, WorkStatus, WorkWaiting
 
 log = logging.getLogger(__name__)
 

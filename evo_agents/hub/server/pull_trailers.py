@@ -3,7 +3,7 @@ autonomy-levels, criterion a10): ``Evo-Principal: <login>``, the person the run 
 the agent profile that did the work, each when the run has one; never the runtime or the model. The worker puts the
 same two trailers on the run's commits (``evo_agents.worker.runner.authorship``).
 
-The hub opens a draft pull request for a chat run and a task run (``chat_agents``, ``task_dispatch``), a pull request
+The hub opens a draft pull request for a chat run and a task run (``chats.routes.agents``, ``task_dispatch``), a pull request
 for a Curator change (``changes``, its Builder's run) and a release (``release_land``), and a merge request for a plan's
 or a task run's work on GitLab (``merge_gate``); each body ends with ``block`` of its run.
 """

@@ -1,5 +1,5 @@
 """The event ``chat.bridge``: what a group chat's bridges carry out, handed to the core plugin of each bridge
-(``evo_agents.hub.server.chat_bridges``, ``docs/chat-bridges.md``).
+(``evo_agents.hub.server.chats.service.bridges``, ``docs/chat-bridges.md``).
 
 A bridge's plugin gets one delivery per bridge, in the transaction that wrote what happened, of:
 

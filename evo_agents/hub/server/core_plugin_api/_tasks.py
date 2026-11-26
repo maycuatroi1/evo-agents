@@ -25,8 +25,8 @@ from evo_agents.hub import signals, tables
 from evo_agents.hub.access import ProjectRules
 from evo_agents.hub.plans import step_key as plan_step_key
 from evo_agents.hub.plugin_calls import ApiContext, enabled_in
-from evo_agents.hub.server.chat_access import agent_projects
-from evo_agents.hub.server.chat_runs import chat_run, hub_reply
+from evo_agents.hub.server.chats.service.access import agent_projects
+from evo_agents.hub.server.chats.service.runs import chat_run, hub_reply
 from evo_agents.hub.server.core_plugin_api._base import project_grants
 from evo_agents.hub.server.core_plugin_api._reads import MAX_ROWS, enabled_project
 from evo_agents.hub.server.core_plugin_api._types import (

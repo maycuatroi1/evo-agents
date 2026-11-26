@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import access, tables
 from evo_agents.hub.server import projects
-from evo_agents.hub.server.chat_runs import chat_run
+from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.core_plugin_api._types import (
     ChatRunRef,
     Plugin,

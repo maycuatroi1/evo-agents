@@ -64,6 +64,7 @@ from evo_agents.hub.blobs import (
 )
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import Sha256
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -78,7 +79,6 @@ UNAVAILABLE = "the blob store did not answer; nothing was committed and the uplo
 GLOBAL = "(global)"  # the hub as the holder of blobs in logs and audit rows; no project name has parentheses
 GLOBAL_KINDS = frozenset({"skill-bundle", "plugin-bundle"})  # what the hub holds outside any project: skills, plugins
 
-Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="hex SHA-256 of the bytes")]
 ProjectField = Annotated[str, Field(pattern=PROJECT_NAME)]
 
 router = APIRouter(prefix="/v1/blobs", tags=["blobs"], responses={401: {"model": ErrorBody}})

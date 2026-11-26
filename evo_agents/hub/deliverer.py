@@ -22,8 +22,8 @@ Three parts, in one process:
   pass does (``plugin_events.deliver_one``), writes what came of it, then acks the message. A delivery that is not
   pending and due any more, a message sent twice or one a job's pass beat, is acked and dropped: the claim, with
   ``FOR UPDATE SKIP LOCKED``, is the one place that decides who delivers. A message of the notifications' queue runs a
-  pass of the notifications (``notifications.deliver_notifications``). A message whose handling failed is rejected,
-  not requeued: the sweeper publishes its delivery again.
+  pass of the notifications (``notifications.service.deliveries.deliver_notifications``). A message whose handling
+  failed is rejected, not requeued: the sweeper publishes its delivery again.
 """
 
 from __future__ import annotations
@@ -233,7 +233,7 @@ class Deliverer:
             log.info("plugin delivery", extra={"delivery_id": delivery_id, "outcome": outcome})
 
     async def on_notifications(self, message) -> None:
-        from evo_agents.hub.server.notifications import deliver_notifications
+        from evo_agents.hub.server.notifications.service.deliveries import deliver_notifications
 
         try:
             await deliver_notifications(self.engine, config=self.config, blobs=self.blobs)

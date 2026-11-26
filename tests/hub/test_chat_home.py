@@ -1,4 +1,4 @@
-"""The agents a person may chat with (``evo_agents.hub.server.chat_home``) and the starters of a profile
+"""The agents a person may chat with (``evo_agents.hub.server.chats.service.home``) and the starters of a profile
 (``agent_profiles``), as criteria b1 and b2 of the plan chat-first-home name them.
 
 b1: GET /v1/me/chat-agents lists the agents of every project the caller holds a grant on that the caller may give work

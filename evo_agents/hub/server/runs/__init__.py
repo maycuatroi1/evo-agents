@@ -55,7 +55,7 @@ store, the run fails at the claim, saying so. The author runs of a new plan are 
 through the project's default label; one is never rerun (409). With ``plan_id`` it revises that plan, one the caller can
 read (404 otherwise), recorded with its revision. Its agent puts the plan with PUT /v1/worker/runs/{id}/plan
 (``put_run_plan``), as the dispatcher, through ``plans.write_plan``; the run then points to the plan it wrote. Its chat,
-waiting, parking and end are ``author_chat``'s: it reports ``waiting`` after each turn of its agent without a decision
+waiting, parking and end are ``chats.routes.author``'s: it reports ``waiting`` after each turn of its agent without a decision
 of its own (409 once its owner ended the chat), which sends its owner the notice ``author_waiting``, and the heartbeat
 says ``finish`` once the owner ended the chat.
 

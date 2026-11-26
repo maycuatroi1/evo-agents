@@ -98,11 +98,11 @@ async def tell_admins(
 ) -> None:
     """A notice in the Inbox of each admin of ``project`` about merge request ``row``, merged at ``sha`` (its
     ``after_sha`` when None)."""
-    from evo_agents.hub.server.notifications import notify  # it reaches the plugins' channels
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER  # it reaches the plugins' channels
 
     commits = [found for found in (sha or row.after_sha,) if found]
     for user_id in await admins(conn, project.id):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

@@ -21,7 +21,7 @@ from evo_agents.hub.server.canvas.models.baseline_rows import BaselineRow, ItemR
 from evo_agents.hub.server.canvas.models.rows import CanvasRow
 from evo_agents.hub.server.canvas.repository import people
 from evo_agents.hub.server.canvas.service import baselines, reads
-from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess
 
 NOTICE = "canvas_baseline"  # evo_agents.hub.runs.NOTICE_KINDS
@@ -49,7 +49,7 @@ async def tell_writers(
             continue
         if all(user_id in item.barred(anyone) for item in waiting):
             continue
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=user_id,
             kind="notice",

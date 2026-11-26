@@ -43,7 +43,7 @@ from evo_agents.hub.server.loop.board_items import (
 )
 from evo_agents.hub.server.loop.model import KINDS, WAITING_HUMAN
 from evo_agents.hub.server.loop.view import run_chains
-from evo_agents.hub.server.notifications import decision_link
+from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 OPEN = "open"  # runs.DECISION_STATES
 ASKING = ("run_decision", "author_question")  # the reasons of a work item whose run's agent asks its owner
@@ -101,7 +101,7 @@ async def _loop_decisions(conn: AsyncConnection, reading: Reading, crowd: People
             continue
         title = f"Decision #{row.id} on run #{row.run_id}: {line(row.question)}"
         refs = _refs(works.get(row.item_id), decision=row.id, run=row.run_id)
-        deciders, link = crowd.logins([row.asked]), decision_link(row.id)
+        deciders, link = crowd.logins([row.asked]), NOTIFIER.decision_link(row.id)
         found.append(
             item("loop_decision", title, row.asked_at, RUN_OWNER, deciders, link, work_item=row.item_id, refs=refs)
         )
@@ -132,14 +132,14 @@ async def _asking(conn: AsyncConnection, reading: Reading, crowd: People, waitin
             continue
         for row in open_on.get(run.id, []):
             title = f"Decision #{row.id} of run #{run.id}, work item #{work.id} ({work.kind}): {line(row.question)}"
-            link, refs = decision_link(row.id), _refs(work, decision=row.id, run=run.id)
+            link, refs = NOTIFIER.decision_link(row.id), _refs(work, decision=row.id, run=run.id)
             deciders = crowd.logins([row.asked])
             found.append(
                 item("run_decision", title, row.asked_at, RUN_OWNER, deciders, link, work_item=work.id, refs=refs)
             )
         if work.reason == "author_question" and not open_on.get(run.id):
             title = f"Author run #{run.id} of work item #{work.id} asks its owner in its chat"
-            link = project_path(reading.project, "runs", str(run.id)) + "?tab=chat"  # author_chat.chat_link
+            link = project_path(reading.project, "runs", str(run.id)) + "?tab=chat"  # chats.models.author.chat_link
             refs, deciders = _refs(work, run=run.id), crowd.logins([run.dispatched_by])
             found.append(
                 item("author_question", title, work.updated_at, RUN_OWNER, deciders, link, work_item=work.id, refs=refs)

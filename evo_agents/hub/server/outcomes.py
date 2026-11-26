@@ -191,7 +191,7 @@ def _evidence(after: dict, found: dict) -> list[dict]:
 async def propose_revert(conn: AsyncConnection, change, proposal, found: dict, after: dict, charter, owner, project):
     """Propose reverting the merge commit of ``change`` (of ``proposal``), whose figures got worse (``found``); the new
     proposal's id. Its owner gets it in the Inbox."""
-    from evo_agents.hub.server.notifications import notify
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
     from evo_agents.hub.server.proposals import proposal_link
 
     p = tables.proposals
@@ -256,7 +256,7 @@ async def propose_revert(conn: AsyncConnection, change, proposal, found: dict, a
         details={"kind": "revert", "tier": tier.tier, "lens": proposal.lens, "revert_of": proposal.id},
     )
     if owner is not None:
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=owner.owner_id,
             kind="proposal",
@@ -367,7 +367,7 @@ async def check_circuit(conn: AsyncConnection, due, night: date, since: datetime
 
 
 async def trip(conn: AsyncConnection, due, night: date, reason: str, which: list[str], count: int, most: int) -> None:
-    from evo_agents.hub.server.notifications import notify
+    from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
     s = tables.schedules
     paused = await conn.execute(
@@ -386,7 +386,7 @@ async def trip(conn: AsyncConnection, due, night: date, reason: str, which: list
             conn, project_id=due.project_id, schedule_ids=ids, run_ids=run_ids, reverts=len(reverts)
         )
     for owner_id in sorted({row.owner_id for row in rows}):
-        await notify(
+        await NOTIFIER.notify(
             conn,
             user_id=owner_id,
             kind="notice",

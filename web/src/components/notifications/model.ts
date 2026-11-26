@@ -14,11 +14,11 @@ export const DEFAULT_CHOICE = "default";
 export type TierChoice = Tier | typeof DEFAULT_CHOICE;
 
 /**
- * The kinds the page shows first: those `push_tiers.DEFAULT_INTERRUPTS` pushes for some of their notifications, then
+ * The kinds the page shows first: those `push.models.DEFAULT_INTERRUPTS` pushes for some of their notifications, then
  * the two a member decides most about. Every other kind, those of a later hub included, folds under them.
  */
 export const FIRST_KINDS = ["decision", "run_failed", "release", "merge_paused", "proposal", "today"] as const satisfies readonly TierKind[];
-/** `push_tiers.DEFAULT_INTERRUPTS`: their default is interrupt only for some of their notifications, which a hint says. */
+/** `push.models.DEFAULT_INTERRUPTS`: their default is interrupt only for some of their notifications, which a hint says. */
 export const DEFAULT_INTERRUPTS = ["decision", "run_failed", "release", "merge_paused"] as const satisfies readonly TierKind[];
 
 export function isDefaultInterrupt(kind: string): boolean {
@@ -32,7 +32,7 @@ export function tierGroups(tiers: readonly TierSetting[]): { first: TierSetting[
   return { first, rest };
 }
 
-/** The tier the hub gives a kind until the member chooses one, as the settings show it (`push_tiers.kind_default`). */
+/** The tier the hub gives a kind until the member chooses one, as the settings show it (`push.service.tiers.kind_default`). */
 export function defaultTier(kind: string): Tier {
   return isDefaultInterrupt(kind) ? "interrupt" : "brief";
 }

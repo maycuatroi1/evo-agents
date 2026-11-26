@@ -4,9 +4,10 @@ row.
 
 - ``kg_search``: a search of the project's knowledge graph, the graph its agent system binds it to included
   (``kg.tool_result``), through the agent sink.
-- ``chat_post``: a message of the agent in its thread or a chat it is in (``chat_agents.agent_message``), masked.
+- ``chat_post``: a message of the agent in its thread or a chat it is in (``chats.service.agents.agent_message``),
+  masked.
 - ``interactive_answer``: an HTML answer the chat shows inside the message that carries it, with the semantics, the
-  size limit, the CSP and the bridge of ``--interactive`` (``output_store.record_held``, then a message).
+  size limit, the CSP and the bridge of ``--interactive`` (``outputs.service.store.record_held``, then a message).
 - ``agent_ask``: ask an agent of another project, with the brief template, the friction and the trace budget of
   ``evo-agents worker agent ask`` (``agent_asks.ask_agent``); the run then parks until the answer wakes it.
 - ``agent_forward``: post the answer of a run it asked verbatim (``agent_asks.forward``).
@@ -47,21 +48,22 @@ from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
 from evo_agents.hub.server import (
     agent_asks,
-    chat_agents,
     kg,
     ops_actions,
     orchestrator,
     orchestrator_actions,
-    output_store,
     work_cards,
-    work_status,
+    work_status_models,
 )
 from evo_agents.hub.server.blobs import put_bytes
+from evo_agents.hub.server.chats.models.agents import AgentMessageIn
+from evo_agents.hub.server.chats.service import agents as chat_agents
 from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.models import Written
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
-from evo_agents.hub.server.output_store import OutputIn
+from evo_agents.hub.server.outputs.models import OutputIn
+from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.runs.service.plan_runs import held_row
 from evo_agents.hub.server.security import WORKER
 
@@ -206,7 +208,7 @@ TOOLS = [
             "title": _TEXT,
             "goal": _TEXT,
             "done_when": _TEXT,
-            "outcome": {"type": "string", "enum": list(work_status.OUTCOMES)},
+            "outcome": {"type": "string", "enum": list(work_status_models.OUTCOMES)},
             "left": {"type": "string", "description": "what is still to do when the done-when is not met"},
         },
         [],
@@ -274,9 +276,7 @@ async def kg_search(turn: Turn, arguments: dict) -> str:
 
 
 async def chat_post(turn: Turn, arguments: dict) -> str:
-    body = chat_agents.AgentMessageIn(
-        body=arguments.get("body") or "", chat_id=None, reply_to=arguments.get("reply_to")
-    )
+    body = AgentMessageIn(body=arguments.get("body") or "", chat_id=None, reply_to=arguments.get("reply_to"))
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         chat, message_id = await chat_agents.agent_message(conn, turn.sealer, run, body)
@@ -303,7 +303,7 @@ async def interactive_answer(turn: Turn, arguments: dict) -> str:
         target = await output_store.target_of(conn, turn.run_id, turn.project)
         output_id = await output_store.record_held(conn, turn.blobs, target, run.principal.user_id, item, data)
         text = arguments.get("body") or arguments.get("caption") or "An interactive answer."
-        body = chat_agents.AgentMessageIn(body=text, chat_id=None, reply_to=None, output_ids=[output_id])
+        body = AgentMessageIn(body=text, chat_id=None, reply_to=None, output_ids=[output_id])
         _, message_id = await chat_agents.agent_message(conn, turn.sealer, run, body)
     return f"sent the interactive answer as output #{output_id} in message #{message_id}"
 
