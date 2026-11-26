@@ -3770,35 +3770,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/agent_account_mask.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/agent_account_views.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 105,
-                    "endColumn": 113,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 106,
-                    "endColumn": 114,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/agent_accounts.py": [
+        "./evo_agents/hub/server/agent_accounts/service/accounts.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -3840,7 +3812,159 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/agent_packs.py": [
+        "./evo_agents/hub/server/agent_accounts/service/mask.py": [
+            {
+                "code": "reportReturnType",
+                "range": {
+                    "startColumn": 11,
+                    "endColumn": 63,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/agent_accounts/service/provider_accounts.py": [
+            {
+                "code": "reportInvalidTypeForm",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 35,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportInvalidTypeForm",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 35,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportInvalidTypeForm",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 35,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportInvalidTypeForm",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 35,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 85,
+                    "endColumn": 107,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 28,
+                    "endColumn": 32,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 33,
+                    "endColumn": 36,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/agent_accounts/service/views.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 105,
+                    "endColumn": 113,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 106,
+                    "endColumn": 114,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/agents/service/agent_types.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 80,
+                    "endColumn": 93,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 12,
+                    "endColumn": 50,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 90,
+                    "endColumn": 104,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 30,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 44,
+                    "endColumn": 50,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 67,
+                    "endColumn": 69,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 93,
+                    "endColumn": 107,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 67,
+                    "endColumn": 69,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./evo_agents/hub/server/agents/service/packs.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -3858,7 +3982,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/agent_profiles.py": [
+        "./evo_agents/hub/server/agents/service/profiles.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
@@ -3960,130 +4084,6 @@
                 "range": {
                     "startColumn": 84,
                     "endColumn": 98,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/agent_provider_accounts.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 85,
-                    "endColumn": 107,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 32,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 33,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/agent_types.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 80,
-                    "endColumn": 93,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 90,
-                    "endColumn": 104,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 69,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 93,
-                    "endColumn": 107,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 69,
                     "lineCount": 1
                 }
             }

@@ -93,7 +93,9 @@ def claim_gate():
     while the agent's account pool has an account the run can use, or when the run took an account already (a resumed
     run, a run that failed over). The Curator's runs and a browser login take their accounts as before, and a command
     run, whose shell calls no model, none."""
-    from evo_agents.hub.server import agent_placement  # it reads this module's neighbours: imported when used
+    from evo_agents.hub.server.agents.service import (
+        placement as agent_placement,  # it reads this module's neighbours: imported when used
+    )
 
     r, ra = tables.runs, tables.run_accounts
     took = exists().where(ra.c.run_id == r.c.id)

@@ -33,7 +33,7 @@ from evo_agents.hub.credentials import MAX_SECRET_BYTES, PROVIDER_KIND
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID
 from evo_agents.hub.server import audit, gateway_sync, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.agent_accounts import (
+from evo_agents.hub.server.agent_accounts.service.accounts import (
     MAX_ACCOUNTS_PER_AGENT,
     MAX_WORKERS,
     AccountName,

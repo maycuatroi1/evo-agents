@@ -19,7 +19,7 @@ if not pg.DSN:
 from sqlalchemy import select, update
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server.agent_account_mask import mask_values
+from evo_agents.hub.server.agent_accounts.service.mask import mask_values
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql, table_dump
 from tests.hub.test_accounts_api import cool, events

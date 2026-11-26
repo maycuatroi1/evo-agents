@@ -46,15 +46,8 @@ from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
-from evo_agents.hub.server import (
-    agent_asks,
-    kg,
-    ops_actions,
-    orchestrator,
-    orchestrator_actions,
-    work_cards,
-    work_status_models,
-)
+from evo_agents.hub.server import kg, ops_actions, orchestrator, orchestrator_actions, work_cards, work_status_models
+from evo_agents.hub.server.agents.service import asks as agent_asks
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.chats.models.agents import AgentMessageIn
 from evo_agents.hub.server.chats.service import agents as chat_agents

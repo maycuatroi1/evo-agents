@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server.agent_profiles import AVATAR_TYPES, AvatarUpload
+from evo_agents.hub.server.agents.service.profiles import AVATAR_TYPES, AvatarUpload
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.chats.models.images import DROP_REFUSALS, READ_REFUSALS, SET_REFUSALS, UNAVAILABLE
 from evo_agents.hub.server.chats.models.members import ChatId

@@ -51,7 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, runs, system_context, tables, triage_rules
 from evo_agents.hub.server import audit, system_traces
-from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
+from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import Hand
 from evo_agents.hub.server.chats.models.views import person_author
@@ -690,7 +690,9 @@ class Escalated(BaseModel):
 async def _escalated(conn: AsyncConnection, run: AgentRun, row, found, lead: str, said: str, brief: dict):
     """(the thread, the wait, None) of the escalation of ``said``, or (None, None, why none), in a savepoint rolled
     back on a refusal."""
-    from evo_agents.hub.server.agent_asks import open_wait  # it hands work through chat_runs, as this module does
+    from evo_agents.hub.server.agents.service.asks import (
+        open_wait,  # it hands work through chat_runs, as this module does
+    )
 
     shown = system_context.brief_text(brief)
     lines = [f"@{found.handle} asks (run #{run.run_id}):", "", said.strip()]

@@ -47,7 +47,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
-from evo_agents.hub.server.agent_types import enabled_type
+from evo_agents.hub.server.agents.service.agent_types import enabled_type
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author

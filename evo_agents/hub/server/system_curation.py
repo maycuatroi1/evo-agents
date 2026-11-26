@@ -50,7 +50,7 @@ from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.kg_decisions import MAX_REASON_CHARS, MAX_REF_CHARS
 from evo_agents.hub.runs import clip
 from evo_agents.hub.server import audit, system_store, system_traces
-from evo_agents.hub.server.agent_profiles import AgentAxis, new_version
+from evo_agents.hub.server.agents.service.profiles import AgentAxis, new_version
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal

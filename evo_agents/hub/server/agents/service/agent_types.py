@@ -39,8 +39,8 @@ from evo_agents.hub.plugin_calls import enabled_in, enabled_plugins
 from evo_agents.hub.runs import TERMINAL_STATES
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
-from evo_agents.hub.server.agent_profiles import AgentPermissions
+from evo_agents.hub.server.agents.service.packs import AgentPackPin, pinned
+from evo_agents.hub.server.agents.service.profiles import AgentPermissions
 from evo_agents.hub.server.chats.models.members import LOGIN_PATTERN
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import create_pool, write_version

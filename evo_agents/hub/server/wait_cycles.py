@@ -180,7 +180,10 @@ def _why(edge: Edge, cycle: list[Edge], nodes: dict[int, Node]) -> str:
 
 async def _break(conn: AsyncConnection, edge: Edge) -> int | None:
     """Answer wait ``edge.wait_id`` when it still closes a cycle, in the caller's transaction; the run it woke."""
-    from evo_agents.hub.server import agent_asks, run_waits  # they hand work through the routes that import this
+    from evo_agents.hub.server import run_waits
+    from evo_agents.hub.server.agents.service import (
+        asks as agent_asks,  # they hand work through the routes that import this
+    )
     from evo_agents.hub.server.run_state import write_event
 
     edges, _ = await graph(conn)

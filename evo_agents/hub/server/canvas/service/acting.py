@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.review import PRODUCT
-from evo_agents.hub.server.agent_types import enabled_type
+from evo_agents.hub.server.agents.service.agent_types import enabled_type
 from evo_agents.hub.server.canvas.models.content import CanvasError
 from evo_agents.hub.server.canvas.models.rows import CanvasRow
 from evo_agents.hub.server.canvas.models.writing import Author, Writer

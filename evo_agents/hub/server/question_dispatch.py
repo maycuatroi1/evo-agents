@@ -28,8 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import plugin_calls, plugin_events, profiles, question_runs, tables
 from evo_agents.hub.question_runs import MAX_ASKER_CHARS, MAX_REF_CHARS
-from evo_agents.hub.server import agent_placement, audit
-from evo_agents.hub.server.agent_types import enabled_type, type_left
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.agents.service import placement as agent_placement
+from evo_agents.hub.server.agents.service.agent_types import enabled_type, type_left
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.notifications.repository.channels import project_rules, rules_of
 from evo_agents.hub.server.notifications.service.member_channels import kept_from

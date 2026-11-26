@@ -27,7 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import profiles, tables
 from evo_agents.hub.server.account_views import agent_account_figures
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.agent_accounts import AccountName, AgentAccount, Handle, account_rows, view_of
+from evo_agents.hub.server.agent_accounts.service.accounts import (
+    AccountName,
+    AgentAccount,
+    Handle,
+    account_rows,
+    view_of,
+)
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access

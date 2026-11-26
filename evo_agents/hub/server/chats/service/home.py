@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server import agent_tasking
+from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.chats.models.home import ChatHomeAgent
 from evo_agents.hub.server.chats.repository import home as store
 from evo_agents.hub.server.profile_store import icon_url

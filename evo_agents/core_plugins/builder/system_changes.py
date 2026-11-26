@@ -31,7 +31,7 @@ from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing, refuse, said_by_pydantic
 from evo_agents.hub import kg_named_graphs, system_spec, tables
 from evo_agents.hub.server import agent_systems, audit, system_store
-from evo_agents.hub.server.agent_profiles import AgentCreate, create_profile
+from evo_agents.hub.server.agents.service.profiles import AgentCreate, create_profile
 from evo_agents.hub.server.projects import ProjectAccess
 
 SET_KEYS = ("spec", "agents", "graphs")

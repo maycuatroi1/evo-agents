@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.curator.models.charter import CHARTER, Charter, CharterRevision, CharterWrite

@@ -15,7 +15,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import command_runs
-from evo_agents.hub.server import agent_placement
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.runs.service import dispatch, worker_fit
 
 

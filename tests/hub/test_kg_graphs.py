@@ -178,7 +178,7 @@ def test_sources_lose_repeats_and_refuse_what_cannot_be_a_source():
 
 
 def test_the_cross_project_read_passes_graph_on_to_the_kg_tool():
-    from evo_agents.hub.server.agent_reads import CrossReadIn, _arguments
+    from evo_agents.hub.server.agents.service.reads import CrossReadIn, _arguments
 
     read = CrossReadIn(project="lumen-ops", tool="kg_search", query="KB-01", graph="deals-only")
     assert _arguments(read)["graph"] == "deals-only"

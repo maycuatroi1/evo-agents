@@ -20,8 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_login, runs, tables
 from evo_agents.hub.credentials import dispatch_credential
-from evo_agents.hub.server import agent_placement, audit
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.browser_identities import (
     REFUSALS,
     BrowserIdentity,

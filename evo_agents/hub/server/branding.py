@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, branding, tables
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server.agent_profiles import media_type
+from evo_agents.hub.server.agents.service.profiles import media_type
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.hub_settings import (

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.profile_store import Profile
 
 HUB = "hub"  # profile runs_on of an agent whose turns the hub takes (profiles.RUNS_ON)

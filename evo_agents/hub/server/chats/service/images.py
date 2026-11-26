@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, chats
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.agent_profiles import AVATAR_MAX_BYTES, AVATAR_TYPES, AvatarUpload, media_type
+from evo_agents.hub.server.agents.service.profiles import AVATAR_MAX_BYTES, AVATAR_TYPES, AvatarUpload, media_type
 from evo_agents.hub.server.blobs import fetch_bytes, put_bytes
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.images import IMAGE_KIND, UNAVAILABLE

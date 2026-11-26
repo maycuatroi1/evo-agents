@@ -47,8 +47,8 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import account_pools, audit, route_autonomy
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.agent_accounts import retire_profile_accounts
-from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
+from evo_agents.hub.server.agent_accounts.service.accounts import retire_profile_accounts
+from evo_agents.hub.server.agents.service.packs import PinnedPack, Pins, pinned, pinned_view
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.browser_identities import retire_profile_identities
 from evo_agents.hub.server.errors import ErrorBody
