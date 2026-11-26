@@ -284,10 +284,57 @@ def abandoned_body(body: dict, reason: str, at: str, superseded_by: str | None =
     return result
 
 
-def reopened_body(body: dict) -> dict:
-    """The plan without its abandon keys and with status active; PlanProblem when it was not abandoned."""
-    if body.get("status") not in PLAN_ABANDON_STATUSES:
-        raise PlanProblem(f"plan {body.get('id')} is not abandoned or superseded, so there is nothing to reopen")
+def reopened_body(body: dict, completed: bool = False) -> dict:
+    """The plan without its abandon keys and with status active; PlanProblem when it was neither abandoned nor
+    ``completed`` (in the completed area)."""
+    if body.get("status") not in PLAN_ABANDON_STATUSES and not completed:
+        raise PlanProblem(
+            f"plan {body.get('id')} is active and not abandoned or superseded, so there is nothing to reopen"
+        )
     result = {key: value for key, value in body.items() if key not in ABANDON_KEYS}
     result["status"] = "active"
     return result
+
+
+def settled_area(area: str, body: dict) -> str:
+    """The area a plan written as ``body`` in ``area`` belongs in: an active plan with steps, every one done or
+    descoped, is completed; a completed plan with a step neither done nor descoped is active again. An abandoned or
+    superseded plan stays where it is."""
+    if body.get("status") in PLAN_ABANDON_STATUSES:
+        return area
+    steps = body.get("steps")
+    if area == "active" and isinstance(steps, list) and steps and not undone_steps(body):
+        return "completed"
+    if area == "completed" and undone_steps(body):
+        return "active"
+    return area
+
+
+GOAL_CHARS = 280  # the goal a plan list shows: its start, enough for a line or two
+
+
+def _cut(text, chars: int) -> str | None:
+    """``text`` on one line, cut to ``chars`` characters with an ellipsis; None when it is not text or is blank."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    line = " ".join(text.split())
+    return line if len(line) <= chars else line[: chars - 1].rstrip() + "\u2026"
+
+
+def glance(goal, steps, repos) -> dict:
+    """What a plan list shows of a plan beyond its counts, from its body's ``goal``, ``steps`` and ``repos`` (any JSON
+    value; a repo may be given by its name alone): the goal cut short, each step's key and status in order, the current step (the first neither done nor
+    descoped, with its title, else the start of its what; None when there is none), and the names of its repos."""
+    steps = steps if isinstance(steps, list) else []
+    states, current = [], None
+    for index, step in enumerate(steps):
+        item = step if isinstance(step, dict) else {}
+        status = item.get("status") if isinstance(item.get("status"), str) else None
+        state = {"key": step_key(step, index), "status": status}
+        states.append(state)
+        if current is None and status not in CLOSED_STEP_STATUSES:
+            current = {**state, "title": _cut(item.get("title"), GOAL_CHARS) or _cut(item.get("what"), 120)}
+    repos = repos if isinstance(repos, list) else []
+    names = [repo.get("repo") if isinstance(repo, dict) else repo for repo in repos]
+    names = [name for name in names if isinstance(name, str)]
+    return {"goal": _cut(goal, GOAL_CHARS), "steps": states, "current_step": current, "repos": names}

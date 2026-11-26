@@ -53,7 +53,7 @@ test("a reader follows a plan run but is offered no Run plan", async ({ page, me
   await seedPlanRunPlan(writer, project);
 
   await open(page, `/p/${project}/plans`);
-  await expect(main(page).getByTestId("plans-table-active")).toContainText(PLAN_RUN_PLAN);
+  await expect(main(page).getByTestId("plans-list")).toContainText(PLAN_RUN_PLAN);
   await expect(main(page).getByTestId("plans-run-plan")).toHaveCount(0);
   await open(page, PLAN_PATH(project));
   await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
@@ -159,13 +159,12 @@ test("a writer runs a plan from its page, and the page follows the run until it 
   await expect(banner.getByTestId("plan-run-banner-link")).toHaveAttribute("href", runPath(project, run.id));
   expect((await runOf(me, project, run.id)).state).toBe("waiting");
 
-  // The list marks the plan with the run's state, and its Run plan is locked too.
+  // The list marks the plan with the run's state, and offers no Run plan of its own.
   await open(page, `/p/${project}/plans`);
-  const row = main(page).getByTestId("plans-table-active").locator("tbody tr").filter({ hasText: PLAN_RUN_PLAN });
-  await expect(row.getByTestId("plan-run-phase")).toHaveText("Waiting for decision");
+  const row = main(page).getByTestId("plans-list").locator(`[data-plan-id="${PLAN_RUN_PLAN}"]`);
+  await expect(row.getByTestId("plan-run-phase")).toHaveAttribute("data-phase", "waiting");
   await expect(row.getByTestId("plan-run-link")).toHaveAccessibleName(`Plan run #${run.id}: Waiting for your decision`);
-  await expect(row.getByTestId("plans-run-plan")).toHaveAttribute("aria-disabled", "true");
-  await expect(row.getByTestId("plans-run-plan-lock")).toHaveText(`Plan run #${run.id} is Waiting for decision.`);
+  await expect(row.getByTestId("plans-run-plan")).toHaveCount(0);
 
   // The run's page says it is a plan run, with its plan's steps, repos and model.
   await open(page, runPath(project, run.id));
@@ -243,7 +242,7 @@ test("plan run pages never scroll sideways at 375, 768 and 1024 px", async ({ pa
   for (const width of [375, 768, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     for (const [path, ready] of [
-      [`/p/${project}/plans`, "plans-table-active"],
+      [`/p/${project}/plans`, "plans-list"],
       [PLAN_PATH(project), "plan-run-banner"],
       [`${PLAN_PATH(project)}/steps/2`, "step-plan-run"],
       [runPath(project, run.id), "run-plan-steps"],

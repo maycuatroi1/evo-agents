@@ -241,3 +241,153 @@ def test_reads_change_nothing(client, github, hub_db):
     assert get(reader, "rollout", "diff", **{"from": 1, "to": 1}).status_code == 200
     after = counts(hub_db)
     assert after == before
+
+
+# What the list shows of each plan, and the area its steps put it in
+
+
+def plan_trail(db, plan_id: str) -> list[str]:
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    audit = tables.audit
+    query = select(audit.c.action).where(audit.c.target.like(f"{PROJECT}/{plan_id}@%")).order_by(audit.c.id)
+    return [row[0] for row in live.sql(db, query)]
+
+
+@needs_pg
+def test_list_carries_goal_steps_and_current_step(client, github, hub_db):
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    long_goal = {**draft("rollout", steps=3), "goal": "Ship the rollout\n  to every   tenant. " + "x" * 600}
+    long_goal["repos"].append({"repo": "lumen-web", "status": "pending"})
+    assert put(alice, long_goal).status_code == 200
+    patch_step(alice, "rollout", 1, {"status": "done"}, 1)
+    patch_step(alice, "rollout", 2, {"status": "blocked"}, 2)
+    no_title = {**draft("untitled", steps=1)}
+    no_title["steps"][0].pop("title")
+    assert put(alice, no_title).status_code == 200
+
+    listed = {p["plan_id"]: p for p in get(hubs["reader"]).json()}
+    rollout = listed["rollout"]
+    assert rollout["goal"].startswith("Ship the rollout to every tenant. x") and len(rollout["goal"]) <= 280
+    assert rollout["steps"] == [
+        {"key": "1", "status": "done"},
+        {"key": "2", "status": "blocked"},
+        {"key": "3", "status": "pending"},
+    ]
+    assert rollout["current_step"] == {"key": "2", "title": "Step 2", "status": "blocked"}
+    assert rollout["repos"] == ["evo-agents", "lumen-web"]
+    assert (rollout["steps_done"], rollout["steps_total"], rollout["revision"]) == (1, 3, 3)  # the old fields stay
+    assert listed["untitled"]["current_step"] == {"key": "1", "title": "do part 1", "status": "pending"}
+
+    patch_step(alice, "rollout", 2, {"status": "descoped"}, 3)
+    patch_step(alice, "rollout", 3, {"status": "done"}, 4)
+    closed = {p["plan_id"]: p for p in get(hubs["reader"]).json()}["rollout"]
+    assert closed["current_step"] is None and [s["status"] for s in closed["steps"]] == ["done", "descoped", "done"]
+
+
+@needs_pg
+def test_closing_the_last_step_completes_the_plan(client, github, hub_db):
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    assert put(alice, draft("rollout", steps=2)).status_code == 200
+    first = patch_step(alice, "rollout", 1, {"status": "done"}, 1)
+    assert (first["area"], first["revision"]) == ("active", 2)
+    last = patch_step(alice, "rollout", 2, {"status": "descoped"}, 2)
+    assert (last["area"], last["revision"], last["changed"]) == ("completed", 4, True)
+    revisions = alice.call("GET", plan_url("rollout", "revisions"))
+    assert [(r["revision"], r["area"], r["summary"]) for r in revisions[:2]] == [
+        (4, "completed", "completed: moved from active"),
+        (3, "active", "step 2: status pending -> descoped"),
+    ]
+    assert plan_trail(hub_db, "rollout")[-2:] == ["plan.patch", "plan.complete"]
+    again = alice.call("POST", plan_url("rollout", "complete"), {})
+    assert (again["changed"], again["revision"]) == (False, 4)
+
+    # a PUT that closes the last step does the same
+    assert put(alice, draft("swap", steps=2)).status_code == 200
+    body = draft("swap", steps=2)
+    for step in body["steps"]:
+        step["status"] = "done"
+    replaced = put(alice, body, if_revision=1).json()
+    assert (replaced["area"], replaced["revision"]) == ("completed", 3)
+    assert plan_trail(hub_db, "swap") == ["plan.create", "plan.put", "plan.complete"]
+
+    # an abandoned plan stays as it is, its steps closed or not
+    assert put(alice, draft("dropped", steps=1)).status_code == 200
+    gone = alice.call("POST", plan_url("dropped", "abandon"), {"reason": "not needed"})
+    marked = patch_step(alice, "dropped", 1, {"status": "done"}, gone["revision"])
+    assert (marked["area"], marked["body"]["status"], marked["revision"]) == ("completed", "abandoned", 3)
+    assert plan_trail(hub_db, "dropped") == ["plan.create", "plan.abandon", "plan.patch"]
+
+
+@needs_pg
+def test_opening_a_step_reactivates_a_completed_plan(client, github, hub_db):
+    from evo_agents.hub.plan_writes import reopen_plan
+
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    assert put(alice, draft("rollout", steps=1)).status_code == 200
+    closed = patch_step(alice, "rollout", 1, {"status": "done"}, 1)
+    assert (closed["area"], closed["revision"]) == ("completed", 3)
+    opened = patch_step(alice, "rollout", 1, {"status": "in_progress"}, 3)
+    assert (opened["area"], opened["revision"]) == ("active", 5)
+    assert alice.call("GET", plan_url("rollout", "revisions"))[0]["summary"] == "reopened: back to active"
+    assert plan_trail(hub_db, "rollout")[-2:] == ["plan.patch", "plan.reopen"]
+
+    # POST reopen, and `hub plan reopen`, take a completed plan whose steps are all done
+    closed = patch_step(alice, "rollout", 1, {"status": "done"}, 5)
+    assert closed["area"] == "completed"
+    back = reopen_plan(alice, PROJECT, "rollout")
+    assert (back["area"], back["changed"], back["body"]["steps"][0]["status"]) == ("active", True, "done")
+    refused = alice.client.post(plan_url("rollout", "reopen"), json={}, headers=alice.headers)
+    assert refused.status_code == 409  # an active plan that is not abandoned has nothing to reopen
+
+    # a step opened on an abandoned plan leaves it abandoned
+    assert put(alice, draft("dropped", steps=1)).status_code == 200
+    patch_step(alice, "dropped", 1, {"status": "done"}, 1)
+    gone = alice.call("POST", plan_url("dropped", "abandon"), {"reason": "not needed"})
+    reopened = patch_step(alice, "dropped", 1, {"status": "pending"}, gone["revision"])
+    assert (reopened["area"], reopened["body"]["status"]) == ("completed", "abandoned")
+
+
+@needs_pg
+def test_close_finished_closes_only_finished_plans(client, github, hub_db):
+    import argparse
+
+    from evo_agents.hub.cli.base import HubContext
+    from evo_agents.hub.cli.plan import PlanCloseFinished
+    from tests.hub.contract_keys import assert_json_keys
+
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    finished = draft("finished", steps=2)  # written whole before the hub closed such plans itself
+    finished["steps"][0]["status"], finished["steps"][1]["status"] = "done", "descoped"
+    assert put(alice, finished).status_code == 200
+    assert put(alice, draft("open", steps=2)).status_code == 200
+    assert put(alice, {**draft("empty"), "steps": []}).status_code == 200
+    gone = {**finished, "id": "gone"}
+    assert put(alice, gone).status_code == 200
+    alice.call("POST", plan_url("gone", "complete"), {})
+
+    def close(dry_run: bool):
+        context = HubContext(argparse.Namespace(dry_run=dry_run, project=PROJECT))
+        context.__dict__.update(session=(alice, None), project=PROJECT)
+        return PlanCloseFinished().run(context)
+
+    def areas() -> dict:
+        return {p["plan_id"]: p["area"] for p in get(alice).json()}
+
+    listed = close(dry_run=True)
+    assert_json_keys("hub plan close-finished", listed.data)
+    assert [(row["plan_id"], row["closed"]) for row in listed.data] == [("finished", False)]
+    assert "finished" in "\n".join(listed.view.lines()) and listed.status == 0
+    assert areas() == {"empty": "active", "finished": "active", "gone": "completed", "open": "active"}
+
+    done = close(dry_run=False)
+    assert [(row["plan_id"], row["closed"], row["revision"]) for row in done.data] == [("finished", True, 2)]
+    assert areas() == {"empty": "active", "finished": "completed", "gone": "completed", "open": "active"}
+    assert plan_trail(hub_db, "finished") == ["plan.create", "plan.complete"]
+    assert close(dry_run=False).data == []

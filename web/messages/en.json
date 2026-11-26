@@ -1389,38 +1389,67 @@
       "legend": "Steps by status",
       "otherStatus": "Other status"
     },
+    "strip": {
+      "label": "Steps: {counts}",
+      "done": "{count} done",
+      "in_progress": "{count} in progress",
+      "blocked": "{count} blocked",
+      "pending": "{count} to do",
+      "descoped": "{count} descoped",
+      "other": "{count} in another status"
+    },
     "list": {
       "metaTitle": "Plans of {project}",
       "title": "Plans",
-      "activeCount": "{count, plural, other {# active}}",
-      "completedCount": "{count, plural, other {# completed}}",
-      "active": "Active",
-      "completed": "Completed",
-      "noActive": "The project has no active plan.",
-      "noCompleted": "The project has no completed plan yet.",
+      "cliNote": "Edited from the CLI",
       "emptyTitle": "The project has no plan on the hub yet",
       "emptyDescription": "Plans show here once a member pushes the harness's plans with evo-agents hub plan import; plans labelled above your visibility stay hidden.",
-      "search": "Search plans by title or id",
+      "views": "Open or completed plans",
+      "viewOpen": "Open {count}",
+      "viewCompleted": "Completed {count}",
+      "openCaption": "Open plans",
+      "completedCaption": "Completed plans",
+      "noOpen": "The project has no open plan.",
+      "noCompleted": "The project has no completed plan yet.",
+      "search": "Search plans by name, goal or id",
       "searchPlaceholder": "Search plans",
       "clearSearch": "Clear search",
       "shown": "Showing {shown} of {total} plans",
       "total": "{count, plural, one {# plan} other {# plans}}",
-      "noMatch": "No plan matches the search.",
       "noMatchTitle": "No plan matches",
-      "activeCaption": "Active plans",
-      "completedCaption": "Completed plans",
-      "revisionValue": "r{revision}",
-      "mobileMeta": "<id>{plan}</id>, {progress}",
-      "mobileMetaText": "{plan}, {progress}",
-      "mobileProblems": "{progress}, problems {problems}",
-      "columns": {
-        "plan": "Plan",
-        "problems": "Problems",
-        "progress": "Progress",
-        "revision": "Revision",
-        "updated": "Last changed",
-        "actions": "Actions"
-      }
+      "owner": "Owner",
+      "allOwners": "All owners",
+      "problem": "Problem",
+      "allProblems": "All problems",
+      "repo": "Repo",
+      "allRepos": "All repos",
+      "group": "Group",
+      "groupBy": {
+        "none": "Group: none",
+        "problem": "Group: problem",
+        "owner": "Group: owner",
+        "repo": "Group: repo"
+      },
+      "groupNone": {
+        "problem": "No problem",
+        "owner": "No owner",
+        "repo": "No repo"
+      },
+      "sort": "Sort",
+      "sortBy": {
+        "updated": "Sort: last changed",
+        "progress": "Sort: progress",
+        "name": "Sort: name"
+      },
+      "currentStep": "Step {position} of {total}: {title}",
+      "currentStepKey": "Step {key} of {total}: {title}",
+      "allDone": "{total, plural, one {The step is done} other {All # steps done}}",
+      "noSteps": "No steps yet",
+      "blocked": "Blocked:",
+      "stepsCount": "{done}/{total}",
+      "changedBy": "Last changed by",
+      "yesterday": "Yesterday",
+      "select": "Select {plan}"
     },
     "complete": {
       "button": "Done",
@@ -1610,6 +1639,71 @@
       "oldText": "Text in revision {revision}",
       "newText": "Text in revision {revision}",
       "text": "Text"
+    },
+    "peek": {
+      "goalLess": "Show less",
+      "goalAll": "Read all",
+      "noSteps": "The plan has no step yet.",
+      "runHere": "Run {id} is stopped here",
+      "runsError": "The plan runs could not be loaded.",
+      "noRuns": "No plan run yet.",
+      "openRun": "Open run {id}",
+      "changed": "Last change",
+      "problems": "Problems",
+      "repos": "Repos",
+      "actions": "Plan actions",
+      "abandon": "Abandon",
+      "copyId": "Copy id",
+      "notFound": "Plan {plan} is not on the hub, or is hidden from you.",
+      "about": "About",
+      "goal": "Goal",
+      "steps": "Steps {done}/{total}",
+      "runs": "Recent plan runs",
+      "openPage": "Open the plan page",
+      "close": "Close panel",
+      "titleUnknown": "Plan",
+      "status": {
+        "done": "Done",
+        "in_progress": "In progress",
+        "blocked": "Blocked",
+        "pending": "Pending",
+        "descoped": "Descoped",
+        "other": "Other"
+      }
+    },
+    "write": {
+      "reason": "Reason",
+      "reasonMissing": "Say why, so the team can read it later.",
+      "reasonHint": "Kept on each plan.",
+      "failed": "{count, plural, one {# plan was refused} other {# plans were refused}}",
+      "noReason": "The hub answered {status}.",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "abandon": {
+        "titleOne": "Abandon {plan}?",
+        "title": "Abandon {count} plans?",
+        "description": "{count, plural, one {The plan moves to Completed as abandoned.} other {The plans move to Completed as abandoned.}}",
+        "pending": "Abandoning",
+        "confirm": "{count, plural, one {Abandon plan} other {Abandon # plans}}",
+        "doneOne": "Abandoned {plan}",
+        "done": "Abandoned {count} plans"
+      },
+      "close": {
+        "titleOne": "Close {plan}?",
+        "title": "Close {count} plans?",
+        "description": "{count, plural, one {Every step is done or descoped; the plan moves to Completed.} other {Every step is done or descoped; the plans move to Completed.}}",
+        "pending": "Closing",
+        "confirm": "{count, plural, one {Close plan} other {Close # plans}}",
+        "doneOne": "Closed {plan}",
+        "done": "Closed {count} plans"
+      }
+    },
+    "selection": {
+      "label": "Selected plans",
+      "count": "{count, plural, one {# selected} other {# selected}}",
+      "close": "Close",
+      "abandon": "Abandon",
+      "clear": "Clear"
     }
   },
   "states": {

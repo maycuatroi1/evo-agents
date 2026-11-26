@@ -24,6 +24,7 @@ from evo_agents.hub import (
 from evo_agents.hub.cli import inbox as inbox_command
 from evo_agents.hub.cli import kg as kg_cli
 from evo_agents.hub.cli import market as cli_market
+from evo_agents.hub.cli import plan as plan_cli
 from evo_agents.hub.cli.contract import CONTRACT_PRINT
 from evo_agents.hub.cli.kg import entities as kg_entities_cli
 from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
@@ -68,6 +69,7 @@ BUILT_HERE = {
     "hub send": lambda: local_send.send_json("demo", 7, "session", [], []),
     "hub market seller-key": lambda: cli_market.seller_key_json("seller.key", "ed25519:0", "AA=="),
     "hub inbox": lambda: inbox_command.inbox_json([]),
+    "hub plan close-finished": lambda: plan_cli.closed_row({"plan_id": "demo", "steps_total": 1, "revision": 1}),
     "worker agent read": lambda: read_json({}),
 }
 

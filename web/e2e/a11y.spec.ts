@@ -514,7 +514,7 @@ const PAGES: Entry[] = [
     open: async ({ page, me }) => {
       await seedPlans(me, me.projects[0]);
       await open(page, `/p/${me.projects[0]}/plans`);
-      await expect(page.getByTestId("plans-table-active")).toBeVisible();
+      await expect(page.getByTestId("plans-list")).toBeVisible();
     },
   },
   {
@@ -1525,7 +1525,7 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "plans list with a plan run waiting and Run plan",
+    name: "plans list with a plan run waiting",
     open: async ({ page, me }) => {
       const project = me.projects[0];
       await seedPlanRunPlan(me, project);
@@ -1533,7 +1533,6 @@ const PAGES: Entry[] = [
       await seedRunPlan(me, project);
       await open(page, `/p/${project}/plans`);
       await expect(page.locator("#main").getByTestId("plan-run-link")).toBeVisible();
-      await expect(page.locator("#main").getByTestId("plans-run-plan")).toHaveCount(2);
     },
   },
   {

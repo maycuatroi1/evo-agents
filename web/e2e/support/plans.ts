@@ -103,6 +103,15 @@ export async function seedPlans(writer: Account, project: string): Promise<Seede
   return { project, revisions: third.revision };
 }
 
+/** An open plan whose steps are all done: the completed fixture under another id, pushed to the active area. */
+export const FINISHED_PLAN = "lumen-finished-rollout";
+
+/** Push FINISHED_PLAN into `project`, as `writer`: the plans list offers Close for it. */
+export async function seedFinishedPlan(writer: Account, project: string): Promise<void> {
+  const api = bearerClient(await machineToken(writer));
+  await put(api, project, { ...loadFixture(COMPLETED_PLAN), id: FINISHED_PLAN }, "active");
+}
+
 /**
  * Open `url` and wait until React has put every streamed part of the page in place: until then a streamed part sits
  * in a hidden <div id="S:n"> beside its loading fallback, and a test id can match twice.
