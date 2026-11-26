@@ -798,8 +798,8 @@ async def _remembered(conn: AsyncConnection, row, run_id: int, lenses: list[str]
 async def _assigned(conn: AsyncConnection, owner_id: int, project_id: int, night: date | None) -> list[dict]:
     """What the weekly probe report asks of the review run of ``night`` (``probe_fixes.assignments``), as its owner
     reads the probes."""
-    from evo_agents.hub.server import probe_fixes  # it reads the proposals and runs of these routes
     from evo_agents.hub.server.history.service import readers  # it reads the proposals and runs of these routes
+    from evo_agents.hub.server.probes.service import fixes as probe_fixes  # it reads these routes' runs
     from evo_agents.hub.server.security import MACHINE, Principal
 
     access = await readers.owner_access(conn, owner_id, project_id)

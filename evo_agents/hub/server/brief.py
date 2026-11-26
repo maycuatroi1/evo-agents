@@ -32,7 +32,7 @@ the job, or a second hub worker, finds the row and sends nothing. ``curator.last
 /v1/projects/{p}/curator (``last_brief``). A schedule whose owner lost every grant on the project gets no brief.
 
 On Monday, the same pass tells the owner of a schedule whose charter runs probes the weekly report of the ISO week that
-just ended (``probe_report.send``), in a transaction of its own, once a week.
+just ended (``probes.service.report.send``), in a transaction of its own, once a week.
 
 ``send_loop_notices`` is the job ``hub.loop_notices`` (``loop.notices.send``): the month's review of the goals of each
 project whose Loop is on, and the Loop's part of the brief, at 07:00, for a project whose Curator sends none.
@@ -53,13 +53,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
-from evo_agents.hub.server import agent_placement, probe_report, today_digest
+from evo_agents.hub.server import agent_placement, today_digest
 from evo_agents.hub.server.curator import curator_state, night_figures
 from evo_agents.hub.server.curator_shift import due_schedules, owner_access
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plans import service as plan_service
+from evo_agents.hub.server.probes.service import report as probe_report
 from evo_agents.hub.server.projects import ProjectAccess
 
 log = logging.getLogger(__name__)

@@ -3128,8 +3128,8 @@ evo-agents hub curator replay show 4                  # change #4's replays, arm
 ## The Curator's probes
 
 A probe measures, every week after a change of the Curator merged, whether the rule it made from a correction still
-keeps the mistake away (schemas 0130 to 0133, `evo_agents/hub/probes.py`, `evo_agents/hub/server/probes.py`,
-`probe_routes.py`, `probe_runs.py`, `probe_report.py`, `probe_fixes.py`): a task in one repo from a base commit, and a
+keeps the mistake away (schemas 0130 to 0133, `evo_agents/hub/probes.py` and the package `evo_agents/hub/server/probes/`:
+`routes/`, `service/probes.py`, `service/runs.py`, `service/report.py`, `service/fixes.py`): a task in one repo from a base commit, and a
 one-line verify that exits 0 when an agent given the task does not make the mistake again. `docs/curator.md`, Probes,
 says what they are for and how to read them.
 
@@ -3210,7 +3210,7 @@ own after the brief, and its failure leaves the brief as it went (`probe_report_
 
 **The fixes.** A probe `recurring` on the same runtime and model in the two weekly reports before a review run's week
 puts a fix assignment in that run's prompt, and one `not_reproduced` or `stale` on both a replace assignment
-(`probe_fixes`; a stale one names why it was stale each week). A proposal or a finding with `fix_of` (`evo-agents worker propose --fix-of CHANGE`,
+(`probes.service.fixes`; a stale one names why it was stale each week). A proposal or a finding with `fix_of` (`evo-agents worker propose --fix-of CHANGE`,
 `evo-agents worker finding --fix-of CHANGE`) and a probe with `replaces` get 422 when no such assignment exists. A fix proposal is at least tier 1
 (`tiers.tier_of`, `FIX_TIER`), the hub adds the two weeks' probe results to its evidence (kind `probe`, which no agent
 may submit), and a change has at most one open or deferred fix proposal: 409 for a second, and the partial unique

@@ -457,7 +457,7 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
     (``replays.replay_claim``), for a probe run its probe and its own key (``probe_runs.probe_claim``), and for an
     evolve run its evolution and its own key (``evolve_runs.evolve_claim``). None for any other run."""
     from evo_agents.hub.server import change_repos  # it reads the changes of this module
-    from evo_agents.hub.server.probe_runs import probe_claim  # it reads the changes of this module
+    from evo_agents.hub.server.probes.service.runs import probe_claim  # it reads the changes of this module
     from evo_agents.hub.server.replays import replay_claim  # it reads the changes of this module
 
     policy = await curator_policy(conn, project_id, view.kind, view.plan_id or None)

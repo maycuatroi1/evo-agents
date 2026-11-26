@@ -2,7 +2,7 @@
 
 POST /probes/seed {probe_id, weeks: [{ago, on: [passed, ...], off: [passed, ...]}]} makes the probe's change merged
 two weeks ago and the probe three weeks old, so the report lists it in each week since, then writes one done probe run
-per week and per runtime and model of the charter's probes (``probe_runs.probe_models``): ``ago`` weeks before the
+per week and per runtime and model of the charter's probes (``probes.service.runs.probe_models``): ``ago`` weeks before the
 current ISO week in the charter's time zone, each arm's sessions passing or not as listed. No worker runs probe sessions
 in the stack, so the job that queues and reports them is not played here (tests/hub/test_probe_runs.py covers it); this
 gives the report and the probe card the rows they read. The answer is ``{weeks: [<Monday>, ...]}``.
@@ -18,7 +18,7 @@ def seed(dsn: str, body: dict) -> dict:
     from psycopg.types.json import Jsonb
 
     from evo_agents.hub import probes
-    from evo_agents.hub.server.probe_runs import probe_models
+    from evo_agents.hub.server.probes.service.runs import probe_models
 
     probe_id = int(body["probe_id"])
     with psycopg.connect(dsn) as conn:

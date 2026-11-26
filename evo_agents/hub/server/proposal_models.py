@@ -11,10 +11,10 @@ from fastapi import Path
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import review, tiers
-from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.change_views import Change
 from evo_agents.hub.server.memories.models import PromotionIn
+from evo_agents.hub.server.probes.models import probe as stored_probes
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME
 
 Title = Annotated[str, Field(min_length=1, max_length=review.MAX_TITLE_CHARS, pattern=LINE)]

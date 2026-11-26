@@ -1,6 +1,6 @@
 """The probe runs of the Curator on the hub: each active probe of a merged change measured once an ISO week on each
-runtime and model of the charter (``evo_agents.hub.probes`` holds their shape, ``evo_agents.hub.server.probes`` the
-probes themselves).
+runtime and model of the charter (``evo_agents.hub.probes`` holds their shape, ``service.probes`` the probes
+themselves, ``repository.runs`` the queries on curator_probe_runs).
 
 The night shift (``curator_shift._fire``) queues a probe run last, inside its window, once the night has no plan to run
 (``queue_probe``): for a charter with ``probes.budget_usd``, the pairs of an active probe of a merged change (with its
@@ -17,8 +17,9 @@ The claim of a probe run tells its worker the probe (its repo, base commit, task
 merge commit, head and default branch), k, and hands it the run's own key (``probe_claim``), which the hub keeps as a
 SHA-256: the worker posts each session's result, with where the arms ran (``arms_at``: tip, else change, which the row
 keeps), or why neither the tip of the default branch less the change's diff nor the change's commits make the arms
-(stale), with POST /v1/worker/runs/{id}/probe and that key alone (``probes.PROBE_KEY_HEADER``). The run's events never
-hold the verify, the answer key, and the agent of a run reads no probe run (``views.agent_reads``).
+(stale), with POST /v1/worker/runs/{id}/probe (``routes.runs``, ``report``) and that key alone
+(``probes.PROBE_KEY_HEADER``). The run's events never hold the verify, the answer key, and the agent of a run reads no
+probe run (``views.agent_reads``).
 """
 
 from __future__ import annotations
@@ -27,116 +28,32 @@ import hashlib
 import hmac
 import logging
 import secrets
-from datetime import date, datetime, timedelta
-from typing import Annotated, Literal
+from datetime import date
 
-from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import and_, func, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, probes, runs, tables
+from evo_agents.hub import curator, probes, runs
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.night_cost import usage_cost
+from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.plans import service as plan_service
+from evo_agents.hub.server.probes.models.runs import (
+    PROBE_RUN,
+    REQUEUED,
+    UNMEASURED,
+    ProbeReport,
+    ProbeRequeue,
+    ProbeRun,
+    ProbeSession,
+)
+from evo_agents.hub.server.probes.repository import runs as repository
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
-from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId
+from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
-
-PROBE_RUN = "curator.probe_run"  # the night shift queued a probe run: "<project>/<plan> run:<id> probe:<id> week:<day>"
-UNMEASURED = "the week's probes spent probes.budget_usd ({spent} of {cap}) before this probe ran on this model"
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-
-ProbeKey = Annotated[
-    str | None,
-    Header(
-        alias=probes.PROBE_KEY_HEADER,
-        max_length=200,
-        description="the probe run's own key, which its claim handed the daemon; the worker token alone is refused",
-    ),
-]
-Reason = Annotated[str, Field(min_length=1, max_length=probes.MAX_REASON_CHARS)]
-
-
-# Models
-
-
-class ProbeSession(BaseModel):
-    """One session of a probe run: its arm, which of the arm's k it is, whether the probe's verify passed on its work,
-    and what the agent took, on the runtime and the model it actually ran."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    arm: Literal[probes.ARMS] = Field(description="on: the change's rule in place; off: the change's diff taken off")
-    index: int = Field(ge=1, le=probes.MAX_K, description="which of the arm's k sessions, from 1")
-    passed: bool = Field(description="the probe's verify exited 0 on the session's work")
-    exit_code: int | None = Field(None, description="the verify's; null when it did not run")
-    cost_usd: float | None = Field(None, ge=0, description="the agent's session; null when its runtime names none")
-    turns: int | None = Field(None, ge=0)
-    duration_ms: int = Field(ge=0, description="the agent's time")
-    runtime: Literal[runs.RUNTIMES]
-    model: str | None = Field(None, max_length=200, description="the model the session ran on, as its runtime said it")
-    agent_error: str | None = Field(None, max_length=probes.MAX_REASON_CHARS, description="why its turn ended short")
-    session_id: str | None = Field(None, max_length=200)
-
-
-class ProbeReport(BaseModel):
-    """A session's result with the commits the arms run from and where (``arms_at``); or why the arms cannot be made,
-    neither at the tip of the default branch nor at the change's commits (``stale``)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    base_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the task's base commit the sessions start at")
-    harness_sha: str | None = Field(
-        None, pattern=OBJECT_NAME, description="the commit of the change's repo arm on runs with"
-    )
-    arms_at: Literal[probes.ARMS_AT] | None = Field(
-        None,
-        description="tip: arm on at the tip of the default branch, arm off that tip less the change's diff; change: "
-        "the diff no longer comes off the tip, so arm on at the change's commit and arm off at the one before it. "
-        "None from a worker that names none, which ran at the tip",
-    )
-    session: ProbeSession | None = None
-    stale: Reason | None = Field(None, description="why the arms cannot be made: the probe is stale for the week")
-
-    @model_validator(mode="after")
-    def _one(self):
-        if (self.session is None) == (self.stale is None):
-            raise ValueError("a probe report is one session with its base_sha and harness_sha, or stale with why")
-        if self.session is not None and (self.base_sha is None or self.harness_sha is None):
-            raise ValueError("a probe session names the base_sha and harness_sha its arms ran from")
-        return self
-
-
-class ProbeRun(BaseModel):
-    id: int
-    probe_id: int
-    change_id: int | None = Field(description="null: the probe of a plugin's rule, which has no change")
-    week: date = Field(description="the Monday of the ISO week, in the charter's time zone")
-    runtime: str
-    model: str | None
-    k: int = Field(description="the sessions of each arm")
-    run_id: int | None
-    state: Literal[probes.RUN_STATES]
-    attempts: int
-    base_sha: str | None
-    harness_sha: str | None
-    arms_at: Literal[probes.ARMS_AT] | None = Field(
-        None, description="where the arms ran: tip or change; null without a session, and for a plugin's probe"
-    )
-    sessions: list[dict] = Field(description="ProbeSession, in the order they were reported")
-    reason: str | None
-    created_at: datetime
-    updated_at: datetime
 
 
 # Queueing
@@ -157,53 +74,19 @@ def probe_models(body: dict) -> list[tuple[str, str | None]]:
     return found or [(builder.get("runtime") or curator.DEFAULT_RUNTIME, builder.get("model"))]
 
 
-async def week_cost(conn: AsyncConnection, schedule_id: int, week: date) -> float:
-    """What the probe runs schedule ``schedule_id`` queued for the nights of the ISO week of ``week`` cost."""
-    r = tables.runs
-    of_week = (
-        r.c.schedule_id == schedule_id,
-        r.c.kind == "probe",
-        r.c.schedule_night.between(week, week + timedelta(days=6)),
-    )
-    found = await conn.execute(select(func.coalesce(func.sum(usage_cost(r.c.usage)), 0)).where(*of_week))
-    return float(found.scalar_one() or 0)
-
-
 async def _pairs(conn: AsyncConnection, project_id: int, week: date, models: list[tuple[str, str | None]]) -> list:
     """(probe, change, runtime, model, row of the week or None) of each pair the week has yet to measure, the one
     measured longest ago first, then by probe and by the charter's order of models."""
-    pr, c, pw, pl = tables.curator_probes, tables.curator_changes, tables.curator_probe_runs, tables.plugins
-    found = await conn.execute(
-        select(
-            pr,
-            c.c.plan_id.label("plan_id"),
-            func.coalesce(c.c.repo, pr.c.repo).label("change_repo"),  # a plugin's probe: the files go in its repo
-            c.c.branch.label("change_branch"),
-            pl.c.name.label("plugin"),
-        )
-        .outerjoin(c, c.c.id == pr.c.change_id)
-        .outerjoin(pl, pl.c.id == pr.c.plugin_id)
-        .where(
-            pr.c.project_id == project_id,
-            pr.c.state == "active",
-            or_(
-                and_(c.c.state == "merged", c.c.plan_id.is_not(None)),
-                and_(pr.c.source == probes.PLUGIN, pr.c.plugin_id.is_not(None)),
-            ),
-        )
-        .order_by(pr.c.id)
-    )
-    probes_found = found.all()
+    probes_found = await repository.measurable(conn, project_id)
     if not probes_found:
         return []
-    ids = [row.id for row in probes_found]
-    rows = (await conn.execute(select(pw).where(pw.c.probe_id.in_(ids)))).all()
+    rows = await repository.rows_of(conn, [row.id for row in probes_found])
     this_week = {(row.probe_id, row.runtime, row.model): row for row in rows if row.week == week}
     measured: dict[tuple, date] = {}
     for row in rows:
         if row.week < week and row.state == "done":
             key = (row.probe_id, row.runtime, row.model)
-            measured[key] = max(measured.get(key, row.week), row.week)
+            measured[key] = max(measured.get(key, row.week), row.week)  # pyright: ignore[reportArgumentType]
     pairs = []
     for probe in probes_found:
         for order, (runtime, model) in enumerate(models):
@@ -217,15 +100,13 @@ async def _pairs(conn: AsyncConnection, project_id: int, week: date, models: lis
 
 
 async def _unmeasured(conn: AsyncConnection, due, week: date, k: int, pairs: list, why: str) -> None:
-    pw = tables.curator_probe_runs
     for probe, runtime, model, row in pairs:
         if row is not None:
-            values = {"state": "unmeasured", "reason": why, "updated_at": func.now()}
-            await conn.execute(update(pw).values(**values).where(pw.c.id == row.id, pw.c.state == "queued"))
+            await repository.unmeasured_row(conn, row.id, why)
             continue
         values = {"project_id": due.project_id, "probe_id": probe.id, "change_id": probe.change_id, "week": week}
         values |= {"runtime": runtime, "model": model, "k": k, "state": "unmeasured", "reason": why}
-        await conn.execute(pg_insert(pw).values(**values).on_conflict_do_nothing())
+        await repository.insert_unless_held(conn, values)
     log.info("curator probes unmeasured", extra={"project": due.project, "pairs": len(pairs), "week": str(week)})
 
 
@@ -268,14 +149,13 @@ def _values(due, gate, probe, held, runtime: str, model: str | None, budget: dic
 
 async def _queued(conn: AsyncConnection, due, gate, week: date, k: int, found, run_id: int, budget: dict) -> None:
     probe, runtime, model, row = found
-    pw = tables.curator_probe_runs
     values = {"run_id": run_id, "state": "running", "k": k, "probe_key": None, "sessions": [], "reason": None}
     if row is None:
         values |= {"project_id": due.project_id, "probe_id": probe.id, "change_id": probe.change_id, "week": week}
-        await conn.execute(pg_insert(pw).values(**values, runtime=runtime, model=model))
+        await repository.insert_row(conn, {**values, "runtime": runtime, "model": model})
     else:
-        values |= {"base_sha": None, "harness_sha": None, "arms_at": None, "updated_at": func.now()}
-        await conn.execute(update(pw).values(**values).where(pw.c.id == row.id))
+        values |= {"base_sha": None, "harness_sha": None, "arms_at": None}
+        await repository.update_row(conn, row.id, values)
     caps = f"cost cap {curator.money(budget['max_usd'])}, {budget['max_seconds'] // 60} minutes of agent time"
     whose = "the change's" if probe.change_id is not None else "the plugin's"
     text = (
@@ -312,7 +192,7 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
     pairs = await _pairs(conn, due.project_id, week, probe_models(due.body))
     if not pairs:
         return None
-    spent = await week_cost(conn, due.id, week)
+    spent = await repository.week_cost(conn, due.id, week)
     if cap - spent < curator.MIN_RUN_USD:
         await _unmeasured(
             conn, due, week, k, pairs, UNMEASURED.format(spent=curator.money(spent), cap=curator.money(cap))
@@ -340,38 +220,16 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
 
 # An admin's requeue
 
-REQUEUED = ("stale", "failed", "unmeasured")  # the states of a week's row an admin puts back to queued
-
-
-class ProbeRequeue(BaseModel):
-    probe_id: int
-    week: date = Field(description="the Monday of the ISO week in progress, in the charter's time zone")
-    requeued: list[ProbeRun] = Field(
-        description="the rows put back to queued, with no attempt: the next night runs them"
-    )
-    kept: list[ProbeRun] = Field(
-        description="the week's other rows of the probe, queued, running or done, as they were"
-    )
-
 
 async def requeue(conn: AsyncConnection, probe_id: int, week: date) -> ProbeRequeue:
     """Put the rows of probe ``probe_id`` of the ISO week of Monday ``week`` that are stale, failed or unmeasured back
     to queued, their attempts at 0 and no reason, so that the next night measures them again (``_pairs`` takes a queued
     row); the sessions a row holds stay until its next run starts. Any other row is kept as it is."""
-    pw = tables.curator_probe_runs
-    rows = (
-        await conn.execute(
-            select(pw.c.id, pw.c.state)
-            .where(pw.c.probe_id == probe_id, pw.c.week == week)
-            .order_by(pw.c.id)
-            .with_for_update()
-        )
-    ).all()
+    rows = await repository.week_rows(conn, probe_id, week)
     again = [row.id for row in rows if row.state in REQUEUED]
     if again:
-        values = {"state": "queued", "attempts": 0, "reason": None, "probe_key": None, "updated_at": func.now()}
-        await conn.execute(update(pw).values(**values).where(pw.c.id.in_(again)))
-    found = [await _view(conn, row.id) for row in rows]
+        await repository.requeue_rows(conn, again)
+    found = [await repository.run_view(conn, row.id) for row in rows]
     return ProbeRequeue(
         probe_id=probe_id,
         week=week,
@@ -388,15 +246,12 @@ async def probe_claim(conn: AsyncConnection, change, run_id: int) -> dict:
     a new key of the run (``probe_key``), whose SHA-256 alone the hub keeps; nothing when the run probes nothing now.
     A plugin's probe has no change (``change`` None): its spec names the plugin, the rule's ``ref`` and the files of
     each arm (``arms``), which go in the probe's own repo."""
-    pw, pr = tables.curator_probe_runs, tables.curator_probes
-    row = (
-        await conn.execute(select(pw).where(pw.c.run_id == run_id, pw.c.state == "running").with_for_update())
-    ).one_or_none()
+    row = await repository.row_of_run(conn, run_id, running=True)
     if row is None:
         return {}
-    probe = (await conn.execute(select(pr).where(pr.c.id == row.probe_id))).one()
+    probe = await repository.probe_of(conn, row.probe_id)
     key = secrets.token_urlsafe(32)
-    await conn.execute(update(pw).values(probe_key=_key_digest(key), updated_at=func.now()).where(pw.c.id == row.id))
+    await repository.update_row(conn, row.id, {"probe_key": _key_digest(key)})
     spec = {
         "probe_run_id": row.id,
         "probe_id": probe.id,
@@ -411,9 +266,7 @@ async def probe_claim(conn: AsyncConnection, change, run_id: int) -> dict:
         "merge_sha": None if change is None else change.merge_sha,
     }
     if probe.arms is not None:
-        plugin = (
-            await conn.execute(select(tables.plugins.c.name).where(tables.plugins.c.id == probe.plugin_id))
-        ).scalar_one_or_none()
+        plugin = await repository.plugin_name(conn, probe.plugin_id)
         spec |= {"plugin": plugin, "ref": probe.ref, "arms": probe.arms}
     elif change is None:
         return {}  # a probe of a change, on a run that names none: it probes nothing now
@@ -422,12 +275,7 @@ async def probe_claim(conn: AsyncConnection, change, run_id: int) -> dict:
 
 async def run_prompt(conn: AsyncConnection, view) -> str:
     """The prompt of probe run ``view``, as its worker builds it for each session (``probes.probe_prompt``)."""
-    pw, pr = tables.curator_probe_runs, tables.curator_probes
-    probe = (
-        await conn.execute(
-            select(pr.c.task, pr.c.repo).join(pw, pw.c.probe_id == pr.c.id).where(pw.c.run_id == view.id)
-        )
-    ).one_or_none()
+    probe = await repository.task_of_run(conn, view.id)
     if probe is None:
         return "This probe run probes nothing: end it."
     return probes.probe_prompt(probe.task, folder=probe.repo)
@@ -440,48 +288,42 @@ async def _held_probe(conn: AsyncConnection, user: Principal, run_id: int, key: 
     """The row of curator_probe_runs of probe run ``run_id``, which the worker of ``user`` holds, locked; 404 for any
     other run, 409 for a probe that waits for nothing of it, 403 without the run's own key."""
     worker_id = (await worker_of(conn, user))[0]
-    r, pw = tables.runs, tables.curator_probe_runs
-    run = (
-        await conn.execute(select(r.c.state, r.c.worker_id, r.c.kind).where(r.c.id == run_id).with_for_update())
-    ).one_or_none()
+    run = await repository.held_run(conn, run_id)
     if run is None or run.worker_id != worker_id or run.state not in runs.HELD_STATES:
-        raise HTTPException(404, NOT_HELD.format(id=run_id))
+        raise NotFound(NOT_HELD.format(id=run_id))
     if run.kind != "probe":
-        raise HTTPException(404, f"run {run_id} is not a probe run: only a probe run reports a probe")
-    row = (await conn.execute(select(pw).where(pw.c.run_id == run_id).with_for_update())).one_or_none()
+        raise NotFound(f"run {run_id} is not a probe run: only a probe run reports a probe")
+    row = await repository.row_of_run(conn, run_id)
     if row is None or row.state != "running":
-        raise HTTPException(409, f"run {run_id} probes nothing that waits for it")
+        raise Conflict(f"run {run_id} probes nothing that waits for it")
     if not key or row.probe_key is None or not hmac.compare_digest(_key_digest(key), row.probe_key):
-        raise HTTPException(
-            403,
+        raise Forbidden(
             f"run {run_id} is a probe run: its results take the run's own key ({probes.PROBE_KEY_HEADER}), which its "
-            "claim handed the daemon; the worker token alone writes no result",
+            "claim handed the daemon; the worker token alone writes no result"
         )
     return row
 
 
 async def _stale(conn: AsyncConnection, row, body: ProbeReport, run_id: int) -> None:
-    pw = tables.curator_probe_runs
-    values = {"state": "stale", "reason": body.stale, "updated_at": func.now()}
+    values = {"state": "stale", "reason": body.stale}
     values |= {key: getattr(body, key) for key in ("base_sha", "harness_sha") if getattr(body, key)}
-    await conn.execute(update(pw).values(**values).where(pw.c.id == row.id))
+    await repository.update_row(conn, row.id, values)
     await write_event(conn, run_id, {"text": f"The probe is stale this week: {body.stale}.", "stale": True})
 
 
-async def _session(conn: AsyncConnection, row, body: ProbeReport, run_id: int) -> None:
-    pw, session = tables.curator_probe_runs, body.session
+async def _session(conn: AsyncConnection, row, body: ProbeReport, session: ProbeSession, run_id: int) -> None:
     if session.index > row.k:
-        raise HTTPException(409, f"run {run_id} takes {row.k} session(s) of each arm, not session {session.index}")
+        raise Conflict(f"run {run_id} takes {row.k} session(s) of each arm, not session {session.index}")
     if any(item.get("arm") == session.arm and item.get("index") == session.index for item in row.sessions or []):
-        raise HTTPException(409, f"run {run_id} reported session {session.index} of arm {session.arm} already")
+        raise Conflict(f"run {run_id} reported session {session.index} of arm {session.arm} already")
     sessions = [*(row.sessions or []), session.model_dump()]
     values = {"sessions": sessions, "base_sha": row.base_sha or body.base_sha}
-    values |= {"harness_sha": row.harness_sha or body.harness_sha, "updated_at": func.now()}
+    values |= {"harness_sha": row.harness_sha or body.harness_sha}
     if row.change_id is not None:  # a worker that names no arms_at ran the arms at the tip
         values["arms_at"] = row.arms_at or body.arms_at or probes.ARMS_AT_TIP
     if len(sessions) >= 2 * row.k:
         values |= {"state": "done", "reason": None}
-    await conn.execute(update(pw).values(**values).where(pw.c.id == row.id))
+    await repository.update_row(conn, row.id, values)
     word = "passed" if session.passed else "failed"
     text = f"Session {session.index} of arm {session.arm} of the probe {word} its verify."
     await write_event(
@@ -489,26 +331,15 @@ async def _session(conn: AsyncConnection, row, body: ProbeReport, run_id: int) -
     )
 
 
-async def _view(conn: AsyncConnection, row_id: int) -> ProbeRun:
-    pw = tables.curator_probe_runs
-    row = (await conn.execute(select(pw).where(pw.c.id == row_id))).one()
-    return ProbeRun(**{key: getattr(row, key) for key in ProbeRun.model_fields})
-
-
-@worker_router.post("/runs/{run_id}/probe", response_model=ProbeRun, responses=REFUSALS)
-async def report_probe(
-    request: Request, run_id: RunId, body: ProbeReport, user: CurrentUser, probe_key: ProbeKey = None
-) -> ProbeRun:
-    """One session's result of the probe run this worker holds, or why the probe is stale; with the run's key."""
-    async with request.app.state.engine.begin() as conn:
-        row = await _held_probe(conn, user, run_id, probe_key)
-        if body.stale is not None:
-            await _stale(conn, row, body, run_id)
-        else:
-            await _session(conn, row, body, run_id)
-        found = await _view(conn, row.id)
-    log.info("probe reported", extra={"run_id": run_id, "probe_run_id": row.id, "state": found.state})
-    return found
+async def report(conn: AsyncConnection, user: Principal, run_id: int, body: ProbeReport, key: str | None) -> ProbeRun:
+    """One session's result of the probe run the worker of ``user`` holds, or why the probe is stale; with the run's
+    own ``key``. The row as it is then."""
+    row = await _held_probe(conn, user, run_id, key)
+    if body.session is None:
+        await _stale(conn, row, body, run_id)
+    else:
+        await _session(conn, row, body, body.session, run_id)
+    return await repository.run_view(conn, row.id)
 
 
 async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
@@ -532,8 +363,7 @@ async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
             details={"run_kind": "probe", "plan_id": found.plan_id, "error": why},
             link=NOTIFIER.run_link(found.project, found.run_id),
         )
-    pw = tables.curator_probe_runs
-    row = (await conn.execute(select(pw).where(pw.c.run_id == found.run_id).with_for_update())).one_or_none()
+    row = await repository.row_of_run(conn, found.run_id)
     if row is None or row.state != "running":
         return
     attempts = row.attempts + 1
@@ -542,4 +372,4 @@ async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
     if last:
         text = f"{attempts} probe runs ended without every session, the last {new}: {why}"
     values = {"state": "failed" if last else "queued", "attempts": attempts, "reason": text[: probes.MAX_REASON_CHARS]}
-    await conn.execute(update(pw).values(**values, updated_at=func.now()).where(pw.c.id == row.id))
+    await repository.update_row(conn, row.id, values)

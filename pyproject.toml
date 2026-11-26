@@ -672,6 +672,23 @@ the service and the models, never the routes. A new module of the package goes i
 docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-probes-layers"
+name = "The Curator's probes go from their routes and MCP tool to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.probes"]
+layers = ["routes | mcp", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.probes a route handler (routes) and the curator_probe_report tool of the hub's /mcp (mcp) \
+only pass the request's parts to a public function of the service, which checks who may read and write a probe \
+(probes, writes), queues and ends the probe runs (runs), builds the weekly report (report) and says what it asks of \
+a review run (fixes); the repository holds every query on the tables; the models (the API's shapes, the assignments, \
+the limits and the texts of the report) import none of them. Move the code that reaches up into the layer that needs \
+it: a check or a message into the service, a query into the repository, a shape or a limit into the models. Other \
+modules import the service and the models, never the routes. A new module of the package goes into one of the four \
+layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

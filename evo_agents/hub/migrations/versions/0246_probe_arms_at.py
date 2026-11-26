@@ -4,7 +4,7 @@ Revision ID: 0246
 Revises: 0245
 Create Date: 2026-11-12
 
-Plan probes-measure-both-arms, criterion a2 (``evo_agents.hub.server.probe_runs``). curator_probe_runs gain
+Plan probes-measure-both-arms, criterion a2 (``evo_agents.hub.server.probes.service.runs``). curator_probe_runs gain
 ``arms_at``: ``tip`` when arm on ran at the tip of the default branch of the change's repo and arm off at that tip less
 the change's diff, ``change`` when that diff no longer came off the tip and both arms ran at the change's own commits
 (its merge commit and its first parent, or its head and merge base). NULL while the row has no session, and for a

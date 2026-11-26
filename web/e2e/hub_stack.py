@@ -214,7 +214,7 @@ WARM_MODULES = (
     "evo_agents.hub.server.brief",
     "evo_agents.hub.server.release_cycles",
     "evo_agents.hub.server.canvas.value_check",
-    "evo_agents.hub.server.probe_runs",
+    "evo_agents.hub.server.probes.service.runs",
     "evo_agents.hub.plugin_events",
     "evo_agents.hub.kg_build",
     "evo_agents.hub.worker",

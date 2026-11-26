@@ -29,7 +29,7 @@ and the owner alone makes the change. ``tier_of`` computes it from these:
   SOURCE_KEYS of git and harness sources the file has; anything else it changes there, or a file the hub could not
   read at both ends, makes it at least tier 1, as knowledge.yaml is under any other kind;
 - a fix proposal (``fix_of``: the merged change whose probe recurred on one model two weekly reports in a row,
-  ``evo_agents.hub.server.probe_fixes``) is at least tier 1 (FIX_TIER), whatever its kind says: the owner merges it.
+  ``evo_agents.hub.server.probes.service.fixes``) is at least tier 1 (FIX_TIER), whatever its kind says: the owner merges it.
 
 The tier is the highest of them, and ``Tier.reasons`` says which rule gave each raise, in words for the owner. The hub
 computes it for a proposal from its paths, then again from the paths its pull request really changes, which only ever

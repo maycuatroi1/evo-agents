@@ -93,11 +93,9 @@ from evo_agents.hub.server import (
     change_tiers,
     earlier,
     facet_figures,
-    probe_fixes,
     system_curation,
 )
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
 from evo_agents.hub.server.change_views import Change
@@ -107,6 +105,8 @@ from evo_agents.hub.server.kg_audience import person_audience
 from evo_agents.hub.server.memories.service import promotion as memory_promotion
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
+from evo_agents.hub.server.probes.service import fixes as probe_fixes
+from evo_agents.hub.server.probes.service import probes as stored_probes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import (
     EvidenceIn,

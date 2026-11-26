@@ -11,7 +11,7 @@ tip of the default branch nor at the change's commits, or it places no file a pr
 why it was stale each week, and the probe written in its place takes a base commit or a task that can be made.
 
 The hub, not the agent, decides what was assigned: ``evo_agents.hub.server.proposals`` refuses (422) a fix proposal or
-a finding whose change has no fix assignment and ``probe_routes`` a replacement whose probe has no replace assignment.
+a finding whose change has no fix assignment and ``service.writes`` a replacement whose probe has no replace assignment.
 A fix proposal is at least tier 1 (``tiers.tier_of``'s ``fix_of``: the owner merges it, replays that won never make it
 tier 0), its evidence holds the two weeks' probe results (kind ``probe``, ``review.evidence_text`` writes it), and a
 change has at most one open (or deferred) fix proposal: 409 for a second, and proposals_fix_open_key holds it. It
@@ -25,52 +25,17 @@ assignment while the probe is active. Only the probes whose label reaches the ru
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import probes, review, runs, tables
+from evo_agents.hub import probes, runs
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.plans import service as plan_service
+from evo_agents.hub.server.probes.models.fixes import RESOLVED, WEEK, Assignment
+from evo_agents.hub.server.probes.repository import fixes as repository
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-
-WEEK = timedelta(days=7)
-OPEN = ("open", "deferred")  # the states of a fix proposal still to answer
-RESOLVED = "probe_report"  # how the hub found the probe evidence it adds
-
-
-@dataclass
-class Assignment:
-    """What a review run is asked to do of one change (``fix``) or one probe (``replace``)."""
-
-    kind: str  # fix | replace
-    change_id: int
-    title: str  # the title of the change's proposal
-    repo: str  # the probe's repo
-    probe_id: int | None = None  # replace: the probe to replace
-    task: str | None = None  # replace: its task, clipped
-    results: list[dict] = field(default_factory=list)  # the probe evidence of both weeks, the older first
-    stale: list[str] = field(default_factory=list)  # replace: why it was stale, each week and model, the older first
-
-    def prompt(self) -> dict:
-        """The assignment as ``review.build_review_prompt`` reads it."""
-        shown = sorted({(item["probe_id"], item["runtime"], item.get("model") or "") for item in self.results})
-        return {
-            "kind": self.kind,
-            "change_id": self.change_id,
-            "title": self.title,
-            "repo": self.repo,
-            "probe_id": self.probe_id,
-            "task": self.task,
-            "weeks": sorted({item["week"] for item in self.results}),
-            "probes": [f"probe #{probe} on {runtime}{f' {model}' if model else ''}" for probe, runtime, model in shown],
-            "evidence": [review.evidence_text(item) for item in self.results],
-            "statuses": sorted({item["status"] for item in self.results}),
-            "stale": self.stale,
-        }
 
 
 def _evidence(row, status: str) -> dict:
@@ -91,25 +56,6 @@ def _evidence(row, status: str) -> dict:
     return {**item, "run_id": row.run_id} if row.run_id is not None else item
 
 
-async def _answered(conn: AsyncConnection, change_id: int, since: date) -> bool:
-    """Whether the change has an open fix proposal, or a review run of a night since ``since`` recorded a fix proposal
-    or a finding for it."""
-    p, f, r = tables.proposals, tables.findings, tables.runs
-    open_fix = select(p.c.id).where(p.c.fix_of == change_id, p.c.state.in_(OPEN))
-    if (await conn.execute(open_fix.limit(1))).first() is not None:
-        return True
-    for t in (p, f):
-        query = (
-            select(t.c.id)
-            .join_from(t, r, r.c.id == t.c.run_id)
-            .where(t.c.fix_of == change_id, func.coalesce(r.c.schedule_night, func.current_date()) >= since)
-            .limit(1)
-        )
-        if (await conn.execute(query)).first() is not None:
-            return True
-    return False
-
-
 async def assignments(
     conn: AsyncConnection,
     access: ProjectAccess,
@@ -123,38 +69,7 @@ async def assignments(
     docstring). Fixes first, by change; then replacements, by probe."""
     current = probes.week_of(night)
     weeks = [current - WEEK * i for i in range(probes.REPEAT_WEEKS, 0, -1)]  # the older first
-    pw, pr, c, p = tables.curator_probe_runs, tables.curator_probes, tables.curator_changes, tables.proposals
-    rows = (
-        await conn.execute(
-            select(
-                pw.c.probe_id,
-                pw.c.change_id,
-                pw.c.week,
-                pw.c.runtime,
-                pw.c.model,
-                pw.c.state,
-                pw.c.sessions,
-                pw.c.k,
-                pw.c.run_id,
-                pw.c.reason,
-                pr.c.label,
-                pr.c.repo,
-                pr.c.task,
-                p.c.title,
-            )
-            .join_from(pw, pr, pr.c.id == pw.c.probe_id)
-            .join(c, c.c.id == pw.c.change_id)
-            .join(p, p.c.id == c.c.proposal_id)
-            .where(
-                pw.c.project_id == access.project_id,
-                pw.c.week.in_(weeks),
-                pr.c.state == "active",
-                pr.c.change_id == pw.c.change_id,
-                c.c.state == "merged",
-            )
-            .order_by(pw.c.change_id, pw.c.probe_id, pw.c.id)
-        )
-    ).all()
+    rows = await repository.week_rows(conn, access.project_id, weeks)
     reader, through = Reader(conn, user), plan_service.read_sink(access, None)
     seen: dict[int, bool] = {}
     statuses: dict[date, dict] = {week: {} for week in weeks}
@@ -162,7 +77,7 @@ async def assignments(
     held = {}
     for row in rows:
         if row.probe_id not in seen:
-            seen[row.probe_id] = await label_reaches(reader, access, row.label, through)
+            seen[row.probe_id] = await label_reaches(reader, access, row.label, through)  # pyright: ignore[reportArgumentType]
         if not seen[row.probe_id]:
             continue
         on, off = probes.arm_counts(row.sessions or [], "on"), probes.arm_counts(row.sessions or [], "off")
@@ -197,7 +112,7 @@ async def assignments(
             ]
     listed = []
     for change_id in sorted(fixes):
-        if not pending or not await _answered(conn, change_id, current):
+        if not pending or not await repository.answered(conn, change_id, current):
             listed.append(fixes[change_id])
     return listed + [replaces[probe_id] for probe_id in sorted(replaces)]
 
@@ -220,13 +135,9 @@ async def replace_assignment(
 
 async def open_fix(conn: AsyncConnection, change_id: int) -> int | None:
     """The open (or deferred) fix proposal of change ``change_id``, if any."""
-    p = tables.proposals
-    query = select(p.c.id).where(p.c.fix_of == change_id, p.c.state.in_(OPEN)).order_by(p.c.id).limit(1)
-    return (await conn.execute(query)).scalar_one_or_none()
+    return await repository.open_fix(conn, change_id)
 
 
 async def run_night(conn: AsyncConnection, run_id: int) -> date:
     """The night of review run ``run_id``: its schedule's night, else today in the database."""
-    r = tables.runs
-    night = (await conn.execute(select(r.c.schedule_night).where(r.c.id == run_id))).scalar_one_or_none()
-    return night if night is not None else await conn.scalar(select(func.current_date()))
+    return await repository.run_night(conn, run_id)
