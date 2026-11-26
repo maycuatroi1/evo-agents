@@ -19,7 +19,7 @@ a member's worker runs the agent, and the hub's GitHub App, never the agent, mer
 | landing: pull request, merge, tag; the branches a refused landing left | `evo_agents/hub/server/release_land.py`, `evo_agents/hub/server/release_settle.py` |
 | following the CI, failures, infrastructure, stop causes | `evo_agents/hub/release_ci.py`, `evo_agents/hub/server/release_watch.py`, `evo_agents/hub/server/release_actions.py` |
 | stopping, the owner's decision and its answer | `evo_agents/hub/server/release_cycles.py`, `evo_agents/hub/server/release_answer.py` |
-| the routes and the command line | `evo_agents/hub/server/releases.py`, `evo_agents/hub/release_cli.py` |
+| the routes and the command line | `evo_agents/hub/server/releases.py`, `evo_agents/hub/cli/curator/release.py` |
 | the run on the machine | `evo_agents/worker/runner/release.py`, `evo_agents/worker/gitops.py` (`check_push`) |
 | the web's Releases page | `web/src/components/releases/`, `web/DESIGN.md` |
 | the tables (schema 0067) | `evo_agents/hub/tables_release.py`: `release_schedules`, `release_cycles`, `release_runs`, `release_tags`, `release_checks` |

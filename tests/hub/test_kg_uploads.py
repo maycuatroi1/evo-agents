@@ -25,10 +25,13 @@ import moto.s3.models
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, select, update
 
-from evo_agents.hub import blobs, client, kg_upload_cli, kg_upload_prune, tables
+from evo_agents.hub import blobs, client, kg_routes, kg_upload_prune, tables
+from evo_agents.hub.cli import base as cli_base
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import DEFAULT_KG_UPLOAD_MAX_BYTES, ConfigError, load_config
 from evo_agents.hub.db import make_engine, open_pool
+from evo_agents.hub.kg_routes import Uploads
 from evo_agents.hub.server import kg_uploads
 from evo_agents.hub.server.app import create_app
 from tests.hub.test_blobs import make_config, member
@@ -110,7 +113,7 @@ def puts(monkeypatch) -> list:
         sent.append(offset // PART + 1)
         return real(url, path, offset, size, timeout)
 
-    monkeypatch.setattr(kg_upload_cli, "put_presigned_part", counting)
+    monkeypatch.setattr(kg_routes, "put_presigned_part", counting)
     return sent
 
 
@@ -118,7 +121,7 @@ def test_upload_sends_every_part_to_the_store_and_the_hub_joins_them(world, monk
     path = archive(world, 3 * PART + 100)
     sent = puts(monkeypatch)
     hub = AppHub(world.client, world.writer)
-    done, count, kept = kg_upload_cli.upload(hub, PROJECT, path)
+    done, count, kept = Uploads(hub, PROJECT).send(path)
     assert (count, kept, sorted(sent)) == (4, 0, [1, 2, 3, 4])
     assert done["state"] == "extracting" and done["source"] == "handbook" and done["size"] == path.stat().st_size
     assert done["label"]["level"] == "internal", "the project's default label without --label"
@@ -143,12 +146,12 @@ def test_a_run_cut_off_sends_only_the_parts_the_store_lacks(world, monkeypatch):
         sent.append(number)
         return real(url, path_, offset, size, timeout)
 
-    monkeypatch.setattr(kg_upload_cli, "put_presigned_part", flaky)
+    monkeypatch.setattr(kg_routes, "put_presigned_part", flaky)
     with pytest.raises(HubError):
-        kg_upload_cli.upload(hub, PROJECT, path)
+        Uploads(hub, PROJECT).send(path)
     assert rows(world)[0][1] == "uploading"
     again = puts(monkeypatch)
-    done, count, kept = kg_upload_cli.upload(hub, PROJECT, path)
+    done, count, kept = Uploads(hub, PROJECT).send(path)
     assert (count, kept) == (3, 2) and sorted(again) == [3, 4, 5]
     assert done["state"] == "extracting" and len(rows(world)) == 1, "the second run resumed the first upload"
     ((key,),) = live.sql(world.db, select(tables.kg_uploads.c.object_key))
@@ -181,7 +184,7 @@ def test_a_label_the_hub_sink_does_not_clear_is_refused_before_any_part(world, m
     sent = puts(monkeypatch)
     hub = AppHub(world.client, world.writer)
     with pytest.raises(HubError) as refused:
-        kg_upload_cli.upload(hub, PROJECT, path, label=label)
+        Uploads(hub, PROJECT).send(path, label=label)
     assert refused.value.status == status
     assert sent == [] and rows(world) == [] and world.store.list_multipart() == []
 
@@ -189,10 +192,10 @@ def test_a_label_the_hub_sink_does_not_clear_is_refused_before_any_part(world, m
 def test_the_reader_role_and_the_size_limit_are_checked_before_any_part(world, monkeypatch):
     sent = puts(monkeypatch)
     with pytest.raises(HubError) as refused:
-        kg_upload_cli.upload(AppHub(world.client, world.reader), PROJECT, archive(world, PART))
+        Uploads(AppHub(world.client, world.reader), PROJECT).send(archive(world, PART))
     assert refused.value.status == 403
     with pytest.raises(HubError) as large:
-        kg_upload_cli.upload(AppHub(world.client, world.writer), PROJECT, archive(world, 64 * PART + 1))
+        Uploads(AppHub(world.client, world.writer), PROJECT).send(archive(world, 64 * PART + 1))
     assert large.value.status == 413 and "EVO_HUB_KG_UPLOAD_MAX_BYTES" in str(large.value)
     body = {"name": "notes.rar", "size": 10, "sha256": "a" * 64}
     assert world.client.post(f"/v1/kg/{PROJECT}/uploads", json=body, headers=world.writer).status_code == 422
@@ -202,8 +205,8 @@ def test_the_reader_role_and_the_size_limit_are_checked_before_any_part(world, m
 def test_uploads_lists_state_size_files_skipped_and_build_by_grant(world, monkeypatch, capsys):
     hub = AppHub(world.client, world.writer)
     puts(monkeypatch)
-    public, _, _ = kg_upload_cli.upload(hub, PROJECT, archive(world, PART, "faq.tgz"), source="faq", label="public")
-    kg_upload_cli.upload(hub, PROJECT, archive(world, PART + 1, "deals.tar.gz"))  # internal, the default
+    public, _, _ = Uploads(hub, PROJECT).send(archive(world, PART, "faq.tgz"), source="faq", label="public")
+    Uploads(hub, PROJECT).send(archive(world, PART + 1, "deals.tar.gz"))  # internal, the default
     u = tables.kg_uploads
     report = {"files": 12, "skipped": {"binary": 2, "too_large": 1}}
     live.sql(world.db, update(u).where(u.c.id == public["id"]).values(state="extracted", report=report))
@@ -214,11 +217,11 @@ def test_uploads_lists_state_size_files_skipped_and_build_by_grant(world, monkey
     seen = world.client.get(f"/v1/kg/{PROJECT}/uploads", headers=world.reader).json()["uploads"]
     assert [i["source"] for i in seen] == ["faq"], "a grant up to public does not see an internal upload"
 
-    monkeypatch.setattr(kg_upload_cli, "signed_in", lambda: (hub, None))
-    assert kg_upload_cli.cmd_uploads(argparse.Namespace(project=PROJECT, limit=50, json=False)) == 0
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
+    assert kg_upload_cli.KG_UPLOADS(argparse.Namespace(project=PROJECT, limit=50, json=False)) == 0
     out = capsys.readouterr().out
     assert "faq extracted 1.0 KiB files 12 skipped binary 2, too_large 1 build -" in out
-    assert kg_upload_cli.cmd_uploads(argparse.Namespace(project=PROJECT, limit=50, json=True)) == 0
+    assert kg_upload_cli.KG_UPLOADS(argparse.Namespace(project=PROJECT, limit=50, json=True)) == 0
     assert [i["source"] for i in json.loads(capsys.readouterr().out)["uploads"]] == ["deals", "faq"]
 
 

@@ -28,7 +28,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import curator as curator_shape
 from evo_agents.hub import tables
-from evo_agents.hub.probe_cli import PROBE_KEYS, REQUEUE
+from evo_agents.hub.cli.curator.probe import PROBE_KEYS, REQUEUE
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.curator_models import CharterBody
 from evo_agents.hub.server.probes import PROBE as ACTION

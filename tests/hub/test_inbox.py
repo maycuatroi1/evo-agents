@@ -8,7 +8,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from evo_agents.hub import cli_inbox, inbox
+from evo_agents.hub import inbox
+from evo_agents.hub.cli import inbox as inbox_command
 from evo_agents.hub.client import HubError
 
 NOW = datetime(2026, 10, 28, 10, 0, tzinfo=UTC)
@@ -299,7 +300,7 @@ def test_detail_finds_a_decision_in_another_project(monkeypatch):
     assert found["next"] == ["evo-agents hub decision answer 40 --project northwind --option us"]
     assert found["diagnosis"].startswith("waiting on decision #40 (scope)")
     assert hub.calls[1].startswith("/v1/projects/lumen/decisions/40")  # the harness's project first
-    lines = cli_inbox.show_lines(found)
+    lines = inbox_command.show_lines(found)
     assert "Leases: LUMEN_KEY" in lines and lines[-1].startswith("-> evo-agents hub decision answer 40")
     assert inbox.detail(inbox.Ref("decision", 41), [ANA]) is None
     assert inbox.detail(inbox.Ref("run", 77, host="other.example"), [ANA]) is None
@@ -308,7 +309,7 @@ def test_detail_finds_a_decision_in_another_project(monkeypatch):
 def test_inbox_lines_print_each_item_with_its_command():
     hub = inbox.HubInbox("https://north.example", "ana", reports=3)
     hub.items = [inbox.decision_item(decision(5), ANA_NORTH, NOW)]
-    lines = cli_inbox.inbox_lines([hub, inbox.HubInbox("https://down.example", "ana", error="cannot reach")])
+    lines = inbox_command.inbox_lines([hub, inbox.HubInbox("https://down.example", "ana", error="cannot reach")])
     assert lines[0] == "https://north.example (ana): 1 decision; 3 unread notice(s) only report"
     assert lines[1].split() == ["DECISION", "#5", "30m", "lumen,", "run", "#7,", "northwind-sync", "step", "3"]
     assert lines[3].strip().startswith("-> EVO_HUB_HOME=~/.evo/hub-north evo-agents hub decision answer 5")

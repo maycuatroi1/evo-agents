@@ -70,7 +70,8 @@ to a public function of `service`, which checks, queries and moves runs with SQL
 Each contract's `ignore_imports` only shrinks: the test fails a change that adds an entry main does not have. When
 you remove the import an entry names, remove the entry too (import-linter fails on an entry that matches nothing).
 An entry that names a module git sees renamed from main (`git mv`: a module of main gone and one of nearly the same
-content in its place) counts under the module's new name, so renaming the module and its entry adds nothing.
+content in its place, or a rename a commit of the branch made) counts under the module's new name, so renaming the
+module and its entry adds nothing.
 
 ## Budgets
 
@@ -110,8 +111,9 @@ minutes.
 The baseline only shrinks. Against main, it may hold no more errors of a rule in a module than main's does. A module
 main's baseline does not name has no entry at all: a new module, and a module split off another, type-checks clean,
 so a split fixes the errors of the code it moves. A module git sees renamed from main (`git diff --find-renames`
-against `origin/main`: a module of main gone and one of nearly the same content in its place, as `git mv` leaves it)
-is held to the errors main's baseline holds for its old path, rule by rule. A new file counts only once git tracks
+against `origin/main`: a module of main gone and one of nearly the same content in its place, as `git mv` leaves it;
+or a rename a commit since `origin/main` made, so a module moved in a commit of its own and rewritten after still
+counts) is held to the errors main's baseline holds for its old path, rule by rule. A new file counts only once git tracks
 it. `tighten-types` runs `basedpyright --writebaseline` and puts the old
 file back when the code has an error the old one did not hold; do not run `--writebaseline` by hand to make a new
 error pass.
@@ -148,7 +150,12 @@ its module (drop the underscore and update the callers), or move it into a modul
 
 New commands are classes of `evo_agents.clikit`, the command kit every package shares (standard library only, it
 imports no other package of evo_agents). The commands written as `cmd_*` functions with a `register_*` function move
-over one group at a time; `hub goal` is the first (`evo_agents/hub/cli/goal.py`).
+over one group at a time: `hub goal`, `hub plan`, `hub run`, `hub decision`, `hub notifications`, `hub inbox`,
+`hub stop`, `hub run-cause`, `hub kg` (with `hub admin kg-pool`), `hub curator` and `hub release` so far, each in
+`evo_agents/hub/cli/` at the path of its command (`hub run` is the package `cli/run/`, `hub run-cause` the module
+`cli/run_cause.py`); `hub release` lives with the Curator's commands in `cli/curator/`. What a command calls but is
+not a command stays out of it: `hub kg`'s gateways are in `evo_agents/hub/kg_routes.py` and `cli/kg/resources.py`,
+and the remote graph session `evo-agents kg` shares with it in `evo_agents/hub/kg_remote.py`.
 
 | Class | Pattern | What it does |
 | --- | --- | --- |
@@ -156,7 +163,7 @@ over one group at a time; `hub goal` is the first (`evo_agents/hub/cli/goal.py`)
 | `ListCommand` | Template Method | `fetch` the items and turn each into a `row` under `columns`. |
 | `Group` | Composite | A command word holding commands and groups; it builds its argparse subtree. |
 | `Legacy` | Adapter | A `register_*(subparsers)` function as a node of a `Group`, while a package moves over. |
-| `Result`, `View` (`Text`, `Table`, `Views`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. |
+| `Result`, `View` (`Text`, `Table`, `Views`, `Verbatim`, `Stderr`) | Strategy, Composite | `run` returns the data `--json` prints and the view a person reads; a command never prints. `Verbatim` writes a rendered document as it is, `Stderr` puts a view (a warning) on stderr in its place, and `Table(..., bare=True)` prints the header when there are no rows. A command that follows a stream (`hub run logs --follow`, `hub run watch`) writes what comes as it comes and returns the rest. |
 | `Arg` | Value Object | An argument as a value; options many commands share are constants (`PROJECT`), never mixins. |
 | `HubCommand`, `HubContext` (`evo_agents/hub/cli/base.py`) | Dependency injection | The signed-in hub client and the project, built on first use; a `HubError` becomes `error: ...` and the exit status `client.exit_status` gives it. Tests patch `base.signed_in` once. |
 | `ProjectResource` (same module) | Gateway | One collection of a project's API: the one place that quotes the project and the parts of a path. Commands ask their resource and never build `/v1/...` paths. |

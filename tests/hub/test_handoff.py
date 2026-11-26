@@ -16,7 +16,7 @@ import json
 
 import pytest
 
-from evo_agents.hub import plan_cli
+from evo_agents.hub.cli import base
 from evo_agents.hub.contract import check_command, commands
 from evo_agents.hub.handoff import (
     BYTES_PER_TOKEN,
@@ -358,7 +358,7 @@ def test_the_command_and_the_mcp_tool_give_the_route_s_text(hub, monkeypatch, ca
         assert full["content"] == tool["content"]
         assert "text" not in full["structuredContent"] and full["structuredContent"]["revision"] == 1
 
-        monkeypatch.setattr(plan_cli, "signed_in", lambda: (Through(reader), None))
+        monkeypatch.setattr(base, "signed_in", lambda: (Through(reader), None))
         assert run_cli(["rollout", "--project", PROJECT, *argv]) == 0
         assert capsys.readouterr().out == text
         assert run_cli(["rollout", "--project", PROJECT, "--json", *argv]) == 0

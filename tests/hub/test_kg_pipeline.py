@@ -10,8 +10,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import kg_coverage, kg_pipeline, kg_upload_cli
+from evo_agents.hub import kg_coverage, kg_pipeline, kg_routes
+from evo_agents.hub.cli import base as cli_base
+from evo_agents.hub.cli.kg import upload as kg_upload_cli
 from evo_agents.hub.client import HubError
+from evo_agents.hub.kg_routes import Uploads
 from tests.hub import pg
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
@@ -129,7 +132,7 @@ def test_follow_prints_each_phase_once_then_ready():
     building = [{"name": "building", "state": "running", "detail": "build #7 running"}]
     hub = Answers([flow("running", "building", phases=building)] * 2 + [flow("ready", None, phases=building)])
     said = []
-    found = kg_upload_cli.follow(hub, "northwind", 5, said.append, sleep=lambda _: None)
+    found = kg_upload_cli.follow(Uploads(hub, "northwind"), 5, said.append, sleep=lambda _: None)
     assert found["state"] == "ready" and len(hub.calls) == 3
     assert said == [
         "Knowledge graph build in progress: building: build #7 running",
@@ -143,11 +146,13 @@ def test_follow_reads_again_through_a_redeploy_and_raises_what_is_not_transient(
     gone = HubError("the hub at https://hub.example.org answered HTTP 502", status=502)
     hub = Answers([flow("running", "building", phases=building), gone, gone, flow("ready", None, phases=building)])
     said = []
-    found = kg_upload_cli.follow(hub, "northwind", 5, said.append, sleep=lambda _: None)
+    found = kg_upload_cli.follow(Uploads(hub, "northwind"), 5, said.append, sleep=lambda _: None)
     assert found["state"] == "ready" and len(hub.calls) == 4 and len(said) == 3
     assert said[1].startswith("the hub did not answer (the hub at https://hub.example.org answered HTTP 502)")
     with pytest.raises(HubError):
-        kg_upload_cli.follow(Answers([HubError("no", status=403)]), "northwind", 5, said.append, sleep=lambda _: None)
+        kg_upload_cli.follow(
+            Uploads(Answers([HubError("no", status=403)]), "northwind"), 5, said.append, sleep=lambda _: None
+        )
 
 
 if pg.DSN:
@@ -393,9 +398,9 @@ def test_a_grant_that_does_not_see_the_label_reads_no_flow(world):
 @needs_pg
 def test_upload_waits_until_ready_and_exits_0_and_a_failed_phase_exits_1(world, monkeypatch, capsys, tmp_path):
     hub = AppHub(world.client, world.sender)
-    monkeypatch.setattr(kg_upload_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     done = {"id": world.upload_id, "size": 10, "source": "handbook", "state": "extracting"}
-    monkeypatch.setattr(kg_upload_cli, "upload", lambda *a, **k: (done, 1, 0))
+    monkeypatch.setattr(kg_routes.Uploads, "send", lambda *a, **k: (done, 1, 0))
     reads = []
 
     def ready_after_a_poll(_):
@@ -406,22 +411,22 @@ def test_upload_waits_until_ready_and_exits_0_and_a_failed_phase_exits_1(world, 
     archive = tmp_path / "handbook.zip"
     archive.write_bytes(b"x" * 10)
     args = dict(file=str(archive), project=PROJECT, new_project=None, source=None, label=None)
-    assert kg_upload_cli.cmd_upload(argparse.Namespace(**args, no_wait=False, json=False)) == 0
+    assert kg_upload_cli.KG_UPLOAD(argparse.Namespace(**args, no_wait=False, json=False)) == 0
     out = capsys.readouterr().out
     assert "Knowledge graph build in progress: building: build #" in out and len(reads) == 1
     assert "Knowledge graph ready" in out and f"the graph: {hub.url}/p/{PROJECT}/kg" in out
 
-    assert kg_upload_cli.cmd_upload(argparse.Namespace(**args, no_wait=True, json=True)) == 0
+    assert kg_upload_cli.KG_UPLOAD(argparse.Namespace(**args, no_wait=True, json=True)) == 0
     assert json.loads(capsys.readouterr().out)["pipeline"] is None, "--no-wait returns once the parts are joined"
 
     no_artifact = {"artifact_sha256": None, "artifact_size": None, "content_hash": None}
     set_build(world, world.build_id, status="failed", error="the archive held no file the hub reads", **no_artifact)
-    assert kg_upload_cli.cmd_upload(argparse.Namespace(**args, no_wait=False, json=False)) == 1
+    assert kg_upload_cli.KG_UPLOAD(argparse.Namespace(**args, no_wait=False, json=False)) == 1
     assert "Knowledge graph build failed at building: the archive held no file the hub reads" in capsys.readouterr().out
     pipeline = argparse.Namespace(project=PROJECT, upload=None, json=False)
-    assert kg_upload_cli.cmd_pipeline(pipeline) == 1
+    assert kg_upload_cli.KG_PIPELINE(pipeline) == 1
     out = capsys.readouterr().out
     assert out.startswith(f"upload {world.upload_id}: Knowledge graph build failed at building")
     assert "  building   failed" in out
-    assert kg_upload_cli.cmd_pipeline(argparse.Namespace(project=PROJECT, upload=world.upload_id, json=True)) == 1
+    assert kg_upload_cli.KG_PIPELINE(argparse.Namespace(project=PROJECT, upload=world.upload_id, json=True)) == 1
     assert json.loads(capsys.readouterr().out)["phase"] == "building"

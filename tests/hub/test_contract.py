@@ -14,23 +14,24 @@ import pytest
 
 from evo_agents import __version__
 from evo_agents.hub import (
-    cli_inbox,
     cli_market,
     contract,
-    kg_cli,
-    kg_entities_cli,
-    kg_graphs_cli,
-    kg_profile_cli,
-    kg_semantic_cli,
-    kg_settings_cli,
+    kg_remote,
     local_send,
     memory,
     skill_sync,
     transcript_sync,
 )
+from evo_agents.hub.cli import inbox as inbox_command
+from evo_agents.hub.cli import kg as kg_cli
+from evo_agents.hub.cli.kg import entities as kg_entities_cli
+from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
+from evo_agents.hub.cli.kg import profile as kg_profile_cli
+from evo_agents.hub.cli.kg import semantic as kg_semantic_cli
+from evo_agents.hub.cli.kg import settings as kg_settings_cli
 from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
-from evo_agents.hub.plan_cli import ImportResult
+from evo_agents.hub.plan_writes import ImportResult
 from evo_agents.hub.registry import PullResult
 from evo_agents.worker import agent_read_cli
 from tests.hub import pg
@@ -49,7 +50,7 @@ BUILT_HERE = {
     "hub memory push": lambda: memory.Report("push", HUB_URL).as_json(),
     "hub memory pull": lambda: memory.Report("pull", HUB_URL).as_json(),
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
-    "hub kg push": lambda: kg_cli.push_json([]),
+    "hub kg push": lambda: kg_remote.push_json([]),
     "hub kg profile": lambda: kg_profile_cli.profile_json("demo", 1, {}),
     "hub kg semantic": lambda: kg_semantic_cli.semantic_json("demo", 1, {}),
     "hub kg measure": lambda: kg_settings_cli.measure_json("demo", {}),
@@ -65,7 +66,7 @@ BUILT_HERE = {
     "hub sessions sync": lambda: transcript_sync.Report(HUB_URL).as_json(),
     "hub send": lambda: local_send.send_json("demo", 7, "session", [], []),
     "hub market seller-key": lambda: cli_market.seller_key_json("seller.key", "ed25519:0", "AA=="),
-    "hub inbox": lambda: cli_inbox.inbox_json([]),
+    "hub inbox": lambda: inbox_command.inbox_json([]),
     "worker agent read": lambda: agent_read_cli.read_json({}),
 }
 

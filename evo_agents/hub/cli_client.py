@@ -14,11 +14,12 @@ prints a token.
 harness through ``registration``, and ``registry pull`` writes the registry through ``registry``.
 
 ``register_client`` also registers the client commands that live in their own modules: ``hub plan`` in
-``plan_cli`` (over ``plans``; its harness copies in ``mirror``), ``hub run`` in ``run_cli`` (over the hub's runs),
-``hub decision`` and ``hub notifications`` in ``decision_cli`` (over the decisions and notifications of plan runs),
-``hub curator`` in ``curator_cli`` (over the night shift of a project's charter),
+``cli.plan`` (over ``plans``; its harness copies in ``mirror``), ``hub run`` in ``cli.run`` (over the hub's runs),
+``hub decision`` and ``hub notifications`` in ``cli.decision`` and ``cli.notifications`` (over the decisions and
+notifications of plan runs),
+``hub curator`` in ``cli.curator`` (over the night shift of a project's charter),
 ``hub memory`` in ``cli_memory`` (over ``memory``), ``hub skills`` in ``cli_skills`` (over ``skill_sync`` and
-``skills``), ``hub secret`` in ``cli_secrets`` (over the owner's secret routes), ``hub kg`` in ``kg_cli`` (over
+``skills``), ``hub secret`` in ``cli_secrets`` (over the owner's secret routes), ``hub kg`` in ``cli.kg`` (over
 ``kg_push``), ``hub mcp`` in ``mcp_proxy`` (its tools in ``mcp_tools``), ``hub hook`` (the evo-hub plugin's hooks) in
 ``hooks``. ``hub contract``, ``hub openapi`` and the server commands are registered by ``cli``.
 """
@@ -651,21 +652,23 @@ def _register_registry(hsub) -> None:
 
 def _register_other_groups(hsub) -> None:
     """The command groups registered by their own modules, in the order of the CLI contract."""
-    from evo_agents.hub.plan_cli import register_plans
+    from evo_agents.hub.cli.plan import PLAN
 
-    register_plans(hsub)
+    PLAN.attach(hsub)
 
-    from evo_agents.hub.run_cli import register_runs
+    from evo_agents.hub.cli.run import RUN
 
-    register_runs(hsub)
+    RUN.attach(hsub)
 
-    from evo_agents.hub.decision_cli import register_decisions
+    from evo_agents.hub.cli.decision import DECISION
+    from evo_agents.hub.cli.notifications import NOTIFICATIONS
 
-    register_decisions(hsub)
+    DECISION.attach(hsub)
+    NOTIFICATIONS.attach(hsub)
 
-    from evo_agents.hub.curator_cli import register_curator
+    from evo_agents.hub.cli.curator import CURATOR
 
-    register_curator(hsub)
+    CURATOR.attach(hsub)
 
     from evo_agents.hub.cli_memory import register_memory
 
@@ -679,9 +682,9 @@ def _register_other_groups(hsub) -> None:
 
     register_secrets(hsub)
 
-    from evo_agents.hub.kg_cli import register_kg
+    from evo_agents.hub.cli.kg import KG
 
-    register_kg(hsub)
+    KG.attach(hsub)
 
     from evo_agents.hub.mcp_proxy import register_mcp
 

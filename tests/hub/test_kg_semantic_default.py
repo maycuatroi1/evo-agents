@@ -9,7 +9,8 @@ pytest.importorskip("sqlalchemy")
 
 from sqlalchemy.dialects import postgresql
 
-from evo_agents.hub import kg_semantic, kg_semantic_cli
+from evo_agents.hub import kg_semantic
+from evo_agents.hub.cli.kg import semantic as kg_semantic_cli
 
 
 class Conn:

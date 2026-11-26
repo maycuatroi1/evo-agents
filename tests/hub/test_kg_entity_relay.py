@@ -10,8 +10,9 @@ import pytest
 
 pytest.importorskip("sqlalchemy")
 
-from evo_agents.hub import kg_build, kg_coverage, kg_entities_cli
+from evo_agents.hub import kg_build, kg_coverage
 from evo_agents.hub import kg_entity_relay as relay
+from evo_agents.hub.cli.kg import entities as kg_entities_cli
 from evo_agents.kg import claude_code
 from tests.kg.test_entities_claude_code import API_KEY, OAUTH, fake_claude, mapping  # noqa: F401
 from tests.kg.test_extract_entities import setup

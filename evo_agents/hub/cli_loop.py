@@ -22,11 +22,11 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, when
 from evo_agents.hub.cli_policy import PROJECT_HELP
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES
 
 # The keys of the hub's answer these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -87,7 +87,7 @@ def _lines(found: dict) -> list[str]:
 @client_command
 def cmd_status(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _path(project_of_args(args)))
+    found = hub.call("GET", _path(project_of(args)))
     if args.json:
         print_json(found)
     else:
@@ -98,7 +98,7 @@ def cmd_status(args) -> int:
 @client_command
 def cmd_resume(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("POST", _path(project_of_args(args), "/resume"))
+    found = hub.call("POST", _path(project_of(args), "/resume"))
     if args.json:
         print_json(found)
     else:
@@ -151,7 +151,7 @@ def _baseline_lines(found: dict) -> list[str]:
 @client_command
 def cmd_baseline(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     path = f"/v1/projects/{quote(project, safe='')}/goals/{quote(args.goal, safe='')}/baseline"
     body = {
         "codes": _fixes(args.set, "--set"),
@@ -177,7 +177,7 @@ def cmd_baseline(args) -> int:
 @client_command
 def cmd_adopt(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     body = {"plan": args.plan, "goal": args.goal, "use_cases": args.use_cases}
     found = hub.call("POST", _path(project, "/adopt"), body)
     if args.json:

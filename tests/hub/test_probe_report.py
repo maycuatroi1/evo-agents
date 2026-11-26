@@ -23,7 +23,7 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.probe_cli import REPORT_KEYS
+from evo_agents.hub.cli.curator.probe import REPORT_KEYS
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.brief import send_briefs
 from tests.hub.contract_keys import assert_json_keys

@@ -26,9 +26,9 @@ import sys
 from urllib.parse import quote, urlencode
 
 from evo_agents.hub import transcript_sync
+from evo_agents.hub.cli.base import project_of
 from evo_agents.hub.cli_client import EXIT_FAILED, client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_object
-from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.transcripts import RUNTIMES
 
 EXIT_USAGE = 2
@@ -124,7 +124,7 @@ def cmd_sync(args) -> int:
 @client_command
 def cmd_list(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     filters = {
         "session_id": args.session,
         "login": args.login,
@@ -161,7 +161,7 @@ def cmd_list(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project, args.session))
     if args.json:
         print_json(found)
@@ -179,7 +179,7 @@ def cmd_show(args) -> int:
 @client_command
 def cmd_usage(args) -> int:
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("GET", _path(project, "usage"))
     if args.json:
         print_json(found)
@@ -202,7 +202,7 @@ def cmd_delete(args) -> int:
         print("error: name one SESSION, or --all for every transcript of the project", file=sys.stderr)
         return EXIT_USAGE
     hub, _ = signed_in()
-    project = project_of_args(args)
+    project = project_of(args)
     found = hub.call("DELETE", _path(project, *([args.session] if args.session else [])))
     if args.json:
         print_json(found)

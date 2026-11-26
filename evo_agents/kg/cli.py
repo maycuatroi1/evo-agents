@@ -104,8 +104,8 @@ def _sync_due_all(args) -> int:
     """``kg sync --due --all``, the LaunchAgent's command: sync every project the hub takes a run of from this
     machine. The hub prunes and scrubs what it holds (``kg prune``, ``kg scrub``); the machine keeps nothing to prune."""
     from evo_agents.hub.client import Hub, HubError, load_credentials
-    from evo_agents.hub.kg_cli import local_projects
     from evo_agents.hub.kg_hub_sync import sync_all_due
+    from evo_agents.hub.kg_remote import local_projects
     from evo_agents.kg.ids import utc_now
 
     if args.project or args.accept_removals:
@@ -284,7 +284,7 @@ def cmd_hook_session_start(args) -> int:
     never source text, which would reach the model with system-reminder authority. When to call the graph is
     said once, in the instructions of the server that serves the kg_* tools, not here again."""
     from evo_agents.hub.client import HubError
-    from evo_agents.hub.kg_cli import PROBE_TIMEOUT
+    from evo_agents.hub.kg_remote import PROBE_TIMEOUT
     from evo_agents.kg.cli_graph import hub_status
     from evo_agents.kg.sessions import current_session_id, describe, read_session
     from evo_agents.kg.status import render_brief

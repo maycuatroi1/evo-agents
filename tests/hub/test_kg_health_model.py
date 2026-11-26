@@ -663,7 +663,7 @@ def test_the_review_counts_read_the_hubs_artifact_as_the_owner_and_leave_the_dis
 
 
 def test_the_health_command_prints_a_row_a_source_and_the_score():
-    from evo_agents.hub import kg_cli
+    from evo_agents.hub.cli import kg as kg_cli
 
     source = {"source": "code", "commit": SHA, "behind": 2, "lag_hours": 6.5, "missing": 1, "stale": 0, "deleted": 3}
     assert kg_cli._source_row(source) == ("code", SHA[:12], "2", "6.5", "1", "0", "3", "")

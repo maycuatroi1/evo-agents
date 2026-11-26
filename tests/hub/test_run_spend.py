@@ -216,7 +216,7 @@ def test_the_summary_adds_a_runs_sessions_up_by_model_the_dearest_first():
 
 
 def test_run_show_says_the_cost_and_how_it_came_then_each_model():
-    from evo_agents.hub.run_cli_spend import spend_lines
+    from evo_agents.hub.cli.run.spend import spend_lines
 
     tokens = {"input": 10, "cache_read": 2000, "cache_write": 0, "output": 300, "total": 2310}
     spend = {
