@@ -1,5 +1,5 @@
 """The HTML pages of the feature docs without a hub: the text the knowledge graph reads of one
-(``evo_agents.hub.server.docs.page_text``), the title ``evo-agents hub docs put`` gives one (``cli_docs.page_title``),
+(``evo_agents.hub.server.docs.page_text``), the title ``evo-agents hub docs put`` gives one (``cli.docs.page_title``),
 and whether a page of a project loads libraries from the CDNs (``store.cdn_allowed``), by the project's hub sink."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub.cli_docs import page_title
+from evo_agents.hub.cli.docs import page_title
 
 LADDER = SimpleNamespace(levels=["public", "internal", "customer", "secret"], locations=["any", "domestic-only"])
 

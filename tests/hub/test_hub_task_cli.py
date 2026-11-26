@@ -1,4 +1,4 @@
-"""``evo-agents hub task list|show|create|edit|import`` (``evo_agents.hub.cli_tasks``), as members run them against a
+"""``evo-agents hub task list|show|create|edit|import`` (``evo_agents.hub.cli.task``), as members run them against a
 hub that serves the core plugin tasks: the commands and their ``--json`` keys are in the contract (seam hub-cli-v1),
 a task is created with its people and links, shown with the status of its plan step, changed, and evo-tasks/1 JSON
 imports after a dry run (criterion a3 of plan srs-tasks-plugins).
