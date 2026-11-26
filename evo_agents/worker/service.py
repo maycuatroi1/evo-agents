@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import functools
 import getpass
-import importlib.util
 import json
 import os
 import plistlib
@@ -63,6 +62,7 @@ from pathlib import Path
 
 from evo_agents.hub.client import write_atomic
 from evo_agents.kg.schedule import executable
+from evo_agents.worker.extra import EXTRA_HINT, missing_extra
 from evo_agents.worker.home import EXIT_REVOKED, HOME_VARIABLE, REVOKED_EXIT_VARIABLE, WorkerHome, WorkerStateError
 
 LABEL = "io.github.maycuatroi1.evo-agents.worker"
@@ -637,11 +637,6 @@ def _command(func):
     return run
 
 
-def missing_extra() -> str | None:
-    """The module of the worker extra that ``worker run`` needs and this Python lacks, or None."""
-    return None if importlib.util.find_spec("aiohttp") is not None else "aiohttp"
-
-
 def doctor_warnings(spec: Spec) -> list[str]:
     """The warning lines of ``evo-agents worker doctor`` on this machine, with the PATH of ``spec``."""
     from evo_agents.worker import doctor
@@ -697,8 +692,6 @@ def _manager_of(args) -> Manager:
 
 @_command
 def cmd_install(args) -> int:
-    from evo_agents.worker.cli_support import EXTRA_HINT
-
     home = WorkerHome()
     service = _manager_of(args)
     if service.agent and not os.environ.get(HOME_VARIABLE):

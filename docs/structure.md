@@ -44,7 +44,7 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 
 | Contract | Rule | Exceptions today |
 | --- | --- | --- |
-| `worker-not-hub-server` | nothing `evo_agents.worker` imports reaches `evo_agents.hub.server`, directly or through another module | the parser of `worker plan`, which borrows the hub CLI's JSON option and plan keys (2) |
+| `worker-not-hub-server` | nothing `evo_agents.worker` imports reaches `evo_agents.hub.server`, directly or through another module | none |
 | `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.cli_links`, `kg.cli_prune`, `kg.cli_scrub` |
 | `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
@@ -55,6 +55,12 @@ Packages import downward: `cli`, then `worker`, `hub`, `kg`, `harness`, `plugins
 functions too, so a lazy import does not get around a contract. To fix a broken one, move the shared code down into
 a package both may import (a type into `evo_agents.kg` or `evo_agents.schema`, the run protocol into
 `evo_agents.hub.runs`), or have the upper package pass it down as an argument. Each contract prints its own advice.
+
+Code outside the CLI does not import a module of the CLI either: what a command shares with the server, the worker or
+a client lives in a module of its own that the command imports, such as `evo_agents.hub.plan_writes` (plan writes and
+their retry on a revision conflict), `evo_agents.hub.plugin_commands` (the list of the plugins' commands),
+`evo_agents.hub.client.signed_in` and `evo_agents.worker.extra`. The CLI modules import those names back for their
+other callers.
 
 Inside `evo_agents.hub.server.runs`, the run API, layers go one way too. A route handler passes the request's parts
 to a public function of `service`, which checks, queries and moves runs with SQLAlchemy Core on

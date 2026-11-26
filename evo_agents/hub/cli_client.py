@@ -47,6 +47,7 @@ from evo_agents.hub.client import (
     login,
     remove_credentials,
 )
+from evo_agents.hub.client import signed_in as signed_in  # every hub command takes it from here
 from evo_agents.hub.contract import json_option, returns_array, returns_map, returns_object
 
 ENV_PAIR = f"{TOKEN_VARIABLE} and {URL_VARIABLE}"  # the token and hub that come before any login (env_credentials)
@@ -95,11 +96,6 @@ def client_command(func):
             return exit_status(exc)
 
     return run
-
-
-def signed_in():
-    credentials = load_credentials()
-    return Hub(credentials.url, credentials.token), credentials
 
 
 def call_object(hub: Hub, method: str, path: str, body: dict | None = None) -> dict:
@@ -691,6 +687,9 @@ def _register_other_groups(hsub) -> None:
 
     register_mcp(hsub)
 
-    from evo_agents.hub.hooks import register_plugin
+    # the commands of the evo-hub plugin: its hooks, and `hub send`, which the hooks start in the background
+    from evo_agents.hub.cli.send import register_send
+    from evo_agents.hub.hooks import register_hooks
 
-    register_plugin(hsub)
+    register_hooks(hsub)
+    register_send(hsub)

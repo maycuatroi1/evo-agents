@@ -73,7 +73,7 @@ from evo_agents.worker import (
     pool_cli,
     projects_cli,
 )
-from evo_agents.worker.browser import register_browser
+from evo_agents.worker.browser.cli import register_browser
 from evo_agents.worker.cli_support import EXIT_FAILED, worker_command
 from evo_agents.worker.home import (
     NotJoined,

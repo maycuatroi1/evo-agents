@@ -1,4 +1,5 @@
-"""``evo-agents hub send``: the outputs of local sessions (``evo_agents.hub.local_outputs``) to their runs on the hub.
+"""The outputs of local sessions (``evo_agents.hub.local_outputs``) to their runs on the hub, for ``evo-agents hub send``
+(``evo_agents.hub.cli.send``).
 
 - ``hub send FILE... [--caption TEXT]``, for the agent of a Claude Code session of a hub project, a CLI session above
   all, which has no SendUserFile: each file becomes an output of source ``sent`` of the session's local run, at once
@@ -28,7 +29,6 @@ import contextlib
 import hashlib
 import os
 import shutil
-import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -37,7 +37,6 @@ from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents.hub import hooks, local_outputs, local_store, local_sync, outputs
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.client import (
     FILE_MODE,
     Hub,
@@ -48,7 +47,6 @@ from evo_agents.hub.client import (
     transient,
     write_atomic,
 )
-from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.local_outputs import Queue
 
 LOG_FILE = "send.log"
@@ -390,7 +388,7 @@ def send_queued(wait: float) -> int:
 # hub send FILE...
 
 
-def _files(paths: list[str], caption: str | None) -> list[local_outputs.Sent]:
+def files_to_send(paths: list[str], caption: str | None) -> list[local_outputs.Sent]:
     """The files to send, or HubError naming the first that cannot go."""
     found = []
     for raw in paths:
@@ -404,7 +402,7 @@ def _files(paths: list[str], caption: str | None) -> list[local_outputs.Sent]:
     return found
 
 
-def _session(hub: Hub, named: str | None) -> tuple[str, dict]:
+def session_of(hub: Hub, named: str | None) -> tuple[str, dict]:
     env = dict(os.environ)
     if named:
         env[local_sync.SESSION_VARIABLE] = named
@@ -438,57 +436,3 @@ def send_files(hub: Hub, session_id: str, files: list[local_outputs.Sent]) -> tu
 def send_json(project: str, run_id: int, session_id: str, sent: list[dict], waiting: list[str]) -> dict:
     """What ``hub send FILE... --json`` prints (SEND_KEYS): the outputs the hub recorded and the names that wait."""
     return {"project": project, "run_id": run_id, "session_id": session_id, "outputs": sent, "queued": waiting}
-
-
-@client_command
-def cmd_send(args) -> int:
-    if args.queued:
-        return send_queued(args.wait)
-    if not args.files:
-        raise HubError("name the files to send, or pass --queued")
-    if not local_sync.enabled():
-        raise HubError(
-            "local sessions are not synced here: EVO_HUB_LOCAL_SYNC turns them off, and the agent of a worker run "
-            "sends its files with `evo-agents worker output`"
-        )
-    hub, _ = signed_in()
-    files = _files(args.files, local_outputs.caption_of(args.caption))
-    session_id, rec = _session(hub, args.session)
-    sent, waiting, report = send_files(hub, session_id, files)
-    if args.json:
-        print_json(send_json(rec["project"], rec["run_id"], session_id, sent, waiting))
-        return 1 if report.dropped else 0
-    for output in sent:
-        print(f"sent {output['name']} as output #{output['id']} of local run #{rec['run_id']} ({rec['project']})")
-    if waiting:
-        why = f": {report.stopped}" if report.stopped else ""
-        print(f"queued {', '.join(waiting)} for local run #{rec['run_id']}{why}; the evo-hub hooks send it later")
-    for dropped in report.dropped:
-        print(f"not sent: {dropped}", file=sys.stderr)
-    return 1 if report.dropped else 0
-
-
-def register_send(hsub) -> None:
-    send = hsub.add_parser(
-        "send",
-        help="send files to the hub as outputs of this Claude Code session's local run, as SendUserFile does in "
-        "Claude Desktop; --queued sends what the evo-hub hooks queued, as they do in the background",
-    )
-    send.add_argument("files", nargs="*", metavar="FILE", help="files to send, at most 200 MiB each")
-    send.add_argument("--caption", help="what the files show, for the people who read the run")
-    send.add_argument(
-        "--session",
-        metavar="ID",
-        help="the Claude Code session (default: CLAUDE_CODE_SESSION_ID, else the newest here)",
-    )
-    send.add_argument("--queued", action="store_true", help="send what the evo-hub hooks queued; they run it")
-    send.add_argument(
-        "--wait",
-        type=int,
-        default=0,
-        choices=range(0, 61),
-        metavar="SECONDS",
-        help="with --queued, wait first: 0 to 60",
-    )
-    json_option(send, returns_object(*SEND_KEYS))
-    send.set_defaults(func=cmd_send)

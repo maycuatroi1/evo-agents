@@ -24,13 +24,13 @@ from evo_agents.hub import probes
 from evo_agents.hub.client import HubError
 from evo_agents.hub.redact import redact
 from evo_agents.worker.agent_input import read_text
+from evo_agents.worker.extra import EXTRA_HINT
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 from evo_agents.worker.run_kinds import kind_refusal
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
 RUN_VARIABLE = "EVO_RUN_ID"
-EXTRA_HINT = "uv tool install 'evo-ak[worker]' (or python -m pip install 'evo-ak[worker]')"
 COMMAND = "probe add"
 
 
