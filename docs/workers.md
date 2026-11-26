@@ -2352,7 +2352,10 @@ The events take the shapes of ACP's `session/update`: `agent_message_chunk` and 
 `cost` `{"amount", "currency": "USD"}` when the runtime counts one; Claude Code's also carries `models`, its
 `modelUsage` (each model's tokens and `costUSD` so far in the session), and the `session_id`. An event a runtime sends that has none of these
 meanings goes as `output` `{"raw": ...}`, except the ones that only repeat others: text deltas, the start of a hook,
-Claude Code's list of slash commands.
+Claude Code's list of slash commands. Each event of a Claude Code subagent, its text, thinking, tool calls and
+results, names the Agent tool call that started it in the body's `_meta`, `{"parentToolCallId": "<id>"}` (the
+`parent_tool_use_id` of its messages, foreground or background); an event of the main agent, or of a run whose worker
+predates this, has no such key.
 
 The `usage` a run reports with its end also holds `peak_context_tokens`, the largest context one request of the model
 read in the agent's main thread: for Claude Code the input, cache creation and cache read tokens of a message of the

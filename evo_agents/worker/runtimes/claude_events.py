@@ -1,7 +1,8 @@
 """What the messages of ``claude-agent-sdk`` say, for the Claude Code adapter (``claude_code``): the hub's events of
-each (``events_of``), the background commands the agent runs (``Background``), the context its model read
-(``context_of``, ``first_request_of``), and an error that reads as the account's usage limit or a failed login
-(``limit_of_text``, ``auth_failure_of``). The module docstring of ``claude_code`` tells what Claude Code reports."""
+each (``events_of``), a subagent's naming the tool call that started it (``parent_of``), the background commands the
+agent runs (``Background``), the context its model read (``context_of``, ``first_request_of``), and an error that
+reads as the account's usage limit or a failed login (``limit_of_text``, ``auth_failure_of``). The module docstring of
+``claude_code`` tells what Claude Code reports."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
+    with_parent,
 )
 
 # System messages left out of the log: the CLI's list of slash commands (tens of KiB, twice a session), the start of
@@ -328,8 +330,24 @@ def _block_events(block) -> list[AgentEvent]:
     return [raw({"type": "assistant", "block": dataclasses.asdict(block)})]
 
 
+def parent_of(message) -> str | None:
+    """The id of the tool call (Agent, or Task before Claude Code renamed it) that started the subagent ``message`` is
+    of: its ``parent_tool_use_id``, which the CLI sets on the messages a subagent sends, in the foreground or the
+    background, and on none of the main agent's. None for a message of the main agent."""
+    parent = getattr(message, "parent_tool_use_id", None)
+    if parent is None and isinstance(getattr(message, "data", None), dict):  # a message the SDK keeps raw
+        parent = message.data.get("parent_tool_use_id")
+    return parent if isinstance(parent, str) and parent else None
+
+
 def events_of(message) -> list[AgentEvent]:
-    """The hub's events for one message of ``ClaudeSDKClient.receive_messages()``."""
+    """The hub's events for one message of ``ClaudeSDKClient.receive_messages()``; each event of a subagent's message
+    names the tool call that started the subagent (``parent_of``, ``common.with_parent``)."""
+    parent = parent_of(message)
+    return [with_parent(event, parent) for event in _events_of(message)]
+
+
+def _events_of(message) -> list[AgentEvent]:
     from claude_agent_sdk import types as sdk
 
     events: list[AgentEvent] = []

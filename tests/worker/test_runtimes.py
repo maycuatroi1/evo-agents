@@ -1353,6 +1353,166 @@ def test_the_background_tracker_follows_background_bash_calls_and_their_tasks_on
     assert ended == ["b-auto"] and background.ended["b-auto"] == {"description": "npm test", "status": "killed"}
 
 
+# A subagent's events name the Agent call that started it
+
+
+SUB_PNG = b"\x89PNG\r\n\x1a\n" + b"a subagent's screenshot" * 10
+
+
+def _of(parent: str | None, message: dict) -> dict:
+    """``message`` of stream-json as the subagent of tool call ``parent`` prints it."""
+    return {**message, "parent_tool_use_id": parent}
+
+
+def _parents(events: list[AgentEvent]) -> list[tuple[str, str | None]]:
+    """Each event's kind and the tool call its body's ``_meta`` names as its parent."""
+    return [(e.kind, (e.body.get("_meta") or {}).get(common.PARENT_TOOL_CALL)) for e in events]
+
+
+def _agent_call(tool_id: str, *, background: bool = False) -> dict:
+    agent_input = {"description": "Review the diff", "prompt": "Review the diff.", "subagent_type": "general-purpose"}
+    return _assistant(
+        {"type": "tool_use", "id": tool_id, "name": "Agent", "input": {**agent_input, "run_in_background": background}}
+    )
+
+
+def _subagent_work(parent: str) -> list[dict]:
+    """What a subagent prints: its prompt, its thinking and words, a Bash call of its own in the background, and
+    the result of a Read of a screenshot, with the image."""
+    image = {"type": "image", "source": {"type": "base64", "media_type": "image/png"}}
+    image["source"]["data"] = base64.b64encode(SUB_PNG).decode()
+    read_result = {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [{"tool_use_id": "toolu_read", "type": "tool_result", "content": [image], "is_error": False}],
+        },
+        "session_id": SESSION,
+    }
+    bash = {"command": "sleep 9", "run_in_background": True}
+    return [
+        _of(
+            parent, {"type": "user", "message": {"role": "user", "content": "Review the diff."}, "session_id": SESSION}
+        ),
+        _of(parent, _assistant({"type": "thinking", "thinking": "Read the diff first.", "signature": "s"})),
+        _of(parent, _assistant({"type": "text", "text": "Reading the diff."})),
+        _of(parent, _used("msg_sub", {"input_tokens": 900_000}, parent=parent)),  # its own context
+        _of(parent, _assistant({"type": "tool_use", "id": "toolu_sub_bash", "name": "Bash", "input": bash})),
+        _of(parent, _tool_result("toolu_sub_bash", "sleep 9 ran")),
+        _of(parent, _assistant({"type": "tool_use", "id": "toolu_read", "name": "Read", "input": {"file": "a.png"}})),
+        _of(parent, read_result),
+    ]
+
+
+SUBAGENT_EVENTS = [
+    ("agent_thought_chunk", "{p}"),
+    ("agent_message_chunk", "{p}"),
+    ("agent_message_chunk", "{p}"),  # msg_sub's text
+    ("tool_call", "{p}"),
+    ("tool_call_update", "{p}"),
+    ("tool_call", "{p}"),
+    ("tool_call_update", "{p}"),
+]
+
+
+def _subagent_events(parent: str) -> list[tuple[str, str]]:
+    return [(kind, value.format(p=parent)) for kind, value in SUBAGENT_EVENTS]
+
+
+def test_a_foreground_subagents_text_thinking_and_tools_name_its_parent_agent_call_and_the_main_agents_none(
+    tmp_path,
+):
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_text("Delegating the review."))
+        cli.print(_agent_call("toolu_agent"))
+        _print(cli, _subagent_work("toolu_agent"))
+        cli.print(_tool_result("toolu_agent", "The diff is fine."))
+        cli.print(_used("msg_main", {"input_tokens": 4, "cache_read_input_tokens": 30_000}))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour)
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.options.forward_subagent_text is True
+    assert adapter.cli.requests["initialize"]["forwardSubagentText"] is True, "the CLI forwards its text and thinking"
+    assert _parents(events) == [
+        ("output", None),  # system/init
+        ("agent_message_chunk", None),
+        ("tool_call", None),  # the Agent call
+        *_subagent_events("toolu_agent"),
+        ("tool_call_update", None),  # what the subagent reported
+        ("agent_message_chunk", None),
+        ("usage_update", None),
+    ]
+    main = [e for e in events if (e.body.get("_meta") or {}).get(common.PARENT_TOOL_CALL) is None]
+    assert main and all("_meta" not in e.body for e in main), "the main agent's events name no parent"
+    [image] = [e for e in events if e.files]
+    assert image.body["toolCallId"] == "toolu_read" and [f.data for f in image.files] == [SUB_PNG]
+    assert image.body["content"][0]["content"]["type"] == "resource_link", "the image is a file, not its base64"
+    # The subagent's own context and its background command stay the subagent's.
+    assert outcome.completed and outcome.usage["peak_context_tokens"] == 30_004
+    assert not adapter.background.pending and adapter.cli.log[-1] == ("end_input",)
+
+
+def test_a_background_subagents_events_name_its_parent_agent_call_after_the_main_turn_ended(tmp_path):
+    started = {
+        "task_id": "a-1",
+        "tool_use_id": "toolu_bg",
+        "description": "Review the diff",
+        "task_type": "local_agent",
+    }
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_agent_call("toolu_bg", background=True))
+        cli.print(_system("task_started", is_backgrounded=True, **started))
+        cli.print(_tool_result("toolu_bg", "Async agent launched successfully. agentId: a-1"))
+        cli.print(_text("LAUNCHED"))
+        cli.print(_result("LAUNCHED"))
+        await asyncio.sleep(0.05)
+        _print(cli, _subagent_work("toolu_bg"))
+        ended = {"task_id": "a-1", "tool_use_id": "toolu_bg", "status": "completed", "summary": "Reviewed"}
+        cli.print(_system("task_notification", output_file="/tmp/a-1.output", **ended))
+        cli.print(INIT)  # Claude Code opens a turn by itself, for the notification
+        cli.print(_text("GOT IT"))
+        cli.print(_result("GOT IT"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "turn_grace": 0.1})
+    events, outcome = asyncio.run(_collect(adapter))
+    assert _parents(events) == [
+        ("output", None),
+        ("tool_call", None),
+        ("output", None),  # task_started
+        ("tool_call_update", None),
+        ("agent_message_chunk", None),
+        ("usage_update", None),
+        *_subagent_events("toolu_bg"),
+        ("output", None),  # task_notification
+        ("output", None),
+        ("agent_message_chunk", None),
+        ("usage_update", None),
+    ]
+    assert outcome.completed and adapter.background.ended["a-1"]["status"] == "completed"
+
+
+def test_a_subagents_raw_message_names_its_parent_and_the_main_agents_message_none():
+    sdk = needs("claude_agent_sdk")
+    stream = sdk.StreamEvent(uuid="u-1", session_id=SESSION, event={"type": "ping"}, parent_tool_use_id="toolu_agent")
+    [event] = events_of(stream)
+    assert event.kind == "output" and event.body["_meta"] == {common.PARENT_TOOL_CALL: "toolu_agent"}
+    assert "_meta" not in events_of(sdk.StreamEvent(uuid="u-2", session_id=SESSION, event={"type": "ping"}))[0].body
+    progress = sdk.SystemMessage("task_progress", {"type": "system", "parent_tool_use_id": "toolu_agent"})
+    assert events_of(progress)[0].body["_meta"] == {common.PARENT_TOOL_CALL: "toolu_agent"}
+    main = common.message_chunk("x")
+    assert common.with_parent(main, None) is main
+
+
 def test_a_claude_result_reports_each_models_totals_and_the_session_with_the_turns_usage():
     sdk = needs("claude_agent_sdk")
     models = {"claude-opus-5-5": {"inputTokens": 3, "outputTokens": 40, "costUSD": 0.5}}

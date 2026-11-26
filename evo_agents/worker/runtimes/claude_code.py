@@ -82,12 +82,18 @@ here.
   the exit code: Claude Code exits 0 when it is interrupted.
 - A tool's result keeps its text; each image block of it (a browser's screenshot, a Read of an image file, base64
   in ``source``) becomes a file of the event, which its content links to instead (``tool_result``), and the run
-  sends it as an output of source tool. A subagent's tool results come through the stream too (as messages with its
-  ``parent_tool_use_id``; claude-agent-sdk 0.2.170 says so of ``forward_subagent_text``, and run #80 of evo-agents
-  logged the Bash and Read calls of a plan-step subagent), so their images are taken the same way. Such a result
-  comes on one line of stdout with the image's base64 twice (in the message and in ``tool_use_result``), so the SDK
-  reads lines up to MAX_MESSAGE_BYTES (``max_buffer_size``), not its 1 MiB: run #924 of evo-agents failed on its
-  first Read of a 485 KB screenshot a person attached to a chat message.
+  sends it as an output of source tool. A subagent's tool results come through the stream too, so their images are
+  taken the same way. Such a result comes on one line of stdout with the image's base64 twice (in the message and in
+  ``tool_use_result``), so the SDK reads lines up to MAX_MESSAGE_BYTES (``max_buffer_size``), not its 1 MiB: run #924
+  of evo-agents failed on its first Read of a 485 KB screenshot a person attached to a chat message.
+- What a subagent does comes through the stream as messages whose ``parent_tool_use_id`` is the id of the Agent
+  (formerly Task) tool call that started it, in the foreground or in the background; the main agent's messages carry
+  none. The SDK forwards a subagent's tool calls and results by itself (run #80 of evo-agents logged the Bash and Read
+  calls of a plan-step subagent), and its text and thinking too with ``forward_subagent_text``, which the adapter sets.
+  Each event of such a message names that call in its body's ``_meta`` (``common.PARENT_TOOL_CALL``, ``events_of``),
+  so the run page can tell each subagent's work from the main agent's; an event without it is the main agent's, as is
+  every event of a run whose worker predates this. ``Background`` still follows the main agent's background commands alone, and
+  ``context_of`` still leaves a subagent's context out of the run's peak.
 - The run's usage adds up the ``result`` of each turn, with the session's ``total_cost_usd``, and holds
   ``peak_context_tokens``: the largest context a message of the model read in the main thread, its usage's input,
   cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``); and the
@@ -510,6 +516,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
             "max_buffer_size": MAX_MESSAGE_BYTES,
+            "forward_subagent_text": True,  # a subagent's text and thinking too (module docstring)
         }
         if self.context.resume_session:
             settings["resume"] = self._session

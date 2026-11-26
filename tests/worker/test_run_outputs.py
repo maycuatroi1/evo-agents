@@ -132,6 +132,8 @@ def test_headless_and_interactive_runs_take_the_images_of_tool_results_the_same_
         "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_5", "content": content}]},
     }
     [driven] = interactive.claude_transcript_events(record)
+    # the stream names the subagent's Agent call (``_meta``); a transcript of a session a person drives does not
+    assert headless.body.pop("_meta") == {"parentToolCallId": "toolu_agent"}
     assert headless.body == driven.body and headless.files == driven.files
     assert [f.sha256 for f in headless.files] == [sha(PNG)]
 
