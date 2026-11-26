@@ -43,10 +43,10 @@ from urllib.parse import quote
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.srs import revisions, store
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.markdown import block_text
-from evo_agents.hub.server.srs.template import Template, heading_text
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.models.markdown import block_text
+from evo_agents.hub.server.srs.models.template import Template, heading_text
+from evo_agents.hub.server.srs.repository import revisions, store
 from evo_agents.hub.tables_srs import KG_NODE_KINDS, kg_node_id
 from evo_agents.kg.ids import utc_text
 

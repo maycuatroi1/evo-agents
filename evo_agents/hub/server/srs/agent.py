@@ -54,17 +54,20 @@ from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
-from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, revisions, store, threads
-from evo_agents.hub.server.srs.auto_review import review_entered
-from evo_agents.hub.server.srs.diff import diff as item_changes
-from evo_agents.hub.server.srs.diff import text_of
-from evo_agents.hub.server.srs.doc import Document, SrsError
-from evo_agents.hub.server.srs.edits import edited
-from evo_agents.hub.server.srs.models import SrsChange, edit_changes
-from evo_agents.hub.server.srs.settle import proposer
-from evo_agents.hub.server.srs.store import compare_path
-from evo_agents.hub.server.srs.template import code_key
-from evo_agents.hub.server.srs.writes import Writer, give_screen_codes, write_version
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models import checks, markdown
+from evo_agents.hub.server.srs.models.api import SrsChange, edit_changes
+from evo_agents.hub.server.srs.models.diff import diff as item_changes
+from evo_agents.hub.server.srs.models.diff import text_of
+from evo_agents.hub.server.srs.models.doc import Document, SrsError
+from evo_agents.hub.server.srs.models.template import code_key
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import compare_path
+from evo_agents.hub.server.srs.service import findings, notices, reviews, threads
+from evo_agents.hub.server.srs.service.auto_review import review_entered
+from evo_agents.hub.server.srs.service.edits import edited
+from evo_agents.hub.server.srs.service.settle import proposer
+from evo_agents.hub.server.srs.service.writes import Writer, give_screen_codes, write_version
 
 log = logging.getLogger(__name__)
 

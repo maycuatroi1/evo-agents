@@ -67,11 +67,11 @@ version.
 
 from evo_agents.hub.server.base.tools import Tool, Tools
 
-SERVER = "evo_agents.hub.server.srs.server"
+SERVER = "evo_agents.hub.server.srs.routes"
 KG = "evo_agents.hub.server.srs.kg"
 AGENT = "evo_agents.hub.server.srs.agent"
-SETTLE = "evo_agents.hub.server.srs.settle"
-EVENTS = "evo_agents.hub.server.srs.events"
+SETTLE = "evo_agents.hub.server.srs.service.settle"
+EVENTS = "evo_agents.hub.server.srs.service.events"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")

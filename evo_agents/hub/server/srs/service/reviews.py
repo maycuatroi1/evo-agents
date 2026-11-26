@@ -55,10 +55,13 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.srs import ROLES, checks, events, findings, notices, revisions, store, use_case_reviews
-from evo_agents.hub.server.srs.doc import Document, SrsError
-from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import (
+from evo_agents.hub.server.srs import ROLES
+from evo_agents.hub.server.srs.models import checks
+from evo_agents.hub.server.srs.models.doc import Document, SrsError
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import DocumentRow, ReviewRow, Settings, VersionRow
+from evo_agents.hub.server.srs.service import events, findings, notices, use_case_reviews
+from evo_agents.hub.server.srs.service.use_case_reviews import (
     APPROVE,
     APPROVED,
     REQUEST_CHANGES,

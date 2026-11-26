@@ -60,9 +60,11 @@ from evo_agents.hub.server.chat_views import person_author
 from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.hub.server.srs import BA, findings, notices, revisions, store
-from evo_agents.hub.server.srs.doc import SrsError
-from evo_agents.hub.server.srs.store import PLUGIN
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models.doc import SrsError
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import PLUGIN
+from evo_agents.hub.server.srs.service import findings, notices
 from evo_agents.hub.server.user_emails import logins_of_emails
 from evo_agents.hub.tables_srs import KG_NODE_KINDS, code_key
 

@@ -37,9 +37,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import BA, findings, revisions
-from evo_agents.hub.server.srs.store import PLUGIN, DocumentRow, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import CaseState, case_name
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.repository import revisions
+from evo_agents.hub.server.srs.repository.store import PLUGIN, DocumentRow, VersionRow
+from evo_agents.hub.server.srs.service import findings
+from evo_agents.hub.server.srs.service.use_case_reviews import CaseState, case_name
 from evo_agents.hub.server.task_dispatch import hand_own_task
 
 log = logging.getLogger(__name__)

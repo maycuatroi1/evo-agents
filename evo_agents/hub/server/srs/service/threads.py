@@ -28,10 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import signals, tables
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import BA, revisions, store
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.reviews import CommentRow
-from evo_agents.hub.server.srs.store import PLUGIN, DocumentRow
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import PLUGIN, DocumentRow
+from evo_agents.hub.server.srs.service.reviews import CommentRow
 
 log = logging.getLogger(__name__)
 

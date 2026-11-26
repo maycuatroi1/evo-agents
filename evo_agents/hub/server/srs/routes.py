@@ -43,23 +43,8 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.srs import (
-    checks,
-    edits,
-    findings,
-    imports,
-    markdown,
-    notices,
-    reviews,
-    revisions,
-    store,
-    threads,
-    use_case_reviews,
-)
-from evo_agents.hub.server.srs.auto_review import case_entered, review_entered
-from evo_agents.hub.server.srs.diff import diff, lines_between
-from evo_agents.hub.server.srs.doc import SrsError
-from evo_agents.hub.server.srs.models import (
+from evo_agents.hub.server.srs.models import checks, markdown
+from evo_agents.hub.server.srs.models.api import (
     SrsComment,
     SrsCommentIn,
     SrsDiff,
@@ -98,7 +83,12 @@ from evo_agents.hub.server.srs.models import (
     use_case_model,
     version_model,
 )
-from evo_agents.hub.server.srs.writes import Writer, dropped, give_screen_codes, unheld_problems, write_version
+from evo_agents.hub.server.srs.models.diff import diff, lines_between
+from evo_agents.hub.server.srs.models.doc import SrsError
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.service import edits, findings, imports, notices, reviews, threads, use_case_reviews
+from evo_agents.hub.server.srs.service.auto_review import case_entered, review_entered
+from evo_agents.hub.server.srs.service.writes import Writer, dropped, give_screen_codes, unheld_problems, write_version
 from evo_agents.hub.tables_srs import FINDING_STATUSES, MAX_SUMMARY_CHARS, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}

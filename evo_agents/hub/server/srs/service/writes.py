@@ -25,10 +25,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.srs import CODED_KINDS, checks, revisions
-from evo_agents.hub.server.srs.doc import ERROR, Document, Item, Problem, SrsError
-from evo_agents.hub.server.srs.store import Snapshot
-from evo_agents.hub.server.srs.template import SCREEN_PREFIX, Template, code_key, screen_number
+from evo_agents.hub.server.srs import CODED_KINDS
+from evo_agents.hub.server.srs.models import checks
+from evo_agents.hub.server.srs.models.doc import ERROR, Document, Item, Problem, SrsError
+from evo_agents.hub.server.srs.models.template import SCREEN_PREFIX, Template, code_key, screen_number
+from evo_agents.hub.server.srs.repository import revisions
+from evo_agents.hub.server.srs.repository.store import Snapshot
 
 KEY_BYTES = 6  # an item's key: 12 hex characters, unique in its document
 

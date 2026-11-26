@@ -222,7 +222,7 @@ def canvas_path(project: str, slug: str, *parts: str) -> str:
 
 
 def document_path(project: str, slug: str) -> str:
-    """A document of the plugin srs (``hub.server.srs.store.document_path``)."""
+    """A document of the plugin srs (``hub.server.srs.repository.store.document_path``)."""
     return project_path(project, "x", "srs", "documents", slug)
 
 

@@ -19,10 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import checks, markdown, store
-from evo_agents.hub.server.srs.diff import text_of
-from evo_agents.hub.server.srs.doc import Document, Problem, SrsError
-from evo_agents.hub.server.srs.writes import (
+from evo_agents.hub.server.srs.models import checks, markdown
+from evo_agents.hub.server.srs.models.diff import text_of
+from evo_agents.hub.server.srs.models.doc import Document, Problem, SrsError
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.service.writes import (
     Writer,
     dropped,
     give_screen_codes,

@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import re
 
-from evo_agents.hub.server.srs.doc import WARNING, Document, Item, Problem
-from evo_agents.hub.server.srs.template import (
+from evo_agents.hub.server.srs.models.doc import WARNING, Document, Item, Problem
+from evo_agents.hub.server.srs.models.template import (
     ANCHOR,
     CBR_SECTION,
     Template,

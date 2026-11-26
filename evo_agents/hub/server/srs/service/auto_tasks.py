@@ -59,10 +59,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import feature_rule, tables, task_status
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.hub.server.srs import BA, revisions, store
-from evo_agents.hub.server.srs.diff import diff
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.store import PLUGIN, DocumentRow, Snapshot
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models.diff import diff
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import PLUGIN, DocumentRow, Snapshot
 from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX, PENDING_SPLIT, frame_task_key
 from evo_agents.hub.tables_tasks import MAX_CAUSE_CHARS, MAX_TITLE_CHARS, MAX_VALUE_CHARS
 from evo_agents.plugins import config as plugin_config

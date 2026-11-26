@@ -1,4 +1,4 @@
-"""The tasks of an approved use case (``evo_agents.hub.server.srs.auto_tasks``), as criterion a8 of plan
+"""The tasks of an approved use case (``evo_agents.hub.server.srs.service.auto_tasks``), as criterion a8 of plan
 srs-conflicts-and-tasks names it, now that each use case is approved on its own.
 
 A review that approves use cases releases each into the approved baseline and emits srs.use_case.approved; when the hub
@@ -28,7 +28,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.srs import auto_tasks
+from evo_agents.hub.server.srs.service import auto_tasks
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, members and srs_core are fixtures)
     CHI,

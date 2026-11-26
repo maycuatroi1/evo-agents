@@ -42,12 +42,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import feature_rule, hub_events, plugin_events, tables
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.srs import auto_tasks, revisions, store
-from evo_agents.hub.server.srs.diff import diff
-from evo_agents.hub.server.srs.doc import Document, Item
-from evo_agents.hub.server.srs.store import DocumentRow, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import APPROVED as APPROVED_STATE
-from evo_agents.hub.server.srs.use_case_reviews import REMOVED, CaseState
+from evo_agents.hub.server.srs.models.diff import diff
+from evo_agents.hub.server.srs.models.doc import Document, Item
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.store import DocumentRow, VersionRow
+from evo_agents.hub.server.srs.service import auto_tasks
+from evo_agents.hub.server.srs.service.use_case_reviews import APPROVED as APPROVED_STATE
+from evo_agents.hub.server.srs.service.use_case_reviews import REMOVED, CaseState
 
 APPROVED = hub_events.SRS_APPROVED
 USE_CASE_APPROVED = hub_events.SRS_USE_CASE_APPROVED

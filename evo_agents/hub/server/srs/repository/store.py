@@ -25,8 +25,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs.doc import Document, Item, SrsError
-from evo_agents.hub.server.srs.template import Template, TemplateError, code_key, template_of
+from evo_agents.hub.server.srs.models.doc import Document, Item, SrsError
+from evo_agents.hub.server.srs.models.template import Template, TemplateError, code_key, template_of
 from evo_agents.plugins import config as plugin_config
 
 PLUGIN = "srs"

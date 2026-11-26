@@ -44,10 +44,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import BA, store
-from evo_agents.hub.server.srs.doc import Document, SrsError
-from evo_agents.hub.server.srs.store import DocumentRow, VersionRow
-from evo_agents.hub.server.srs.template import code_key
+from evo_agents.hub.server.srs import BA
+from evo_agents.hub.server.srs.models.doc import Document, SrsError
+from evo_agents.hub.server.srs.models.template import code_key
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.repository.store import DocumentRow, VersionRow
 from evo_agents.hub.tables_srs import (
     FINDING_KINDS,
     FINDING_LEVELS,

@@ -47,9 +47,10 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import findings, store, use_case_reviews
-from evo_agents.hub.server.srs.store import DocumentRow, Settings, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import CaseState, case_name
+from evo_agents.hub.server.srs.repository import store
+from evo_agents.hub.server.srs.repository.store import DocumentRow, Settings, VersionRow
+from evo_agents.hub.server.srs.service import findings, use_case_reviews
+from evo_agents.hub.server.srs.service.use_case_reviews import CaseState, case_name
 
 REVIEW = "srs_review"  # evo_agents.hub.runs.NOTICE_KINDS: a version waits for its reviewers
 REVIEWED = "srs_reviewed"  # evo_agents.hub.runs.NOTICE_KINDS: a review reached the version's author

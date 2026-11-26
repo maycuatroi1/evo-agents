@@ -34,10 +34,11 @@ from sqlalchemy import select, update
 from evo_agents.hub import plugin_calls, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import Principal, RunScope
-from evo_agents.hub.server.srs import markdown, reviews
-from evo_agents.hub.server.srs.doc import SrsError
-from evo_agents.hub.server.srs.store import Settings
-from evo_agents.hub.server.srs.template import template_of
+from evo_agents.hub.server.srs.models import markdown
+from evo_agents.hub.server.srs.models.doc import SrsError
+from evo_agents.hub.server.srs.models.template import template_of
+from evo_agents.hub.server.srs.repository.store import Settings
+from evo_agents.hub.server.srs.service import reviews
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live

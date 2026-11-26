@@ -43,10 +43,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server.srs import revisions, store
-from evo_agents.hub.server.srs.doc import Document
-from evo_agents.hub.server.srs.revisions import History, Revision, fingerprints
-from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
+from evo_agents.hub.server.srs.models.doc import Document
+from evo_agents.hub.server.srs.repository import revisions, store
+from evo_agents.hub.server.srs.repository.revisions import History, Revision, fingerprints
+from evo_agents.hub.server.srs.repository.store import DocumentRow, ReviewRow, Settings, VersionRow
 
 APPROVE, REQUEST_CHANGES = "approve", "request_changes"
 USE_CASE, BUSINESS_RULE = "use_case", "business_rule"
