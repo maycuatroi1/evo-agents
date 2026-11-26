@@ -1,4 +1,4 @@
-"""``evo-agents hub canvas list|show|create|edit|undo|evidence|export|import`` (``evo_agents.hub.cli_canvas``), as
+"""``evo-agents hub canvas list|show|create|edit|undo|evidence|export|import`` (``evo_agents.hub.cli.canvas``), as
 members run them against a hub that serves the core plugin canvas: the commands and their ``--json`` keys are in the
 contract (seam hub-cli-v1), a canvas is made, a claim made and changed at the rev it was read at, an edit at an old
 rev is refused with what changed, a rev is undone, evidence added, and the canvas exported and imported back keeping
