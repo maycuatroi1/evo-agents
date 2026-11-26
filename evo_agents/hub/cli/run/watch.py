@@ -13,7 +13,7 @@ What counts as a change, against the first look:
 
 Every ``--every`` seconds it reads each run (GET .../runs/{id}), the project's open decisions (GET
 .../decisions?state=open) and each plan (GET .../plans/{id}). A read the hub could not answer for a moment (no
-answer, 408, 429, 502 to 504, or the proxy's 404 while the hub is redeployed: ``client.transient``) skips that look,
+answer, 408, 429, any 5xx, or the proxy's 404 while the hub is redeployed: ``passing``) skips that look,
 with one note on stderr per outage; the first look is tried again the same way until the time is up. Any other
 refusal ends the command with the hub's error. When every run named has already ended at the first look and no plan
 is watched, it exits 0 at once: nothing it waits for can come.
@@ -52,6 +52,13 @@ QUIET_CATEGORIES = frozenset({"wait"})  # decisions that need nobody: a run's ow
 ATTENTION_STATUSES = frozenset({"blocked", "descoped"})  # a step that turns one of these wakes a plan's watch
 FINAL_STATES = frozenset({*TERMINAL_STATES, "ended"})  # ended: a local run's session is over
 QUESTION_CHARS = 100
+
+
+def passing(exc: HubError) -> bool:
+    """Whether a look that failed with ``exc`` is skipped: ``client.transient``, and any 5xx too. A look only reads, so
+    looking again cannot do anything twice, and while the hub is redeployed the proxy in front of it answers a plain
+    500 for a minute or two (2026-11-26), not only 502."""
+    return transient(exc) or (exc.status is not None and exc.status >= 500)
 
 
 @dataclass(frozen=True)
@@ -188,7 +195,7 @@ def watch(
         try:
             seen = look(hub, project, runs, tuple(plans), decisions)
         except HubError as exc:
-            if not transient(exc):
+            if not passing(exc):
                 raise
             if not outage:
                 warn(f"note: the hub did not answer ({exc}); looking again every {every} s")
