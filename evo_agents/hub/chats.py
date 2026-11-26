@@ -44,6 +44,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from evo_agents.hub.api import route
+
 MAX_TITLE_CHARS = 120
 MAX_MESSAGE_BYTES = 16 * 1024  # of UTF-8, as an author run's chat message (``author.MAX_CHAT_BYTES``)
 MAX_PEOPLE = 50  # people in one chat, its creator included
@@ -160,7 +162,7 @@ def chat_link(chat_id: int, message_id: int | None = None) -> str:
 def image_url(chat_id: int, sha256: str | None) -> str | None:
     """Where a member reads the image of chat ``chat_id`` whose SHA-256 is ``sha256``, a part of it in the URL so that a
     browser keeps it until it changes; None for a chat without one."""
-    return None if sha256 is None else f"/v1/chats/{chat_id}/image?v={sha256[:16]}"
+    return None if sha256 is None else route("chats", chat_id, "image", v=sha256[:16])
 
 
 def github_avatar(github_id: int | None) -> str | None:

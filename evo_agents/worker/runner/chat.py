@@ -50,12 +50,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import chat_runs, runs
 from evo_agents.worker import attachments, gitops
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, clones, transitions, verify
 from evo_agents.worker.runner.branch_work import CHAT, BranchWork
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, Parked, RunFailed, Stopped, cut, wait_or
@@ -249,17 +250,21 @@ class ChatRun:
         """Ask the hub to add repo ``name`` to the run (POST /v1/worker/runs/{id}/chat/repos), a few times while it
         does not answer; its refusal, or None once it took it."""
         run = self.run
-        backoff = Backoff()
-        for attempt in range(HARD_STOP_TRIES + 1):
-            try:
-                await run.daemon.hub.in_chats(run.id, "chat/repos", {"repo": name})
-                return None
-            except Unreachable as exc:
-                if attempt == HARD_STOP_TRIES or await wait_or(run.daemon.hard_stop, backoff.next()):
-                    return f"the hub did not answer ({exc}): ask again"
-            except HubProblem as exc:
-                return str(exc)
-        return "the hub did not answer: ask again"
+        hard_stop = run.daemon.hard_stop
+        # a hard stop ends the asking: the owner asks again
+        policy = replace(
+            hub_retry(HARD_STOP_TRIES + 1), retry_on=lambda exc: isinstance(exc, Unreachable) and not hard_stop.is_set()
+        )
+        try:
+            await policy.acall(
+                lambda: run.daemon.hub.in_chats(run.id, "chat/repos", {"repo": name}),  # pyright: ignore[reportOptionalMemberAccess]
+                sleep=lambda seconds: wait_or(hard_stop, seconds),
+            )
+        except Unreachable as exc:
+            return f"the hub did not answer ({exc}): ask again"
+        except HubProblem as exc:
+            return str(exc)
+        return None
 
     # What the parts every kind shares ask of it
 

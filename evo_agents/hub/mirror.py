@@ -25,7 +25,6 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote
 
 import yaml
 
@@ -39,6 +38,7 @@ from evo_agents.harness import (
     plan_body,
     plan_digest,
 )
+from evo_agents.hub.api.project import Plans
 from evo_agents.hub.client import HubError, write_atomic
 from evo_agents.hub.plans import AREAS
 from evo_agents.infra.git import Git, GitError, GitFailed
@@ -250,8 +250,8 @@ def harness_root(start: Path | str | None) -> Path:
 
 
 def plans_path(project: str, plan_id: str | None = None) -> str:
-    base = f"/v1/projects/{quote(project, safe='')}/plans"
-    return base if plan_id is None else f"{base}/{quote(plan_id, safe='')}"
+    plans = Plans(None, project)
+    return plans.path() if plan_id is None else plans.path(plan_id)
 
 
 def mirror_path(root: Path, area: str, plan_id: str) -> Path:

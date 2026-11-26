@@ -10,17 +10,13 @@ from __future__ import annotations
 from typing import cast
 from urllib.parse import quote
 
-from evo_agents.hub.cli.base import call_object
-from evo_agents.hub.client import Hub
+from evo_agents.hub.cli.base import HubRoutes, call_object
 
 
-class OrgChart:
+class OrgChart(HubRoutes):
     """The org chart of the hub: GET /v1/org, its units, its seats and whom shared workers are shared with (Gateway)."""
 
-    path = "/v1/org"
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
+    base = "org"
 
     def chart(self) -> dict:
         return call_object(self.hub, "GET", self.path)

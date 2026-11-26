@@ -26,6 +26,7 @@ import re
 from typing import TextIO
 
 from evo_agents.clikit import Arg, Group, Result, Stderr, Text, Verbatim, Views
+from evo_agents.hub.api import paths, route
 from evo_agents.hub.client import Hub, HubError, load_credentials
 from evo_agents.hub.runs import MAX_SLOTS
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
@@ -33,7 +34,7 @@ from evo_agents.worker.membership import array_of, object_of
 from evo_agents.worker.pool_boot import JOIN_TOKEN_ENV, bootstrap_script, render_user_data
 
 AGENT_POOL_PREFIX = "agent-"  # the pool of each agent: agent-<handle>
-POOLS = "/v1/worker-pools"
+POOLS = paths.WORKER_POOLS
 
 
 def signed_in() -> Hub:
@@ -43,7 +44,7 @@ def signed_in() -> Hub:
 
 
 def path_of(name: str, *rest) -> str:
-    return "/".join((POOLS, name, *map(str, rest)))
+    return route("worker-pools", name, *rest)
 
 
 class Answer(Result):

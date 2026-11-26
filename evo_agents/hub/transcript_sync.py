@@ -33,9 +33,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
 
 from evo_agents.hub import transcripts as local
+from evo_agents.hub.api import paths
+from evo_agents.hub.api.project import Transcripts
 from evo_agents.hub.client import Hub, HubError, Unreachable, put_presigned
 from evo_agents.hub.memory_files import host_tag
 from evo_agents.hub.memory_places import Places
@@ -186,7 +187,7 @@ class Sync:
         for start in range(0, len(ordered), LOOKUP):
             answer = self.hub.call(
                 "POST",
-                f"/v1/projects/{quote(project, safe='')}/transcripts/held",
+                Transcripts(self.hub, project).path("held"),
                 {"session_ids": ordered[start : start + LOOKUP]},
             )
             for entry in answer["transcripts"]:
@@ -261,7 +262,7 @@ class Sync:
         """Upload the blobs of ``batch`` the project lacks and record its parts; the hub's outcome of each part."""
         sizes = {part.sha256: (part.size, part.path) for part in batch}
         items = [{"sha256": sha, "size": size, "kind": local.KIND} for sha, (size, _) in sorted(sizes.items())]
-        asked = self.hub.call("POST", "/v1/blobs/uploads", {"project": project, "items": items})
+        asked = self.hub.call("POST", paths.BLOB_UPLOADS, {"project": project, "items": items})
         for ticket in asked["uploads"]:
             self._put(ticket["url"], sizes[ticket["sha256"]][1])
         body = {
@@ -269,9 +270,7 @@ class Sync:
             "parts": [part.wire(self.machine) for part in batch],
         }
         timeout = COMMIT_SECONDS + len(batch)
-        answer = self.hub.call(
-            "POST", f"/v1/projects/{quote(project, safe='')}/transcripts/parts", body, timeout=timeout
-        )
+        answer = self.hub.call("POST", Transcripts(self.hub, project).path("parts"), body, timeout=timeout)
         return answer["parts"]
 
     def _settle(self, work: Work, part: local.Part, outcome: dict) -> bool:
@@ -385,7 +384,7 @@ class Sync:
 def load_places(hub: Hub) -> Places:
     """The places of this machine's directories as the projects the person sees claim them now, as memory push and
     pull decide them (``MemorySync``): one request, then ``Places.project_of`` decides any number of directories."""
-    projects = hub.call("GET", "/v1/projects")
+    projects = hub.call("GET", paths.PROJECTS)
     if not isinstance(projects, list):
         raise HubError(f"the hub at {hub.url} did not answer with a list of projects")
     registry, _ = read_registry(default_registry().expanduser())

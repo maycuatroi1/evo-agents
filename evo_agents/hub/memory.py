@@ -53,9 +53,10 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlencode
 
 from evo_agents import filelock
+from evo_agents.hub.api import paths
+from evo_agents.hub.api.memories import Memories
 from evo_agents.hub.client import Hub, HubError, hub_dir, write_atomic
 from evo_agents.hub.memory_files import (
     CONFLICT_COPY,
@@ -319,7 +320,7 @@ class MemorySync:
         return self._load_places().project_of(self.target(target))
 
     def _load_places(self) -> Places:
-        projects = self.hub.call("GET", "/v1/projects")
+        projects = self.hub.call("GET", paths.PROJECTS)
         if not isinstance(projects, list):
             raise HubError(f"the hub at {self.hub.url} did not answer with a list of projects")
         registry, _ = read_registry(self.registry.expanduser())
@@ -498,7 +499,7 @@ class MemorySync:
             **({"audience": self.audience} if self.audience else {}),
         }
         try:
-            written = self.hub.call("PUT", "/v1/memories?" + urlencode({"sink": self.sink}), body)
+            written = self.hub.call("PUT", Memories(self.hub).path(sink=self.sink), body)
         except HubError as exc:
             if exc.status == 409:
                 self._resolve(key, path, data, (exc.payload or {}).get("current"), str(exc))
@@ -529,7 +530,7 @@ class MemorySync:
         self.report.counts["moved"] += 1
 
     def _delete_path(self, entry: Mapping) -> str:
-        return f"/v1/memories/{entry['id']}?" + urlencode({"if_revision": entry["revision"], "sink": self.sink})
+        return Memories(self.hub).path(entry["id"], if_revision=entry["revision"], sink=self.sink)
 
     def _delete(self, key: str, path: Path, entry: dict) -> None:
         """--prune: the tombstone of a file deleted here."""
@@ -567,7 +568,7 @@ class MemorySync:
             query = {**filters, "deleted": "true", "limit": PAGE, "sink": self.sink}
             if cursor:
                 query["cursor"] = cursor
-            page = self.hub.call("GET", "/v1/memories?" + urlencode(query))
+            page = self.hub.call("GET", Memories(self.hub).path(query=query))
             items = page.get("items") if isinstance(page, dict) else None
             if not isinstance(items, list) or not all(well_formed(item) for item in items):
                 raise HubError(f"the hub at {self.hub.url} answered a listing this client cannot read")

@@ -25,9 +25,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text
+from evo_agents.hub.api import paths, route
 from evo_agents.hub.cli.base import EXIT_FAILED, HubCommand, HubContext, when
 from evo_agents.hub.cli.market import INSTALLED_KEYS, PUBLISHER, install_github
 from evo_agents.hub.cli.plugin.agent_types import AGENT_TYPE
@@ -81,9 +81,7 @@ class PluginStore:
         self.hub = hub
 
     def path(self, name: str | None = None, action: str | None = None) -> str:
-        path = "/v1/plugins"
-        if name is not None:
-            path += f"/{quote(name, safe='')}"
+        path = route("plugins", *([] if name is None else [name]))
         return path if action is None else f"{path}/{action}"
 
     def list(self) -> Any:
@@ -106,14 +104,14 @@ class Blobs:
     def uploads(self, sha256: str, size: int) -> list[dict]:
         """The upload tickets of one bundle: none when the hub holds it already; HubError when the hub did not answer
         with this bundle."""
-        asked = self.hub.call("POST", "/v1/blobs/uploads", {"items": [{"sha256": sha256, "size": size, "kind": KIND}]})
+        asked = self.hub.call("POST", paths.BLOB_UPLOADS, {"items": [{"sha256": sha256, "size": size, "kind": KIND}]})
         uploads = asked.get("uploads") if isinstance(asked, dict) else None
         if not isinstance(uploads, list) or any(not isinstance(u, dict) or u.get("sha256") != sha256 for u in uploads):
             raise HubError(f"the hub at {self.hub.url} did not answer the upload request with this bundle")
         return uploads
 
     def commit(self, upload_id: Any) -> None:
-        self.hub.call("POST", "/v1/blobs/commit", {"upload_ids": [upload_id]})
+        self.hub.call("POST", paths.BLOB_COMMIT, {"upload_ids": [upload_id]})
 
 
 # Publishing

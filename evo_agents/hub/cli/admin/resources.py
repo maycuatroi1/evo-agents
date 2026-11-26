@@ -20,7 +20,7 @@ class HubAdmin(HubRoutes):
     """The hub admin's routes: grants, users, row counts, the Telegram bot, channels, invite links and the
     self-managed state of a project (Gateway)."""
 
-    path = "/v1/admin"
+    base = "admin"
 
     def grant(self, project: str, login: str, body: dict) -> dict:
         return self.call("PUT", self.grant_path(project, login), body)

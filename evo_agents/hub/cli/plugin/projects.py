@@ -31,9 +31,10 @@ import argparse
 import json
 import sys
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 from evo_agents.clikit import Arg, Result, Table, Text, View, Views
+from evo_agents.hub.api import route
 from evo_agents.hub.cli.base import HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.cli.secret.values import Refused, read_value
 from evo_agents.hub.client import Hub, HubError
@@ -130,7 +131,7 @@ class ConfigLayer:
     def path(self, action: str | None = None) -> str:
         args = self.args
         if args.instance:
-            path = f"/v1/plugins/{quote(args.name, safe='')}/config"
+            path = route("plugins", args.name, "config")
         else:
             path = ProjectPlugins(self.hub, args.project).path(args.name, "config")
         if action:

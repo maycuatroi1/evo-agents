@@ -199,8 +199,27 @@ module of evo_agents (the contract `infra-standalone`), so any package may impor
 | `Git` (`infra/git.py`) | Template Method | git in one directory (`-C`, or its `cwd` with `chdir=True`), with a timeout and an environment of its own: `run` and `arun` (asyncio) give a `GitResult` (`returncode, stdout, stderr`, unpacked as a tuple); `out`, `read`, `value` and `ok` read one answer. A failure is a typed `GitError`: `GitFailed`, `GitTimeout`, `GitUnavailable`. |
 | `Git.fail` | Template Method hook | Turns a `GitError` into the exception the caller raises. A package that had its own git error keeps it and its messages with a subclass (`gitops.RunGit`, `kg_sync.Checkout`, `gitcli.Clone`, `mirror._Checkout`). |
 | `write_atomic`, `write_private`, `JsonFile` (`infra/files.py`) | Value Object | A file replaced whole: a temporary file beside it, flushed and renamed over it with `os.replace` (tried again while Windows refuses it), in the mode given (`PRIVATE`, 0600, by default). `JsonFile` reads a document as a value, the default for a file missing, broken or of another shape, and writes it in the format its owner chose. |
-| `RetryPolicy`, `Backoff` (`infra/retry.py`) | Strategy | How many tries, which errors try again and the delay before each (`Exponential` with jitter, `Steps`, `Fixed`); `call` and `acall` run a function under it, `Backoff` counts the failures of a loop that retries on its own (`hubapi.Backoff`, the plugin host's restarts). |
+| `RetryPolicy`, `Backoff` (`infra/retry.py`) | Strategy | How many tries, which errors try again and the delay before each (`Exponential` with jitter, `Steps`, `Fixed`, or the error's own delay through `asked`, such as a `Retry-After`); `call` and `acall` run a function under it and tell `retrying(error, seconds)` of each wait, `Backoff` counts the failures of a loop that retries on its own (`hubapi.Backoff`, the plugin host's restarts). The worker's calls to the hub take `hubapi.hub_retry(tries)`. |
 
 Write no git helper of your own (`def _git(...)` outside `evo_agents/infra` fails the step's check), no
 `_read_json`/`_write_json` pair and no hand-written retry loop: use these, with a subclass or a policy when a module
 needs its own messages or delays.
+
+## Hub API gateway
+
+`evo_agents.hub.api` is the one place outside `evo_agents.hub.server` that writes a path of the hub's API
+(`/v1/...`): the CLI, the worker and the graph's sync ask the hub through its resources. It imports neither the
+server, the CLI nor the worker (the contract `hub-api-standalone`), and the step's check refuses a string that starts
+with `/v1/` anywhere else but `evo_agents/core_plugins`.
+
+| Class | Pattern | What it does |
+| --- | --- | --- |
+| `route` (`api/routes.py`) | | `/v1/<base>/<part>...?<query>`: `base` written as the hub's route is, each part quoted whole, a query value of None left out. |
+| `Resource` (`api/resource.py`) | Gateway | One collection, `/v1/<base>/<scope>.../<collection>/<part>...`. `call` goes through any client with `call(method, path, body)` and hands back its answer: a value from the synchronous `hub.client.Hub`, an awaitable from the asynchronous `worker.hubapi.WorkerHub`, so both share the same paths. |
+| `ProjectResource`, `FeatureResource`, `KgResource`, `HubRoutes` | Gateway | A collection of a project (`/v1/projects/<p>/...`), of a feature (`/v1/x/<feature>/<p>`), of a project's graph (`/v1/kg/<p>/...`), and routes outside a project under one `base`. A command module declares its collection on one of them. |
+| `WorkerRoutes`, `WorkerRun`, `WorkerKg` (`api/worker.py`) | Gateway | The worker protocol's routes and those of one run, which `WorkerHub` and the member's `evo-agents worker` commands both ask. |
+| `api/paths.py` | | The routes several modules ask (`PROJECTS`, `WHOAMI`, the blob uploads, `project(name)`). |
+
+A new route of the hub gets its path here: a resource class for a collection a module asks, or a constant of
+`paths.py` for a route several modules ask once.
+

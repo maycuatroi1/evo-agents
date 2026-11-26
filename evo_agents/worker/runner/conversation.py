@@ -33,7 +33,7 @@ from evo_agents.hub import author, runs
 from evo_agents.hub.credential_requests import NOTED
 from evo_agents.worker import gitops
 from evo_agents.worker.credentials import credential_asks
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner.common import (
     HARD_STOP_TRIES,
     Parked,
@@ -110,17 +110,15 @@ async def post_last_message(run: Run) -> str | None:
     if text is None:
         run.note("The agent's turn ended without a message for the chat.")
         return None
-    backoff = Backoff()
-    for _ in range(HARD_STOP_TRIES + 1):
-        try:
-            await run.daemon.hub.chat(run.id, text)
-            return text
-        except Unreachable:
-            await wait_or(run.daemon.hard_stop, backoff.next())
-        except HubProblem as exc:
-            run.note(f"The hub did not take the agent's message for the chat: {exc}")
-            return text
-    run.note("The hub did not answer: the agent's message did not reach the chat.")
+    try:
+        await hub_retry(HARD_STOP_TRIES + 1).acall(
+            lambda: run.daemon.hub.chat(run.id, text),  # pyright: ignore[reportOptionalMemberAccess]
+            sleep=lambda seconds: wait_or(run.daemon.hard_stop, seconds),
+        )
+    except Unreachable:
+        run.note("The hub did not answer: the agent's message did not reach the chat.")
+    except HubProblem as exc:
+        run.note(f"The hub did not take the agent's message for the chat: {exc}")
     return text
 
 

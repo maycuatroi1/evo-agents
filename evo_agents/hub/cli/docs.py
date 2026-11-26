@@ -31,10 +31,11 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import quote, unquote, urlencode
+from urllib.parse import unquote
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, Verbatim, returns_array, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext, ProjectResource, when
+from evo_agents.hub.api import FeatureResource
+from evo_agents.hub.cli.base import HubCommand, HubContext, when
 
 SUMMARY_KEYS = (
     "slug",
@@ -73,15 +74,10 @@ PROJECT = Arg("--project", required=True, metavar="PROJECT", help="the project o
 SLUG_ARG = Arg("slug", metavar="SLUG")
 
 
-class Documents(ProjectResource):
+class Documents(FeatureResource):
     """The routes of the feature docs for one project, under /v1/x/docs/<project>/ (Gateway)."""
 
-    collection = "docs"
-
-    def path(self, *parts: Any, **query: Any) -> str:
-        path = "/v1/x/docs/" + "/".join(quote(str(part), safe="") for part in (self.project, *parts))
-        given = {key: value for key, value in query.items() if value is not None}
-        return f"{path}?{urlencode(given)}" if given else path
+    feature = "docs"
 
     def list(self) -> list[dict]:
         return self.call("GET", "documents")

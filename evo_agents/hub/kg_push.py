@@ -41,8 +41,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from urllib.parse import quote
 
+from evo_agents.hub.api import paths, route
 from evo_agents.hub.client import Hub, HubError, Unreachable, put_presigned
 from evo_agents.hub.kg_ingest import knowledge_config, log_header, run_id_of, without_names
 from evo_agents.kg.project import Project, ProjectError
@@ -154,13 +154,13 @@ def _sha256(path: Path) -> str:
 
 def member_routes(project: str) -> tuple[str, str]:
     """Where a member pushes the runs of ``project``: the kg routes of the project, and the hub's blob routes."""
-    return f"/v1/kg/{quote(project, safe='')}", "/v1/blobs"
+    return route("kg", project), paths.BLOBS
 
 
 def worker_routes(project: str) -> tuple[str, str]:
     """Where the worker on duty for ``project`` pushes with its own token (``evo_agents.hub.server.kg_worker``): the
     same steps under /v1/worker/kg/{project}, blobs included."""
-    base = f"/v1/worker/kg/{quote(project, safe='')}"
+    base = route("worker/kg", project)
     return base, f"{base}/blobs"
 
 
@@ -397,7 +397,7 @@ def push_all(
 ) -> list[PushReport]:
     """Push each of ``projects`` (name, the project or why it did not load) that is on the hub and takes a push from
     the caller; the others come back skipped, saying why."""
-    listed = {p["name"]: p for p in hub.call("GET", "/v1/projects")}
+    listed = {p["name"]: p for p in hub.call("GET", paths.PROJECTS)}
     reports = []
     for name, project in projects:
         if name not in listed:

@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 
 from evo_agents.clikit import Arg, Result, Text
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import HubError
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
 from evo_agents.worker.home import WorkerConfig, WorkerHome, dir_bytes
@@ -18,7 +19,7 @@ def hub_view_of(config: WorkerConfig) -> tuple[dict | None, str | None]:
     if member is None:
         return None, None
     try:
-        return member.call("GET", f"/v1/workers/{config.worker_id}"), None
+        return member.call("GET", paths.worker(config.worker_id)), None
     except HubError as exc:
         return None, str(exc)
 

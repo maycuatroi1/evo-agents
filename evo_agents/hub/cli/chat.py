@@ -27,6 +27,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, returns_array, returns_object
+from evo_agents.hub.api import route
 from evo_agents.hub.chats import MAX_MESSAGE_BYTES, emoji_problem
 from evo_agents.hub.cli import attach as attach_cli
 from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, when
@@ -95,12 +96,12 @@ PAGE_KEYS = ("chat", "messages", "more")
 class Chats(HubRoutes):
     """GET and POST /v1/chats and the routes of one chat below it (Gateway)."""
 
-    path = "/v1/chats"
+    base = "chats"
 
     @staticmethod
     def of_chat(chat: int) -> str:
         """The path of one chat, which the uploads of a message's files go under."""
-        return f"{Chats.path}/{chat}"
+        return route(Chats.base, chat)
 
     def list(self) -> Any:
         return self.call("GET")

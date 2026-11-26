@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from evo_agents.clikit import Arg, Result, Stderr, Text, View, Views
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import HubError
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
 from evo_agents.worker.membership import owner_hub
@@ -34,7 +35,7 @@ class Revoke(WorkerCommand):
         config = home.load_config()
         warned: list[View] = []
         try:
-            owner_hub(config).call("POST", f"/v1/workers/{config.worker_id}/revoke")
+            owner_hub(config).call("POST", paths.worker(config.worker_id, "revoke"))
             said = f"Revoked worker {config.name} (id {config.worker_id}) on {config.url}"
         except HubError as exc:
             if exc.status == 409:

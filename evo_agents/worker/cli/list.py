@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from evo_agents.clikit import Arg, Result, Text
+from evo_agents.hub.api import paths, route
 from evo_agents.hub.client import Hub, load_credentials
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
 from evo_agents.worker.worker_lines import describe
@@ -29,7 +30,7 @@ class List(WorkerCommand):
     def run(self, ctx: WorkerContext) -> Result:
         credentials = load_credentials()
         hub = Hub(credentials.url, credentials.token)
-        workers = hub.call("GET", "/v1/workers?revoked=true" if ctx.args.revoked else "/v1/workers")
+        workers = hub.call("GET", route("workers", revoked="true") if ctx.args.revoked else paths.WORKERS)
         if not workers:
             return Result(workers, Text(f"No worker of yours on {credentials.url}, and no member shares one with you."))
         nightly = next((worker["nightly"] for worker in workers if worker.get("nightly")), None)

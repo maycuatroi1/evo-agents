@@ -27,7 +27,7 @@ USER = Arg("--user", metavar="LOGIN", help="another member's emails (a hub admin
 class Emails(HubRoutes):
     """GET and POST /v1/emails (``?user=`` for another member's) and DELETE /v1/emails/{id} (Gateway)."""
 
-    path = "/v1/emails"
+    base = "emails"
 
     def __init__(self, hub: Hub, user: str | None):
         super().__init__(hub)

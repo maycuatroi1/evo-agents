@@ -13,29 +13,35 @@ Standard library only, like the rest of the client.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Self
+from collections.abc import Mapping
+from typing import Any, Self
 from urllib.parse import quote
 
+from evo_agents.hub.api import Query, Resource, paths, query_string, quoted, route
 from evo_agents.hub.cli.base import HubContext
 from evo_agents.hub.client import Hub
 
 
-class HubResource:
+class HubResource(Resource):
     """One collection of the hub's own API, ``/v1/<collection>`` (Gateway): the one place that quotes its parts."""
 
-    collection: ClassVar[str]
-
     def __init__(self, hub: Hub):
-        self.hub = hub
+        super().__init__(hub)
 
     @classmethod
     def of(cls, ctx: HubContext) -> Self:
         return cls(ctx.hub)
 
-    def path(self, *parts: Any) -> str:
-        return f"/v1/{self.collection}" + "".join(f"/{quote(str(part), safe='')}" for part in parts)
+    @property
+    def root(self) -> str:
+        """``/v1/<collection>``: the collection is the base, and :meth:`Resource.path` adds no second segment."""
+        return route(self.collection)
 
-    def call(self, method: str, *parts: Any, body: dict | None = None, query: str = "") -> Any:
+    def path(self, *parts: Any, safe: str = "", query: Query = (), **named: Any) -> str:
+        pairs = [*(query.items() if isinstance(query, Mapping) else query), *named.items()]
+        return self.root + quoted(*parts, safe=safe) + query_string(pairs)
+
+    def call(self, method: str, *parts: Any, body: Any = None, query: Any = "", **named: Any) -> Any:
         """The hub's answer to ``method`` on the path of ``parts``, ``query`` (``?...``, quoted already) after it."""
         return self.hub.call(method, self.path(*parts) + query, body)
 
@@ -107,10 +113,10 @@ class Principal:
         return self.hub.call("GET", path)
 
     def whoami(self) -> dict:
-        return self.get("/v1/auth/whoami")
+        return self.get(paths.WHOAMI)
 
     def workers(self) -> list[dict]:
-        return self.get("/v1/workers")
+        return self.get(paths.WORKERS)
 
     def pools(self) -> list[dict]:
-        return self.get("/v1/worker-pools")
+        return self.get(paths.WORKER_POOLS)

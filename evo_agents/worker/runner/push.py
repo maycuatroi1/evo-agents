@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import authorship
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, log, wait_or
 
@@ -51,15 +51,16 @@ async def commit(run: Run, path: Path, repo: str | None = None) -> bool:
 
 async def send_notice(run: Run, body: dict, what: str) -> None:
     """Send the run's owner the notice ``body``, about ``what``; one the hub does not take is logged."""
-    backoff = Backoff()
-    for _ in range(HARD_STOP_TRIES + 1):
-        try:
-            await run.daemon.hub.notice(run.id, body)
-            run.note(f"Notified the owner of {what}.")
-            return
-        except Unreachable:
-            await wait_or(run.daemon.hard_stop, backoff.next())
-        except HubProblem as exc:
-            log.warning("notice not sent", extra={"run_id": run.id, "error": str(exc)})
-            break
+    try:
+        await hub_retry(HARD_STOP_TRIES + 1).acall(
+            lambda: run.daemon.hub.notice(run.id, body),  # pyright: ignore[reportOptionalMemberAccess]
+            sleep=lambda seconds: wait_or(run.daemon.hard_stop, seconds),
+        )
+    except Unreachable:
+        pass
+    except HubProblem as exc:
+        log.warning("notice not sent", extra={"run_id": run.id, "error": str(exc)})
+    else:
+        run.note(f"Notified the owner of {what}.")
+        return
     run.note(f"The notice of {what} was not sent.")

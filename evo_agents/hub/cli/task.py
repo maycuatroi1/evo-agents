@@ -27,10 +27,10 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, returns_array, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext, ProjectResource, when
+from evo_agents.hub.api import FeatureResource
+from evo_agents.hub.cli.base import HubCommand, HubContext, when
 from evo_agents.hub.client import HubError
 
 PRIORITIES = ("urgent", "high", "medium", "low")
@@ -115,16 +115,15 @@ def task_options(*, new: bool) -> tuple[Arg, ...]:
     )
 
 
-class Tasks(ProjectResource):
+class Tasks(FeatureResource):
     """The routes of the plugin tasks for one project, under /v1/x/tasks/<project>/ (Gateway). A refusal prints each
     problem the hub listed on stderr, then raises."""
 
-    collection = "tasks"
+    feature = "tasks"
 
     def path(self, *parts: Any, **query: Any) -> str:
-        path = "/v1/x/tasks/" + "/".join(quote(str(part), safe="") for part in (self.project, *parts))
-        given = {key: value for key, value in query.items() if value not in (None, False)}
-        return f"{path}?{urlencode(given)}" if given else path
+        """The path of ``parts``; a query value of None or False is left out."""
+        return super().path(*parts, query={key: value for key, value in query.items() if value not in (None, False)})
 
     def call(self, method: str, *parts: Any, body: dict | None = None, **query: Any) -> Any:
         try:

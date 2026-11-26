@@ -68,6 +68,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+from evo_agents.hub.api.ui import UI_KIT_ANSWER_JS, UI_KIT_CSS
 from evo_agents.hub.chats import DIRECT as DIRECT_KIND
 from evo_agents.hub.chats import MAX_ANSWER_PROMPT_CHARS
 from evo_agents.hub.chats import SETTLE as SETTLE_KIND
@@ -157,8 +158,8 @@ INTERACTIVE_CDN_RULE = (
     + ", ".join(CDN_HOSTS)
     + " only, each CDN URL pinning the library's exact version (as https://esm.sh/chart.js@4.4.1); nothing else "
     "loads. Load the hub's tokens and bridge helper with "
-    '`<link rel="stylesheet" href="/v1/plugin-ui/kit/1/evo-ui.css">` and '
-    '`<script src="/v1/plugin-ui/kit/1/evo-answer.js"></script>`, then call '
+    f'`<link rel="stylesheet" href="{UI_KIT_CSS}">` and '
+    f'`<script src="{UI_KIT_ANSWER_JS}"></script>`, then call '
     "`window.evoAnswer`: `ready` (a promise of the context), `sendPrompt(text)`, `openLink(url)`, `resize(height?)`, `onTheme(fn)` and "
     "`call(method, params)`, each a promise of the result; the helper sets the theme and the language on <html> and "
     "keeps the frame's height."

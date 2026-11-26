@@ -40,6 +40,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from evo_agents import filelock
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.kg_push import Pusher, PushReport, member_routes
 from evo_agents.kg import audit
@@ -414,7 +415,7 @@ def sync_all_due(hub: Hub, projects: list[tuple[str, Project | Exception]], **kw
     on its outcome and does not stop the others; a credential the hub refuses stops them all."""
     from evo_agents.hub.kg_push import pushable
 
-    listed = {p["name"]: p for p in hub.call("GET", "/v1/projects") or ()}
+    listed = {p["name"]: p for p in hub.call("GET", paths.PROJECTS) or ()}
     outcomes = []
     for name, project in projects:
         reason = "not on the hub, or not visible to you" if name not in listed else pushable(listed[name])

@@ -18,8 +18,7 @@ from __future__ import annotations
 import argparse
 
 from evo_agents.clikit import Arg, Result, Text, returns_object
-from evo_agents.hub.cli.base import HubCommand, HubContext, call_object
-from evo_agents.hub.client import Hub
+from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, call_object
 
 # The keys of the hub's answer (``evo_agents.hub.server.autonomy_stops.StopView``).
 STOP_KEYS = (
@@ -37,13 +36,10 @@ STOP_KEYS = (
 )
 
 
-class AutonomyStops:
+class AutonomyStops(HubRoutes):
     """The stops of the hub: POST /v1/autonomy/stops and POST /v1/autonomy/stops/lift (Gateway)."""
 
-    path = "/v1/autonomy/stops"
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
+    base = "autonomy/stops"
 
     def stop(self, body: dict) -> dict:
         return call_object(self.hub, "POST", self.path, body)

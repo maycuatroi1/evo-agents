@@ -98,9 +98,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote
 
 from evo_agents.hub import digest
+from evo_agents.hub.api.project import Digests
 from evo_agents.hub.client import (
     FILE_MODE,
     Hub,
@@ -715,8 +715,7 @@ def _push_digest(
         if record["project"] is None:  # a directory of no project: its digest stays on this machine
             digests.put(session_id, {**record, "pending": False})
             return True
-        path = f"/v1/projects/{quote(record['project'], safe='')}/digests/{session_id}"
-        hub.call("PUT", path, redact_data(built, [hub.token]))
+        hub.call("PUT", Digests(hub, record["project"]).path(session_id), redact_data(built, [hub.token]))
     except HubError as exc:
         if not transient(exc):
             digests.put(session_id, {**record, "refused_at": now})

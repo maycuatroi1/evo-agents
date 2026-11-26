@@ -44,17 +44,17 @@ committing and pushing nothing.
 
 from __future__ import annotations
 
-import asyncio
 import shlex
 import shutil
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import diff_signs, judge, knowledge_diff, merge_gate, runs, security_pass
 from evo_agents.worker import gitops, untrusted, venvs
 from evo_agents.worker.checkouts import default_branch_of
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, judge_knowledge, origin, verify
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
@@ -234,18 +234,24 @@ class JudgeRun:
         """``call()``'s answer, called again while the hub answers 5xx, 429 or nothing, up to VERDICT_TRIES times: a
         hub that redeploys does so for a while (run #1671 lost its verdict and run #1697 its inputs to a 502). Any
         other refusal, or the last try's, fails the run with the hub did not ``what``."""
-        backoff = Backoff(first=VERDICT_FIRST_DELAY, most=VERDICT_MOST_DELAY)
-        for tried in range(1, VERDICT_TRIES + 1):
-            try:
-                return await call()
-            except HubProblem as exc:
-                passing = isinstance(exc, Unreachable) or (exc.status or 0) >= 500 or exc.status == 429
-                if not passing or tried == VERDICT_TRIES:
-                    raise RunFailed(f"the hub did not {what}: {exc}") from None
-                delay = backoff.next()
-                self.run.note(f"The hub did not {what} ({exc}): trying again in {delay:.0f} s.")
-                await asyncio.sleep(delay)
-        raise RunFailed(f"the hub did not {what}")
+
+        def passing(exc: BaseException) -> bool:
+            if not isinstance(exc, HubProblem):
+                return False
+            return isinstance(exc, Unreachable) or (exc.status or 0) >= 500 or exc.status == 429
+
+        policy = replace(
+            hub_retry(VERDICT_TRIES, first=VERDICT_FIRST_DELAY, most=VERDICT_MOST_DELAY), retry_on=passing, asked=None
+        )
+        try:
+            return await policy.acall(
+                call,
+                retrying=lambda exc, delay: self.run.note(
+                    f"The hub did not {what} ({exc}): trying again in {delay:.0f} s."
+                ),
+            )
+        except HubProblem as exc:
+            raise RunFailed(f"the hub did not {what}: {exc}") from None
 
     async def prepare(self, name: str, change: dict) -> None:
         """The run's directory with a worktree of ``name`` detached at the commit to judge, made with no hook of the

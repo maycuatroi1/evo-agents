@@ -7,6 +7,7 @@ import argparse
 
 from evo_agents.clikit import Arg, Result, Text
 from evo_agents.hub import runs
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, load_credentials
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
 from evo_agents.worker.membership import config_of, host_facts, joined, object_of, refuse_rejoin
@@ -49,7 +50,7 @@ class Register(WorkerCommand):
             "allow_web_terminal": args.allow_web_terminal,
             **host_facts(),
         }
-        answer = object_of(hub, "POST", "/v1/workers", body)
+        answer = object_of(hub, "POST", paths.WORKERS, body)
         config, token = config_of(hub.url, answer)
         return Result(None, Text(*joined(ctx.home, config, token, "Registered on")))
 

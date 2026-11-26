@@ -88,7 +88,7 @@ ONE_PROJECT = Arg("--project", help="only the memories of this hub project")
 class Memories(HubRoutes):
     """GET /v1/memories and /v1/memories/search, and POST /v1/memories/{id}/restore (Gateway)."""
 
-    path = "/v1/memories"
+    base = "memories"
 
     def items(self, tail: str, what: str) -> list:
         """The memories the hub answers ``GET <path><tail>`` with; HubError when it answered something else."""

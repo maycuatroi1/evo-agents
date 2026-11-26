@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import runs
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, origin, parallel, pull_base, push
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, RunFailed, push_cause, wait_or
 
@@ -387,15 +387,15 @@ class BranchWork:
         few times; what the hub does not take is noted, and the run goes on."""
         run, linked = self.run, self.kind.linked
         body = {"repo": name, "branch": branch, "head": head, **({"base": base} if base else {})}
-        backoff = Backoff()
-        for _ in range(HARD_STOP_TRIES + 1):
-            try:
-                answer = await run.daemon.hub.in_chats(run.id, self.kind.route, body)
-                run.note(f"The hub linked {branch} of {name} {linked}: {answer.get('url') or 'no pull request'}.")
-                return
-            except Unreachable:
-                await wait_or(run.daemon.hard_stop, backoff.next())
-            except HubProblem as exc:
-                run.note(f"The hub did not take the push of {branch} of {name}: {exc}")
-                return
-        run.note(f"The hub did not answer: the push of {branch} of {name} was not linked {linked}.")
+        try:
+            answer = await hub_retry(HARD_STOP_TRIES + 1).acall(
+                lambda: run.daemon.hub.in_chats(run.id, self.kind.route, body),  # pyright: ignore[reportOptionalMemberAccess]
+                sleep=lambda seconds: wait_or(run.daemon.hard_stop, seconds),
+            )
+        except Unreachable:
+            run.note(f"The hub did not answer: the push of {branch} of {name} was not linked {linked}.")
+            return
+        except HubProblem as exc:
+            run.note(f"The hub did not take the push of {branch} of {name}: {exc}")
+            return
+        run.note(f"The hub linked {branch} of {name} {linked}: {answer.get('url') or 'no pull request'}.")

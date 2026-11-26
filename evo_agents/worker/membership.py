@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import platform
 from datetime import UTC, datetime
-from urllib.parse import quote
 
 from evo_agents import __version__
+from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, HubError, host_name, load_credentials
 from evo_agents.worker.home import WorkerConfig, WorkerHome, WorkerStateError
 
@@ -108,7 +108,7 @@ def refresh_repos(config: WorkerConfig, hub: Hub | None = None) -> list[str]:
     missed = []
     for project in config.projects:
         try:
-            answer = hub.call("GET", f"/v1/projects/{quote(project, safe='')}")
+            answer = hub.call("GET", paths.project(project))
         except HubError:
             missed.append(project)
             continue

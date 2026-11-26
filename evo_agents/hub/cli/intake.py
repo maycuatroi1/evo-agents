@@ -31,10 +31,10 @@ import argparse
 import json
 import sys
 from typing import Any, ClassVar
-from urllib.parse import quote, urlencode
 
 from evo_agents.clikit import Arg, Group, Result, Stderr, Table, Text, UsageError, Views, returns_array, returns_object
 from evo_agents.hub import intakes
+from evo_agents.hub.api import FeatureResource
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, when
 
 INTAKE_KEYS = (
@@ -102,17 +102,11 @@ class Intakes(ProjectResource):
         return self.call("GET", status=status)
 
 
-class Proposals(ProjectResource):
+class Proposals(FeatureResource):
     """The proposals of the core plugin builder in a project: /v1/x/builder/{p}/proposals (Gateway)."""
 
+    feature = "builder"
     collection = "proposals"
-
-    def path(self, *parts: Any, **query: Any) -> str:
-        tail = "".join(f"/{quote(str(part), safe='')}" for part in parts)
-        given = {name: value for name, value in query.items() if value is not None}
-        return f"/v1/x/builder/{quote(self.project, safe='')}/proposals{tail}" + (
-            f"?{urlencode(given)}" if given else ""
-        )
 
     def waiting(self, kind: str | None) -> list[dict]:
         return self.call("GET", "waiting", kind=kind)

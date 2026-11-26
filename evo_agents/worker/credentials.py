@@ -85,6 +85,7 @@ import os
 import secrets
 import time
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
@@ -225,7 +226,7 @@ class RunCredentials:
     async def take(self, hub, origins: Mapping[str, Sequence[str]], *, stop: asyncio.Event | None = None) -> None:
         """Ask the hub for the run's leases and hand them to the run's git and agent: ``origins`` are the URLs of the
         remote origin of each repo's checkout here, as their configuration writes them."""
-        from evo_agents.worker.hubapi import Backoff, Refused, Unreachable
+        from evo_agents.worker.hubapi import Refused, Unreachable, hub_retry
 
         self.hub = hub
         self.origins = {repo: list(urls) for repo, urls in origins.items()}
@@ -233,27 +234,31 @@ class RunCredentials:
             await self._open_for_agent("its agent cannot have a step pushed")
         elif self.opener is not None:  # and a chat run's agent opens its repos through it
             await self._open_for_agent("its agent cannot open a repo")
-        backoff = Backoff()
-        answer = None
-        for attempt in range(1, TAKE_TRIES + 1):
+
+        def ask_hub():
             self.asked = True
-            try:
-                answer = await hub.credentials(self.run_id)
-                break
-            except Unreachable as exc:
-                if attempt == TAKE_TRIES or (stop is not None and stop.is_set()):
-                    self.note(f"The hub did not answer for the run's credentials ({exc}): git uses this machine's own.")
-                    return
-                delay = exc.retry_after if exc.retry_after is not None else backoff.next()
-                log.warning(
-                    "credentials not taken; asking again",
-                    extra={"run_id": self.run_id, "retry_in_s": round(delay, 1), "error": str(exc)},
-                )
-                await _wait_or(stop, delay)
-            except Refused as exc:  # nothing was leased; an older hub without the route answers 404
-                self.asked = False
-                self.note(f"The hub leased this run no credentials ({exc}): git uses this machine's own.")
-                return
+            return hub.credentials(self.run_id)
+
+        def retrying(exc: BaseException, delay: float) -> None:
+            log.warning(
+                "credentials not taken; asking again",
+                extra={"run_id": self.run_id, "retry_in_s": round(delay, 1), "error": str(exc)},
+            )
+
+        # a stopping run asks no more once the hub did not answer
+        policy = replace(
+            hub_retry(TAKE_TRIES),
+            retry_on=lambda exc: isinstance(exc, Unreachable) and not (stop is not None and stop.is_set()),
+        )
+        try:
+            answer = await policy.acall(ask_hub, sleep=lambda seconds: _wait_or(stop, seconds), retrying=retrying)
+        except Unreachable as exc:
+            self.note(f"The hub did not answer for the run's credentials ({exc}): git uses this machine's own.")
+            return
+        except Refused as exc:  # nothing was leased; an older hub without the route answers 404
+            self.asked = False
+            self.note(f"The hub leased this run no credentials ({exc}): git uses this machine's own.")
+            return
         self._keep(answer)
         await self._serve_leases()
         self._note_missing(origins)
@@ -703,26 +708,34 @@ class RunCredentials:
         if not self.asked or self.hub is None:
             return
         self.asked = False
-        from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+        from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 
-        backoff = Backoff()
-        for attempt in range(1, max(1, tries) + 1):
-            try:
-                answer = await self.hub.release_credentials(self.run_id)
-            except Unreachable as exc:
-                if attempt >= tries or (stop is not None and stop.is_set() and attempt >= 2):
-                    log.warning(
-                        "leases not given back: the hub takes them back itself once the run ended",
-                        extra={"run_id": self.run_id, "error": str(exc)},
-                    )
-                    return
-                await _wait_or(stop, exc.retry_after if exc.retry_after is not None else backoff.next())
-                continue
-            except HubProblem as exc:
-                log.warning("leases not given back", extra={"run_id": self.run_id, "error": str(exc)})
-                return
-            log.info("leases given back", extra={"run_id": self.run_id, "revoked": answer.get("revoked")})
+        tried = 0
+
+        def give_back():
+            nonlocal tried
+            tried += 1
+            return self.hub.release_credentials(self.run_id)  # pyright: ignore[reportOptionalMemberAccess]
+
+        # a stopping daemon gives up after a second try the hub did not answer
+        policy = replace(
+            hub_retry(max(1, tries)),
+            retry_on=lambda exc: (
+                isinstance(exc, Unreachable) and not (stop is not None and stop.is_set() and tried >= 2)
+            ),
+        )
+        try:
+            answer = await policy.acall(give_back, sleep=lambda seconds: _wait_or(stop, seconds))
+        except Unreachable as exc:
+            log.warning(
+                "leases not given back: the hub takes them back itself once the run ended",
+                extra={"run_id": self.run_id, "error": str(exc)},
+            )
             return
+        except HubProblem as exc:
+            log.warning("leases not given back", extra={"run_id": self.run_id, "error": str(exc)})
+            return
+        log.info("leases given back", extra={"run_id": self.run_id, "revoked": answer.get("revoked")})
 
 
 def _host_of(url: str | None) -> str | None:

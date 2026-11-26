@@ -9,13 +9,13 @@ Standard library only, like the rest of the client.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable, Mapping
-from typing import Any, ClassVar, Self
-from urllib.parse import quote, urlencode
+from collections.abc import Callable, Mapping
+from typing import Any, Self
 
 from evo_agents.clikit import Result, View
+from evo_agents.hub.api import FeatureResource
 from evo_agents.hub.cli.base import HubContext
-from evo_agents.hub.client import Hub, HubError
+from evo_agents.hub.client import HubError
 
 Query = Mapping[str, Any] | list[tuple[str, Any]] | tuple[()]
 
@@ -26,29 +26,15 @@ def answer(ctx: HubContext, found: Any, view: Callable[[Any], View]) -> Result:
     return Result(found) if ctx.args.json else Result(found, view(found))
 
 
-class PluginRoutes:
+class PluginRoutes(FeatureResource):
     """The routes of one feature of a project, ``/v1/x/<feature>/<project>/<part>...`` (Gateway).
 
     ``problems`` is the feature's own reading of a refusal: the lines, one per problem the hub listed, written to
     stderr before the HubError goes up to the command."""
 
-    feature: ClassVar[str]
-
-    def __init__(self, hub: Hub, project: str):
-        self.hub = hub
-        self.project = project
-
     @classmethod
     def of(cls, ctx: HubContext) -> Self:
         return cls(ctx.hub, ctx.args.project)  # --project is required: the harness is never read
-
-    def path(self, *parts: Any, query: Query = ()) -> str:
-        """The path of ``parts``, each quoted whole, with ``query`` (a mapping, or pairs a key may repeat in); a value
-        of None is left out."""
-        path = f"/v1/x/{self.feature}/" + "/".join(quote(str(part), safe="") for part in (self.project, *parts))
-        pairs: Iterable[tuple[str, Any]] = query.items() if isinstance(query, Mapping) else query
-        given: list[tuple[str, Any]] = [(key, value) for key, value in pairs if value is not None]
-        return f"{path}?{urlencode(given)}" if given else path
 
     def call(self, method: str, *parts: Any, body: dict | None = None, query: Query = ()) -> Any:
         try:

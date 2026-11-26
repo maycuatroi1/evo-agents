@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
-from urllib.parse import quote
 
+from evo_agents.hub.api.project import ProjectPluginRoutes, ProjectPlugins
 from evo_agents.hub.browser_post import PROFILES, Post, run_post, trim_session
 from evo_agents.hub.browser_post_pw import BrowserUnavailable, open_page
 from evo_agents.hub.client import HubError, signed_in
@@ -28,7 +28,7 @@ OpenPage = Callable[..., object]
 
 
 def _path(plugin: str, project: str, *parts: str) -> str:
-    return "/".join([f"/v1/x/{quote(plugin, safe='')}/{quote(project, safe='')}", *(quote(p, safe="") for p in parts)])
+    return ProjectPluginRoutes(None, plugin, project).path(*parts)
 
 
 def post_next(hub, project: str, opener: OpenPage = open_page, plugin: str = PLUGIN) -> dict:
@@ -80,7 +80,7 @@ def log_in(
     field = f"{found['channel']}_session"
     hub.call(
         "POST",
-        f"/v1/projects/{quote(project, safe='')}/plugins/{quote(plugin, safe='')}/config",
+        ProjectPlugins(hub, project).path(plugin, "config"),
         {"values": {field: sealed}},
     )
     return hub.call("POST", _path(plugin, project, "channels", str(channel_id), "session"), {"state": "ok"})

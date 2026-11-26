@@ -19,7 +19,7 @@ TOKEN_KEYS = ("id", "kind", "host", "created_at", "last_used_at", "expires_at", 
 class Account(HubRoutes):
     """The routes of the signed-in token: GET /v1/auth/whoami and POST /v1/auth/logout (Gateway)."""
 
-    path = "/v1/auth"
+    base = "auth"
 
     def whoami(self) -> dict:
         return self.call("GET", "/whoami")
@@ -31,7 +31,7 @@ class Account(HubRoutes):
 class Tokens(HubRoutes):
     """GET /v1/tokens and DELETE /v1/tokens/{id} (Gateway)."""
 
-    path = "/v1/tokens"
+    base = "tokens"
 
     def list(self, every: bool) -> list[dict]:
         return self.call("GET", "?all=true" if every else "")

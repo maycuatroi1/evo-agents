@@ -4,6 +4,7 @@ or lets it claim them again, with the machine token of ``evo-agents hub login``.
 from __future__ import annotations
 
 from evo_agents.clikit import Arg, Result, Text
+from evo_agents.hub.api import paths
 from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
 from evo_agents.worker.membership import object_of, owner_hub
 
@@ -16,7 +17,7 @@ class Drain(WorkerCommand):
     def run(self, ctx: WorkerContext) -> Result:
         config = ctx.home.load_config()
         action = "undrain" if ctx.args.resume else "drain"
-        answer = object_of(owner_hub(config), "POST", f"/v1/workers/{config.worker_id}/{action}")
+        answer = object_of(owner_hub(config), "POST", paths.worker(config.worker_id, action))
         status = answer.get("status")
         if ctx.args.resume:
             return Result(answer, Text(f"Worker {config.name} claims runs again (status {status})."))

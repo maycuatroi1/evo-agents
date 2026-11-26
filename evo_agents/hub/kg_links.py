@@ -10,8 +10,9 @@ kept as that proposal's error and the next one is sent after reading the revisio
 
 from __future__ import annotations
 
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
+from evo_agents.hub.api import route
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.kg.serve import DATA_META
@@ -21,7 +22,7 @@ REVIEW_RULES = ("dangling_mention", "ambiguous_match")
 
 
 def _base(project: str) -> str:
-    return f"/v1/kg/{quote(project, safe='')}"
+    return route("kg", project)
 
 
 def _hub(hub: Hub | None) -> Hub:

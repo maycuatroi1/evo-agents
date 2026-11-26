@@ -36,6 +36,7 @@ from pathlib import Path
 from fastapi import Request
 from pydantic import BaseModel
 
+from evo_agents.hub.api import host as host_api
 from evo_agents.hub.log import register_secret
 from evo_agents.plugins.environment import isolation, set_not_dumpable
 from evo_agents.plugins.host import BackendUnavailable, Host, host_token_problem
@@ -228,7 +229,7 @@ def create_host_app(host: Host, token: str | None, puller: Puller | None = None,
     async def live() -> dict:
         return {"status": "ok"}
 
-    @app.post("/v1/host/plugins/{name}/call", dependencies=guard)
+    @app.post(host_api.PLUGIN_CALL_ROUTE, dependencies=guard)
     async def call(name: str, body: CallIn):
         if body.method not in CALLABLE:
             raise HTTPException(403, f"the api may call ping and the extension points' methods, not {body.method!r}")
@@ -241,11 +242,11 @@ def create_host_app(host: Host, token: str | None, puller: Puller | None = None,
             return {"error": {"code": exc.code, "message": str(exc.message)[:2000]}}
         return {"result": result}
 
-    @app.get("/v1/host/backends", dependencies=guard)
+    @app.get(host_api.BACKENDS, dependencies=guard)
     async def backends() -> dict:
         return {"backends": host.status()}
 
-    @app.post("/v1/host/reload", dependencies=guard)
+    @app.post(host_api.RELOAD, dependencies=guard)
     async def reload() -> dict:
         if puller is not None:
             await reconcile(host, puller)

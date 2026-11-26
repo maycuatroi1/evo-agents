@@ -18,8 +18,10 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
+from evo_agents.hub.api import route
+from evo_agents.hub.cli.base import HubRoutes as Routes
 from evo_agents.hub.cli.base import ProjectResource, call_object
-from evo_agents.hub.client import Hub, HubError
+from evo_agents.hub.client import HubError
 
 LIST_KEYS = ("plugins", "industries", "categories", "markets")
 PLUGIN_KEYS = (
@@ -107,11 +109,8 @@ def with_query(path: str, **query: Any) -> str:
     return path + (f"?{given}" if given else "")
 
 
-class HubRoutes:
+class HubRoutes(Routes):
     """A gateway to routes of the hub that belong to no project."""
-
-    def __init__(self, hub: Hub):
-        self.hub = hub
 
     def answer(self, method: str, path: str, body: dict | None = None) -> dict:
         """The hub's answer to ``method path``, a JSON object; HubError when it is not."""
@@ -121,7 +120,7 @@ class HubRoutes:
 class Market(HubRoutes):
     """The plugins of every market the hub reads (Gateway)."""
 
-    path = "/v1/market"
+    base = "market"
 
     def plugins(self, **query: str | None) -> dict:
         return self.answer("GET", with_query(self.path, **query))
@@ -152,7 +151,7 @@ class Market(HubRoutes):
 class MarketSources(HubRoutes):
     """The markets the hub reads (Gateway)."""
 
-    path = "/v1/market/sources"
+    base = "market/sources"
 
     def list(self) -> dict:
         return self.answer("GET", self.path)
@@ -170,7 +169,7 @@ class MarketSources(HubRoutes):
 class Licenses(HubRoutes):
     """The hub's orders of paid plugins, their licences, and the id a licence names (Gateway)."""
 
-    path = "/v1/market/licenses"
+    base = "market/licenses"
 
     def list(self) -> dict:
         return self.answer("GET", self.path)
@@ -179,13 +178,13 @@ class Licenses(HubRoutes):
         return self.answer("POST", f"{self.path}/check")
 
     def hub_id(self) -> dict:
-        return self.answer("GET", "/v1/market/hub")
+        return self.answer("GET", route("market/hub"))
 
 
 class GithubInstalls(HubRoutes):
     """Installing a plugin for the whole hub from a GitHub release (Gateway)."""
 
-    path = "/v1/plugins/install-github"
+    base = "plugins/install-github"
 
     def post(self, body: dict) -> dict:
         return self.answer("POST", self.path, body)
@@ -203,7 +202,7 @@ class ProjectPlugins(ProjectResource):
 class Seller(HubRoutes):
     """What the hub sells, as the hub feature ``seller`` (Gateway)."""
 
-    path = "/v1/seller"
+    base = "seller"
 
     def info(self) -> dict:
         return self.answer("GET", self.path)
@@ -237,7 +236,7 @@ class Seller(HubRoutes):
 class Publishers(HubRoutes):
     """The publishers whose signed plugins the hub accepts (Gateway)."""
 
-    path = "/v1/plugin-publishers"
+    base = "plugin-publishers"
 
     def list(self) -> Any:
         return self.hub.call("GET", self.path)

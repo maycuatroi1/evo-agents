@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents import __version__
+from evo_agents.hub.api import paths
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
 from evo_agents.infra.files import write_atomic, write_private  # noqa: F401  (their callers import them from here)
 
@@ -654,7 +655,7 @@ def login(
     out = out or sys.stdout
     hub = Hub(url)
     base = github_url(env)
-    config = hub.call("GET", "/v1/auth/config")
+    config = hub.call("GET", paths.AUTH_CONFIG)
     client_id = config.get("github_client_id") if isinstance(config, dict) else None
     if not isinstance(client_id, str) or not client_id:
         raise HubError(f"the hub at {hub.url} did not give a GitHub client id")
@@ -662,7 +663,7 @@ def login(
     print(f"First copy your one-time code: {device.user_code}", file=out)
     print(f"Then open {device.verification_uri} and enter it. Waiting for GitHub...", file=out, flush=True)
     github_token = wait_for_token(base, client_id, device, sleep=sleep, clock=clock)
-    signed = hub.call("POST", "/v1/auth/github", {"github_token": github_token, "host": host_name()})
+    signed = hub.call("POST", paths.AUTH_GITHUB, {"github_token": github_token, "host": host_name()})
     if not isinstance(signed, dict) or not isinstance(signed.get("token"), str) or not signed.get("login"):
         raise HubError(f"the hub at {hub.url} did not answer the sign-in with a token")
     try:
@@ -672,5 +673,5 @@ def login(
     save_credentials(hub.url, signed["login"], signed["token"])
     if previous is not None and previous.url == hub.url and previous.token != signed["token"]:
         with contextlib.suppress(HubError):  # revoked or expired already, or the hub is busy: it expires unused
-            Hub(hub.url, previous.token).call("POST", "/v1/auth/logout")
+            Hub(hub.url, previous.token).call("POST", paths.AUTH_LOGOUT)
     return {key: value for key, value in signed.items() if key != "token"}

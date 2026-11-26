@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import quote
 
 from evo_agents.hub import hooks, local_account, local_outputs
+from evo_agents.hub.api.project import LocalRuns
 from evo_agents.hub.client import Hub, HubError, transient
 from evo_agents.hub.local_store import cut, prune
 
@@ -70,7 +71,7 @@ class Delivery:
         return self.hub.call(method, path, body)
 
     def base(self) -> str:
-        return f"/v1/projects/{quote(self.rec['project'], safe='')}/local-runs"
+        return LocalRuns(self.hub, self.rec["project"]).path()
 
     def register(self, title: str | None) -> None:
         rec = self.rec

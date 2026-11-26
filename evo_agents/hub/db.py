@@ -48,6 +48,7 @@ from sqlalchemy.dialects.postgresql.psycopg import _log_notices
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from evo_agents.hub.api import route
 from evo_agents.hub.config import HubConfig
 
 log = logging.getLogger(__name__)
@@ -175,7 +176,7 @@ def create_pool(config: HubConfig, *, heartbeat: bool = False) -> AsyncConnectio
 live: list[TimedPool] = []
 
 # the requests served on the heartbeat pool (``engine_for``)
-HEARTBEAT_PATHS = frozenset({"/v1/worker/heartbeat", "/v1/worker/claim"})
+HEARTBEAT_PATHS = frozenset({route("worker/heartbeat"), route("worker/claim")})
 
 
 def engine_for(state, path: str) -> AsyncEngine:
