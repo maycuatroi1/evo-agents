@@ -29,12 +29,18 @@ COPY evo_agents ./evo_agents
 RUN /opt/venv/bin/pip install '.[hub-server,graphify,semantic,ingest,entities]' \
     && /opt/venv/bin/evo-agents --version
 # pip installs exactly the lines evo_agents.plugins.core_install wrote (--no-deps), each wheel against its hash, and
-# never builds a source distribution. -I keeps /src off the path: the helper is the installed one.
+# never builds a source distribution. -I keeps /src off the path: the helper is the installed one. The pin of a new
+# release lands minutes after its upload, and PyPI's simple index can lag that long (three hub deploys failed on
+# "No matching distribution" on 2026-11-26), so pip tries again every 30 s for up to 10 minutes before the build fails.
 COPY deploy/hub/core-plugins.txt /tmp/core-plugins.txt
 RUN /opt/venv/bin/python -I -m evo_agents.plugins.core_install pinned /tmp/core-plugins.txt > /tmp/pinned.txt \
     && if [ -s /tmp/pinned.txt ]; then \
-         /opt/venv/bin/pip install --no-deps --require-hashes --only-binary=:all: \
-           --index-url https://pypi.org/simple -r /tmp/pinned.txt; \
+         for attempt in $(seq 1 20); do \
+           /opt/venv/bin/pip install --no-deps --require-hashes --only-binary=:all: --no-cache-dir \
+             --index-url https://pypi.org/simple -r /tmp/pinned.txt && break; \
+           [ "$attempt" -lt 20 ] || exit 1; \
+           echo "core plugins not on the index yet, attempt $attempt of 20; again in 30 s"; sleep 30; \
+         done; \
        fi
 # The secret's URLs, which may hold a credential, live in its tmpfs and in the environment of the one pip command,
 # never in a file of a layer; the argument's requirements are no secret (`docker history` of this stage shows them).
