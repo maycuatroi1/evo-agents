@@ -36,7 +36,7 @@ from sqlalchemy import and_, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, runs, tables
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, system_traces
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access
 from evo_agents.hub.server.chat_direct import direct_chat
 from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
@@ -50,6 +50,7 @@ log = logging.getLogger(__name__)
 
 TITLE = "Work: {what}"
 TITLE_WORDS = 60  # characters of the trace's first message a work chat's title shows
+STEP_THREADS_SCAN = 500  # the latest runs of an agent in a work chat an ask of a plan step looks through for its thread
 
 
 @dataclass(frozen=True)
@@ -260,24 +261,41 @@ async def _direct(conn: AsyncConnection, asker: Asker, target: Profile, text: st
     return Handed(child, message_id, why, (chat_id, message_id))
 
 
-async def agent_thread(conn: AsyncConnection, chat_id: int, profile_id: int) -> int | None:
+async def agent_thread(
+    conn: AsyncConnection, chat_id: int, profile_id: int, steps: frozenset[tuple[str, str]] = frozenset()
+) -> int | None:
     """The thread of agent ``profile_id`` in work chat ``chat_id``: that of its latest run there, a thread of the
-    Orchestrator left out; None when it has none."""
-    r, m, o = tables.runs, tables.chat_messages, tables.orchestrator_threads
+    Orchestrator left out; for an ask that names plan ``steps`` (``system_traces.ref_steps``), that of its latest run
+    whose brief names one of them, so each step has a session of its own; None when it has none."""
+    r, m, o, b = tables.runs, tables.chat_messages, tables.orchestrator_threads, tables.agent_ask_briefs
     root = func.coalesce(m.c.thread_root_id, m.c.id)
     query = (
-        select(root)
+        select(root, b.c.brief)
         .join_from(r, m, m.c.id == r.c.chat_message_id)
+        .outerjoin(b, b.c.run_id == r.c.id)
         .where(r.c.chat_id == chat_id, r.c.profile_id == profile_id, r.c.kind == "chat")
         .where(~exists().where(and_(o.c.chat_id == chat_id, o.c.root_message_id == root)))
         .order_by(r.c.id.desc())
     )
-    return (await conn.execute(query.limit(1))).scalar_one_or_none()
+    if not steps:
+        return (await conn.execute(query.limit(1))).scalar_one_or_none()
+    for found, brief in await conn.execute(query.limit(STEP_THREADS_SCAN)):
+        if steps & system_traces.ref_steps(brief):
+            return found
+    return None
 
 
-async def _in_work(conn: AsyncConnection, chat: ChatAccess, asker: Asker, target: Profile, text: str) -> Handed:
-    """The question in the thread of ``target`` in work chat ``chat``, or on its main line, where it opens one."""
-    root = await agent_thread(conn, chat.chat_id, target.id)
+async def _in_work(
+    conn: AsyncConnection,
+    chat: ChatAccess,
+    asker: Asker,
+    target: Profile,
+    text: str,
+    steps: frozenset[tuple[str, str]] = frozenset(),
+) -> Handed:
+    """The question in the thread of ``target`` in work chat ``chat`` (of ``steps``, when the ask names plan steps),
+    or on its main line, where it opens one."""
+    root = await agent_thread(conn, chat.chat_id, target.id, steps)
     message_id, _ = await insert_message(
         conn, chat, text, thread_root_id=root, author_profile_id=asker.profile.id, run_id=asker.run_id
     )
@@ -311,7 +329,9 @@ async def _to_root(conn: AsyncConnection, chat: ChatAccess, trace: Trace, asker:
     return Handed(child, main_id, why, (chat.chat_id, main_id))
 
 
-async def _hand_over(conn: AsyncConnection, trace: Trace | None, asker: Asker, target: Profile, text: str) -> Handed:
+async def _hand_over(
+    conn: AsyncConnection, trace: Trace | None, asker: Asker, target: Profile, text: str, steps: frozenset
+) -> Handed:
     if trace is None or trace.system_id is None:
         return await _direct(conn, asker, target, text)
     work, chat, why = await placed(conn, trace, asker.origin, target)
@@ -326,17 +346,19 @@ async def _hand_over(conn: AsyncConnection, trace: Trace | None, asker: Asker, t
         return handed
     if target.id == trace.coordinator_id and trace.chat_id is not None and trace.root_id is not None:
         return await _to_root(conn, chat, trace, asker, target, text)
-    return await _in_work(conn, chat, asker, target, text)
+    return await _in_work(conn, chat, asker, target, text, steps)
 
 
-async def hand_over(conn: AsyncConnection, asker: Asker, target: Profile, text: str) -> Handed:
-    """Hand ``target`` the work ``text`` asks, written by ``asker``: in the work chat of the asking run's trace of an
-    agent system (see the module's docstring), else in the origin's direct chat with ``target``; in a savepoint rolled
-    back on a refusal, the opening of the work chat with it."""
+async def hand_over(
+    conn: AsyncConnection, asker: Asker, target: Profile, text: str, steps: frozenset[tuple[str, str]] = frozenset()
+) -> Handed:
+    """Hand ``target`` the work ``text`` asks, written by ``asker``, of plan ``steps`` when it names some: in the work
+    chat of the asking run's trace of an agent system (see the module's docstring), else in the origin's direct chat
+    with ``target``; in a savepoint rolled back on a refusal, the opening of the work chat with it."""
     trace = await trace_of_run(conn, asker.run_id)
     nested = await conn.begin_nested()
     try:
-        handed = await _hand_over(conn, trace, asker, target, text)
+        handed = await _hand_over(conn, trace, asker, target, text, steps)
     except HTTPException as exc:
         await nested.rollback()
         return Handed(None, None, str(exc.detail))

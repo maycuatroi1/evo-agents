@@ -146,7 +146,8 @@ class AgentAsk(AgentCommand):
             dest="refs",
             action="append",
             metavar="REF",
-            help="a ref it starts from (repo:path, a run, a URL); repeat",
+            help="a ref it starts from (repo:path, a run, a URL, plan:<id>/step:<step> for a session of that step); "
+            "repeat",
         )
         parser.add_argument(
             "--reason",

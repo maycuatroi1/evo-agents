@@ -385,7 +385,7 @@ id = "hub-docs-layers"
 name = "The documents of a project go from their routes, MCP tool and graph source to their service to their repository to their models, never back"
 type = "layers"
 containers = ["evo_agents.hub.server.docs"]
-layers = ["routes | agent | kg", "service | images", "repository", "models | page_text"]
+layers = ["routes | agent | kg", "service | images", "repository", "models | page_text | typed"]
 exhaustive = true
 broken_contract_guidance = """\
 In evo_agents.hub.server.docs a route handler (routes), the MCP tool docs__read (agent) and the graph's source (kg) \

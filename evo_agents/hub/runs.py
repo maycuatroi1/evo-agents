@@ -568,6 +568,12 @@ RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "su
 PLAN_FILE = f"{RESULT_DIR}/plan.yaml"  # a plan run's plan as it was claimed, written by the daemon
 
 OUTPUT_COMMAND = "evo-agents worker output"  # the agent of any run sends files to the run's outputs
+# Said to the agent of every run: the worker sets TMPDIR to the run's own directory and deletes it once the run
+# ended (``worker.daemon_cleanup.sweep_tmp``); what an agent writes straight under /tmp stays until the drive is full.
+SCRATCH_RULE = (
+    "Scratch files, clones and throwaway environments go under $TMPDIR, this run's own directory, which the worker "
+    "deletes once the run ends; never straight under /tmp, which nothing cleans."
+)
 
 TRUNCATION_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; the plan on the hub has the full text]"
 SHORT_BYTES = 200  # a plan id, step key, title, repo or branch in the prompt

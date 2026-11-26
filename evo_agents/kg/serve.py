@@ -44,11 +44,11 @@ from collections import deque
 
 from evo_agents import __version__
 from evo_agents.kg.freshness import Links
-from evo_agents.kg.policy import audience_below
+from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, readable
 from evo_agents.kg.serve_impact import ImpactTools
 from evo_agents.kg.serve_search import SearchTools
-from evo_agents.kg.serve_view import ToolError
+from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
 from evo_agents.kg.serve_walk import WalkTools
 from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.snapshot import SnapshotView
@@ -177,7 +177,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
         store, b = self._store()
         n = self._lookup(store, id, b)
         if n is None:
-            raise ToolError("no visible node has that id; search with kg_search")
+            return self._locked_node(store, id, b)
         links = Links.of(store, b)
         n = links.node(n)
         edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.seen(e)]
@@ -237,6 +237,18 @@ class Session(SearchTools, WalkTools, ImpactTools):
         if text is not None:
             data["text"] = text[:TEXT_CHARS]
         return "\n".join(lines), data
+
+    def _locked_node(self, store: SnapshotView, id: str, b: int) -> tuple[str, dict]:
+        """kg_node of a node above the clearance that shows as locked (``SessionView.locked``): that it exists, its
+        kind and its label, and nothing of what it holds. Raises ToolError for any other node the reader cannot see."""
+        n = self.locked(store, id, b)
+        if n is None:
+            raise ToolError("no visible node has that id; search with kg_search")
+        assert self.policy is not None, ANSWERS_NOTHING
+        label = self.policy.describe(Label.of(n["label"]))
+        node = {"id": n["id"], "kind": n["kind"], "label": label, "locked": True}
+        text = f"[{readable(n['id'])}] {n['kind']}, locked: labelled {label}, above what this session may read"
+        return text, {"build": b, "node": node, "evidence": [], "out": [], "in": [], "summary": n["id"]}
 
     def _uploaded_text(self, store: SnapshotView, b: int, n: dict, edges: list[dict]) -> str | None:
         """The text of node ``n`` of an uploaded archive (UPLOADED) as the full-text index holds it: its own, or for a

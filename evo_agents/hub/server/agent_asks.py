@@ -11,7 +11,9 @@ run's thread.
 
 Else, in a savepoint (``work_chats.hand_over``), the hub puts the question as a message of the asking run's agent,
 naming the asking run: in the work chat of the asking run's trace of an agent system, in the thread of the agent asked
-(``docs/hub.md``, Work chats), else in the origin's direct chat with the agent asked (``chat_direct.direct_chat``),
+(``docs/hub.md``, Work chats), the thread of the plan step its brief names (``--ref plan:<id>/step:<key>``) when it
+names one, so each step runs in a session of its own and independent steps take free slots of the agent's pool at once,
+else in the origin's direct chat with the agent asked (``chat_direct.direct_chat``),
 where it starts a thread: the run
 it hands (``chat_runs.hand_work``) is of the agent asked, on its pool, dispatched by the origin, at one hop more, and
 acts within the asking run's principal and autonomy snapshot (``run_autonomy.of_message``), so each run of a chain has
@@ -183,12 +185,13 @@ async def _system_refusal(
 
 
 async def _hand(
-    conn: AsyncConnection, run: AgentRun, target: Profile, text: str, priority: str
+    conn: AsyncConnection, run: AgentRun, target: Profile, text: str, priority: str, brief: dict
 ) -> tuple[int | None, int | None, str | None, tuple[int, int] | None]:
     """(the run of ``target`` handed, the question's message, None, the thread it is in), or (None, None, why none,
-    None), in a savepoint rolled back on a refusal (``work_chats.hand_over``)."""
+    None), in a savepoint rolled back on a refusal (``work_chats.hand_over``); an ask whose ``brief`` names a plan step
+    goes to the session of that step."""
     asker = work_chats.Asker(run.profile, run.run_id, run.principal, run.via, run.hop + 1, priority)
-    handed = await work_chats.hand_over(conn, asker, target, text)
+    handed = await work_chats.hand_over(conn, asker, target, text, system_traces.ref_steps(brief))
     return handed.child, handed.message_id, handed.why, handed.place
 
 
@@ -263,7 +266,7 @@ async def ask_agent(
     if refusal is None:
         assert target is not None
         text = question_text(run, run.profile.project, target, said, brief)
-        child, message_id, refusal, place = await _hand(conn, run, target, text, body.priority)
+        child, message_id, refusal, place = await _hand(conn, run, target, text, body.priority, brief)
     if refusal is None:
         assert target is not None and child is not None  # _hand made the run or gave its refusal
         decision_id = await open_wait(conn, row, run, target, child)

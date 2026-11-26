@@ -374,7 +374,8 @@ ceilings, the quota of their accounts, and the rules only a web session passes, 
 dispatched from the web (`docs/workers.md`). It lasts as a web session does and ends with `POST /v1/auth/logout`. Each
 sign-in writes the audit row `auth.login` with the target `app:lumen-studio`; registering and revoking an app write
 `auth_app.create` and `auth_app.revoke`. The routes of core plugins that check the Origin of a web write
-(`docs/plugins.md`) still refuse an app session's writes.
+(`docs/plugins.md`) take an app session's writes without it: the session arrives only as `Authorization: Bearer`, which
+a browser never adds to another site's request, while a write of the session cookie still needs the hub's Origin.
 
 ### Invite links
 
@@ -1136,7 +1137,11 @@ counts as a group chat: mentions, replies, bridges, summaries.
 
 An ask puts its question, as a message of the asking agent, in the thread of the agent asked when it has one in the
 work chat, so its session, worktree and branch go on; else on the main line, where it starts that thread. Asking the
-same agent again goes back to that thread: to the run's inbox while it runs, to its session once it ended. The hub's
+same agent again goes back to that thread: to the run's inbox while it runs, to its session once it ended. An ask whose
+brief names a plan step (`--ref plan:<id>/step:<step>`, or `--ref step:<step>` beside one `plan:<id>`) goes to the
+thread of the agent's latest run whose brief names that step, else starts a thread of its own: each step runs in a
+session of its own, so independent steps take the free slots of the agent's pool at once, and asks of the same step
+keep its session. The hub's
 lines about the ask (asked, answered, refused, gave no answer, withheld, escalated) go in the work chat, in the thread
 of the agent asked when there is one. The asking run parks and resumes with the answer as before; the hop limit, the
 budget, the edges, the reason, the brief and the forward are the same.
@@ -1280,6 +1285,11 @@ One turn goes like this:
    come after it.
 3. The model calls tools for at most 8 rounds and 180 seconds. A message that reaches the inbox meanwhile joins
    before the next round.
+   Each round writes to the run's events what a worker's run writes, of the same kinds (`docs/workers.md`, Event
+   kinds), so `GET .../runs/{id}/stream` shows the turn as it goes: the answer's text as `agent_message_chunk` events
+   of at most 16 KiB of text each, cut at a paragraph where one is near, a `tool_call` for each call and a
+   `tool_call_update` with its result, and one `usage_update` with the round's tokens. A few events a round, masked
+   as the reply is (`evo_agents/hub/server/hub_run_events.py`).
 4. The model's last answer without a tool call is the agent's reply in the thread, masked as a worker's reply is
    (`mask_values`, then the run's leased values).
 5. The turn's tokens and the key's cost, as the gateway counts it, go to `run_spend`, to `runs.usage` (under
@@ -2365,7 +2375,9 @@ codex or any, at its claim and before its credentials are leased (`evo_agents/hu
   migration or security, the plan's last step when it merges or deploys, and a prescribed step (no `acceptance`) are
   hard. A step that changes documents alone, or exports, is easy, and any other step medium. A plan run is hard, an
   author run medium, a short question easy. A free prompt is rated by its words, then by the name of its agent; one
-  that says neither is left to the worker's scorer (`routing.scorer`), or is medium when the scorer is `off`.
+  that says neither is left to the worker's scorer (`routing.scorer`), or is medium when the scorer is `off`. A chat
+  run that works on plan steps is at least as hard as the hardest of them: the coordinator's session of a plan handed
+  to a system (`hub run plan --system`) covers the plan's open steps, and an ask whose brief names a step covers it.
 - A run of a step whose last run failed on easy or medium, or a retry of such a run, goes one level up.
 - `routing.strategy` takes the model: `surplus-first` (the default) runs the `ladder` while the subscription has more
   than `hard_reserve_pct` (10) of its week left and its five-hour window is under `five_hour_ceiling_pct` (90), and
@@ -3731,6 +3743,10 @@ versions and images are not read. Each item carries the document's own label, so
 it never sees the document in the graph, as on its pages. A save that writes a version queues a build of the graph
 when the project has one on the hub; a save that changes nothing queues none. A project that turns the feature off
 drops its documents from the next build.
+
+A document may open with a YAML block that declares its type, its links to other documents, its level and its
+audience, a `chat:<id>` of its brand space; the build makes it a typed node of the project's ontology with edges of the
+declared relations, under the joined label (`docs/kg.md`, Typed documents).
 
 ```sh
 evo-agents kg query kg_search "three hops without progress" --backend hub
