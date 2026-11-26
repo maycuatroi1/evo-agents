@@ -3,7 +3,8 @@
 
 ``queue_run`` queues the next run of an open cycle, a cut or the fix of a red tag, dispatched as the cycle's owner,
 pinned to no worker, with no cost cap (``releases.run_budget``). Audited as release.dispatch, with the owner as actor
-and no token.
+and no token. ``go_on`` is the next move of a cycle that goes on (the owner's continue, or ``release_settle`` once the
+branch a refused landing left is settled), and ``left_behind`` the run whose branch must be settled first.
 
 ``stop_cycle`` is the one way a cycle stops: open, it becomes stopped with the cause (``release_ci.STOP_CAUSES``) and
 the reason, and the hub asks its owner what next (``ask_owner``): a decision of category release on the cycle's last
@@ -27,7 +28,7 @@ from sqlalchemy import Text, cast, func, insert, literal, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, releases, runs, tables
+from evo_agents.hub import curator, release_ci, releases, runs, tables
 from evo_agents.hub.server import audit, triage
 from evo_agents.hub.server.night_cost import usage_cost
 from evo_agents.hub.server.notifications import decision_link, notify, one_line
@@ -122,6 +123,59 @@ async def queue_run(conn: AsyncConnection, cycle_id: int, mode: str, *, red_tag:
         project_id=found.project_id,
     )
     return run_id
+
+
+# Going on
+
+
+async def newest_tag(conn: AsyncConnection, found):
+    """The tag of highest version cycle ``found`` (``cycle_of``) follows, or None."""
+    t = tables.release_tags
+    prefix = releases.tag_prefix(found.tag_pattern) + "*"
+    rows = (await conn.execute(select(t).where(t.c.cycle_id == found.id))).all()
+    versioned = [(releases.tag_version(row.tag, prefix) or (-1, -1, -1), row.id, row) for row in rows]
+    return max(versioned, key=lambda item: item[:2])[2] if versioned else None
+
+
+async def left_behind(conn: AsyncConnection, cycle_id: int):
+    """The newest release run of cycle ``cycle_id`` when its landing left its branch release/<version> on origin:
+    refused or failed, no tag made; None otherwise. The next run of the cycle would push that same branch (a fix takes
+    the next patch of its red tag), so it waits for ``release_settle``, which tags a merge of it a person made, or
+    deletes the branch and then queues that run (2026-11-25, run #12580: a person merged release/0.73.4 as they answered
+    continue, the run that answer queued pushed release/0.73.4 again and failed push_conflict)."""
+    rr = tables.release_runs
+    newest = (
+        await conn.execute(select(rr).where(rr.c.cycle_id == cycle_id).order_by(rr.c.run_id.desc()).limit(1))
+    ).one_or_none()
+    if newest is None or newest.branch is None or newest.tagged is not None:
+        return None
+    return newest if newest.land_state in ("refused", "failed") else None
+
+
+async def held_by(conn: AsyncConnection, found):
+    """The run (``left_behind``) whose branch holds the next move of cycle ``found``, when that move queues a run: its
+    newest tag is red or it has none; None when nothing holds it."""
+    tag = await newest_tag(conn, found)
+    if tag is not None and tag.ci_state in (*release_ci.WATCHED, "timeout"):
+        return None
+    return await left_behind(conn, found.id)
+
+
+async def go_on(conn: AsyncConnection, found) -> str:
+    """The next move of open cycle ``found`` (``cycle_of``) that nothing holds, in words: the CI of its newest tag
+    followed again from now when it was pending, running or overdue; else the fix of its red newest tag, or a new cut
+    when it has no tag of its own yet, queued."""
+    t = tables.release_tags
+    tag = await newest_tag(conn, found)
+    if tag is not None and tag.ci_state in (*release_ci.WATCHED, "timeout"):
+        values = {"ci_state": "running" if tag.workflow_run_id else "pending", "watched_since": func.now()}
+        await conn.execute(update(t).where(t.c.id == tag.id).values(**values, problem=None))
+        return f"the hub follows the CI of {tag.tag} again from now"
+    mode, red = ("fix", tag.tag) if tag is not None and tag.ci_state == "failed" else ("cut", None)
+    run_id = await queue_run(conn, found.id, mode, red_tag=red)
+    if run_id is None:
+        return f"no {mode} run could be queued: see the cycle"
+    return f"run #{run_id} " + (f"fixes {red} forward" if red else f"cuts {found.target_ref} again")
 
 
 # Stopping

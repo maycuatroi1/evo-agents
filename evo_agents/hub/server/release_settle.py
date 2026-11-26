@@ -18,6 +18,11 @@ a pass, with one token of the App for the repo alone (``pulls.with_token``, use 
   branch that moved is never touched. The hub never forces a push, never touches the default branch and never makes a
   tag but on a merge commit of a pull request of the run's own branch.
 
+The owner's ``continue`` queues no run while such a branch holds the cycle (``release_cycles.held_by``): a person may
+merge the refused pull request as they answer, and a fix run queued then pushes the same release/<version> and fails
+push_conflict (run #12580). Once the branch is free (cleared, or found gone), this pass makes the cycle's next move
+(``release_cycles.go_on``); a branch that a person moved stops the cycle again with what to do (``_after``).
+
 A pass that GitHub failed leaves the run for the next one; one run failing leaves the others their turn.
 """
 
@@ -26,7 +31,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-from sqlalchemy import exists
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import releases, tables
@@ -34,6 +39,7 @@ from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import autonomy_gates, pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.release_cycles import cycle_of, go_on, held_by, stop_cycle
 from evo_agents.hub.server.release_land import (
     Landing,
     Refusal,
@@ -46,6 +52,7 @@ from evo_agents.hub.server.release_land import (
     run_event,
     save_run,
 )
+from evo_agents.hub.tables import RUN_ACTIVE
 
 log = logging.getLogger(__name__)
 
@@ -133,10 +140,40 @@ async def settle(engine: AsyncEngine, app: GitHubApp | None, row: Landing) -> st
         if not await owner_is_admin(conn, row.owner_id, row.owner, row.project):
             return "skipped"
     try:
-        return await pulls.with_token(app, *where, "merge", lambda token: _settle(engine, app, token, where, row))
+        found = await pulls.with_token(app, *where, "merge", lambda token: _settle(engine, app, token, where, row))
     except (Refusal, GitHubUnavailable, GitHubRefused) as exc:
         log.warning("release branch not settled", extra={"run_id": row.run_id, "why": str(exc)})
         return "skipped"
+    if found in ("cleared", "clean", "kept") and row.cycle_state == "open":
+        await _after(engine, row, found)
+    return found
+
+
+async def _after(engine: AsyncEngine, row: Landing, found: str) -> None:
+    """Once ``row``'s branch is settled (``found``) and still holds its open cycle's next move (``held_by``): that move
+    made when the branch is free, or the cycle stopped when a person moved the branch."""
+    c, rr, r = tables.release_cycles, tables.release_runs, tables.runs
+    async with engine.begin() as conn:
+        state = (await conn.execute(select(c.c.state).where(c.c.id == row.cycle_id).with_for_update())).scalar_one()
+        if state != "open":
+            return
+        cycle = await cycle_of(conn, row.cycle_id)
+        left = await held_by(conn, cycle)
+        if left is None or left.run_id != row.run_id:
+            return
+        if found == "kept":
+            reason = (
+                f"{row.branch} of {row.repo} moved since release run #{row.run_id} pushed it, so the next run cannot "
+                "push it: merge its pull request (the hub tags the merge) or delete the branch, then continue"
+            )
+            await stop_cycle(conn, row.cycle_id, reason, "refused")
+            return
+        active = exists().where(rr.c.cycle_id == row.cycle_id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
+        if (await conn.execute(select(active))).scalar_one():
+            return
+        said = await go_on(conn, cycle)
+        await run_event(conn, row.run_id, {"text": f"{row.branch} of {row.repo} is free again: {said}."})
+    log.info("release cycle goes on after settling", extra={"run_id": row.run_id, "said": said})
 
 
 async def settle_releases(engine: AsyncEngine, app: GitHubApp | None) -> dict:

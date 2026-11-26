@@ -13,9 +13,11 @@ merges, the hub reads the version VERSION_FILE names on the default branch's tip
 release tags (``release_github.read_refs``), and refuses (``release_runs.land_problem``) a version that is not
 greater, changes the major, is neither the next patch nor the next minor, whose tag exists, or that the branch does not
 name. Then: the pull request opened (or the one open found into the default branch), its number kept, its body naming
-the agent's Decision line with nothing GitHub acts on (``release_runs.inert``); its files read, and a change that
-shows a sign of test hacking (``release_ci.release_signs``: a test removed, an assertion removed or loosened, a skip
-added but for importorskip and a skip on one platform with its reason) is never merged; merged at the run's commit
+the agent's Decision line with nothing GitHub acts on (``release_runs.inert``); its files read for signs of test
+hacking (``release_ci.release_signs``): a change with a sign that stops a fix (``release_ci.stopping``: a skip added
+but for importorskip and a skip on one platform with its reason, an assertion made always true) is never merged, and
+one with only a test or an assertion removed lands flagged (``_flag``: a comment on the pull request, the run's log
+and a notice of kind release to the cycle's owner); merged at the run's commit
 alone (``pulls.merge_pull``: GitHub refuses once the branch moved), the merge commit kept; and the tag made on it
 (``pulls.create_ref``), or found there already. Each part is kept as it is done, so a pass that GitHub failed goes on
 from there: a pull request merged already gives its merge commit, one closed without a merge is refused. A pull request
@@ -47,7 +49,7 @@ from evo_agents.hub.server import audit, autonomy_gates, pull_trailers, pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.release_cycles import stop_cycle
+from evo_agents.hub.server.release_cycles import cycle_of, notify_release, stop_cycle
 from evo_agents.hub.server.release_github import ReadFailed, read_refs
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -238,15 +240,42 @@ def _pull_text(row: Landing, tag: str) -> str:
     return "\n".join(lines)
 
 
-async def _no_signs(app: GitHubApp, token: str, where: tuple[str, str], row: Landing, number: int) -> None:
-    """Hacking when the files of pull request ``number`` show signs of test hacking."""
+async def _no_signs(app: GitHubApp, token: str, where: tuple[str, str], row: Landing, number: int) -> list[dict]:
+    """Hacking when the files of pull request ``number`` show a sign that stops a fix (``release_ci.stopping``);
+    else the signs it lands flagged with, if any."""
     files = diff_signs.from_github_files(await pulls.pull_files(app, token, *where, number))
     signs = release_ci.release_signs(files, row.repo)
-    if signs:
+    stops = release_ci.stopping(signs)
+    if stops:
         raise Hacking(
             f"the change of {row.branch} (pull request #{number}) shows signs of test hacking: "
-            f"{release_ci.signs_text(signs)}; the hub neither merges nor tags it"
+            f"{release_ci.signs_text(stops)}; the hub neither merges nor tags it"
         )
+    return signs
+
+
+def _flag_text(row: Landing, number: int, signs: list[dict]) -> str:
+    return (
+        f"The hub lands {row.branch} (pull request #{number}) of release run #{row.run_id} with {len(signs)} "
+        f"sign(s) to read: {release_ci.signs_text(signs)}. A fix forward may bring a test up to the code it tests; "
+        "read these lines and revert them on the default branch if they hide a fault."
+    )
+
+
+async def _flag(
+    engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[str, str], row: Landing, number: int, signs: list
+) -> None:
+    """Tell what the hub lands ``row`` with: a comment on pull request ``number``, the run's log and a notice to the
+    cycle's owner."""
+    text = _flag_text(row, number, signs)
+    await pulls.comment_pull(app, token, *where, number, text)
+    async with engine.begin() as conn:
+        await run_event(conn, row.run_id, {"text": text, "release_signs": signs[:20]})
+        found = await cycle_of(conn, row.cycle_id)
+        title = f"{row.tag} of {row.repo} lands with {len(signs)} test change(s) to read"
+        details = {"tag": row.tag, "pull": number, "signs": signs[:20]}
+        await notify_release(conn, found, event="flagged", title=title, body=text, run_id=row.run_id, details=details)
+    log.info("release landed flagged", extra={"run_id": row.run_id, "signs": len(signs)})
 
 
 async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[str, str], row: Landing) -> str:
@@ -292,7 +321,9 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
         if problem is not None:
             raise Refusal(problem)
         await save_run(engine, row.run_id, pull_number=number, pull_url=url if isinstance(url, str) else None)
-    await _no_signs(app, token, where, row, number)
+    signs = await _no_signs(app, token, where, row, number)
+    if signs:
+        await _flag(engine, app, token, where, row, number, signs)
     title = f"Merge pull request #{number} from {owner}/{row.branch}"
     merge = await pulls.merge_pull(app, token, owner, name, number, sha=row.head_commit, title=title)
     await save_run(engine, row.run_id, merge_commit=merge)

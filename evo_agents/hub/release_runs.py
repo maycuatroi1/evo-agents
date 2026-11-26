@@ -342,6 +342,12 @@ def fix_prompt(
         "`pytest.importorskip` or a skip on one platform with its reason, and never make an assert always true. Look "
         "also for these three faults that fail only on macOS and Windows:",
         *FAULTS,
+        "   A test that fails only because the CI runner took longer than its bound on elapsed time: when the repo "
+        "declares the pytest marker `wall_clock` (pyproject.toml), mark the test with it and keep its bound, since the "
+        "release gate leaves those tests out; else make it assert what the timing stands for (an overlap, a count of "
+        "calls) rather than loosen the bound.",
+        "   Leave `.github/workflows/` as it is: the hub's GitHub App may not push a change there, and GitHub then "
+        "refuses the whole push. Say in your summary what change of a workflow the CI would need, if any.",
         "   Run the tests of each file you change.",
         *_closing(tag_prefix, "why the CI failed and what you changed"),
     ]

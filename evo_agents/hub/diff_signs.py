@@ -388,7 +388,7 @@ def _matches(globs, repo: str, path: str) -> str | None:
     return next((glob for glob in globs if tiers.matches(glob, repo, path)), None)
 
 
-def _is_test(repo: str, path: str) -> bool:
+def is_test(repo: str, path: str) -> bool:
     return _matches(tiers.TEST_PATHS, repo, path) is not None
 
 
@@ -573,7 +573,7 @@ def _where(
         return any(_matches(globs, repo, item) for item in paths)
 
     doc = _is_doc(repo, diff.path)
-    test = any(_is_test(repo, item) for item in paths)
+    test = any(is_test(repo, item) for item in paths)
     return _Where(
         ci=any_of(CI_PATHS),
         lint=any_of(LINT_CONFIG_PATHS),
@@ -606,7 +606,7 @@ def _path_signs(
         sign("lint_config_changed", path)
     if where.plan:
         sign("verify_changed", path, None, "a copy of a plan")
-    if diff.status != "added" and where.runs_it and not _is_test(repo, path):
+    if diff.status != "added" and where.runs_it and not is_test(repo, path):
         sign("verify_changed", path, None, "a file the plan's verify runs")
     if (where.golden or where.data) and diff.status != "added":
         sign("golden_changed", path, None, "what a test compares with")

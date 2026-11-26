@@ -3,7 +3,9 @@
 
 - ``continue``: the cycle is open again and goes on from where it stopped: the CI of its newest tag is followed again
   from now when it was pending, running or overdue; a red newest tag gets a new fix run; a cycle with no tag of its own
-  yet gets a new cut run (``release_cycles.queue_run``). Nothing is queued while a release run of the cycle is active.
+  yet gets a new cut run (``release_cycles.go_on``). Nothing is queued while a release run of the cycle is active, nor
+  while the branch a refused landing left is not settled (``release_cycles.left_behind``): ``release_settle`` tags a
+  merge of it a person made, or deletes it and then queues the run.
 - ``close``: the cycle is closed, its reason kept.
 - ``pause``: the schedule is paused as ``evo-agents hub release pause`` pauses it (its queued release runs cancelled),
   and the cycle closed with that reason.
@@ -20,29 +22,20 @@ from fastapi import HTTPException
 from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import release_ci, releases, tables
+from evo_agents.hub import releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.chat_runs import hub_reply
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.release_check import cancel_queued
-from evo_agents.hub.server.release_cycles import cycle_of, queue_run
+from evo_agents.hub.server.release_cycles import cycle_of, go_on, held_by
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.tables import RUN_ACTIVE
 
 log = logging.getLogger(__name__)
 
 
-async def _newest(conn: AsyncConnection, found):
-    """The tag of highest version cycle ``found`` follows, or None."""
-    t = tables.release_tags
-    prefix = releases.tag_prefix(found.tag_pattern) + "*"
-    rows = (await conn.execute(select(t).where(t.c.cycle_id == found.id))).all()
-    versioned = [(releases.tag_version(row.tag, prefix) or (-1, -1, -1), row.id, row) for row in rows]
-    return max(versioned, key=lambda item: item[:2])[2] if versioned else None
-
-
 async def _go_on(conn: AsyncConnection, found) -> str:
-    c, rr, r, t = tables.release_cycles, tables.release_runs, tables.runs, tables.release_tags
+    c, rr, r = tables.release_cycles, tables.release_runs, tables.runs
     await conn.execute(
         update(c)
         .where(c.c.id == found.id)
@@ -52,16 +45,13 @@ async def _go_on(conn: AsyncConnection, found) -> str:
     active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
     if (await conn.execute(select(active))).scalar_one():
         return said + ": a run of it is still active"
-    tag = await _newest(conn, found)
-    if tag is not None and tag.ci_state in (*release_ci.WATCHED, "timeout"):
-        values = {"ci_state": "running" if tag.workflow_run_id else "pending", "watched_since": func.now()}
-        await conn.execute(update(t).where(t.c.id == tag.id).values(**values, problem=None))
-        return said + f": the hub follows the CI of {tag.tag} again from now"
-    mode, red = ("fix", tag.tag) if tag is not None and tag.ci_state == "failed" else ("cut", None)
-    run_id = await queue_run(conn, found.id, mode, red_tag=red)
-    if run_id is None:
-        return said + f", but no {mode} run could be queued: see the cycle"
-    return said + f": run #{run_id} " + (f"fixes {red} forward" if red else f"cuts {found.target_ref} again")
+    left = await held_by(conn, found)
+    if left is not None:
+        return said + (
+            f": the hub first settles {left.branch} of run #{left.run_id} (it tags a merge of it a person made, or "
+            "deletes the branch and then queues the next run)"
+        )
+    return said + ": " + await go_on(conn, found)
 
 
 async def _close(conn: AsyncConnection, found, why: str) -> None:

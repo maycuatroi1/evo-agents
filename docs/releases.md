@@ -156,10 +156,13 @@ it. The hub:
 
 1. reads the version on the default branch's tip and on the run's commit, and the release tags, and refuses as above;
 2. opens the pull request "Release X.Y.Z" of `release/<version>` into the default branch, or finds the one open;
-3. reads its files and never merges a change with a sign of test hacking: a test removed, an assertion removed or
-   loosened (an assert made always true among them), or a skip or xfail added, other than `pytest.importorskip` and a
-   skip on one platform with `reason=` (the signs of `diff_signs.hack_signs`); such a pull request stays open and the cycle
-   stops (cause `hacking`);
+3. reads its files for signs of test hacking (`release_ci.release_signs`). It never merges a change that adds a skip or
+   xfail, other than `pytest.importorskip` and a skip on one platform with `reason=`, or an assert made always true
+   (`release_ci.stopping`): such a pull request stays open and the cycle stops (cause `hacking`). A test or an
+   assertion removed or rewritten lands, flagged: a comment on the pull request, a line in the run's log and a notice
+   of kind release (event `flagged`) to the cycle's owner. A fix forward mostly brings a test the default branch left
+   behind up to the code it tests: the nine fixes that sign refused from 2026-11-15 to 2026-11-25 were each such a
+   change, merged by hand after a person read it;
 4. merges it with a merge commit at the run's commit alone, so GitHub refuses once the branch moved;
 5. makes the lightweight tag `v<version>` on the merge commit (`POST .../git/refs`), audited as `release.tag`.
 
@@ -181,8 +184,18 @@ pass settles the runs the hub refused or failed to land, that made no tag, and w
 - **Nobody merged it** and the cycle is open again (its owner chose `continue`): the hub closes the branch's open pull
   requests and deletes the branch, when the branch still holds the commit the run pushed, so the new fix run pushes its
   own `release/<version>`. A stopped cycle keeps the branch and its pull request for a person to read, and a branch
-  that moved is never touched. A run that finds its branch taken anyway fails `push_conflict`, and the owner continues
-  the cycle again once the hub cleared it.
+  that moved is never touched.
+
+The owner's `continue` queues no run while such a branch holds the cycle (`release_cycles.held_by`): a person may merge
+the refused pull request as they answer, and a fix run queued at that moment pushed the same `release/0.73.4` again
+and failed `push_conflict` (cycle #41, run #12580). The next pass settles the branch first: a merge by hand is tagged
+and its CI followed; a branch cleared, or found gone, lets the hub make the cycle's next move then
+(`release_cycles.go_on`); a branch a person moved stops the cycle again (cause `refused`), saying to merge its pull
+request or delete it.
+
+A fix run leaves `.github/workflows/` alone: the hub's App may not push a workflow (run #11468 failed `push_declined`),
+and its prompt says so. A test whose only fault is a runner slower than its bound on elapsed time goes under the pytest
+marker `wall_clock`, which the release gate leaves out and the ci job `wall-clock` reports without failing.
 
 ## Following the CI
 
@@ -213,9 +226,9 @@ tag the cycle follows and its base tag.
 | --- | --- |
 | `run_failed` | a run of the cycle failed |
 | `run_cancelled` | a run of the cycle was cancelled while the schedule was not paused |
-| `refused` | the hub refused to land a run, or a run ended done without its branch |
+| `refused` | the hub refused to land a run, a run ended done without its branch, or a person moved the branch a refused landing left |
 | `github` | GitHub failed 5 passes in a row while the hub landed a run |
-| `hacking` | a run's change shows a sign of test hacking |
+| `hacking` | a run's change adds a skip or an assert made always true (other signs land flagged) |
 | `budget` | what was left of the cycle's cap was under 0.01 USD; only cycles from before schema 0176, which dropped the cap |
 | `same_test` | one test id failed at two tags in a row of the cycle |
 | `timeout` | no workflow run in 30 minutes, or one over 3 hours |
@@ -228,7 +241,7 @@ decision of category `release` on the cycle's last run, with three options:
 
 | Option | What the hub does |
 | --- | --- |
-| `continue` | opens the cycle again and goes on where it stopped: the newest tag's CI followed again from now, a red newest tag gets a fix run, a cycle with no tag yet a new cut run |
+| `continue` | opens the cycle again and goes on where it stopped: the newest tag's CI followed again from now, a red newest tag gets a fix run, a cycle with no tag yet a new cut run; a branch a refused landing left is settled first (see above) |
 | `close` | closes the cycle, its reason kept |
 | `pause` | pauses the schedule as `evo-agents hub release pause` does, and closes the cycle |
 

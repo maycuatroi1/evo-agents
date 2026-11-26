@@ -318,8 +318,18 @@ def test_the_hacking_signs_of_a_fix_spare_importorskip_and_a_platform_skip_with_
         return [item["kind"] for item in release_ci.release_signs(diff_signs.from_github_files(list(files)), REPO)]
 
     assert signs(patch("tests/test_x.py", " def test_x():", "-    assert f() == 1", "+    assert True")) == [
-        "assert_removed"
+        "assert_removed",
+        "assert_always_true",
     ]
+    rewritten = ("-    assert prompt.count('step') == 3", "+    assert 'descoped_at' in prompt")
+    assert signs(patch("tests/test_x.py", *rewritten)) == ["assert_removed"], "a rewrite is read, and lands flagged"
+    assert release_ci.stopping([{"kind": "assert_removed"}, {"kind": "test_removed"}]) == []
+    assert [item["kind"] for item in release_ci.stopping([{"kind": "skip_added"}, {"kind": "assert_always_true"}])] == [
+        "skip_added",
+        "assert_always_true",
+    ]
+    assert release_ci.always_true("    assert True") and release_ci.always_true("assert 1, 'why'")
+    assert not release_ci.always_true("assert x") and not release_ci.always_true("assert False")
     assert signs(patch("tests/test_x.py", "+@pytest.mark.skip(reason='flaky')", " def test_x():")) == ["skip_added"]
     assert signs({"filename": "tests/test_y.py", "status": "removed", "changes": 0, "patch": ""}) == ["test_removed"]
     renamed = ("-def test_gets_the_207_tables(hub_db):", "+def test_gets_the_208_tables(hub_db):", " x = 1")
@@ -518,8 +528,29 @@ def test_a_fix_with_signs_of_test_hacking_is_not_merged_and_stops_the_cycle(worl
     assert tag_of(world.github, "v0.25.1") is None and len(world.github.merges) == 1, "only the cut was merged"
     found = cycle(world.db)
     assert found["state"] == "stopped" and found["stop_cause"] == "hacking"
-    assert "signs of test hacking" in found["stop_reason"] and "an assertion of a test removed" in found["stop_reason"]
+    assert "signs of test hacking" in found["stop_reason"] and "an assertion made always true" in found["stop_reason"]
+    assert "a skip" in found["stop_reason"] and "an assertion of a test removed" not in found["stop_reason"]
     assert landed_row(world.db, fix_id)["land_state"] == "refused"
+
+
+def test_a_fix_that_rewrites_or_removes_an_assertion_lands_flagged_for_its_owner(world):
+    _, fix_id = red_tag_fixing(world)
+    files = [  # release/0.73.4 (#794): an assertion brought up to the prompt the default branch writes now
+        patch(
+            "tests/hub/test_author_model.py",
+            " def test_the_author_prompt_names_its_revision():",
+            "-    assert 'keep the status, done_at, evidence' in prompt",
+            "+    assert 'keep the status, descoped_at, done_at, evidence' in prompt",
+        ),
+    ]
+    assert fixed(world, fix_id, files=files) == {"tagged": 1}
+    assert tag_of(world.github, "v0.25.1") is not None
+    assert cycle(world.db)["state"] == "open"
+    [comment] = [item for item in world.github.comments if "sign(s) to read" in item["body"]]
+    assert "an assertion of a test removed at tests/hub/test_author_model.py" in comment["body"]
+    [notice] = [row for row in notifications(world.db, "notice", "release") if row[3]["event"] == "flagged"]
+    assert notice[1] == "v0.25.1 of evo-agents lands with 1 test change(s) to read"
+    assert notice[3]["signs"][0]["kind"] == "assert_removed"
 
 
 HACKING = [
@@ -540,10 +571,17 @@ def refused_fix(world) -> int:
     return fix_id
 
 
-def continued(world) -> int:
-    """The owner answers ``continue`` to the stopped cycle: the second fix run of the same red tag is queued, claimed
-    and running; its id."""
+def continued(world) -> None:
+    """The owner answers ``continue`` to the stopped cycle: open again, and no run queued while release/0.25.1 of the
+    refused run is on origin (the next run would push that same branch)."""
+    rows = release_rows(world.db)
     assert answer(world, cycle(world.db)["decision_id"], "continue").status_code == 200
+    assert cycle(world.db)["state"] == "open"
+    assert release_rows(world.db) == rows, "nothing queued before the branch is settled"
+
+
+def second_fix(world) -> int:
+    """The second fix run of the same red tag, which the settling pass queued: claimed and running; its id."""
     second = claimed(world)
     assert second["release"]["red_tag"] == "v0.25.0"
     return second["id"]
@@ -558,10 +596,11 @@ def test_a_second_fix_run_of_the_same_red_tag_finds_release_branch_free_and_land
     assert settle(world) == {"kept": 1}, "stopped, the cycle keeps the branch and its pull request for a person"
     heads = world.github.repos[(MINE.lower(), REPO)].heads
     assert heads["release/0.25.1"] == FIXED
-    second = continued(world)
-    assert second != first
+    continued(world)
     assert settle(world) == {"cleared": 1}
     assert "release/0.25.1" not in heads, "free: the second run's push of the same version is no push_conflict"
+    second = second_fix(world)
+    assert second != first
     assert world.github.deleted_branches == [(MINE, REPO, "release/0.25.1")]
     assert [item.state for item in pulls_of(world, "release/0.25.1")] == ["closed"]
     assert settle(world) == {"clean": 1}, "nothing is done twice"
@@ -571,13 +610,29 @@ def test_a_second_fix_run_of_the_same_red_tag_finds_release_branch_free_and_land
     assert settle(world) == {}, "the first run's branch is the second run's now: nothing of it is left behind"
 
 
-def test_a_release_branch_that_moved_since_the_refusal_is_left_as_it_is(world):
+def test_a_release_branch_that_moved_since_the_refusal_is_left_as_it_is_and_stops_the_cycle_again(world):
     refused_fix(world)
     continued(world)
     world.github.push(MINE, REPO, "release/0.25.1", PERSON)
+    rows = release_rows(world.db)
     assert settle(world) == {"kept": 1}
     assert world.github.deleted_branches == []
     assert [item.state for item in pulls_of(world, "release/0.25.1")] == ["open"]
+    found = cycle(world.db)
+    assert found["state"] == "stopped" and found["stop_cause"] == "refused" and "moved since" in found["stop_reason"]
+    assert release_rows(world.db) == rows, "no run pushes onto a branch a person works on"
+
+
+def test_a_person_who_merges_the_refused_pull_request_as_they_answer_continue_gets_it_tagged_and_no_run(world):
+    fix_id = refused_fix(world)
+    world.github.merge_by_hand(MINE, REPO, "release/0.25.1", "a-member", "9" * 40)
+    continued(world)  # cycle #41, run #12580: the run queued here pushed release/0.73.4 again, push_conflict
+    assert settle(world) == {"adopted": 1}
+    assert tag_of(world.github, "v0.25.1")[0] == "9" * 40
+    assert landed_row(world.db, fix_id)["tagged"] == "v0.25.1"
+    assert release_rows(world.db)[-1][0] == fix_id, "no run: the cycle follows the CI of v0.25.1"
+    ci(world, "v0.25.1", "9" * 40)
+    assert watch(world) == {"published": 1}
 
 
 def test_a_pull_request_a_person_merged_after_a_refusal_is_tagged_by_the_hub_and_followed(world):
