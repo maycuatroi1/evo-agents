@@ -288,6 +288,8 @@ def test_the_infra_rules_name_a_lost_runner_the_network_while_installing_and_pyp
     assert release_ci.infra_rule(logged("ERROR: HTTP error 503 while getting https://files.pythonhosted.org/x")) == (
         "pypi_5xx"
     )
+    lag = "  cause: Because there is no version of core-plugins==2.9.1 and you require core-plugins==2.9.1"
+    assert release_ci.infra_rule(logged("error: No solution found when resolving dependencies", lag)) == "index_lag"
     assert release_ci.infra_rule(PYTEST_LOG) is None
     infra = release_ci.job_failure({"name": "build", "conclusion": "failure"}, INFRA_LOG)
     tested = release_ci.job_failure({"name": "ci / test", "conclusion": "failure"}, PYTEST_LOG + "\n" + INFRA_LOG)

@@ -15,8 +15,9 @@ A red tag's failure is read from its failed jobs (FAILED_CONCLUSIONS, at most MA
 LOG_TAIL_BYTES of its log (``job_failure``): the ids of the tests that failed (``failed_tests``: the node ids of
 pytest's FAILED and ERROR lines, the failed tests of Playwright's summary), else the job's name and the step that
 failed. A job whose log matches one of INFRA_RULES and names no test failed of the runner, the network while installing,
-or PyPI answering 5xx (``infra_rule``, rules on the log alone); a failure all of whose jobs did is the infrastructure's,
-and the hub runs the failed jobs again, INFRA_RERUNS times at most. Any other one queues a fix run with what it read
+PyPI answering 5xx, or a pinned version the index does not list yet (``infra_rule``, rules on the log alone); a
+failure all of whose jobs did is the infrastructure's, and the hub runs the failed jobs again, INFRA_RERUNS times at
+most. Any other one queues a fix run with what it read
 (``failures_text``), unless the same test id failed at the cycle's tag before (``same_tests``). A gate job (``gate``:
 ci-ok of ci.yml, whose log names no test and gives the result of each job it needs, one failed) is red whenever another
 job is, so its id and its log count only when every failed job is a gate (``summary``): else two unrelated failures
@@ -103,6 +104,14 @@ INFRA_RULES = (
         "pypi_5xx",
         re.compile(
             r"(?:pypi\.org|pythonhosted\.org)\S*[^\n]*\b5\d\d\b|\b5\d\d\b[^\n]*(?:pypi\.org|pythonhosted\.org)",
+            re.IGNORECASE,
+        ),
+    ),
+    (  # a pin to a version published a minute before: the index's CDN did not list it yet (v0.73.7, part 4/8 alone,
+        # two minutes after evo-agents-core-plugins 2.9.1 was uploaded); a pin that is wrong fails the run again after
+        "index_lag",
+        re.compile(
+            r"there is no version of \S+==\S+ and you require|No matching distribution found for \S+==\S+",
             re.IGNORECASE,
         ),
     ),
