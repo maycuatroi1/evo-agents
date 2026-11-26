@@ -1,4 +1,4 @@
-"""The commands of the org chart (``evo_agents.hub.cli.org``, ``.cli_autonomy``), as criterion a4 of plan org-chart
+"""The commands of the org chart (``evo_agents.hub.cli.org``, ``.cli.autonomy``), as criterion a4 of plan org-chart
 names them: `hub org show [--json]`, `hub org unit create|edit|archive`, `hub org seat add|edit|end` and
 `hub autonomy ceiling set`, over HTTP alone; a refusal of the hub prints its reason and exits non-zero.
 
@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from evo_agents.clikit import UsageError
 from evo_agents.hub.cli import org as cli_org
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import commands
@@ -116,9 +117,9 @@ def test_orgchart_cli_finds_a_seat_by_id_by_login_in_a_unit_or_primary_and_by_ag
         cli_org.find_seat(c, named(login="ivan", unit="lab"))
     with pytest.raises(HubError, match="no seat 99"):
         cli_org.find_seat(c, named(seat=99))
-    with pytest.raises(cli_org.Usage, match="--agent needs --project"):
+    with pytest.raises(UsageError, match="--agent needs --project"):
         cli_org.find_seat(c, named(agent="bot"))
-    with pytest.raises(cli_org.Usage, match="not both"):
+    with pytest.raises(UsageError, match="not both"):
         cli_org.find_seat(c, named(seat=1, login="lena"))
 
 

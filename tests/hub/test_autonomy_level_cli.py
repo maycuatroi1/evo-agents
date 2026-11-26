@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from evo_agents.clikit import UsageError
 from evo_agents.hub.autonomy_levels import CLASSES
 from evo_agents.hub.cli import autonomy as cli_autonomy
 from evo_agents.hub.contract import commands
@@ -60,9 +61,9 @@ def test_autonomy_level_show_prints_each_class_with_its_mode_and_source():
 def test_autonomy_level_pref_overrides_read_from_the_command_line_in_class_order():
     assert cli_autonomy.overrides(["K10=deny", "k6=ASK"]) == {"K6": "ask", "K10": "deny"}
     assert list(cli_autonomy.overrides(["K10=deny", "K6=ask"])) == ["K6", "K10"]
-    with pytest.raises(cli_autonomy.Usage, match="twice"):
+    with pytest.raises(UsageError, match="twice"):
         cli_autonomy.overrides(["K6=deny", "K6=ask"])
-    with pytest.raises(cli_autonomy.Usage, match="never takes ask"):
+    with pytest.raises(UsageError, match="never takes ask"):
         cli_autonomy.overrides(["K2=ask"])
 
 

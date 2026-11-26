@@ -12,22 +12,23 @@ Archived units and ended seats are left out unless ``--all``. ``--json`` prints 
 primary seat is meant. What a member may change is the hub's to decide: a refusal
 (403, 404, 409, 422) prints the hub's reason and exits 1.
 
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes) and ask the hub through
+:class:`~evo_agents.hub.cli.org.resources.OrgChart`; ``org worker`` is the group of ``evo_agents.hub.cli.org.workers``.
 Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
 from datetime import date
-from urllib.parse import quote
 
-from evo_agents.clikit import Legacy
-from evo_agents.hub.cli.base import client_command, print_json, signed_in
-from evo_agents.hub.cli.org.workers import register_workers
+from evo_agents.clikit import Arg, Group, Result, Text, UsageError
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.org.resources import OrgChart
+from evo_agents.hub.cli.org.workers import WORKER
 from evo_agents.hub.client import HubError
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.contract import returns_object
 
-EXIT_USAGE = 2
 LEVELS = ("A0", "A1", "A2", "A3", "A4", "A5")
 ROLES = ("lead", "member", "intern", "agent")
 # The keys of the hub's answers these commands print with --json (``evo_agents.hub.server.org_models``).
@@ -51,15 +52,8 @@ SEAT_KEYS = (
     "effective",
     "source",
 )
-
-
-class Usage(Exception):
-    """A command line the hub is not asked about; exit 2 with this sentence."""
-
-
-def _usage(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
+UNIT_OUTPUT = returns_object(*UNIT_KEYS, schema="OrgUnitView")
+SEAT_OUTPUT = returns_object(*SEAT_KEYS, schema="OrgSeatView")
 
 
 def _day(value: str | None, flag: str) -> str | None:
@@ -68,15 +62,7 @@ def _day(value: str | None, flag: str) -> str | None:
     try:
         return date.fromisoformat(value).isoformat()
     except ValueError:
-        raise Usage(f"{flag} takes a day as YYYY-MM-DD, not {value!r}") from None
-
-
-def _print(answer: dict, args, sentence: str) -> int:
-    if args.json:
-        print_json(answer)
-    else:
-        print(sentence)
-    return 0
+        raise UsageError(f"{flag} takes a day as YYYY-MM-DD, not {value!r}") from None
 
 
 # Reading
@@ -146,76 +132,113 @@ def tree_lines(chart: dict, every: bool = False, today: str | None = None) -> li
     return lines
 
 
-@client_command
-def cmd_show(args) -> int:
-    hub, _ = signed_in()
-    chart = hub.call("GET", "/v1/org")
-    if args.json:
-        print_json(chart)
-        return 0
-    print("\n".join(tree_lines(chart, args.all)))
+def holder_line(chart: dict) -> str:
+    """The last line of ``org show``: who the caller is and the level they act at."""
     viewer = chart["viewer"]
     role = "a hub admin" if viewer["admin"] else ("lead of " + ", ".join(viewer["leads"]) if viewer["leads"] else "")
-    print(
+    return (
         f"\nYou are {viewer['login']}{', ' + role if role else ''}: effective {viewer['effective']} "
         f"from {viewer['source']}."
     )
-    return 0
+
+
+class OrgShow(HubCommand):
+    name = "show"
+    help = "the tree of units and seats, with ceilings and effective levels"
+    arguments = (Arg("--all", action="store_true", help="archived units and ended seats too"),)
+    output = returns_object(*CHART_KEYS, schema="OrgChartView")
+
+    def run(self, ctx: HubContext) -> Result:
+        chart = OrgChart(ctx.hub).chart()
+        return Result(chart, Text("\n".join(tree_lines(chart, ctx.args.all)), holder_line(chart)))
 
 
 # Units
 
 
-def _unit_path(slug: str, rest: str = "") -> str:
-    return f"/v1/org/units/{quote(slug, safe='')}{rest}"
+def unit_body(args) -> dict:
+    """The body of POST /v1/org/units for the command line ``args``."""
+    body = {"slug": args.slug, "parent": args.parent, "kind": args.kind}
+    for key, value in (("name", args.name), ("ends_on", _day(args.ends_on, "--ends-on"))):
+        if value is not None:
+            body[key] = value
+    if args.level:
+        body["level"] = args.level
+    if args.note:
+        body["note"] = args.note
+    return body
 
 
-@client_command
-def cmd_unit_create(args) -> int:
-    try:
-        body = {"slug": args.slug, "parent": args.parent, "kind": args.kind}
-        for key, value in (("name", args.name), ("ends_on", _day(args.ends_on, "--ends-on"))):
-            if value is not None:
-                body[key] = value
-        if args.level:
-            body["level"] = args.level
-        if args.note:
-            body["note"] = args.note
-    except Usage as exc:
-        return _usage(str(exc))
-    hub, _ = signed_in()
-    unit = hub.call("POST", "/v1/org/units", body)
-    return _print(unit, args, f"Created {unit['kind']} {unit['slug']} below {unit['parent']}: {_unit_line(unit)}")
+def unit_changes(args) -> dict:
+    """The body of PATCH /v1/org/units/{slug}: what the command line changes; UsageError when it changes nothing."""
+    body: dict = {}
+    if args.name is not None:
+        body["name"] = args.name
+    if args.parent is not None:
+        body["parent"] = args.parent
+    if args.clear_ends_on:
+        body["ends_on"] = None
+    elif args.ends_on is not None:
+        body["ends_on"] = _day(args.ends_on, "--ends-on")
+    if not body:
+        raise UsageError("nothing to change: pass --name, --parent, --ends-on or --clear-ends-on")
+    if args.if_revision is not None:
+        body["if_revision"] = args.if_revision
+    return body
 
 
-@client_command
-def cmd_unit_edit(args) -> int:
-    try:
-        body: dict = {}
-        if args.name is not None:
-            body["name"] = args.name
-        if args.parent is not None:
-            body["parent"] = args.parent
-        if args.clear_ends_on:
-            body["ends_on"] = None
-        elif args.ends_on is not None:
-            body["ends_on"] = _day(args.ends_on, "--ends-on")
-        if not body:
-            raise Usage("nothing to change: pass --name, --parent, --ends-on or --clear-ends-on")
-        if args.if_revision is not None:
-            body["if_revision"] = args.if_revision
-    except Usage as exc:
-        return _usage(str(exc))
-    hub, _ = signed_in()
-    unit = hub.call("PATCH", _unit_path(args.slug), body)
-    return _print(unit, args, f"Changed unit {unit['slug']}, now at revision {unit['revision']}: {_unit_line(unit)}")
+class UnitCreate(HubCommand):
+    name = "create"
+    help = "a team or a cohort below a unit (admin, or a lead of a unit above)"
+    arguments = (
+        Arg("slug", metavar="SLUG", help="its name in commands: lowercase letters, digits and dashes"),
+        Arg("--parent", required=True, metavar="SLUG", help="the unit above it"),
+        Arg("--kind", required=True, choices=("team", "cohort"), help="a team, or a cohort with an end"),
+        Arg("--name", help="its name as people read it (default: the slug)"),
+        Arg("--ends-on", metavar="YYYY-MM-DD", help="a cohort's last day"),
+        Arg("--level", choices=LEVELS, help="its ceiling (default: A1 for a cohort, none for a team)"),
+        Arg("--note", help="why that ceiling, for its history"),
+    )
+    output = UNIT_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        body = unit_body(ctx.args)  # a wrong day is refused before the hub is asked
+        unit = OrgChart(ctx.hub).create_unit(body)
+        return Result(unit, Text(f"Created {unit['kind']} {unit['slug']} below {unit['parent']}: {_unit_line(unit)}"))
 
 
-@client_command
-def cmd_unit_archive(args) -> int:
-    hub, _ = signed_in()
-    unit = hub.call("POST", _unit_path(args.slug, "/archive"))
-    return _print(unit, args, f"Archived unit {unit['slug']}.")
+class UnitEdit(HubCommand):
+    name = "edit"
+    help = "change a unit's name, parent or end date"
+    arguments = (
+        Arg("slug", metavar="SLUG", help="the unit"),
+        Arg("--name", help="its new name"),
+        Arg("--parent", metavar="SLUG", help="move it below this unit"),
+    )
+    output = UNIT_OUTPUT
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        ends = parser.add_mutually_exclusive_group()
+        ends.add_argument("--ends-on", metavar="YYYY-MM-DD", help="a cohort's new last day")
+        ends.add_argument("--clear-ends-on", action="store_true", help="no last day")
+        parser.add_argument("--if-revision", type=int, metavar="N", help="refuse unless the unit is at revision N")
+
+    def run(self, ctx: HubContext) -> Result:
+        body = unit_changes(ctx.args)
+        unit = OrgChart(ctx.hub).edit_unit(ctx.args.slug, body)
+        said = f"Changed unit {unit['slug']}, now at revision {unit['revision']}: {_unit_line(unit)}"
+        return Result(unit, Text(said))
+
+
+class UnitArchive(HubCommand):
+    name = "archive"
+    help = "archive a unit with no unit below it and no live seat left"
+    arguments = (Arg("slug", metavar="SLUG", help="the unit"),)
+    output = UNIT_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        unit = OrgChart(ctx.hub).archive_unit(ctx.args.slug)
+        return Result(unit, Text(f"Archived unit {unit['slug']}."))
 
 
 # Seats
@@ -224,14 +247,14 @@ def cmd_unit_archive(args) -> int:
 def _person_or_agent(args) -> dict:
     if args.agent is not None:
         if args.login is not None:
-            raise Usage("name a person (LOGIN) or an agent (--agent), not both")
+            raise UsageError("name a person (LOGIN) or an agent (--agent), not both")
         if args.project is None:
-            raise Usage("--agent needs --project, the project of the agent profile")
+            raise UsageError("--agent needs --project, the project of the agent profile")
         return {"agent": args.agent, "project": args.project}
     if args.project is not None:
-        raise Usage("--project goes with --agent")
+        raise UsageError("--project goes with --agent")
     if args.login is None:
-        raise Usage("name a person (LOGIN) or an agent (--agent HANDLE --project P)")
+        raise UsageError("name a person (LOGIN) or an agent (--agent HANDLE --project P)")
     return {"login": args.login}
 
 
@@ -240,7 +263,7 @@ def find_seat(chart: dict, args) -> dict:
     when given, else the primary one."""
     if args.seat is not None:
         if args.login is not None or args.agent is not None:
-            raise Usage("name the seat by --seat or by its holder, not both")
+            raise UsageError("name the seat by --seat or by its holder, not both")
         for seat in chart["seats"]:
             if seat["id"] == args.seat:
                 return seat
@@ -266,25 +289,20 @@ def find_seat(chart: dict, args) -> dict:
     return live[0]
 
 
-@client_command
-def cmd_seat_add(args) -> int:
-    try:
-        body = {**_person_or_agent(args), "unit": args.unit, "role": args.role}
-        dates = (("starts_on", _day(args.starts_on, "--starts-on")), ("ends_on", _day(args.ends_on, "--ends-on")))
-        for key, value in (("reports_to", args.reports_to), ("sponsor", args.sponsor), *dates):
-            if value is not None:
-                body[key] = value
-        if args.primary:
-            body["primary"] = True
-    except Usage as exc:
-        return _usage(str(exc))
-    hub, _ = signed_in()
-    seat = hub.call("POST", "/v1/org/seats", body)
-    today = date.today().isoformat()
-    return _print(seat, args, f"Added to unit {seat['unit']} {_seat_line(seat, today)}")
+def seat_body(args) -> dict:
+    """The body of POST /v1/org/seats for the command line ``args``."""
+    body = {**_person_or_agent(args), "unit": args.unit, "role": args.role}
+    dates = (("starts_on", _day(args.starts_on, "--starts-on")), ("ends_on", _day(args.ends_on, "--ends-on")))
+    for key, value in (("reports_to", args.reports_to), ("sponsor", args.sponsor), *dates):
+        if value is not None:
+            body[key] = value
+    if args.primary:
+        body["primary"] = True
+    return body
 
 
-def _seat_changes(args) -> dict:
+def seat_changes(args) -> dict:
+    """The body of PATCH /v1/org/seats/{id}: what the command line changes; UsageError when it changes nothing."""
     body: dict = {}
     for key, value in (("role", args.role), ("sponsor", args.sponsor)):
         if value is not None:
@@ -302,132 +320,99 @@ def _seat_changes(args) -> dict:
     elif args.ends_on is not None:
         body["ends_on"] = _day(args.ends_on, "--ends-on")
     if not body:
-        raise Usage(
+        raise UsageError(
             "nothing to change: pass --role, --primary, --reports-to, --clear-reports-to, --sponsor, --starts-on, "
             "--ends-on or --clear-ends-on"
         )
     return body
 
 
-@client_command
-def cmd_seat_edit(args) -> int:
-    try:
-        body = _seat_changes(args)
-        hub, _ = signed_in()
-        seat = find_seat(hub.call("GET", "/v1/org"), args)
-    except Usage as exc:
-        return _usage(str(exc))
-    changed = hub.call("PATCH", f"/v1/org/seats/{seat['id']}", body)
-    today = date.today().isoformat()
-    return _print(changed, args, f"Changed {_seat_line(changed, today)}")
-
-
-@client_command
-def cmd_seat_end(args) -> int:
-    try:
-        hub, _ = signed_in()
-        seat = find_seat(hub.call("GET", "/v1/org"), args)
-    except Usage as exc:
-        return _usage(str(exc))
-    ended = hub.call("POST", f"/v1/org/seats/{seat['id']}/end")
-    return _print(ended, args, f"Ended seat {ended['id']} of {_holder(ended)} in unit {ended['unit']}.")
-
-
-# Ceilings
-
-
-# Registering
-
-
-def _holder_options(parser, required_unit: bool) -> None:
-    parser.add_argument("login", nargs="?", metavar="LOGIN", help="the person holding the seat")
-    parser.add_argument("--agent", metavar="HANDLE", help="the agent profile holding the seat, instead of a person")
-    parser.add_argument("--project", help="the project of the agent profile (with --agent)")
+def holder_args(required_unit: bool) -> tuple[Arg, ...]:
+    """The options that name the holder of a seat."""
     help_unit = "the unit of the seat" if required_unit else "the unit of the live seat meant (default: the primary)"
-    parser.add_argument("--unit", required=required_unit, metavar="SLUG", help=help_unit)
+    return (
+        Arg("login", nargs="?", metavar="LOGIN", help="the person holding the seat"),
+        Arg("--agent", metavar="HANDLE", help="the agent profile holding the seat, instead of a person"),
+        Arg("--project", help="the project of the agent profile (with --agent)"),
+        Arg("--unit", required=required_unit, metavar="SLUG", help=help_unit),
+    )
 
 
-def _seat_fields(parser, editing: bool) -> None:
-    parser.add_argument("--role", choices=ROLES, required=not editing, help="the role of the seat")
-    parser.add_argument("--reports-to", metavar="LOGIN", help="the person the seat reports to (an intern needs one)")
-    parser.add_argument("--sponsor", metavar="LOGIN", help="the person answering for an agent's seat")
-    parser.add_argument("--primary", action="store_true", help="make it the seat that decides the person's ceiling")
-    parser.add_argument("--starts-on", metavar="YYYY-MM-DD", help="its first day (default: today)")
-    parser.add_argument("--ends-on", metavar="YYYY-MM-DD", help="its last day")
-    if editing:
-        parser.add_argument("--clear-reports-to", action="store_true", help="report to nobody")
-        parser.add_argument("--clear-ends-on", action="store_true", help="no last day")
+def seat_field_args(editing: bool) -> tuple[Arg, ...]:
+    """The options that set the fields of a seat; ``editing`` adds those that clear one."""
+    fields = (
+        Arg("--role", choices=ROLES, required=not editing, help="the role of the seat"),
+        Arg("--reports-to", metavar="LOGIN", help="the person the seat reports to (an intern needs one)"),
+        Arg("--sponsor", metavar="LOGIN", help="the person answering for an agent's seat"),
+        Arg("--primary", action="store_true", help="make it the seat that decides the person's ceiling"),
+        Arg("--starts-on", metavar="YYYY-MM-DD", help="its first day (default: today)"),
+        Arg("--ends-on", metavar="YYYY-MM-DD", help="its last day"),
+    )
+    if not editing:
+        return fields
+    return (
+        *fields,
+        Arg("--clear-reports-to", action="store_true", help="report to nobody"),
+        Arg("--clear-ends-on", action="store_true", help="no last day"),
+    )
 
 
-def _register_units(osub) -> None:
-    unit = osub.add_parser("unit", help="create, change and archive the units of the org chart")
-    usub = unit.add_subparsers(dest="org_unit_command", required=True)
-
-    create = usub.add_parser("create", help="a team or a cohort below a unit (admin, or a lead of a unit above)")
-    create.add_argument("slug", metavar="SLUG", help="its name in commands: lowercase letters, digits and dashes")
-    create.add_argument("--parent", required=True, metavar="SLUG", help="the unit above it")
-    create.add_argument("--kind", required=True, choices=("team", "cohort"), help="a team, or a cohort with an end")
-    create.add_argument("--name", help="its name as people read it (default: the slug)")
-    create.add_argument("--ends-on", metavar="YYYY-MM-DD", help="a cohort's last day")
-    create.add_argument("--level", choices=LEVELS, help="its ceiling (default: A1 for a cohort, none for a team)")
-    create.add_argument("--note", help="why that ceiling, for its history")
-    json_option(create, returns_object(*UNIT_KEYS, schema="OrgUnitView"))
-    create.set_defaults(func=cmd_unit_create)
-
-    edit = usub.add_parser("edit", help="change a unit's name, parent or end date")
-    edit.add_argument("slug", metavar="SLUG", help="the unit")
-    edit.add_argument("--name", help="its new name")
-    edit.add_argument("--parent", metavar="SLUG", help="move it below this unit")
-    ends = edit.add_mutually_exclusive_group()
-    ends.add_argument("--ends-on", metavar="YYYY-MM-DD", help="a cohort's new last day")
-    ends.add_argument("--clear-ends-on", action="store_true", help="no last day")
-    edit.add_argument("--if-revision", type=int, metavar="N", help="refuse unless the unit is at revision N")
-    json_option(edit, returns_object(*UNIT_KEYS, schema="OrgUnitView"))
-    edit.set_defaults(func=cmd_unit_edit)
-
-    archive = usub.add_parser("archive", help="archive a unit with no unit below it and no live seat left")
-    archive.add_argument("slug", metavar="SLUG", help="the unit")
-    json_option(archive, returns_object(*UNIT_KEYS, schema="OrgUnitView"))
-    archive.set_defaults(func=cmd_unit_archive)
+SEAT_ID = Arg("--seat", type=int, metavar="ID", help="the seat by its id, instead of by its holder")
 
 
-def _register_seats(osub) -> None:
-    seat = osub.add_parser("seat", help="add, change and end the seats of people and agents in the org chart")
-    ssub = seat.add_subparsers(dest="org_seat_command", required=True)
+class SeatAdd(HubCommand):
+    name = "add"
+    help = "a seat for a person (LOGIN) or an agent profile (--agent, --project)"
+    arguments = (*holder_args(required_unit=True), *seat_field_args(editing=False))
+    output = SEAT_OUTPUT
 
-    add = ssub.add_parser("add", help="a seat for a person (LOGIN) or an agent profile (--agent, --project)")
-    _holder_options(add, required_unit=True)
-    _seat_fields(add, editing=False)
-    json_option(add, returns_object(*SEAT_KEYS, schema="OrgSeatView"))
-    add.set_defaults(func=cmd_seat_add)
-
-    edit = ssub.add_parser("edit", help="change a live seat's role, reports_to, sponsor or dates, or make it primary")
-    edit.add_argument("--seat", type=int, metavar="ID", help="the seat by its id, instead of by its holder")
-    _holder_options(edit, required_unit=False)
-    _seat_fields(edit, editing=True)
-    json_option(edit, returns_object(*SEAT_KEYS, schema="OrgSeatView"))
-    edit.set_defaults(func=cmd_seat_edit)
-
-    end = ssub.add_parser("end", help="end a seat now")
-    end.add_argument("--seat", type=int, metavar="ID", help="the seat by its id, instead of by its holder")
-    _holder_options(end, required_unit=False)
-    json_option(end, returns_object(*SEAT_KEYS, schema="OrgSeatView"))
-    end.set_defaults(func=cmd_seat_end)
+    def run(self, ctx: HubContext) -> Result:
+        body = seat_body(ctx.args)
+        seat = OrgChart(ctx.hub).add_seat(body)
+        today = date.today().isoformat()
+        return Result(seat, Text(f"Added to unit {seat['unit']} {_seat_line(seat, today)}"))
 
 
-def register_org(hsub) -> None:
-    group = hsub.add_parser("org", help="the org chart: units, the seats of people and agents, and their ceilings")
-    osub = group.add_subparsers(dest="org_command", required=True)
+class SeatEdit(HubCommand):
+    name = "edit"
+    help = "change a live seat's role, reports_to, sponsor or dates, or make it primary"
+    arguments = (SEAT_ID, *holder_args(required_unit=False), *seat_field_args(editing=True))
+    output = SEAT_OUTPUT
 
-    show = osub.add_parser("show", help="the tree of units and seats, with ceilings and effective levels")
-    show.add_argument("--all", action="store_true", help="archived units and ended seats too")
-    json_option(show, returns_object(*CHART_KEYS, schema="OrgChartView"))
-    show.set_defaults(func=cmd_show)
-
-    _register_units(osub)
-    _register_seats(osub)
-    register_workers(osub)
+    def run(self, ctx: HubContext) -> Result:
+        body = seat_changes(ctx.args)
+        chart = OrgChart(ctx.hub)
+        changed = chart.edit_seat(find_seat(chart.chart(), ctx.args)["id"], body)
+        today = date.today().isoformat()
+        return Result(changed, Text(f"Changed {_seat_line(changed, today)}"))
 
 
-# The node this module attaches, an adapter of its register function until its commands are classes.
-ORG = Legacy(register_org)
+class SeatEnd(HubCommand):
+    name = "end"
+    help = "end a seat now"
+    arguments = (SEAT_ID, *holder_args(required_unit=False))
+    output = SEAT_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        chart = OrgChart(ctx.hub)
+        ended = chart.end_seat(find_seat(chart.chart(), ctx.args)["id"])
+        return Result(ended, Text(f"Ended seat {ended['id']} of {_holder(ended)} in unit {ended['unit']}."))
+
+
+UNIT = Group(
+    "unit",
+    "create, change and archive the units of the org chart",
+    [UnitCreate(), UnitEdit(), UnitArchive()],
+    dest="org_unit_command",
+)
+SEAT = Group(
+    "seat",
+    "add, change and end the seats of people and agents in the org chart",
+    [SeatAdd(), SeatEdit(), SeatEnd()],
+    dest="org_seat_command",
+)
+ORG = Group(
+    "org",
+    "the org chart: units, the seats of people and agents, and their ceilings",
+    [OrgShow(), UNIT, SEAT, WORKER],
+)
