@@ -27,7 +27,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import kg_snapshots, runs, tables
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.listen import Listener
@@ -264,6 +264,8 @@ async def _claim_once(
         if gone is not None and await gone():
             raise ClaimAbandoned(run_id)  # leaving the block rolls the transaction back
     log.info("run claimed", extra={"run_id": run_id, "worker_id": worker_id, "runtime": runtime})
+    if kg_snapshots.serving is not None:  # the run's kg calls find its project's graph loading or held
+        kg_snapshots.serving.claimed(project_id)
     return spec
 
 
