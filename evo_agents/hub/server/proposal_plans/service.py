@@ -1,78 +1,62 @@
-"""An accepted proposal of the Curator as its plan. ``evo_agents.hub.server.changes`` moves the change on from there:
-the night shift's Builder, the pull request, the Judge, and the merge of a change of a tier the charter's auto_merge
-names.
-
-Accepting a proposal of a tier the charter's ``planned_tiers`` names (``proposals.planned_tiers_of``: tiers 0 to 2
-unless the charter names others, tier 3 included; ``proposals.answer_proposal_as``, on the web, the command line or
-Telegram) makes its draft a plan on the hub in the same transaction (``plan_from_proposal``), as the admin who
-accepted it, labelled as the proposal: the Curator's plan ``curator-<proposal>-<slug>``, in the repo the proposal
-names, on the branch ``curator/<proposal>-<slug>``, and a row of curator_changes, state ``planned``, with the line
-``planned`` in the proposal's ledger. A proposal that names several repos of the project, each on GitHub, becomes one
-plan in them all, owner before consumer by the project's seams (``change_repos``), and its change has a row of
-curator_change_repos per repo in that order. A proposal that names a repo the project does not have, one without an
-origin, or several repos one of which is not on GitHub cannot become one: its change is recorded ``open``, without a
-plan, with the reason and the line ``left_open``, and nothing of it runs. Either way the change is audited as curator.plan. Accepting a proposal of a
-tier the charter does not plan, tier 3 unless it names it, makes nothing: its owner alone makes the change.
-
-POST /v1/projects/{p}/curator/proposals/{id}/plan does the same for a proposal accepted without becoming a plan, such as
-one of tier 2 accepted while that tier still recorded the answer alone: for the project's admins (403 otherwise), on an
-accepted proposal of a tier the charter plans that has no change yet (409 with why for one that is not accepted, is of
-a tier the charter does not plan or has a live change already). It answers the change, planned or left open with the
-reason. A proposal whose change is stuck, ``open`` or ``closed`` with no plan, branch or pull request (one left open
-because its draft could not become a plan then, such as a draft in several repos before a plan could work in them),
-is planned again in that same row (``replan_stuck``; curator_changes holds one change a proposal): the change becomes
-``planned`` with its plan, its reason gone, and its ledger says which state the plan replaced. When the draft still
-cannot become a plan the route answers 409 with why and the change stays as it was.
-"""
+"""An accepted proposal of the Curator as its plan (``plan_from_proposal``), a stuck change planned again
+(``replan_stuck``), and POST .../proposals/{id}/plan, for the project's admins (``plan_proposal``); the routes of
+``evo_agents.hub.server.proposal_plans`` say when each happens."""
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import judge, tables
+from evo_agents.hub import judge
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, change_repos, probes
+from evo_agents.hub.server import change_repos, probes
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.errors import Conflict
+from evo_agents.hub.server.base.scope import Noun, ProjectScope
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.change_views import Change, change_view
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.proposal_models import ItemId
+from evo_agents.hub.server.plans.models import PLAN_CREATE, PlanError
+from evo_agents.hub.server.plans.service import schema_checked, store
+from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.proposal_plans.repository import STORE
 from evo_agents.hub.server.proposal_reads import readable_proposal
 from evo_agents.hub.server.proposals import planned_tiers_of
 from evo_agents.hub.server.protection import reason_line, repo_origins
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
 
 PLAN = "curator.plan"  # an accepted proposal became a plan: "<project>/<plan> proposal:<id> change:<id> branch=<b>"
 
-router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
+
+class CuratorAdmins(ProjectScope):
+    """The project's admins, who alone make an accepted proposal the Curator's plan by hand."""
+
+    def refusal(self, user: Principal, access: ProjectAccess) -> str | None:
+        if has_role(access.role, "admin"):
+            return None
+        held = access.role or "no role"
+        return (
+            f"making a proposal of project {access.name} the Curator's plan needs the admin role on it; you hold {held}"
+        )
+
+
+ADMINS = CuratorAdmins("admin", Noun("a proposal's plan", "the proposals' plans"))
 
 
 # An accepted proposal becomes a plan
 
 
 async def _record(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal, values: dict) -> int:
-    c = tables.curator_changes
     values = {"project_id": access.project_id, "proposal_id": proposal.id, "tier": proposal.tier, **values}
-    change_id = (await conn.execute(insert(c).values(**values).returning(c.c.id))).scalar_one()
+    change_id = await STORE.record(conn, values)
     plan = values.get("plan_id") or "no plan"
     branch = values.get("branch") or "-"
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=PLAN,
-        target=f"{access.name}/{plan} proposal:{proposal.id} change:{change_id} branch={branch}",
-        project_id=access.project_id,
-    )
+    target = f"{access.name}/{plan} proposal:{proposal.id} change:{change_id} branch={branch}"
+    await Auditor.of(conn, user, access).record(PLAN, target)
     return change_id
 
 
@@ -145,10 +129,10 @@ async def _make_plan(conn: AsyncConnection, access: ProjectAccess, user: Princip
         return f"repo {named[0]} has no origin a Builder could push a branch to"
     try:
         body, plan_id, branch, rows = await _plan_body(conn, access, proposal, draft, named)
-        plan_routes._schema_checked(body, plan_id)
+        schema_checked(body, plan_id)
         label = access.push_label(proposal.label)
         async with conn.begin_nested():  # a store refused after its insert takes nothing with it
-            stored = await plan_routes._store(
+            stored = await store(
                 conn,
                 access,
                 user,
@@ -157,12 +141,12 @@ async def _make_plan(conn: AsyncConnection, access: ProjectAccess, user: Princip
                 label=label,
                 body=body,
                 summary=f"made by the Curator from proposal #{proposal.id}",
-                action=plan_routes.PLAN_CREATE,
+                action=PLAN_CREATE,
                 made_by_curator=True,
             )
     except ValueError as exc:
         return str(exc)
-    except plan_routes.PlanError as exc:
+    except PlanError as exc:
         return exc.message
     except HTTPException as exc:
         return str(exc.detail)
@@ -206,7 +190,7 @@ def _stuck(found) -> bool:
     return found.state in STUCK_STATES and found.plan_id is None and found.branch is None and found.pr_number is None
 
 
-async def _refusal(conn: AsyncConnection, project_id: int, proposal, found) -> str | None:
+async def _unplanned(conn: AsyncConnection, project_id: int, proposal, found) -> str | None:
     """Why ``proposal`` does not become the Curator's plan now: it is not accepted, it promotes memories, its tier is
     not one the charter plans (tier 3 unless the charter names it), or it has a change ``found`` already that is not
     stuck (``_stuck``); None when it does."""
@@ -240,21 +224,14 @@ async def replan_stuck(conn: AsyncConnection, access: ProjectAccess, user: Princ
     if isinstance(made, str):
         return made
     rows = made.pop("rows")
-    c = tables.curator_changes
-    await conn.execute(
-        update(c).values(**made, state="planned", reason=None, updated_at=func.now()).where(c.c.id == found.id)
-    )
+    await STORE.planned(conn, found.id, made)
     if rows:
         await change_repos.record_repos(conn, access.project_id, found.id, rows, made["branch"])
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=PLAN,
-        target=f"{access.name}/{made['plan_id']} proposal:{proposal.id} change:{found.id} branch={made['branch']} "
-        f"replaces={found.state}",
-        project_id=access.project_id,
+    target = (
+        f"{access.name}/{made['plan_id']} proposal:{proposal.id} change:{found.id} branch={made['branch']} "
+        f"replaces={found.state}"
     )
+    await Auditor.of(conn, user, access).record(PLAN, target)
     await probes.attach(conn, proposal.id, found.id)
     await ledger_lines.append(
         conn,
@@ -279,34 +256,22 @@ async def replan_stuck(conn: AsyncConnection, access: ProjectAccess, user: Princ
     return None
 
 
-@router.post(
-    "/{project}/curator/proposals/{proposal_id}/plan", status_code=201, response_model=Change, responses=REFUSALS
-)
-async def plan_proposal(request: Request, project: ProjectName, proposal_id: ItemId, user: CurrentUser) -> Change:
-    """Make an accepted proposal of tier 0 to 2 that has no change yet, or a stuck one, the Curator's plan, as
-    accepting it does now; the project's admins alone may. The change: planned, or left open with why its draft
-    cannot become a plan."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        if not has_role(access.role, "admin"):
-            raise HTTPException(
-                403,
-                f"making a proposal of project {access.name} the Curator's plan needs the admin role on it; you hold "
-                f"{access.role or 'no role'}",
-            )
+async def plan_proposal(engine: AsyncEngine, user: Principal, project: str, proposal_id: int) -> Change:
+    """Make accepted proposal ``proposal_id`` that has no change yet, or a stuck one, the Curator's plan, as an admin
+    of the project; the change, planned or left open with why. 409 with why for a proposal that does not become one
+    (``_unplanned``), or whose stuck change still cannot."""
+    async with UnitOfWork(engine) as conn:
+        access = await ADMINS.check(conn, user, project)
         row = await readable_proposal(conn, access, proposal_id, None, user, lock=True)
-        c = tables.curator_changes
-        query = select(c.c.id, c.c.state, c.c.plan_id, c.c.branch, c.c.pr_number, c.c.reason)
-        found = (await conn.execute(query.where(c.c.proposal_id == row.id).with_for_update())).one_or_none()
-        why = await _refusal(conn, access.project_id, row, found)
+        found = await STORE.change_of(conn, row.id)
+        why = await _unplanned(conn, access.project_id, row, found)
         if why is not None:
-            raise HTTPException(409, f"{why}; nothing was made")
+            raise Conflict(f"{why}; nothing was made")
         if found is None:
             change_id = await plan_from_proposal(conn, access, user, row)
         elif (why := await replan_stuck(conn, access, user, row, found)) is not None:
-            raise HTTPException(
-                409,
-                f"proposal {row.id} still cannot become the Curator's plan: {why}; change #{found.id} stays {found.state}",
+            raise Conflict(
+                f"proposal {row.id} still cannot become the Curator's plan: {why}; change #{found.id} stays {found.state}"
             )
         else:
             change_id = found.id

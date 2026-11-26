@@ -14,8 +14,8 @@ from evo_agents.hub import curator, judge, runs, tables
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import audit, change_repos, merge_gate
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.change_views import change_of_plan, set_change
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.protection import (
     reason_line,
 )
@@ -148,8 +148,8 @@ async def _run_wait(conn: AsyncConnection, project_id: int, change, held) -> str
 async def _build_wait(conn: AsyncConnection, due, gate, change, runtime: str, *, curator_app: bool):
     """(the plan held, None) when the night shift may queue the Builder of planned ``change`` now; else (None, why)."""
     access = gate.access
-    held = await plan_routes._held(conn, access, change.plan_id)
-    if held is None or not access.visible(held.label, plan_routes._sink(access, None)):
+    held = await plan_service.held(conn, access, change.plan_id)
+    if held is None or not access.visible(held.label, plan_service.read_sink(access, None)):
         return (
             None,
             f"its plan {change.plan_id} is not on the hub, or {due.owner}, the night shift's owner, may not read it",
@@ -244,7 +244,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     if waiting is None:
         return None
     access, duty, charter = gate.access, gate.duty, due.body
-    held = await plan_routes._held(conn, access, waiting.plan_id)
+    held = await plan_service.held(conn, access, waiting.plan_id)
     if held is None:
         await set_change(conn, waiting.id, state="open", reason="its plan is no longer on the hub")
         return None

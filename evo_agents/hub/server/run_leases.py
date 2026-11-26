@@ -37,9 +37,9 @@ from evo_agents.hub.credentials import (
 )
 from evo_agents.hub.gateway_runs import GATEWAY
 from evo_agents.hub.server import kg_run_access
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser
@@ -154,7 +154,7 @@ async def run_credentials(
     project: ProjectName,
     run_id: RunId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> list[RunLease]:
     """Every lease the run got, given back or not, without a value; for the member who dispatched it."""
     async with request.app.state.engine.begin() as conn:

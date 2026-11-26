@@ -338,7 +338,7 @@ def _include_account_routes(app: FastAPI) -> None:
     ):
         app.include_router(routes)
 
-    from evo_agents.hub.server import plans
+    from evo_agents.hub.server.plans import routes as plans
 
     app.include_router(plans.router)
 
@@ -555,7 +555,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         probe_report,
         probe_routes,
         probe_runs,
-        proposal_plans,
         protection,
         replays,
         transcripts,
@@ -563,6 +562,7 @@ def _include_curator_routes(app: FastAPI) -> None:
         worker_shares,
     )
     from evo_agents.hub.server.history import routes as history_routes
+    from evo_agents.hub.server.proposal_plans import routes as proposal_plans
 
     for routes in (
         change_routes.router,
@@ -650,8 +650,6 @@ def _include_member_routes(app: FastAPI) -> None:
         opportunity_evidence,
         ops_actions,
         orchestrator_actions,
-        plan_run_choice,
-        plan_systems,
         plugin_chats_api,
         plugin_command_list,
         plugin_docs_api,
@@ -685,6 +683,8 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
+    from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.signals import routes as signals
 

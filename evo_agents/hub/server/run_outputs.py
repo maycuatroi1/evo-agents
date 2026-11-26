@@ -35,7 +35,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, chats, output_prune, outputs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, output_views
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Uploads
 from evo_agents.hub.server.chat_store import write_event as write_chat_event
@@ -54,6 +53,8 @@ from evo_agents.hub.server.output_store import (
     usage,
 )
 from evo_agents.hub.server.output_views import RunOutput
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.run_state import write_event
@@ -68,7 +69,7 @@ NO_QUESTION_OUTPUTS = "run {run} is a question run: it sends no outputs, only th
 OutputId = Annotated[int, Path(ge=1, le=MAX_ID)]
 READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 SEND_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422, 503)}
-Sink = Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)]
+Sink = Annotated[str | None, Header(alias=plan_models.SINK_HEADER)]
 
 router = APIRouter(prefix="/v1/projects", tags=["run outputs"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
@@ -129,7 +130,7 @@ async def show_settings(request: Request, project: ProjectName, user: CurrentUse
     """The project's switch of tool images and the limits of outputs, for any member of it."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        plan_routes._reader(access)
+        plan_service.reader(access)
         return _settings(access.name, await tool_images(conn, access.project_id))
 
 

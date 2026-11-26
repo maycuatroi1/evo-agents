@@ -55,7 +55,7 @@ from evo_agents.hub.server.loop.breaker import BREAKER_STATES
 from evo_agents.hub.server.loop.chain import LoopItemChain
 from evo_agents.hub.server.loop.items import LoopGoal, LoopItems
 from evo_agents.hub.server.loop.model import KINDS, STATES
-from evo_agents.hub.server.plans import SINK_HEADER
+from evo_agents.hub.server.plans.models import SINK_HEADER
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
 

@@ -44,9 +44,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.run_state import move_run, write_event
 from evo_agents.hub.server.runs.models import REFUSALS, Run, RunId
 from evo_agents.hub.server.runs.models.attachment_parts import SentFile
@@ -271,7 +271,7 @@ async def read_chat(
     project: ProjectName,
     run_id: RunId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> RunChat:
     """The chat of an author run: the agent's messages and its owner's, oldest first, and whose turn it is."""
     async with request.app.state.engine.begin() as conn:

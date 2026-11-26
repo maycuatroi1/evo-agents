@@ -40,9 +40,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.digest import MAX_NAME, SKILL_TOOL, TOOL_NAME
-from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.views import readable_run, visible_plans
@@ -226,7 +227,7 @@ async def run_tool_stats(
     project: ProjectName,
     run_id: RunId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> RunToolStats:
     """What the tool calls of run ``run_id`` came to, per tool."""
     r, s = tables.runs, tables.run_tool_stats
@@ -267,11 +268,11 @@ async def project_tool_stats(
     days: Annotated[
         int, Query(ge=1, le=MAX_STATS_DAYS, description="the last days in UTC to count, today included")
     ] = STATS_DAYS,
-    plan_id: Annotated[str | None, Query(pattern=plan_routes.PLAN_ID, description="the runs of this plan")] = None,
+    plan_id: Annotated[str | None, Query(pattern=PLAN_ID, description="the runs of this plan")] = None,
     runtime: Annotated[
         str | None, Query(pattern=runs.RUNTIME_NAME, description="the runs of this runtime, of the core or a plugin's")
     ] = None,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ProjectToolStats:
     """The tool figures of the runs of the plans the caller may read that ended in the last ``days`` days, per tool and
     runtime."""

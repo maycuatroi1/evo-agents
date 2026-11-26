@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Header, Query, Request
 
 from evo_agents.hub import runs
-from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.base.scope import Scope
 from evo_agents.hub.server.decisions.models import (
@@ -22,6 +22,7 @@ from evo_agents.hub.server.decisions.models import (
 )
 from evo_agents.hub.server.decisions.service import answers, asks, reads
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans.models import SINK_HEADER
 from evo_agents.hub.server.runs.models import MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.security import CurrentUser
 
@@ -45,10 +46,10 @@ async def list_decisions(
         Query(description="any of these states; repeat it"),
     ] = [],  # noqa: B006
     run_id: Annotated[int | None, Query(ge=1, le=MAX_ID)] = None,
-    plan_id: Annotated[str | None, Query(pattern=plan_routes.PLAN_ID)] = None,
+    plan_id: Annotated[str | None, Query(pattern=PLAN_ID)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> DecisionList:
     """The project's decisions, newest first, of the runs the caller may read."""
     return await reads.page(scope.conn, scope.user, scope.access, state, run_id, plan_id, limit, offset, sink)
@@ -63,7 +64,7 @@ async def show_decision(
     project: ProjectName,
     decision_id: DecisionId,
     scope: Reading,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> Decision:
     return await reads.shown(scope, decision_id, sink)
 

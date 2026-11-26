@@ -26,7 +26,7 @@ from sqlalchemy import select
 from evo_agents.hub import author, tables
 from evo_agents.hub.plans import MAX_PLAN_BYTES
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.plan_problems import NO_PROBLEMS
+from evo_agents.hub.server.plans.models import NO_PROBLEMS
 from tests.hub import live
 from tests.hub.live import ADMIN, sql
 from tests.hub.test_author_runs import author_worker, dispatched_author, publish_skill

@@ -59,11 +59,12 @@ from evo_agents.hub import transcripts as local
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import KIND_LIMITS
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.blobs import Mismatch, commit_uploads
 from evo_agents.hub.server.digests import BoundedRoute, SessionId
 from evo_agents.hub.server.errors import ErrorBody, error_response
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -486,7 +487,7 @@ async def list_transcripts(
     since: Annotated[AwareDatetime | None, Query(description="updated at or after this time")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     offset: Annotated[int, Query(ge=0, le=SCAN_ROWS)] = 0,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> TranscriptList:
     """The transcripts of the project the caller may read, the latest updated first."""
     t, u = tables.session_transcripts, tables.users
@@ -504,7 +505,7 @@ async def list_transcripts(
             query = query.where(t.c.updated_at >= since)
         query = query.order_by(t.c.updated_at.desc(), t.c.id.desc()).limit(SCAN_ROWS)
         rows = (await conn.execute(query)).all()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     visible = [TranscriptSummary(**row._mapping) for row in rows if access.visible(row.label, through)]
     return TranscriptList(transcripts=visible[offset : offset + limit], total=len(visible), limit=limit, offset=offset)
 
@@ -514,7 +515,7 @@ async def transcript_usage(
     request: Request,
     project: ProjectName,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> TranscriptUsage:
     """What the project's transcripts come to in the blob store, per member, with the retention: for a reader who
     reads the project's default label through the sink (the project's hub sink by default), as the night's figures
@@ -524,7 +525,7 @@ async def transcript_usage(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        if not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
+        if not plan_service.sees(access, access.rules.default_label, sink):
             raise HTTPException(404, f"project {project} has no usage of transcripts you may read through this sink")
         totals = select(
             func.count(func.distinct(t.c.session_id)).filter(live).label("sessions"),
@@ -570,7 +571,7 @@ async def show_session(
     project: ProjectName,
     session_id: SessionId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> SessionTranscripts:
     """The transcripts of session ``session_id`` the caller may read, with their parts."""
     t, u, p = tables.session_transcripts, tables.users, tables.transcript_parts
@@ -582,7 +583,7 @@ async def show_session(
             .join_from(t, u, u.c.id == t.c.user_id)
             .where(t.c.project_id == access.project_id, t.c.session_id == session_id)
         )
-        through = plan_routes._sink(access, sink)
+        through = plan_service.read_sink(access, sink)
         rows = [row for row in (await conn.execute(query)).all() if access.visible(row.label, through)]
         held = select(p).where(p.c.transcript_id.in_([row.id for row in rows])).order_by(p.c.transcript_id, p.c.seq)
         parts: dict[int, list[TranscriptPart]] = {}

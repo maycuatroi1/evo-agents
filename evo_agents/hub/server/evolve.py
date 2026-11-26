@@ -29,7 +29,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, evolve, runs, tables
 from evo_agents.hub.server import audit, evolve_report, evolve_runs, system_curation
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.change_views import charter_of
 from evo_agents.hub.server.errors import ErrorBody
@@ -49,6 +48,8 @@ from evo_agents.hub.server.evolve_models import (
     ReportIn,
     TaskInput,
 )
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import write_event
@@ -74,7 +75,7 @@ EvolveKey = Annotated[
         description="the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
     ),
 ]
-Sink = Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)]
+Sink = Annotated[str | None, Header(alias=plan_models.SINK_HEADER)]
 EvolveId = Annotated[int, Path(ge=1, le=MAX_ID)]
 
 
@@ -146,7 +147,7 @@ async def evolutions_of(
     if state is not None:
         query = query.where(e.c.state == state)
     rows = (await conn.execute(query.order_by(e.c.id.desc()).limit(limit))).all()
-    return [row for row in rows if access.visible(row.label, plan_routes._sink(access, sink) or "")]
+    return [row for row in rows if access.visible(row.label, plan_service.read_sink(access, sink) or "")]
 
 
 async def evolution_of(conn: AsyncConnection, access: ProjectAccess, evolve_id: int, sink: str | None):
@@ -154,7 +155,7 @@ async def evolution_of(conn: AsyncConnection, access: ProjectAccess, evolve_id: 
     e = tables.curator_evolve_runs
     query = select(e).where(e.c.id == evolve_id, e.c.project_id == access.project_id)
     row = (await conn.execute(query)).one_or_none()
-    if row is None or not access.visible(row.label, plan_routes._sink(access, sink) or ""):
+    if row is None or not access.visible(row.label, plan_service.read_sink(access, sink) or ""):
         raise HTTPException(404, f"project {access.name} has no evolution #{evolve_id}")
     return row
 

@@ -73,12 +73,13 @@ from evo_agents.hub.heap import give_back
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.kg import built_graphs
 from evo_agents.hub.server.kg_audience import agent_audience
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
@@ -686,7 +687,7 @@ async def show_kg_health(
     project: ProjectName,
     user: CurrentUser,
     limit: Annotated[int, Query(ge=HISTORY[0], le=HISTORY[1], description="measures and builds to list")] = HISTORY[2],
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> KgHealthView:
     """The health of the project's knowledge graph over time: its latest measures and its successful builds with what
     each covers, for a reader whose grant reaches the project's default label through the sink (the hub sink by
@@ -696,7 +697,7 @@ async def show_kg_health(
         access = await project_access(conn, user, project)
         if access.role is None:
             raise HTTPException(403, f"reading the Curator of project {access.name} needs a grant on it")
-        if not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
+        if not plan_service.sees(access, access.rules.default_label, sink):
             raise HTTPException(404, f"project {project} has no measure of its knowledge graph you can read")
         measures = await conn.execute(
             select(h.c.measured_at, h.c.build_id, h.c.error, h.c.body)

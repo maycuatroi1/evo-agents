@@ -35,8 +35,8 @@ from evo_agents.hub.cli import base
 from evo_agents.hub.cli.memory import MemoryRestore
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
 from evo_agents.hub.server import run_audience
-from evo_agents.hub.server.memories.service import upkeep as memory_upkeep
 from evo_agents.hub.server.change_tiers import GraphView
+from evo_agents.hub.server.memories.service import upkeep as memory_upkeep
 from evo_agents.hub.server.runs.service import run_specs
 from tests.hub import live
 from tests.hub.test_kg_audience import A, data, done, on_hub

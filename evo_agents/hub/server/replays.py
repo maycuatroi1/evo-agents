@@ -48,10 +48,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, replay, runs, tables
 from evo_agents.hub.server import audit, change_tiers
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import kind_cost
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
@@ -331,7 +332,7 @@ async def queue_replay(conn: AsyncConnection, due, gate) -> int | None:
         return None
     runtime = (due.body.get("builder") or {}).get("runtime") or curator.DEFAULT_RUNTIME
     for change in await _replayable(conn, due.project_id):
-        held = await plan_routes._held(conn, gate.access, change.plan_id)
+        held = await plan_service.held(conn, gate.access, change.plan_id)
         if held is None:
             continue
         await lock_plan(conn, due.project_id, change.plan_id)
@@ -555,7 +556,7 @@ async def tasks_of(conn: AsyncConnection, access: ProjectAccess, *, split: str |
     the count of each split)."""
     t = tables.replay_tasks
     rows = (await conn.execute(select(t).where(t.c.project_id == access.project_id).order_by(t.c.id))).all()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     readable = [row for row in rows if access.visible(row.label, through)]
     counts = {name: sum(row.split == name for row in readable) for name in replay.SPLITS}
     shown = [_task_view(row) for row in readable if split is None or row.split == split]
@@ -569,7 +570,7 @@ async def list_tasks(
     user: CurrentUser,
     split: Annotated[Split | None, Query(description="the tasks of this split alone")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_TASKS_LISTED)] = 100,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ReplayTaskList:
     """The project's suite of replay tasks, in the order they came in, of the plans the caller may read."""
     async with request.app.state.engine.begin() as conn:
@@ -588,7 +589,7 @@ async def change_replay(conn: AsyncConnection, access: ProjectAccess, change_id:
             .where(c.c.id == change_id, c.c.project_id == access.project_id)
         )
     ).one_or_none()
-    through = plan_routes._sink(access, sink)
+    through = plan_service.read_sink(access, sink)
     if change is None or not access.visible(change.label, through):
         raise HTTPException(404, f"project {access.name} has no change #{change_id} of the Curator you may read")
     rows = await conn.execute(
@@ -614,7 +615,7 @@ async def show_change_replay(
     project: ProjectName,
     change_id: Annotated[int, Path(ge=1, le=MAX_ID)],
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ChangeReplay:
     """A change's replays: each task, what arm a (the default branch's harness) and arm b (the change's) found."""
     async with request.app.state.engine.begin() as conn:

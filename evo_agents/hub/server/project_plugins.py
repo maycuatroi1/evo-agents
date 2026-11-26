@@ -20,9 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, tables
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plugin_configs import (
     EffectiveConfig,
     Place,
@@ -242,7 +242,7 @@ async def plugins_of_run(
     project: ProjectName,
     run_id: RunId,
     user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> list[RunPlugin]:
     """The plugins run ``run_id`` ran with, each with its version and the digest of its effective config, as a
     worker claimed it; empty for a run not claimed yet, or on a project with no plugin enabled."""

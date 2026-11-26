@@ -12,18 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.server.base.errors import NotFound
 from evo_agents.hub.server.base.scope import Noun, ProjectScope
 from evo_agents.hub.server.history import repository
+from evo_agents.hub.server.plans.service import read_sink as through
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.service.views import agent_reads, sees_unplanned, visible_plans
 from evo_agents.hub.server.security import MACHINE, Principal
 
 READERS = ProjectScope("reader", Noun("the Curator", "the Curator"))  # 403: "reading the Curator of project P needs..."
-
-
-def through(access: ProjectAccess, sink: str | None) -> str | None:
-    """The sink a read goes through: the one named, else the project's hub sink (as ``plans._sink``)."""
-    if sink:
-        return sink
-    return access.rules.hub_sink.sink if access.rules.hub_sink else None
 
 
 async def history_access(conn: AsyncConnection, user: Principal, project: str, sink: str | None) -> ProjectAccess:

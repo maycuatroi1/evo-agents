@@ -45,11 +45,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
 from evo_agents.hub.server import audit, chat_agents, orchestrator
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import put_agent
 from evo_agents.hub.server.chat_runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.plans import REFUSALS as PLAN_REFUSALS
+from evo_agents.hub.server.plans import models as plan_models
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import REFUSALS, AccountName, Rerun, RunId
@@ -438,17 +440,17 @@ async def _edit_plan(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) ->
         raise HTTPException(422, f"run {failed.id} has no plan to edit: it is a run that writes one; ask the owner")
     check_dispatcher(frame.access)
     await refuse_curator_plan(conn, frame.access, failed.plan_id)
-    held = await plan_routes._visible(conn, frame.access, failed.plan_id, None, lock=True)
+    held = await plan_service.visible(conn, frame.access, failed.plan_id, None, lock=True)
     if held.revision != body.if_revision:
-        raise plan_routes._stale(frame.access, held, body.if_revision)
+        raise plan_service.stale(frame.access, held, body.if_revision)
     edits = body.edits()
     new = _edited(held.body, edits)
     problems = triage_rules.edit_problems(held.body, new, _repos(failed))
     if problems:
-        raise plan_routes.PlanError(422, f"plan {held.plan_id}: {'; '.join(problems)}; nothing was written")
-    plan_routes._schema_checked(new, held.plan_id)
+        raise plan_models.PlanError(422, f"plan {held.plan_id}: {'; '.join(problems)}; nothing was written")
+    plan_service.schema_checked(new, held.plan_id)
     owner = Principal(frame.owner.user_id, frame.owner.login, False, frame.owner.token_id, MACHINE, "")
-    written = await plan_routes.write_plan(conn, frame.access, owner, new, if_revision=held.revision)
+    written = await plan_service.write_plan(conn, frame.access, owner, new, if_revision=held.revision)
     limit = min(OLD_VALUE_CHARS, OLD_VALUES_CHARS // len(edits))
     old = [_was(held.body["steps"][step_index(held.body, edit.step)], edit, limit) for edit in edits]
     return held.revision, written.revision, old
@@ -458,7 +460,7 @@ async def _edit_plan(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) ->
     "/runs/{run_id}/triage/plan",
     status_code=201,
     response_model=TriageActed,
-    responses={**REFUSALS, **plan_routes.REFUSALS},
+    responses={**REFUSALS, **PLAN_REFUSALS},
 )
 async def edit_plan(request: Request, run_id: RunId, body: TriagePlanIn, user: CurrentUser):
     """Change the ``verify`` or narrow the ``what`` of pending steps of the failed run's plan for its owner, one step or
@@ -476,8 +478,8 @@ async def edit_plan(request: Request, run_id: RunId, body: TriagePlanIn, user: C
             keys = ",".join(edit.step for edit in body.edits())
             tail = f" revision:{now}" + (f" rerun:{new_id}" if new_id else "")
             await _audit(conn, frame, audit.RUN_TRIAGE_PLAN_EDIT, f" step:{keys}{tail}")
-    except plan_routes.PlanError as exc:
-        return plan_routes._refusal(request, exc)
+    except plan_models.PlanError as exc:
+        return plan_service.refusal(request, exc)
     log.info("triage plan edit", extra={"run_id": frame.failed.id, "revision": now, "agent_run_id": run_id})
     return TriageActed(message_id=message_id, run_id=new_id, plan_revision=now)
 

@@ -23,7 +23,7 @@ the chat run; the hub runtime's tools call the same code (``hub_tools``):
   order a worker claims its queue in (``runs.service.priority.set_priority``); 409 for a run that is not queued. A
   ``run.queued_long`` item of the batch is the usual cause; a queued run of the project outside the batch is allowed.
 - POST /v1/worker/runs/{id}/ops/plan-dispatch: hand a stalled plan of the batch (a ``plan.stalled`` item) again to the
-  entry agent of the project's default system, as ``plan_systems.dispatch_to_system`` does for a person: in the name
+  entry agent of the project's default system, as ``plan_systems`` does for a person: in the name
   of the system's owner, the person at the origin of the ops thread's work, with the same refusals (409 for a plan a
   trace still runs, an active plan run or step run, no pending step, a plan the Curator made).
 """
@@ -39,10 +39,11 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import hub_events, review, runs, tables, triage_rules
-from evo_agents.hub.server import audit, ops_rules, orchestrator, orchestrator_actions, plan_systems, run_waits
+from evo_agents.hub.server import audit, ops_rules, orchestrator, orchestrator_actions, run_waits
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.orchestrator_actions import Frame, Reason
+from evo_agents.hub.server.plan_systems.service import dispatch_to_system
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.runs.service.priority import set_priority
@@ -283,7 +284,7 @@ async def plan_dispatch(
     project = (await conn.execute(select(p.c.name).where(p.c.id == batch.project_id))).scalar_one()
     slug = (await conn.execute(select(s.c.slug).where(s.c.id == frame.thread.system_id))).scalar_one()
     owner = await orchestrator.machine_person(conn, run.principal.user_id)
-    sent = await plan_systems.dispatch_to_system(conn, owner, project, body.plan_id, slug, public_url)
+    sent = await dispatch_to_system(conn, owner, project, body.plan_id, slug, public_url)
     count = await handled(conn, batch.id, kind=hub_events.PLAN_STALLED, subject=subject)
     line = (
         f"handed plan {body.plan_id} (revision {sent.plan_revision}) again to the entry agent of system {slug}, "

@@ -20,7 +20,7 @@ from sqlalchemy import Date, cast, func, insert, null, select
 from evo_agents.hub import tables
 from evo_agents.hub.runs import HELD_STATES, TERMINAL_STATES
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.plans import SINK_HEADER
+from evo_agents.hub.server.plans.models import SINK_HEADER
 from evo_agents.hub.server.runs.models import MAX_STATS_DAYS, MIN_STATS_DAYS, STATS_DAYS
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_plan_runs import plan_body

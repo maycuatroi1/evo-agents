@@ -32,8 +32,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import probes, review, runs, tables
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
+from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
@@ -155,7 +155,7 @@ async def assignments(
             .order_by(pw.c.change_id, pw.c.probe_id, pw.c.id)
         )
     ).all()
-    reader, through = Reader(conn, user), plan_routes._sink(access, None)
+    reader, through = Reader(conn, user), plan_service.read_sink(access, None)
     seen: dict[int, bool] = {}
     statuses: dict[date, dict] = {week: {} for week in weeks}
     found: dict[tuple, dict] = {}
