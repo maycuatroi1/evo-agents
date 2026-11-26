@@ -50,7 +50,9 @@ class _ReplayGit(Git):
 
     def fail(self, error: GitError) -> BaseException:
         if isinstance(error, GitFailed):
-            said = " ".join(error.stderr.decode(errors="replace").split())[-500:]
+            stderr = error.stderr
+            said = stderr if isinstance(stderr, str) else stderr.decode(errors="replace")
+            said = " ".join(said.split())[-500:]
             return gitops.GitError(f"git {error.command} failed: {said}")
         if isinstance(error, GitUnavailable):
             return error.cause
