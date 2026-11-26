@@ -1,5 +1,5 @@
 """``evo-agents hub srs list|show|import|export|submit|approve|reviews|withdraw|retire|archive|unarchive|findings|waive``
-(``evo_agents.hub.cli_srs``), as members run them against a hub that serves the core plugin srs: the commands and their
+(``evo_agents.hub.cli.srs``), as members run them against a hub that serves the core plugin srs: the commands and their
 ``--json`` keys are in the contract (seam hub-cli-v1), an import prints its preview and the problems that refuse it, an
 export writes the Markdown imported, approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins), a
 version in review is withdrawn by its author or an admin (criterion a2 of plan srs-document-lifecycle), an admin

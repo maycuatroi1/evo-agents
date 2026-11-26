@@ -9,7 +9,7 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli.plugin``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
+``cli.plugin``, ``srs`` by ``cli.srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli.canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
 ``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
 ``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
@@ -121,9 +121,9 @@ def _register_team_commands(hsub) -> None:
 
     MARKET.attach(hsub)
 
-    from evo_agents.hub.cli_srs import register_srs
+    from evo_agents.hub.cli.srs import SRS
 
-    register_srs(hsub)
+    SRS.attach(hsub)
 
     from evo_agents.hub.cli_docs import register_docs
 
@@ -133,9 +133,9 @@ def _register_team_commands(hsub) -> None:
 
     register_tasks(hsub)
 
-    from evo_agents.hub.cli_canvas import register_canvas
+    from evo_agents.hub.cli.canvas import CANVAS
 
-    register_canvas(hsub)
+    CANVAS.attach(hsub)
 
     from evo_agents.hub.cli_signals import register_signals
 
