@@ -81,13 +81,23 @@ async def one(conn: AsyncConnection, access: ProjectAccess, ref: str, *, lock: b
 
 async def listed(scope: Scope, status: str | None = None) -> list[Intake]:
     """The project's intakes, newest first; those of ``status`` alone when given."""
-    rows = await repository.listed(scope.conn, scope.access.project_id, status)
-    return [view(scope.access.name, row) for row in rows]
+    return await listed_in(scope.conn, scope.access, status)
+
+
+async def listed_in(conn: AsyncConnection, access: ProjectAccess, status: str | None = None) -> list[Intake]:
+    """``listed`` for a caller whose access is checked already (the MCP tool ``intake_list``)."""
+    rows = await repository.listed(conn, access.project_id, status)
+    return [view(access.name, row) for row in rows]
 
 
 async def shown(scope: Scope, ref: str) -> Intake:
     """Intake ``ref`` of the project; 404 when there is none."""
-    return view(scope.access.name, await one(scope.conn, scope.access, ref))
+    return await shown_in(scope.conn, scope.access, ref)
+
+
+async def shown_in(conn: AsyncConnection, access: ProjectAccess, ref: str) -> Intake:
+    """``shown`` for a caller whose access is checked already (the MCP tool ``intake_show``)."""
+    return view(access.name, await one(conn, access, ref))
 
 
 async def _audit(scope: Scope, action: str, number: int, what: str) -> None:

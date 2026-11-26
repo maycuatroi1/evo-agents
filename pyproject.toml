@@ -381,8 +381,6 @@ the routes. A new module of the package goes into one of the five layers. See do
 boundaries."""
 
 [[tool.importlinter.contracts]]
-
-[[tool.importlinter.contracts]]
 id = "hub-decisions-layers"
 name = "The decisions of a run go from their routes to their service to their repository to their models, never back"
 type = "layers"
