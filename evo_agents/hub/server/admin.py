@@ -58,13 +58,13 @@ from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
 from evo_agents.hub.server import audit, kg_scrub, org_store, route_autonomy
 from evo_agents.hub.server.auth import GrantInfo
+from evo_agents.hub.server.base.models import LOGIN_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.security import AdminUser, admin, admin_login
 from evo_agents.kg.policy import Policy
 
 PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as the projects table accepts it
-LOGIN_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
 SHA256 = r"^[0-9a-f]{64}$"
 MISSING = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 

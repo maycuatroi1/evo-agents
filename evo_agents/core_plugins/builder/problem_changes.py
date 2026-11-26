@@ -25,7 +25,7 @@ from evo_agents.core_plugins.builder.kinds import (
 )
 from evo_agents.hub import problems as model
 from evo_agents.hub.server import problem_evidence
-from evo_agents.hub.server import problems as routes
+from evo_agents.hub.server.problems import service as routes
 from evo_agents.hub.server.projects import ProjectAccess
 
 
@@ -129,7 +129,7 @@ async def _apply(w: Writing) -> int:
     the proposal's id; the problem's revision."""
     change, version = w.change, w.version
     if change.evidence_only:
-        await routes._lock(w.conn, w.access.project_id)
+        await routes.lock(w.conn, w.access.project_id)
     else:
         version = await _write(w, _body(change, w.target), w.version, w.note, f" proposal={w.proposal_id}")
     if change.evidence:
@@ -162,7 +162,7 @@ async def _roll_back(w: Writing) -> int:
     """The problem's next revision, a copy of revision ``applied - 1``; a problem the proposal made is dropped. The
     lines of evidence it made are taken away; a proposal of lines alone writes no revision."""
     if w.change.evidence_only:
-        await routes._lock(w.conn, w.access.project_id)
+        await routes.lock(w.conn, w.access.project_id)
         version = w.version
     else:
         version = await _roll_back_revision(w)

@@ -288,6 +288,51 @@ shape or a limit into the models. Other modules import the service and the model
 of the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-goals-layers"
+name = "The goals of a project go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.goals"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.goals a route handler only passes its Scope (evo_agents.hub.server.base.scope) and the \
+request's parts to a public function of the service, which checks and decides; the repository (GoalStore, a \
+RevisionedStore) reads and writes the tables; the models import none of them. Move the code that reaches up into \
+the layer that needs it: a check or a message into the service, a query into the repository, a shape or a limit into \
+the models. Other modules import the service and the models, never the routes. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-problems-layers"
+name = "The problems of a project go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.problems"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.problems a route handler only passes its Scope (evo_agents.hub.server.base.scope) and the \
+request's parts to a public function of the service, which checks and decides; the repository (ProblemStore, a \
+RevisionedStore) reads and writes the tables; the models import none of them. Move the code that reaches up into \
+the layer that needs it: a check or a message into the service, a query into the repository, a shape or a limit into \
+the models. Other modules import the service and the models, never the routes. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-opportunities-layers"
+name = "The opportunities of a project go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.opportunities"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.opportunities a route handler only passes its Scope (evo_agents.hub.server.base.scope) and the \
+request's parts to a public function of the service, which checks and decides; the repository (OpportunityStore, a \
+RevisionedStore) reads and writes the tables; the models import none of them. Move the code that reaches up into \
+the layer that needs it: a check or a message into the service, a query into the repository, a shape or a limit into \
+the models. Other modules import the service and the models, never the routes. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

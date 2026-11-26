@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing, refuse
 from evo_agents.hub import opportunities as model
-from evo_agents.hub.server import opportunities as routes
 from evo_agents.hub.server import opportunity_evidence as lines_of
+from evo_agents.hub.server.opportunities import service as routes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
@@ -139,7 +139,7 @@ async def apply(
     with the proposal's id; the opportunity's revision."""
     version = base
     if change.evidence_only:
-        await routes._lock(conn, access.project_id)
+        await routes.lock(conn, access.project_id)
     else:
         body = body_of(change.sets, change.unset, fields)
         note = f"proposal {proposal_id} of @builder: {change.summary}"
@@ -155,7 +155,7 @@ async def roll_back(
     """The opportunity's next revision, a copy of revision ``applied - 1``; an opportunity the proposal made is
     dropped. The lines it made are taken away; a proposal of lines alone writes no revision."""
     if change.evidence_only:
-        await routes._lock(conn, access.project_id)
+        await routes.lock(conn, access.project_id)
         held = await routes.found(conn, access.project_id, code)
         await lines_of.remove_proposed(conn, user, access, held.id, proposal_id)
         return applied

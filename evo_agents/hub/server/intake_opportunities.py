@@ -24,8 +24,8 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import intakes, opportunities, tables
-from evo_agents.hub.server import opportunities as routes
 from evo_agents.hub.server import opportunity_evidence as lines_of
+from evo_agents.hub.server.opportunities import service as routes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
@@ -145,7 +145,7 @@ async def _new(
     except ValidationError as exc:
         return [f"{name} {'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()]
     # the answers: the problems must exist, and a problem of another project needs the writer's grant on it
-    return [f"{name}: {why}" for why in (await routes._values(conn, user, access, body, None))[1]]
+    return [f"{name}: {why}" for why in (await routes.values(conn, user, access, body, None))[1]]
 
 
 def _summary(intake: str, candidate: Candidate) -> str:

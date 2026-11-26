@@ -49,12 +49,12 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import intakes, problems, tables, task_status
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import audit, intake_opportunities
-from evo_agents.hub.server import opportunities as project_opportunities
 from evo_agents.hub.server import problem_evidence as evidence
-from evo_agents.hub.server import problems as project_problems
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.opportunities import service as project_opportunities
 from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.problems import service as project_problems
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.tables_tasks import MAX_CAUSE_CHARS, MAX_TITLE_CHARS
@@ -578,8 +578,8 @@ async def start_intake(request: Request, project: ProjectName, body: IntakeStart
     """Start an intake: a writer of the project asks their session to read sources; it gets the next code I-<n>."""
     i = tables.intakes
     async with request.app.state.engine.begin() as conn:
-        access = await project_problems._writer(conn, user, project)
-        await project_problems._lock(conn, access.project_id)
+        access = await project_problems.writer(conn, user, project)
+        await project_problems.lock(conn, access.project_id)
         number = (
             int(
                 await conn.scalar(
@@ -607,15 +607,15 @@ async def put_intake(request: Request, project: ProjectName, ref: IntakeRef, bod
     i = tables.intakes
     try:
         async with request.app.state.engine.begin() as conn:
-            access = await project_problems._writer(conn, user, project)
-            await project_problems._lock(conn, access.project_id)
+            access = await project_problems.writer(conn, user, project)
+            await project_problems.lock(conn, access.project_id)
             row = await _one(conn, access, ref, lock=True)
             if row.status == intakes.DONE:
                 raise HTTPException(409, f"intake {ref} of project {access.name} was put already; nothing changed")
             reasons = _schema_reasons(body)
             if reasons:
                 raise _Wrong(reasons)
-            await project_opportunities._lock(conn, access.project_id)
+            await project_opportunities.lock(conn, access.project_id)
             reasons, candidates, chosen = [], [], []
             try:
                 candidates = await _candidates(conn, access, body)

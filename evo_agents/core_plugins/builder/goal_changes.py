@@ -23,7 +23,7 @@ from evo_agents.core_plugins.builder.kinds import (
     said_by_pydantic,
 )
 from evo_agents.hub import goals
-from evo_agents.hub.server import goals as project_goals
+from evo_agents.hub.server.goals import service as project_goals
 from evo_agents.hub.server.projects import ProjectAccess
 
 

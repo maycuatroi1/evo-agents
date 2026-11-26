@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, signals, tables
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import goals as project_goals
+from evo_agents.hub.server.goals import service as project_goals
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.signals import readable
 

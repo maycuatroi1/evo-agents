@@ -35,9 +35,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import problems, tables
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import problems as project_problems
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.problems import service as project_problems
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -162,7 +162,7 @@ def view(project: str, row) -> ProblemEvidence:
 
 async def listed(conn: AsyncConnection, access: ProjectAccess, ref: str) -> list[ProblemEvidence]:
     """The lines of problem ``ref``'s evidence by number; 404 when the project has no such problem."""
-    held = await project_problems._one(conn, access, ref)
+    held = await project_problems.one(conn, access, ref)
     e = tables.problem_evidence
     rows = (await conn.execute(_select().where(e.c.problem_id == held.id).order_by(e.c.number))).all()
     return [view(access.name, row) for row in rows]
@@ -288,9 +288,9 @@ async def add_evidence(
     """Add a line of evidence to a problem; a writer of the project may. 422 for a personal label or an excerpt of more
     than 300 characters, 409 for a line the problem has already."""
     async with request.app.state.engine.begin() as conn:
-        access = await project_problems._writer(conn, user, project)
-        await project_problems._lock(conn, access.project_id)
-        held = await project_problems._one(conn, access, ref)
+        access = await project_problems.writer(conn, user, project)
+        await project_problems.lock(conn, access.project_id)
+        held = await project_problems.one(conn, access, ref)
         try:
             (code,) = await add_lines(conn, user, access, held.id, [body])
         except HTTPException as exc:
@@ -319,9 +319,9 @@ async def confirm_evidence(
     e = tables.problem_evidence
     number = int(code[2:])
     async with request.app.state.engine.begin() as conn:
-        access = await project_problems._writer(conn, user, project)
-        await project_problems._lock(conn, access.project_id)
-        held = await project_problems._one(conn, access, ref)
+        access = await project_problems.writer(conn, user, project)
+        await project_problems.lock(conn, access.project_id)
+        held = await project_problems.one(conn, access, ref)
         row = (await conn.execute(_select().where(e.c.problem_id == held.id, e.c.number == number))).first()
         if row is None:
             raise HTTPException(404, f"problem {ref} of project {access.name} has no evidence {code}")

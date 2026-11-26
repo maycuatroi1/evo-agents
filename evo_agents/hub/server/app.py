@@ -642,7 +642,6 @@ def _include_member_routes(app: FastAPI) -> None:
         curator_threads,
         features,
         gateway_proxy,
-        goals,
         intake,
         kg_shared_pool_api,
         market,
@@ -652,7 +651,6 @@ def _include_member_routes(app: FastAPI) -> None:
         merge_judge,
         merge_view,
         model_catalog,
-        opportunities,
         opportunity_evidence,
         ops_actions,
         orchestrator_actions,
@@ -671,7 +669,6 @@ def _include_member_routes(app: FastAPI) -> None:
         plugin_ui,
         plugins,
         problem_evidence,
-        problems,
         project_admin,
         project_archive,
         project_plugins,
@@ -691,6 +688,9 @@ def _include_member_routes(app: FastAPI) -> None:
         work_cards,
         worker_autonomy,
     )
+    from evo_agents.hub.server.goals import routes as goals
+    from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.problems import routes as problems
 
     for routes in (
         secrets.router,

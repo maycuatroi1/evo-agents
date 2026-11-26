@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 
+from evo_agents.hub.server.base.errors import DomainError
+
 log = logging.getLogger(__name__)
 
 CODES = {
@@ -44,6 +46,15 @@ class ErrorBody(BaseModel):
     detail: list[dict] | None = None
 
 
+def refusals(*statuses: int) -> dict:
+    """The ``responses`` of a route that answers ``statuses`` with an ``ErrorBody``."""
+    return {status: {"model": ErrorBody} for status in statuses}
+
+
+READ_REFUSALS = refusals(403, 404)
+WRITE_REFUSALS = refusals(403, 404, 409, 422)
+
+
 def error_response(request: Request, status: int, message: str, *, detail=None, headers=None) -> JSONResponse:
     body = ErrorBody(
         error=CODES.get(status, f"http_{status}"),
@@ -57,6 +68,12 @@ def error_response(request: Request, status: int, message: str, *, detail=None, 
 async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
     message = exc.detail if isinstance(exc.detail, str) else HTTPStatus(exc.status_code).phrase
     return error_response(request, exc.status_code, message, headers=getattr(exc, "headers", None))
+
+
+async def domain_error(request: Request, exc: Exception) -> JSONResponse:
+    """A refusal of a domain (``evo_agents.hub.server.base.errors``): its status and its message."""
+    assert isinstance(exc, DomainError)
+    return error_response(request, exc.status_code, exc.message)
 
 
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -75,6 +92,7 @@ async def internal_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 def install(app: FastAPI) -> None:
+    app.add_exception_handler(DomainError, domain_error)
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)
     app.add_exception_handler(Exception, internal_error)
