@@ -22,7 +22,7 @@ from evo_agents.hub import browser_login, runs, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.server import agent_placement, audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.browser_identities import (
+from evo_agents.hub.server.browser.service.identities import (
     REFUSALS,
     BrowserIdentity,
     IdentityId,
@@ -32,7 +32,7 @@ from evo_agents.hub.server.browser_identities import (
     identity_view,
     identity_worker,
 )
-from evo_agents.hub.server.browser_profiles import locked
+from evo_agents.hub.server.browser.service.profiles import locked
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess, project_access

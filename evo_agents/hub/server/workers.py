@@ -84,8 +84,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import cache, runs, tables
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import audit, browser_install, credentials, update_now
+from evo_agents.hub.server import audit, credentials, update_now
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.browser.service import install as browser_install
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.run_reaper import release_runs

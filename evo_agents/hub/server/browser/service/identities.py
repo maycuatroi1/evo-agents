@@ -30,7 +30,7 @@ from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.browser_profiles import locked, retire_profiles
+from evo_agents.hub.server.browser.service.profiles import locked, retire_profiles
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal

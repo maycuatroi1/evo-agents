@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_login, runs, tables
-from evo_agents.hub.server.browser_leases import REFUSALS, set_needs_login, usable_identity
+from evo_agents.hub.server.browser.service.leases import REFUSALS, set_needs_login, usable_identity
 from evo_agents.hub.server.decisions.models import DecisionAsk, OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody

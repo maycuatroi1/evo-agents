@@ -19,7 +19,7 @@ if not pg.DSN:
 from sqlalchemy import select, update
 
 from evo_agents.hub import browser_archive, tables
-from evo_agents.hub.server import browser_leases
+from evo_agents.hub.server.browser.service import leases as browser_leases
 from tests.hub import test_run_cli
 from tests.hub.live import sql
 from tests.hub.test_browser_claim import add_browser_worker

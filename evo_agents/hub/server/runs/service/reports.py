@@ -19,7 +19,8 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import guard, ops_events, proofs, runs, spend_store, tables
-from evo_agents.hub.server import browser_install, token_strategy, update_now, worker_placement
+from evo_agents.hub.server import token_strategy, update_now, worker_placement
+from evo_agents.hub.server.browser.service import install as browser_install
 from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (

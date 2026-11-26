@@ -39,10 +39,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_archive, browser_login, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, browser_logins
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.browser_identities import STATUSES
-from evo_agents.hub.server.browser_profiles import (
+from evo_agents.hub.server.browser.service import logins as browser_logins
+from evo_agents.hub.server.browser.service.identities import STATUSES
+from evo_agents.hub.server.browser.service.profiles import (
     MAX_ARCHIVE_BYTES,
     ProfileConflict,
     ProfileTooLarge,

@@ -359,7 +359,9 @@ async def recover_runs(
 
     await question_dispatch.expire_queued(engine, batch, ended)  # a question run no worker claimed in time
     await open_threads(engine, github_app)
-    from evo_agents.hub.server import browser_install  # it reads queued runs through queue_fit
+    from evo_agents.hub.server.browser.service import (
+        install as browser_install,  # it reads queued runs through queue_fit
+    )
 
     await browser_install.ask_for_queued(engine)  # a queued browser run whose owner's worker lacks only Chromium
     from evo_agents.hub.server import ops_queue, system_seed  # plan hub-steward

@@ -99,7 +99,7 @@ if not pg.DSN:
 from sqlalchemy import insert, select  # noqa: E402
 
 from evo_agents.hub import tables  # noqa: E402
-from evo_agents.hub.server import browser_view  # noqa: E402
+from evo_agents.hub.server.browser.service import view as browser_view  # noqa: E402
 from evo_agents.hub.server.security import SELF_CHECKED_WEBSOCKETS, SESSION_COOKIE  # noqa: E402
 from tests.hub.live import sql  # noqa: E402
 from tests.hub.test_browser_claim import add_browser_worker  # noqa: E402

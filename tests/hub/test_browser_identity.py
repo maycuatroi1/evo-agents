@@ -24,9 +24,9 @@ from sqlalchemy import delete, func, select, update
 
 from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import KIND_LIMITS, blob_key
-from evo_agents.hub.server import browser_profiles as profiles
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.browser_identities import BrowserIdentity
+from evo_agents.hub.server.browser.service import profiles as profiles
+from evo_agents.hub.server.browser.service.identities import BrowserIdentity
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, Unsealable, browser_identity_aad
 from tests.hub import test_secrets_cli as secrets_cli
 from tests.hub.contract_keys import assert_json_keys

@@ -32,7 +32,7 @@ from evo_agents.hub import browser_archive, browser_login, profiles, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.browser_identities import (
+from evo_agents.hub.server.browser.service.identities import (
     MAX_DOMAINS,
     OWNERS,
     BrowserIdentityCreate,
@@ -43,15 +43,15 @@ from evo_agents.hub.server.browser_identities import (
     insert_identity,
     may_create,
 )
-from evo_agents.hub.server.browser_leases import (
+from evo_agents.hub.server.browser.service.leases import (
     REFUSALS,
     BrowserProfileLease,
     BrowserProfileSaved,
     ProfileRoute,
     lease_sealer,
 )
-from evo_agents.hub.server.browser_logins import open_session
-from evo_agents.hub.server.browser_profiles import (
+from evo_agents.hub.server.browser.service.logins import open_session
+from evo_agents.hub.server.browser.service.profiles import (
     MAX_ARCHIVE_BYTES,
     ProfileConflict,
     ProfileTooLarge,
