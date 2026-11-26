@@ -45,7 +45,9 @@ RESUME = "evo.resume_of_run_id"  # the attribute of an invoke_agent span of a ru
 ENDED_OK = ("done",)  # the end states of a run whose span is ok; the others are errors
 MAX_RESUMES = 50  # how far back the brief of a session is looked for
 KG_RESULTS = "evo.kg.results"  # the attribute of a kg span: how many results the query read (record_kg)
-PLAN_REF = re.compile(r"plan:([a-z0-9][a-z0-9-]{0,99})")  # a ref of a brief that names a plan (plans.PLAN_ID)
+# a ref of a brief that names a plan (plans.PLAN_ID), or one of its steps: plan:<id>/step:<key>, as the KG names a step
+PLAN_REF = re.compile(r"plan:([a-z0-9][a-z0-9-]{0,99})(?:/step:([A-Za-z0-9][A-Za-z0-9._-]{0,99}))?")
+STEP_REF = re.compile(r"step:([A-Za-z0-9][A-Za-z0-9._-]{0,99})")  # a step of the one plan the other refs name
 
 
 @dataclass(frozen=True)
@@ -504,14 +506,76 @@ async def take_plan(conn: AsyncConnection, run_id: int, plan_id: str) -> int | N
     return taken
 
 
+def _refs(brief: dict | None) -> list[str]:
+    refs = brief.get("refs") if isinstance(brief, dict) else None
+    return [ref.strip() for ref in refs or () if isinstance(ref, str)]
+
+
 def ref_plans(brief: dict) -> list[str]:
-    """The plans the refs of a brief name, ``plan:<id>``, in their order."""
+    """The plans the refs of a brief name, ``plan:<id>`` or ``plan:<id>/step:<key>``, in their order."""
     found = []
-    for ref in brief.get("refs") or ():
-        matched = PLAN_REF.fullmatch(ref.strip()) if isinstance(ref, str) else None
+    for ref in _refs(brief):
+        matched = PLAN_REF.fullmatch(ref)
         if matched and matched.group(1) not in found:
             found.append(matched.group(1))
     return found
+
+
+def ref_steps(brief: dict | None) -> frozenset[tuple[str, str]]:
+    """The plan steps the refs of a brief name, as (plan, step): ``plan:<id>/step:<key>``, and ``step:<key>`` beside
+    the one plan the other refs name. An ask that names a step gets a session of that step (``work_chats``) and is
+    rated at least as hard as it (``token_strategy``)."""
+    steps, bare = set(), []
+    for ref in _refs(brief):
+        if matched := PLAN_REF.fullmatch(ref):
+            if matched.group(2):
+                steps.add((matched.group(1), matched.group(2)))
+        elif matched := STEP_REF.fullmatch(ref):
+            bare.append(matched.group(1))
+    plans = ref_plans(brief or {})
+    if bare and len(plans) == 1:
+        steps.update((plans[0], key) for key in bare)
+    return frozenset(steps)
+
+
+async def plan_work(conn: AsyncConnection, run_id: int) -> list[tuple[int, str, str | None]]:
+    """The plan steps chat run ``run_id`` works on, as (project, plan, step): the steps the brief of its session names
+    (``ref_steps``), of the project of its trace, else of its own; else, for a run of the coordinator's session of a
+    trace that holds a plan (a plan handed to a system, ``plan_systems``), (the trace's project, the plan, None): every
+    open step of it. [] for a run that works on none."""
+    t, s, r, sy = tables.system_traces, tables.system_spans, tables.runs, tables.agent_systems
+    mine, first = tables.chat_messages.alias("mine"), tables.chat_messages.alias("first")
+    query = (
+        select(
+            t.c.project_id,
+            t.c.plan_id,
+            r.c.project_id.label("own_project_id"),
+            (
+                (sy.c.entry_profile_id == r.c.profile_id)
+                & (mine.c.chat_id == first.c.chat_id)
+                & (func.coalesce(mine.c.thread_root_id, mine.c.id) == func.coalesce(first.c.thread_root_id, first.c.id))
+            ).label("coordinates"),
+        )
+        .select_from(
+            r.outerjoin(s, and_(s.c.run_id == r.c.id, s.c.name == system_context.INVOKE))
+            .outerjoin(t, t.c.id == s.c.trace_id)
+            .outerjoin(sy, sy.c.id == t.c.system_id)
+            .outerjoin(mine, mine.c.id == r.c.chat_message_id)
+            .outerjoin(first, first.c.id == t.c.message_id)
+        )
+        .where(r.c.id == run_id)
+    )
+    row = (await conn.execute(query.limit(1))).one_or_none()
+    if row is None:
+        return []
+    briefed = await brief_of(conn, run_id)
+    named = ref_steps(briefed[0] if briefed is not None else None)
+    if named:
+        project_id = row.project_id if row.project_id is not None else row.own_project_id
+        return [(project_id, plan_id, step) for plan_id, step in sorted(named)]
+    if row.plan_id is not None and row.coordinates:
+        return [(row.project_id, row.plan_id, None)]
+    return []
 
 
 # Briefs

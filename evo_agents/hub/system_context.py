@@ -266,7 +266,8 @@ def system_lines(place: Place) -> list[str]:
         "- Ask only the agents you hand work to. An ask of another agent is refused unless you give `--reason WHY`; "
         "the hub then runs it and records it as off design, with your reason.",
         "- Give each ask a brief: `--goal` (what to reach), `--output` (what to send back) and `--done-when` (when "
-        "it is finished); add `--bounds` (what not to do) and `--ref` (repeatable) when they help.",
+        "it is finished); add `--bounds` (what not to do) and `--ref` (repeatable) when they help. For a plan step, "
+        "`--ref plan:<id>/step:<step>`: each step gets a session of its own.",
         f"- To pass an answer of a run you asked on to this thread as it is, use `{FORWARD_COMMAND} --run RUN` "
         "rather than retyping it.",
     ]

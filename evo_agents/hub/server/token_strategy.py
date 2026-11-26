@@ -6,8 +6,9 @@ rules), and keeps what it did on the run (``runs.routing``).
 model and whose agent profile does not pin one, while the project's policy has routing on:
 
 - it rates the run: a step by its plan (``rate_step``), any other run by its request or chat message and the role of its
-  agent (``rate_prompt``); a free prompt the rules cannot rate is left to the worker's scorer, unless ``routing.scorer``
-  is ``off``;
+  agent (``rate_prompt``), a chat run that works on plan steps at least as hard as the hardest of them (``with_steps``:
+  the coordinator of a plan handed to a system, its open steps; an ask that names a step, that step); a free prompt
+  the rules cannot rate is left to the worker's scorer, unless ``routing.scorer`` is ``off``;
 - a run whose run before it failed on easy or medium goes one level up: the run it retries or reruns, else the last run
   of the same step and kind (the next dispatch of the step);
 - it reads the quota of the run's subscription: the env accounts of a model the run may be leased (its agent's account
@@ -37,9 +38,10 @@ from evo_agents.hub import gateway_runs, model_router, profiles, tables
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.accounts import FIVE_HOUR, SEVEN_DAY, used_now, window_of
 from evo_agents.hub.model_router import NATIVE_RUNTIME, Choice, Quota, Rating
-from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import gateway_accounts
+from evo_agents.hub.plans import CLOSED_STEP_STATUSES, PlanProblem, step_index, step_key
+from evo_agents.hub.server import gateway_accounts, system_traces
 from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
+from evo_agents.hub.server.runs.service.views import current_plan
 
 MAX_RATED_CHARS = 20_000  # of a request or a chat message the rules read
 USED_UP = Quota(weekly_left=0.0, five_hour_used=1.0, known=True)  # every account of the subscription paused or cooling
@@ -124,11 +126,36 @@ def _role(row) -> str | None:
     return " ".join(str(row.profile.get(key) or "") for key in ("handle", "name")).strip() or None
 
 
+async def _steps_worked(conn: AsyncConnection, row) -> list[tuple[str, Rating]]:
+    """(key, rating) of each plan step chat run ``row`` works on (``system_traces.plan_work``): the steps its ask
+    names, or every open step of the plan handed to the system whose coordinator it is; a plan or step the hub lacks
+    counts for none."""
+    found, bodies = [], {}
+    for project_id, plan_id, key in await system_traces.plan_work(conn, row.id):
+        if (project_id, plan_id) not in bodies:
+            held = await current_plan(conn, project_id, plan_id)
+            bodies[project_id, plan_id] = held.body if held is not None and isinstance(held.body, dict) else None
+        body = bodies[project_id, plan_id]
+        if body is None:
+            continue
+        if key is not None:
+            step = _step_of(body, key)
+            found += [] if step is None else [(key, model_router.rate_step(step, body))]
+            continue
+        for index, step in enumerate(body.get("steps") or ()):
+            if isinstance(step, dict) and step.get("status") not in CLOSED_STEP_STATUSES:
+                found.append((step_key(step, index), model_router.rate_step(step, body)))
+    return found
+
+
 async def _rating(conn: AsyncConnection, row, plan: Mapping | None) -> Rating:
     step = _step_of(plan, row.step_key) if row.kind == "step" else None
     if step is not None:
         return model_router.rate_step(step, plan)
-    return model_router.rate_prompt(row.kind, await _text_of(conn, row), _role(row))
+    rating = model_router.rate_prompt(row.kind, await _text_of(conn, row), _role(row))
+    if row.kind != "chat":
+        return rating
+    return model_router.with_steps(rating, await _steps_worked(conn, row))
 
 
 async def _failed_before(conn: AsyncConnection, row) -> str | None:

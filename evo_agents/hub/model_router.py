@@ -15,6 +15,8 @@ While routing is on, the hub rates a run that names no model before its credenti
   without ``acceptance``) are hard; a step whose files are documents alone, or that exports or documents, is easy; any
   other step is medium;
 - a plan run is hard, an author run medium unless its request reads hard; a short question is easy;
+- a chat run that works on plan steps is at least as hard as the hardest of them (``with_steps``): the coordinator's
+  session of a plan handed to a system covers its open steps, an ask whose brief names a step that step;
 - a free prompt (a task, a chat turn, a long question) is rated by the words it holds, then by the role of its agent;
   one that says nothing either way is left to the scorer, one short turn on the worker when ``scorer`` is not ``off``,
   and is medium (FALLBACK) when it is.
@@ -216,6 +218,19 @@ def rate_prompt(kind: str, prompt: str, role: str | None = None) -> Rating:
     if role and EASY_ROLES.search(role):
         return Rating(EASY, "role", f"the run's agent {role} does easy work")
     return Rating(None, "scorer", "the prompt says nothing of its difficulty")
+
+
+def with_steps(rating: Rating, steps: list[tuple[str, Rating]]) -> Rating:
+    """``rating`` of a chat run's prompt, at least as hard as the hardest of ``steps``, the plan steps it works on
+    (key, ``rate_step``): a plan handed to a system, or an ask that names a step, is rated by its steps, not its
+    words, which speak of documents and exports whatever the steps change."""
+    rated = [(key, step) for key, step in steps if step.difficulty in LEVELS]
+    if not rated:
+        return rating
+    key, hardest = max(rated, key=lambda item: LEVELS.index(item[1].difficulty))
+    if rating.difficulty in LEVELS and LEVELS.index(rating.difficulty) >= LEVELS.index(hardest.difficulty):
+        return rating
+    return Rating(hardest.difficulty, "plan", f"the hardest plan step it works on, step {key}: {hardest.reason}")
 
 
 def escalate(level: str | None) -> str:

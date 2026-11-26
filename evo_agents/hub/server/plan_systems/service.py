@@ -62,8 +62,10 @@ def dispatch_text(plan_id: str, revision: int, link: str, slug: str, steps: list
             "2. Take the pending steps in the order their depends_on allows: a step is next once every step it "
             "depends on is done.",
             "3. Hand each step to the agents of the system along its interacts edges, with a brief: the goal, the "
-            "repo, the criteria, the verify command and when it is done. As you hand it, mark it in_progress with "
-            "plan_step, with a note naming the agent and its run, so the plan's page shows it moving.",
+            f"repo, the criteria, the verify command and when it is done, and `--ref plan:{plan_id}/step:<step>`. "
+            "Each step named so runs in a session of its own, so hand every ready step at once: they take the free "
+            "slots of the agent's pool. As you hand it, mark it in_progress with plan_step, with a note naming the "
+            "agent and its run, so the plan's page shows it moving.",
             "4. When a step's verify passes, mark it done with plan_step, with the evidence; a step that comes back "
             "unfinished goes back to pending, with a note saying why.",
             "5. Ask me about any decision you may not take yourself.",
