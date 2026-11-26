@@ -8,67 +8,55 @@ the machine token of ``evo-agents hub login`` (/v1/worker-pools, ``evo_agents.hu
   the pool's whole list, and ``--no-labels``, ``--no-taints`` and ``--no-accepted-findings`` empty one.
 - ``pool token create NAME``: a join token, ``evj_...``, printed once; ``pool token list NAME`` and ``pool token
   revoke NAME ID``.
-- ``pool user-data NAME``: a new join token, and the cloud-init user-data of a new machine of the pool on stdout:
-  ``deploy/worker/bootstrap.sh`` (shipped in the package as ``evo_agents/worker/bootstrap.sh``) with the hub and the
-  token written in. With ``--agent HANDLE`` (once per agent) instead of NAME: a join token for the pool
+- ``pool user-data NAME``: a new join token, and the cloud-init user-data of a new machine of the pool on stdout
+  (``pool_boot.render_user_data``). With ``--agent HANDLE`` (once per agent) instead of NAME: a join token for the pool
   ``agent-<handle>`` of each agent, and user-data that makes the machine hold one node per agent, each under its own
   Unix user ``evo-<handle>``.
 
 A machine joins a pool with ``evo-agents worker join --url URL --token evj_...``, or with the token in
-EVO_JOIN_TOKEN (``join_secret``), so it stays out of the shell's history and the process list. Each command prints
-its answer as JSON with ``--json``.
+EVO_JOIN_TOKEN (``pool_boot.join_secret``). Each command prints its answer as JSON with ``--json``. The commands are
+classes of ``evo_agents.clikit``; tests patch ``signed_in``.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import shlex
-import sys
-from importlib import resources
+from typing import TextIO
 
+from evo_agents.clikit import Arg, Group, Result, Stderr, Text, Verbatim, Views
 from evo_agents.hub.client import Hub, HubError, load_credentials
+from evo_agents.hub.runs import MAX_SLOTS
+from evo_agents.worker.cli.base import WorkerCommand, WorkerContext
+from evo_agents.worker.membership import array_of, object_of
+from evo_agents.worker.pool_boot import JOIN_TOKEN_ENV, bootstrap_script, render_user_data
 
-JOIN_TOKEN_ENV = "EVO_JOIN_TOKEN"
-AGENT_TOKENS_ENV = "EVO_AGENT_TOKENS"
 AGENT_POOL_PREFIX = "agent-"  # the pool of each agent: agent-<handle>
 POOLS = "/v1/worker-pools"
-BOOTSTRAP = "bootstrap.sh"  # in evo_agents.worker, a copy of deploy/worker/bootstrap.sh
-SETTINGS_MARK = "# evo-bootstrap settings:"
 
 
-def join_secret(args) -> tuple[str | None, str | None]:
-    """(code, token) of ``worker join``: its --code, or its --token, else EVO_JOIN_TOKEN; exactly one of them."""
-    token = args.token
-    if args.code is not None and token is not None:
-        raise HubError("give --code or --token, not both: a pairing code and a join token each join a machine alone")
-    if args.code is None and token is None:
-        token = os.environ.get(JOIN_TOKEN_ENV) or None
-        if token is None:
-            raise HubError(
-                f"give --code with a pairing code from the hub's web, or --token (or {JOIN_TOKEN_ENV}) with a pool's "
-                "join token from `evo-agents worker pool token create`"
-            )
-    return args.code, token
-
-
-def _hub() -> Hub:
+def signed_in() -> Hub:
+    """The hub as the member signed in on this machine."""
     credentials = load_credentials()
     return Hub(credentials.url, credentials.token)
 
 
-def _path(name: str, *rest) -> str:
+def path_of(name: str, *rest) -> str:
     return "/".join((POOLS, name, *map(str, rest)))
 
 
-def _printed(answer, args, text: str) -> int:
-    print(json.dumps(answer, indent=2) if args.json else text)
-    return 0
+class Answer(Result):
+    """The hub's answer and its text: ``--json`` prints the answer as JSON in ASCII, as the pool commands always did."""
+
+    def show(self, out: TextIO, as_json: bool) -> None:
+        if as_json:
+            print(json.dumps(self.data, indent=2), file=out)
+        else:
+            self.view.write(out)
 
 
-def _pool_text(pool: dict) -> str:
+def pool_text(pool: dict) -> str:
     lines = [
         f"Pool {pool['name']} (id {pool['id']}) of {pool['owner']}: projects {', '.join(pool['projects'])}, "
         f"{pool['slots']} slot(s) a node, offline nodes revoked after {pool['reap_after_days']} day(s)",
@@ -81,7 +69,15 @@ def _pool_text(pool: dict) -> str:
     return "\n".join(lines)
 
 
-def _settings(args) -> dict:
+def token_text(token: dict) -> str:
+    return (
+        f"{token['id']}  {token['status']}  {token['uses']}/{token['max_uses']} used  expires {token['expires_at']}"
+        f"  by {token['created_by']}"
+    )
+
+
+def settings_of(args) -> dict:
+    """The settings of a pool the command line ``args`` gives."""
     body = {}
     if args.project:
         body["projects"] = list(dict.fromkeys(args.project))
@@ -96,143 +92,12 @@ def _settings(args) -> dict:
     return body
 
 
-def cmd_create(args) -> int:
-    answer = _hub().call("POST", POOLS, {"name": args.name, **_settings(args)})
-    return _printed(answer, args, f"Created pool {answer['name']}.\n{_pool_text(answer)}")
-
-
-def cmd_list(args) -> int:
-    answer = _hub().call("GET", POOLS)
-    text = "\n".join(_pool_text(pool) for pool in answer) or "No pools yet (`evo-agents worker pool create`)."
-    return _printed(answer, args, text)
-
-
-def cmd_show(args) -> int:
-    answer = _hub().call("GET", _path(args.name))
-    return _printed(answer, args, _pool_text(answer))
-
-
-def cmd_set(args) -> int:
-    body = _settings(args)
-    if not body:
-        raise HubError("name a setting to change: --project, --slots, --label, --taint, --accept-finding, ...")
-    answer = _hub().call("PATCH", _path(args.name), body)
-    text = f"{_pool_text(answer)}\nIts nodes take the new settings at their next heartbeat."
-    return _printed(answer, args, text)
-
-
-def cmd_delete(args) -> int:
-    _hub().call("DELETE", _path(args.name))
-    return _printed({"deleted": args.name}, args, f"Deleted pool {args.name} and its join tokens.")
-
-
-def _token_text(token: dict) -> str:
-    return (
-        f"{token['id']}  {token['status']}  {token['uses']}/{token['max_uses']} used  expires {token['expires_at']}"
-        f"  by {token['created_by']}"
-    )
-
-
-def cmd_token_create(args) -> int:
-    body = {"hours": args.hours, "max_uses": args.max_uses}
-    answer = _hub().call("POST", _path(args.name, "tokens"), body)
-    text = (
-        f"Join token {answer['id']} of pool {answer['pool']}, for {answer['max_uses']} machine(s) until "
-        f"{answer['expires_at']}; it is shown this once:\n{answer['token']}\n"
-        f"On each machine: {JOIN_TOKEN_ENV}=<token> evo-agents worker join --url <hub>"
-    )
-    return _printed(answer, args, text)
-
-
-def cmd_token_list(args) -> int:
-    answer = _hub().call("GET", _path(args.name, "tokens"))
-    text = "\n".join(_token_text(token) for token in answer) or f"Pool {args.name} has no join tokens."
-    return _printed(answer, args, text)
-
-
-def cmd_token_revoke(args) -> int:
-    answer = _hub().call("POST", _path(args.name, "tokens", args.id, "revoke"))
-    text = f"Revoked join token {answer['id']} of pool {answer['pool']}; the nodes that joined with it stay."
-    return _printed(answer, args, text)
-
-
-def bootstrap_script() -> str:
-    """The text of deploy/worker/bootstrap.sh, as the package ships it."""
-    return resources.files("evo_agents.worker").joinpath(BOOTSTRAP).read_text(encoding="utf-8")
-
-
-def render_user_data(
-    url: str, token: str | None, script: str | None = None, agent_tokens: dict[str, str] | None = None
-) -> str:
-    """The bootstrap script as cloud-init user-data: its settings line replaced with the hub and the join token, or,
-    with ``agent_tokens`` (handle to the join token of that agent's pool), the hub and one node per agent."""
-    script = bootstrap_script() if script is None else script
-    lines = script.splitlines(keepends=True)
-    marks = [index for index, line in enumerate(lines) if line.startswith(SETTINGS_MARK)]
-    if len(marks) != 1 or not lines[0].startswith("#!"):
-        raise HubError(f"{BOOTSTRAP} of this install has no single settings line; install evo-agents again")
-    if agent_tokens:
-        pairs = " ".join(f"{handle}={agent_token}" for handle, agent_token in agent_tokens.items())
-        secret = f"{AGENT_TOKENS_ENV}={shlex.quote(pairs)}\n"
-    else:
-        secret = f"{JOIN_TOKEN_ENV}={shlex.quote(token or '')}\n"
-    settings = (
-        f"{SETTINGS_MARK} written by `evo-agents worker pool user-data`; the join token is a secret\n"
-        f"EVO_HUB_URL={shlex.quote(url)}\n"
-        f"{secret}"
-    )
-    lines[marks[0]] = settings
-    return "".join(lines)
-
-
-def _agent_handles(values: list[str]) -> list[str]:
+def agent_handles(values: list[str]) -> list[str]:
     handles = list(dict.fromkeys(value.strip().lstrip("@").lower() for value in values))
     bad = [handle for handle in handles if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,26}", handle)]
     if bad:
         raise HubError(f"not an agent handle: {', '.join(bad)} (lower case letters, digits, - and _)")
     return handles
-
-
-def cmd_user_data_agents(args) -> int:
-    hub = _hub()
-    script = bootstrap_script()
-    tokens: dict[str, str] = {}
-    issued = []
-    for handle in _agent_handles(args.agent):
-        answer = hub.call(
-            "POST", _path(AGENT_POOL_PREFIX + handle, "tokens"), {"hours": args.ttl, "max_uses": args.max_nodes}
-        )
-        tokens[handle] = answer["token"]
-        issued.append(f"{answer['pool']} {answer['id']}")
-    sys.stdout.write(render_user_data(hub.url, None, script, tokens))
-    print(
-        f"The join tokens of {len(issued)} agent pool(s) are in this user-data until {answer['expires_at']}; keep it "
-        "as a secret, and revoke each with "
-        + ", ".join(f"`evo-agents worker pool token revoke {item}`" for item in issued)
-        + ".",
-        file=sys.stderr,
-    )
-    return 0
-
-
-def cmd_user_data(args) -> int:
-    if args.agent:
-        if args.name:
-            raise HubError("give a pool NAME or --agent, not both")
-        return cmd_user_data_agents(args)
-    if not args.name:
-        raise HubError("give a pool NAME, or --agent HANDLE for the nodes of agents")
-    hub = _hub()
-    script = bootstrap_script()
-    answer = hub.call("POST", _path(args.name, "tokens"), {"hours": args.ttl, "max_uses": args.max_nodes})
-    sys.stdout.write(render_user_data(hub.url, answer["token"], script))
-    print(
-        f"Join token {answer['id']} of pool {answer['pool']} is in this user-data, for {answer['max_uses']} "
-        f"machine(s) until {answer['expires_at']}; keep it as a secret, and revoke it with "
-        f"`evo-agents worker pool token revoke {answer['pool']} {answer['id']}`.",
-        file=sys.stderr,
-    )
-    return 0
 
 
 def _int_in(low: int, high: int):
@@ -248,10 +113,13 @@ def _int_in(low: int, high: int):
     return parse
 
 
-def _setting_options(parser, *, create: bool) -> None:
-    from evo_agents.hub.runs import MAX_SLOTS
+JSON = Arg("--json", action="store_true", help="print the hub's answer as JSON")
+POOL_NAME = Arg("name", help="the pool")
 
-    parser.add_argument(
+
+def setting_args(*, create: bool) -> tuple[Arg, ...]:
+    """The options of a pool's settings, for ``pool create`` and ``pool set``."""
+    project = Arg(
         "--project",
         action="append",
         required=create,
@@ -259,82 +127,207 @@ def _setting_options(parser, *, create: bool) -> None:
         help="a project its nodes take runs of, with the writer role on it; repeat it for each one"
         + ("" if create else " (the whole list)"),
     )
-    parser.add_argument("--slots", type=_int_in(1, MAX_SLOTS), help=f"runs each node holds at once, 1 to {MAX_SLOTS}")
-    parser.add_argument("--label", action="append", help="a label every node has, a word or key=value; repeat it")
-    parser.add_argument("--taint", action="append", help="a taint every node has; repeat it")
-    parser.add_argument(
-        "--accept-finding", action="append", metavar="CODE", help="a doctor finding a node may have; repeat it"
+    shared = (
+        project,
+        Arg("--slots", type=_int_in(1, MAX_SLOTS), help=f"runs each node holds at once, 1 to {MAX_SLOTS}"),
+        Arg("--label", action="append", help="a label every node has, a word or key=value; repeat it"),
+        Arg("--taint", action="append", help="a taint every node has; repeat it"),
+        Arg("--accept-finding", action="append", metavar="CODE", help="a doctor finding a node may have; repeat it"),
+        Arg(
+            "--reap-after-days", type=_int_in(1, 90), help="days a node stays offline before the hub revokes it (1-90)"
+        ),
     )
-    parser.add_argument(
-        "--reap-after-days", type=_int_in(1, 90), help="days a node stays offline before the hub revokes it (1-90)"
+    emptied = (
+        ()
+        if create
+        else tuple(
+            Arg(f"--no-{field}", action="store_true", help=f"empty the pool's {field.replace('-', ' ')}")
+            for field in ("labels", "taints", "accepted-findings")
+        )
     )
-    if not create:
-        for field in ("labels", "taints", "accepted-findings"):
-            parser.add_argument(
-                f"--no-{field}", action="store_true", help=f"empty the pool's {field.replace('-', ' ')}"
+    return (*shared, *emptied, JSON)
+
+
+class PoolCreate(WorkerCommand):
+    name = "create"
+    help = "create a pool that machines join with a join token"
+    word = "pool"
+    arguments = (
+        Arg("name", help="its name, unique among your pools; its nodes' names start with it"),
+        *setting_args(create=True),
+    )
+
+    def run(self, ctx: WorkerContext) -> Result:
+        answer = object_of(signed_in(), "POST", POOLS, {"name": ctx.args.name, **settings_of(ctx.args)})
+        return Answer(answer, Text(f"Created pool {answer['name']}.\n{pool_text(answer)}"))
+
+
+class PoolList(WorkerCommand):
+    name = "list"
+    help = "your pools and their nodes"
+    word = "pool"
+    arguments = (JSON,)
+
+    def run(self, ctx: WorkerContext) -> Result:
+        answer = array_of(signed_in(), "GET", POOLS)
+        text = "\n".join(pool_text(pool) for pool in answer) or "No pools yet (`evo-agents worker pool create`)."
+        return Answer(answer, Text(text))
+
+
+class PoolShow(WorkerCommand):
+    name = "show"
+    help = "one of your pools and its nodes"
+    word = "pool"
+    arguments = (Arg("name"), JSON)
+
+    def run(self, ctx: WorkerContext) -> Result:
+        answer = object_of(signed_in(), "GET", path_of(ctx.args.name))
+        return Answer(answer, Text(pool_text(answer)))
+
+
+class PoolSet(WorkerCommand):
+    name = "set"
+    help = "change a pool's settings; its nodes take them at their next heartbeat"
+    word = "pool"
+    arguments = (Arg("name"), *setting_args(create=False))
+
+    def run(self, ctx: WorkerContext) -> Result:
+        body = settings_of(ctx.args)
+        if not body:
+            raise HubError("name a setting to change: --project, --slots, --label, --taint, --accept-finding, ...")
+        answer = object_of(signed_in(), "PATCH", path_of(ctx.args.name), body)
+        return Answer(answer, Text(f"{pool_text(answer)}\nIts nodes take the new settings at their next heartbeat."))
+
+
+class PoolDelete(WorkerCommand):
+    name = "delete"
+    help = "delete a pool with no live node, and its join tokens"
+    word = "pool"
+    arguments = (Arg("name"), JSON)
+
+    def run(self, ctx: WorkerContext) -> Result:
+        signed_in().call("DELETE", path_of(ctx.args.name))
+        name = ctx.args.name
+        return Answer({"deleted": name}, Text(f"Deleted pool {name} and its join tokens."))
+
+
+class TokenCreate(WorkerCommand):
+    name = "create"
+    help = "a join token, evj_..., printed once"
+    word = "pool"
+    arguments = (
+        POOL_NAME,
+        Arg("--hours", type=_int_in(1, 720), default=24, help="how long it works, 1 to 720 (default 24)"),
+        Arg("--max-uses", type=_int_in(1, 100), default=1, help="machines it joins, 1 to 100 (default 1)"),
+        Arg("--json", action="store_true", help="print the hub's answer, the token included, as JSON"),
+    )
+
+    def run(self, ctx: WorkerContext) -> Result:
+        body = {"hours": ctx.args.hours, "max_uses": ctx.args.max_uses}
+        answer = object_of(signed_in(), "POST", path_of(ctx.args.name, "tokens"), body)
+        text = (
+            f"Join token {answer['id']} of pool {answer['pool']}, for {answer['max_uses']} machine(s) until "
+            f"{answer['expires_at']}; it is shown this once:\n{answer['token']}\n"
+            f"On each machine: {JOIN_TOKEN_ENV}=<token> evo-agents worker join --url <hub>"
+        )
+        return Answer(answer, Text(text))
+
+
+class TokenList(WorkerCommand):
+    name = "list"
+    help = "the join tokens of a pool, without the tokens"
+    word = "pool"
+    arguments = (POOL_NAME, JSON)
+
+    def run(self, ctx: WorkerContext) -> Result:
+        answer = array_of(signed_in(), "GET", path_of(ctx.args.name, "tokens"))
+        text = "\n".join(token_text(token) for token in answer) or f"Pool {ctx.args.name} has no join tokens."
+        return Answer(answer, Text(text))
+
+
+class TokenRevoke(WorkerCommand):
+    name = "revoke"
+    help = "revoke a join token; the nodes that joined with it stay"
+    word = "pool"
+    arguments = (POOL_NAME, Arg("id", type=int, help="the token's id, from `pool token list`"), JSON)
+
+    def run(self, ctx: WorkerContext) -> Result:
+        answer = object_of(signed_in(), "POST", path_of(ctx.args.name, "tokens", ctx.args.id, "revoke"))
+        text = f"Revoked join token {answer['id']} of pool {answer['pool']}; the nodes that joined with it stay."
+        return Answer(answer, Text(text))
+
+
+class UserData(WorkerCommand):
+    name = "user-data"
+    help = "a new join token, and the cloud-init user-data that makes a new machine a node of the pool"
+    word = "pool"
+    arguments = (
+        Arg("name", nargs="?", help="the pool"),
+        Arg(
+            "--agent",
+            action="append",
+            default=[],
+            metavar="HANDLE",
+            help="instead of NAME: a node of this agent's pool agent-<handle>, under the Unix user evo-<handle> "
+            "(repeat for more agents on the machine)",
+        ),
+        Arg("--ttl", type=_int_in(1, 720), default=24, help="hours its join token works, 1 to 720 (default 24)"),
+        Arg("--max-nodes", type=_int_in(1, 100), default=1, help="machines its join token joins, 1 to 100 (default 1)"),
+    )
+
+    def run(self, ctx: WorkerContext) -> Result:
+        args = ctx.args
+        if args.agent:
+            if args.name:
+                raise HubError("give a pool NAME or --agent, not both")
+            return self.for_agents(args)
+        if not args.name:
+            raise HubError("give a pool NAME, or --agent HANDLE for the nodes of agents")
+        hub = signed_in()
+        script = bootstrap_script()
+        answer = object_of(hub, "POST", path_of(args.name, "tokens"), {"hours": args.ttl, "max_uses": args.max_nodes})
+        said = (
+            f"Join token {answer['id']} of pool {answer['pool']} is in this user-data, for {answer['max_uses']} "
+            f"machine(s) until {answer['expires_at']}; keep it as a secret, and revoke it with "
+            f"`evo-agents worker pool token revoke {answer['pool']} {answer['id']}`."
+        )
+        return Result(answer, Views(Verbatim(render_user_data(hub.url, answer["token"], script)), Stderr(Text(said))))
+
+    @staticmethod
+    def for_agents(args) -> Result:
+        """The user-data of a machine that holds one node per agent of ``--agent``."""
+        hub = signed_in()
+        script = bootstrap_script()
+        tokens: dict[str, str] = {}
+        issued = []
+        answer: dict = {}
+        for handle in agent_handles(args.agent):
+            answer = object_of(
+                hub,
+                "POST",
+                path_of(AGENT_POOL_PREFIX + handle, "tokens"),
+                {"hours": args.ttl, "max_uses": args.max_nodes},
             )
-    parser.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
+            tokens[handle] = answer["token"]
+            issued.append(f"{answer['pool']} {answer['id']}")
+        said = (
+            f"The join tokens of {len(issued)} agent pool(s) are in this user-data until {answer['expires_at']}; keep "
+            "it as a secret, and revoke each with "
+            + ", ".join(f"`evo-agents worker pool token revoke {item}`" for item in issued)
+            + "."
+        )
+        return Result(tokens, Views(Verbatim(render_user_data(hub.url, None, script, tokens)), Stderr(Text(said))))
 
 
-def register_pool(wsub) -> None:
-    from evo_agents.worker.cli_support import worker_command
-
-    pool = wsub.add_parser("pool", help="your worker pools and their join tokens (needs `hub login`)")
-    psub = pool.add_subparsers(dest="pool_command", required=True)
-    create = psub.add_parser("create", help="create a pool that machines join with a join token")
-    create.add_argument("name", help="its name, unique among your pools; its nodes' names start with it")
-    _setting_options(create, create=True)
-    create.set_defaults(func=worker_command(cmd_create))
-    listed = psub.add_parser("list", help="your pools and their nodes")
-    listed.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
-    listed.set_defaults(func=worker_command(cmd_list))
-    show = psub.add_parser("show", help="one of your pools and its nodes")
-    show.add_argument("name")
-    show.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
-    show.set_defaults(func=worker_command(cmd_show))
-    change = psub.add_parser("set", help="change a pool's settings; its nodes take them at their next heartbeat")
-    change.add_argument("name")
-    _setting_options(change, create=False)
-    change.set_defaults(func=worker_command(cmd_set))
-    gone = psub.add_parser("delete", help="delete a pool with no live node, and its join tokens")
-    gone.add_argument("name")
-    gone.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
-    gone.set_defaults(func=worker_command(cmd_delete))
-
-    token = psub.add_parser("token", help="the join tokens of a pool")
-    tsub = token.add_subparsers(dest="token_command", required=True)
-    made = tsub.add_parser("create", help="a join token, evj_..., printed once")
-    made.add_argument("name", help="the pool")
-    made.add_argument("--hours", type=_int_in(1, 720), default=24, help="how long it works, 1 to 720 (default 24)")
-    made.add_argument("--max-uses", type=_int_in(1, 100), default=1, help="machines it joins, 1 to 100 (default 1)")
-    made.add_argument("--json", action="store_true", help="print the hub's answer, the token included, as JSON")
-    made.set_defaults(func=worker_command(cmd_token_create))
-    tokens = tsub.add_parser("list", help="the join tokens of a pool, without the tokens")
-    tokens.add_argument("name", help="the pool")
-    tokens.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
-    tokens.set_defaults(func=worker_command(cmd_token_list))
-    revoke = tsub.add_parser("revoke", help="revoke a join token; the nodes that joined with it stay")
-    revoke.add_argument("name", help="the pool")
-    revoke.add_argument("id", type=int, help="the token's id, from `pool token list`")
-    revoke.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
-    revoke.set_defaults(func=worker_command(cmd_token_revoke))
-
-    data = psub.add_parser(
-        "user-data", help="a new join token, and the cloud-init user-data that makes a new machine a node of the pool"
-    )
-    data.add_argument("name", nargs="?", help="the pool")
-    data.add_argument(
-        "--agent",
-        action="append",
-        default=[],
-        metavar="HANDLE",
-        help="instead of NAME: a node of this agent's pool agent-<handle>, under the Unix user evo-<handle> "
-        "(repeat for more agents on the machine)",
-    )
-    data.add_argument(
-        "--ttl", type=_int_in(1, 720), default=24, help="hours its join token works, 1 to 720 (default 24)"
-    )
-    data.add_argument(
-        "--max-nodes", type=_int_in(1, 100), default=1, help="machines its join token joins, 1 to 100 (default 1)"
-    )
-    data.set_defaults(func=worker_command(cmd_user_data))
+TOKEN = Group(
+    "token",
+    "the join tokens of a pool",
+    (TokenCreate(), TokenList(), TokenRevoke()),
+    dest="token_command",
+)
+POOL = Group(
+    "pool",
+    "your worker pools and their join tokens (needs `hub login`)",
+    (PoolCreate(), PoolList(), PoolShow(), PoolSet(), PoolDelete(), TOKEN, UserData()),
+    dest="pool_command",
+)

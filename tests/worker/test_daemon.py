@@ -59,7 +59,7 @@ from evo_agents.hub.mirror import render
 from evo_agents.hub.server import command_dispatch, run_reaper
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
-from evo_agents.worker import doctor, list_cli
+from evo_agents.worker import doctor, worker_lines
 from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration
 from tests.hub.test_runs import OWNER, PLAN, PROJECT, WRITER, plan_body
@@ -838,8 +838,8 @@ def test_worker_list_shows_the_workers_of_the_hub_this_machine_is_signed_in_to(m
     locked = {**rows[0], "version_locked": True, "last_heartbeat_at": "2026-10-25T07:00:00Z"}
     waiting = {**rows[0], "self_update": {"state": "waiting", "reason": "it holds 1 run(s)"}}
     now = datetime.fromisoformat("2026-10-25T09:30:00Z")
-    assert "version locked" in list_cli.describe(locked, now) and "2h ago" in list_cli.describe(locked, now)
-    assert "self-update waiting (it holds 1 run(s))" in list_cli.describe(waiting, now)
+    assert "version locked" in worker_lines.describe(locked, now) and "2h ago" in worker_lines.describe(locked, now)
+    assert "self-update waiting (it holds 1 run(s))" in worker_lines.describe(waiting, now)
 
 
 def test_worker_projects_changes_the_projects_in_place_here_or_by_name_and_the_daemon_takes_them(

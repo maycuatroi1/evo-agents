@@ -92,9 +92,11 @@ def failure(
 
 
 class WorkerCommand(Command[WorkerContext]):
-    """A command of ``evo-agents worker`` on this machine. ``problems`` are more failures shown as ``error:
-    <message>`` and exit status 1; ``hub_failed`` is the status of every refusal of the hub, when not None."""
+    """A command of ``evo-agents worker`` on this machine. ``word`` is its word after ``worker`` when it is a
+    subcommand of one (``name`` when empty); ``problems`` are more failures shown as ``error: <message>`` and exit
+    status 1; ``hub_failed`` is the status of every refusal of the hub, when not None."""
 
+    word: ClassVar[str] = ""
     problems: ClassVar[tuple[type[Exception], ...]] = ()
     hub_failed: ClassVar[int | None] = None
 
@@ -102,7 +104,7 @@ class WorkerCommand(Command[WorkerContext]):
         return WorkerContext(args)
 
     def failed(self, exc: Exception) -> int | None:
-        return failure(exc, self.name, self.problems, self.hub_failed)
+        return failure(exc, self.word or self.name, self.problems, self.hub_failed)
 
 
 class AgentRunContext(WorkerContext):

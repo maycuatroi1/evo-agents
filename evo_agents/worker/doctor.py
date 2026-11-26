@@ -21,9 +21,10 @@ severity (high, medium, low), what was found and how to fix it:
   write it, since ``other-admin`` names them already.
 
 The service's PATH is the one the installed LaunchAgent or systemd unit sets, or else PATH as ``service install``
-would keep it. ``cmd_doctor`` exits 0 when no finding is high and 2 when one is. A check that cannot run, such as one
-whose tool is not on PATH, is listed as not checked and changes no exit status. ``evo-agents worker service install``
-runs the doctor, prints its high and medium findings as warnings, and installs all the same.
+would keep it. ``evo-agents worker doctor`` (``evo_agents.worker.cli.doctor``) exits 0 when no finding is high and 2
+when one is. A check that cannot run, such as one whose tool is not on PATH, is listed as not checked and changes no
+exit status. ``evo-agents worker service install`` runs the doctor, prints its high and medium findings as warnings,
+and installs all the same.
 
 The doctor reads the machine and changes nothing. It never prints a secret: a token or a key is named by its file or
 keychain item, and ``security`` is asked for the item's attributes only. Asking the hub whose ``~/.evo/hub/token`` it
@@ -708,37 +709,18 @@ def warnings(report: Report) -> list[str]:
     return lines
 
 
-def print_report(report: Report) -> None:
-    print(f"This machine as a worker, for {report.user} ({report.home}):")
+def report_lines(report: Report) -> list[str]:
+    """What ``evo-agents worker doctor`` prints of ``report`` without ``--json``."""
+    lines = [f"This machine as a worker, for {report.user} ({report.home}):"]
     for finding in report.ordered():
-        print(f"  {finding.severity} {finding.code}: {finding.detail}")
-        print(f"    fix: {finding.fix}")
-    for item in report.skipped:
-        print(f"  not checked: {item['code']}: {item['reason']}")
+        lines.append(f"  {finding.severity} {finding.code}: {finding.detail}")
+        lines.append(f"    fix: {finding.fix}")
+    lines += [f"  not checked: {item['code']}: {item['reason']}" for item in report.skipped]
     counts = report.counts()
     if not report.findings:
-        print("No finding.")
-        return
-    print(
+        return [*lines, "No finding."]
+    lines.append(
         f"{counts[HIGH]} high, {counts[MEDIUM]} medium, {counts[LOW]} low"
         + (": exit 2 while a finding is high." if counts[HIGH] else ".")
     )
-
-
-def cmd_doctor(args) -> int:
-    report = examine(Machine.here())
-    if args.json:
-        print(json.dumps(report.to_json(), ensure_ascii=False, indent=2))
-    else:
-        print_report(report)
-    return report.exit_status()
-
-
-def add_parser(wsub) -> None:
-    parser = wsub.add_parser(
-        "doctor",
-        help="what this machine holds that a worker should not: other administrators, a readable home, long-lived "
-        "credentials, a PATH others write; exits 2 when a finding is high",
-    )
-    parser.add_argument("--json", action="store_true", help="machine-readable output")
-    parser.set_defaults(func=cmd_doctor)
+    return lines

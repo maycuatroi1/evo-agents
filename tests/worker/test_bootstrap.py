@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.worker.browser.install import LINUX_PACKAGES
-from evo_agents.worker.pool_cli import JOIN_TOKEN_ENV, bootstrap_script, render_user_data
+from evo_agents.worker.pool_boot import JOIN_TOKEN_ENV, bootstrap_script, render_user_data
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "deploy" / "worker" / "bootstrap.sh"
@@ -144,7 +144,7 @@ def test_a_machine_that_is_not_a_worker_needs_the_hub_and_a_token(machine):
 
 def test_pool_user_data_makes_a_token_for_the_pool_and_prints_the_script(monkeypatch, capsys):
     from evo_agents.cli import build_parser
-    from evo_agents.worker import pool_cli
+    from evo_agents.worker.cli import pool
 
     calls = []
 
@@ -155,7 +155,7 @@ def test_pool_user_data_makes_a_token_for_the_pool_and_prints_the_script(monkeyp
             calls.append((method, path, body))
             return {"id": 7, "pool": "vps", "token": TOKEN, "max_uses": 3, "expires_at": "2026-10-26T00:00:00Z"}
 
-    monkeypatch.setattr(pool_cli, "_hub", FakeHub)
+    monkeypatch.setattr(pool, "signed_in", FakeHub)
     args = build_parser().parse_args(["worker", "pool", "user-data", "vps", "--ttl", "48", "--max-nodes", "3"])
     assert args.func(args) == 0
     out, err = capsys.readouterr()
@@ -182,7 +182,7 @@ def test_user_data_for_several_agents_holds_a_token_per_agent_and_no_single_toke
 
 def test_pool_user_data_with_agents_makes_a_token_for_each_agent_pool(monkeypatch, capsys):
     from evo_agents.cli import build_parser
-    from evo_agents.worker import pool_cli
+    from evo_agents.worker.cli import pool
 
     calls = []
 
@@ -194,7 +194,7 @@ def test_pool_user_data_with_agents_makes_a_token_for_each_agent_pool(monkeypatc
             pool = path.split("/")[3]
             return {"id": len(calls), "pool": pool, "token": f"evj_{pool}", "max_uses": 1, "expires_at": "2026-11-03"}
 
-    monkeypatch.setattr(pool_cli, "_hub", FakeHub)
+    monkeypatch.setattr(pool, "signed_in", FakeHub)
     args = build_parser().parse_args(["worker", "pool", "user-data", "--agent", "sandbox", "--agent", "@LMS"])
     assert args.func(args) == 0
     out, err = capsys.readouterr()
