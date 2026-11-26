@@ -158,7 +158,9 @@ class TriagePlan(ChatCommand):
     def check(self, args) -> None:
         stdin = [value for value in (args.edits, args.reason, args.verify, args.what) if value == "-"]
         if (args.step is None) == (args.edits is None) or (args.edits and (args.verify or args.what)) or len(stdin) > 1:
-            raise UsageError("give STEP with --verify or --what, or --edits FILE for several steps, not both; - (stdin) once")
+            raise UsageError(
+                "give STEP with --verify or --what, or --edits FILE for several steps, not both; - (stdin) once"
+            )
 
     def run(self, ctx: AgentRunContext) -> Result:
         args = ctx.args
@@ -221,7 +223,9 @@ class TriageAnswer(ChatCommand):
     def run(self, ctx: AgentRunContext) -> Result:
         ctx.check()
         answer = ctx.in_chats("triage/answer", {"text": _text(ctx.args.text), "reason": _text(ctx.args.reason)})
-        said = f"Answered: run #{answer['run_id']} has the answer; the Decision line is message #{answer['message_id']}."
+        said = (
+            f"Answered: run #{answer['run_id']} has the answer; the Decision line is message #{answer['message_id']}."
+        )
         return Result(answer, Text(said))
 
 
@@ -253,7 +257,9 @@ class TriageAskOwner(ChatCommand):
     help = "as the Orchestrator: ask the person at the origin of the work a decision"
     arguments = (
         Arg("--question", required=True, metavar="TEXT", help="the question (- for stdin)"),
-        Arg("--option", action="append", required=True, metavar="KEY=LABEL[:DESCRIPTION]", help="2 to 6 options; repeat"),
+        Arg(
+            "--option", action="append", required=True, metavar="KEY=LABEL[:DESCRIPTION]", help="2 to 6 options; repeat"
+        ),
         Arg("--context", metavar="TEXT", help="markdown the person reads with the question"),
         ORCHESTRATOR_REASON,
     )

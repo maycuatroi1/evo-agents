@@ -104,7 +104,11 @@ class ChatRead(ChatCommand):
     words = "chat read"
     help = "print a message of a chat whole, or its thread, as the run's agent may read it"
     arguments = (
-        Arg("message", metavar="MESSAGE", help="its id, or plugin.chats:message:<id> or plugin.chats:thread:<chat>/<root>"),
+        Arg(
+            "message",
+            metavar="MESSAGE",
+            help="its id, or plugin.chats:message:<id> or plugin.chats:thread:<chat>/<root>",
+        ),
         Arg("--thread", action="store_true", help="its thread: the first message and the replies"),
         Arg(
             "--fetch",
@@ -173,7 +177,12 @@ class ChatCreate(ChatCommand):
     help = "create a chat of the run's agent and the person who dispatched the run, who is told"
     arguments = (
         Arg("--title", required=True, help="the chat's title, one line"),
-        Arg("--person", action="append", metavar="LOGIN", help="add a person with a grant on the agent's project; repeat"),
+        Arg(
+            "--person",
+            action="append",
+            metavar="LOGIN",
+            help="add a person with a grant on the agent's project; repeat",
+        ),
         Arg(
             "--agent",
             action="append",
@@ -222,7 +231,9 @@ class ChatMention(ChatCommand):
             return Result(answer, Stderr(Text(f"error: @{handle} took no work: {answer['refusal']}")), EXIT_FAILED)
         group = answer.get("group_id")
         where = "" if group is None else f" of group chat #{group}, which the hub opened for this thread"
-        said = f"Handed the work to @{handle} in message #{message.get('id')}{where}: its run is #{answer.get('run_id')}."
+        said = (
+            f"Handed the work to @{handle} in message #{message.get('id')}{where}: its run is #{answer.get('run_id')}."
+        )
         return Result(answer, Text(said))
 
 

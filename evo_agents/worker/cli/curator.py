@@ -88,7 +88,11 @@ class CuratorDrop(AgentCommand):
     help = "inside the Builder of a Curator's change: close the change before its pull request opens, saying why"
     arguments = (
         Arg("--reason", required=True, metavar="TEXT", help="why the change is dropped, in one line"),
-        Arg("--note", metavar="TEXT", help="what the run measured, kept whole in the ledger line of the drop (- for stdin)"),
+        Arg(
+            "--note",
+            metavar="TEXT",
+            help="what the run measured, kept whole in the ledger line of the drop (- for stdin)",
+        ),
     )
 
     def run(self, ctx: AgentRunContext) -> Result:

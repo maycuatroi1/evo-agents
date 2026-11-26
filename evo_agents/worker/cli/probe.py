@@ -83,10 +83,10 @@ class ProbeAdd(AgentCommand):
         run_id = ctx.run_id
         probe = ctx.with_hub(lambda hub: hub.call("POST", f"/v1/worker/runs/{run_id}/probes", body))
         replaced = f", in place of probe #{args.replaces}" if args.replaces is not None else ""
-        said = f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}{replaced}."
+        said = (
+            f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}{replaced}."
+        )
         return Result(probe, Text(said))
 
 
-PROBE = Group(
-    "probe", "inside a review run: add a probe to a merged change that has none", [ProbeAdd()]
-)
+PROBE = Group("probe", "inside a review run: add a probe to a merged change that has none", [ProbeAdd()])

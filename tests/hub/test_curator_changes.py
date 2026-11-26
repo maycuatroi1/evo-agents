@@ -1714,23 +1714,25 @@ def test_drop_a_plan_run_of_no_curators_plan_is_refused(world):
 
 
 def test_worker_curator_drop_sends_the_reason_and_note_and_prints_one_line(monkeypatch, capsys):
-    from evo_agents.worker import curator_cli
+    from evo_agents.worker.cli.base import AgentRunContext
+    from evo_agents.worker.cli.curator import CuratorDrop
 
     sent = []
-    home = SimpleNamespace(load_config=lambda: "config", load_token=lambda: "token")
 
     def call(run, route, body):
         sent.append((run.run_id, run.kind, route, body))
         return {"id": 19, "state": "closed", "reason": DROPPED}
 
-    monkeypatch.setattr(curator_cli, "running_run", lambda command: (2277, home, {"kind": "plan"}))
-    monkeypatch.setattr(curator_cli, "call", call)
+    monkeypatch.setattr(AgentRunContext, "run_id", 2277)
+    monkeypatch.setattr(AgentRunContext, "record", {"kind": "plan"})
+    monkeypatch.setattr(AgentRunContext, "in_chats", lambda ctx, route, body: call(ctx, route, body))
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(MEASURED))
-    assert curator_cli.cmd_drop(SimpleNamespace(reason=DROPPED, note="-")) == 0
+    assert CuratorDrop()(SimpleNamespace(reason=DROPPED, note="-")) == 0
     assert sent == [(2277, "plan", "curator/drop", {"reason": DROPPED, "note": MEASURED})]
     assert capsys.readouterr().out.strip() == f"Change #19 is closed: {DROPPED}"
-    monkeypatch.setattr(curator_cli, "running_run", lambda command: (8, home, {"kind": "chat"}))
-    assert curator_cli.cmd_drop(SimpleNamespace(reason=DROPPED, note=None)) == 1
+    monkeypatch.setattr(AgentRunContext, "run_id", 8)
+    monkeypatch.setattr(AgentRunContext, "record", {"kind": "chat"})
+    assert CuratorDrop()(SimpleNamespace(reason=DROPPED, note=None)) == 1
     assert "is for the Builder of a Curator's change" in capsys.readouterr().err
     assert len(sent) == 1
 
