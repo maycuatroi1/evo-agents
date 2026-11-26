@@ -92,7 +92,7 @@ def _subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentP
 
 def _value_type(action: argparse.Action) -> str:
     from evo_agents.hub.cli import positive
-    from evo_agents.hub.run_cli_options import runtime_name
+    from evo_agents.hub.runs import runtime_name
 
     types = {
         None: "string",
@@ -156,9 +156,9 @@ def _command(parser: argparse.ArgumentParser) -> dict:
 
 def own_parser() -> argparse.ArgumentParser:
     """The CLI's parser as every machine builds it: the plugins' commands are those of the plugins installed with the
-    CLI, never the list a machine kept from its hub (``cli_plugin_commands.BUNDLED_ONLY``)."""
+    CLI, never the list a machine kept from its hub (``plugin_commands.BUNDLED_ONLY``)."""
     from evo_agents.cli import build_parser
-    from evo_agents.hub.cli_plugin_commands import BUNDLED_ONLY
+    from evo_agents.hub.plugin_commands import BUNDLED_ONLY
 
     token = BUNDLED_ONLY.set(True)
     try:

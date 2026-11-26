@@ -36,8 +36,6 @@ library only, like the rest of the client.
 
 from __future__ import annotations
 
-import argparse
-import re
 import sys
 
 from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H
@@ -45,11 +43,11 @@ from evo_agents.hub.runs import (
     APPROVALS,
     MODES,
     PLAN_TIMEOUT_CHOICES,
-    RUNTIME_NAME,
     RUNTIMES,
     SHOWN_KINDS,
     SHOWN_STATES,
 )
+from evo_agents.hub.runs import runtime_name as runtime_name  # the type of --runtime, which the contract knows
 
 REQUESTED_RUNTIMES = ("any", *RUNTIMES)
 RUNTIME_HELP = (
@@ -92,13 +90,6 @@ AGENT_HELP = (
     "the agent profile the run goes under, by handle, as `hub agent list` shows it; the hub refuses what it does not "
     "allow (default: the project's default agent, which allows everything)"
 )
-
-
-def runtime_name(value: str) -> str:
-    """``value`` as ``--runtime`` takes it: any, a runtime of the core, or a plugin's ``<plugin>/<name>``."""
-    if re.fullmatch(RUNTIME_NAME, value):
-        return value
-    raise argparse.ArgumentTypeError(f"{value!r} is not any, one of {', '.join(RUNTIMES)}, or <plugin>/<name>")
 
 
 def account_option(parser, help_text: str = ACCOUNT_HELP, *, agent: bool = True) -> None:

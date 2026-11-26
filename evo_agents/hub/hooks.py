@@ -817,15 +817,6 @@ def cmd_hook_session_end(args) -> int:
     return 0
 
 
-def register_plugin(hsub) -> None:
-    """The commands of the evo-hub plugin: its hooks, and ``hub send`` (``evo_agents.hub.local_send``), which sends a
-    session's files to its local run and which the hooks start in the background."""
-    from evo_agents.hub.local_send import register_send
-
-    register_hooks(hsub)
-    register_send(hsub)
-
-
 def register_hooks(hsub) -> None:
     hook = hsub.add_parser("hook", help="Claude Code hook entry points of the evo-hub plugin; they always exit 0")
     ksub = hook.add_subparsers(dest="hook_name", required=True)

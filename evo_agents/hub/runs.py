@@ -72,6 +72,7 @@ the database, not for this module.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import re
@@ -297,6 +298,14 @@ APPROVALS: tuple[str, ...] = get_args(Approval)
 # What a heartbeat answer carries: per run, whether to cancel, take over, hand back, open the terminal, park or end
 # an author run's chat (finish), how many inbox messages and open decisions it has; for the worker, whether to drain.
 CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish", "inbox", "decisions", "drain")
+
+
+def runtime_name(value: str) -> str:
+    """``value`` as ``--runtime`` takes it: any, a runtime of the core, or a plugin's ``<plugin>/<name>``."""
+    if re.fullmatch(RUNTIME_NAME, value):
+        return value
+    raise argparse.ArgumentTypeError(f"{value!r} is not any, one of {', '.join(RUNTIMES)}, or <plugin>/<name>")
+
 
 # a run waiting this long for its owner's answer is parked, so a worker's slot is held only while an answer may come
 # at once; one that waits only for a time or an event of the hub, later than this, is parked at once

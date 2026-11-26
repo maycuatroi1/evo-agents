@@ -13,9 +13,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evo_agents.clikit.json_output import json_option, returns_object
 from evo_agents.hub import credential_requests, decision_asks, proofs, runs
 from evo_agents.hub.client import HubError
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.plan_writes import PLAN_KEYS, WRITTEN
 from evo_agents.worker import (
     agent_ask_cli,
     backup_cli,
@@ -867,16 +868,12 @@ def _register_plan(wsub) -> None:
     plan = wsub.add_parser(
         "plan", help="inside a plan run or an author run: print the run's plan as the hub holds it now"
     )
-    from evo_agents.hub.plan_cli import PLAN_KEYS
-
     json_option(plan, returns_object(*PLAN_KEYS, schema="Plan"), help="the hub's answer as JSON")  # seam hub-cli-v1
     plan.set_defaults(func=cmd_plan)
 
 
 def _register_put(wsub) -> None:
     """The parser of `evo-agents worker put`."""
-    from evo_agents.hub.plan_cli import WRITTEN
-
     put = wsub.add_parser(
         "put",
         help="inside an author run: put the plan you wrote on the hub, as the member who asked for it; replacing it "

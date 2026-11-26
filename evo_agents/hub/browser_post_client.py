@@ -21,8 +21,7 @@ from urllib.parse import quote
 
 from evo_agents.hub.browser_post import PROFILES, Post, run_post, trim_session
 from evo_agents.hub.browser_post_pw import BrowserUnavailable, open_page
-from evo_agents.hub.cli_client import signed_in
-from evo_agents.hub.client import HubError
+from evo_agents.hub.client import HubError, signed_in
 
 PLUGIN = "marketing"
 OpenPage = Callable[..., object]

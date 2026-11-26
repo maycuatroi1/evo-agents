@@ -7,11 +7,11 @@ import functools
 import sys
 
 from evo_agents.hub.client import HubError, exit_status
+from evo_agents.worker.extra import EXTRA_HINT
 from evo_agents.worker.home import WorkerStateError
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
-EXTRA_HINT = "uv tool install 'evo-ak[worker]' (or python -m pip install 'evo-ak[worker]')"
 
 
 class MissingExtra(Exception):

@@ -7,10 +7,8 @@ plan on the hub; ``export`` writes the copies back into the harness (``evo_agent
 ``show`` and ``history`` read, and ``handoff`` prints what a new session needs to take a plan up, as the hub builds
 it within a token budget (``evo_agents.hub.handoff``), the same text as the MCP tool plan_handoff.
 
-A write the hub refuses with a revision conflict (someone changed the plan since it was read) is retried for
-``patch``, ``step`` and ``complete`` on the new revision, at most ATTEMPTS times, and only when the retry cannot
-undo the other change: a patch whose keys the other change set on the same item stops with an error instead, so
-no update is lost. ``put`` never retries; a replaced plan has to be read again by the person who wrote it.
+The writes themselves, and their retry on a revision conflict, are in ``evo_agents.hub.plan_writes``; ``put`` never
+retries, so a replaced plan has to be read again by the person who wrote it.
 
 Every command finds its project with ``--project``, or in the harness.yaml (``hub.project``) of the harness
 around the current directory. Standard library and PyYAML only, like the rest of the client.
@@ -19,7 +17,6 @@ around the current directory. Standard library and PyYAML only, like the rest of
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
@@ -28,36 +25,28 @@ from evo_agents.hub.cli_client import client_command, print_json, signed_in, tab
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, routing_line
-from evo_agents.hub.mirror import (
-    PLAN_ID,
-    export,
-    harness_project,
-    harness_root,
-    plans_path,
-    read_plan,
-    render,
-    write_copy,
+from evo_agents.hub.mirror import export, harness_project, harness_root, plans_path, render
+from evo_agents.hub.plan_writes import (  # noqa: F401 (moved there; the callers of plan_cli take them from here)
+    ATTEMPTS,
+    PLAN_KEYS,
+    REVISION_CONFLICT,
+    WRITTEN,
+    WRITTEN_KEYS,
+    ImportResult,
+    abandon_plan,
+    check_retry,
+    checked_plan_id,
+    complete_plan,
+    import_plans,
+    patch_item,
+    put_file,
+    reopen_plan,
+    write_plan,
 )
-from evo_agents.hub.plans import AREAS, SECTIONS, STEP_STATUSES, UPDATABLE, PlanProblem, step_index
+from evo_agents.hub.plans import AREAS, SECTIONS, STEP_STATUSES, UPDATABLE
 
-ATTEMPTS = 5  # writes sent for one patch or complete before a run of revision conflicts is reported
-REVISION_CONFLICT = "revision_conflict"
 SHOWN_WARNINGS = 5
 
-# The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
-PLAN_KEYS = (
-    "project",
-    "plan_id",
-    "area",
-    "revision",
-    "digest",
-    "label",
-    "body",
-    "created_at",
-    "updated_at",
-    "updated_by",
-)
-WRITTEN_KEYS = (*PLAN_KEYS, "created", "changed", "warnings")
 REVISION_KEYS = ("revision", "area", "digest", "summary", "actor", "created_at")
 SUMMARY_KEYS = (
     "plan_id",
@@ -85,7 +74,6 @@ HANDOFF_KEYS = (
     "recommended_model",
     "routing_reason",
 )
-WRITTEN = returns_object(*WRITTEN_KEYS, schema="evo_agents__hub__server__plans__Written")
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 
@@ -101,232 +89,12 @@ def project_of_args(args) -> str:
     return harness_project(root)
 
 
-def checked_plan_id(text: str) -> str:
-    if not PLAN_ID.fullmatch(text):
-        raise HubError(f"{text!r} is not a plan id (a-z, 0-9 and -)")
-    return text
-
-
 def _warnings(result: dict) -> None:
     warnings = result.get("warnings") or []
     for warning in warnings[:SHOWN_WARNINGS]:
         print(f"warning: {warning['path'] or '<root>'}: {warning['message']}")
     if len(warnings) > SHOWN_WARNINGS:
         print(f"... {len(warnings) - SHOWN_WARNINGS} more warning(s); `evo-agents harness validate -v` lists them")
-
-
-# Operations, each against one ``Hub`` (anything with its ``call`` and ``url``)
-
-
-def write_plan(hub, method: str, path: str, request: dict, project: str):
-    """A plan patch that names the local run of this session, when it has one (``local_sync.run_for``), so the hub
-    records the revision as the run's and sets the run's plan and step. A run the hub does not know (404) is left
-    out and the write is made as it would be without one: a session never loses a plan write to its own bookkeeping."""
-    from evo_agents.hub import local_sync
-
-    run = local_sync.run_for(hub.url, project)
-    if run is None:
-        return hub.call(method, path, request)
-    try:
-        return hub.call(method, path, {**request, "run_id": run})
-    except HubError as exc:
-        if exc.status != 404:
-            raise
-    return hub.call(method, path, request)
-
-
-def put_file(hub, path: Path, project: str | None = None, if_revision: int | None = None) -> dict:
-    """Push the plan in ``path`` and rewrite ``path`` as the hub's copy; the hub's answer."""
-    found = read_plan(path)
-    plan_id = checked_plan_id(str(found.plan_id))
-    if project is None:
-        project = harness_project(harness_root(path.parent))
-    request = {"body": found.body, "area": found.area or "active"}
-    if if_revision is not None:
-        request["if_revision"] = if_revision
-    result = hub.call("PUT", plans_path(project, plan_id), request)
-    write_copy(path, render(result["body"], project, result["revision"], result["digest"]))
-    return {**result, "project": project}
-
-
-def _item(body: dict, section: str, index: int | None, step) -> dict | None:
-    items = body.get(section)
-    try:
-        position = step_index(body, step) if step is not None else index
-    except PlanProblem:
-        return None
-    if not isinstance(items, list) or not 0 <= position < len(items) or not isinstance(items[position], dict):
-        return None
-    return items[position]
-
-
-def _identity(item: dict) -> dict:
-    return {key: value for key, value in item.items() if key not in UPDATABLE}
-
-
-def check_retry(base: dict, latest: dict, plan_id: str, section: str, index, step, updates: dict) -> None:
-    """Raise when retrying on ``latest`` would undo what changed since ``base``: the item moved, or another write
-    set one of the keys of ``updates`` to something else."""
-    where = f"step {step}" if step is not None else f"{section}[{index}]"
-    before = _item(base["body"], section, index, step)
-    after = _item(latest["body"], section, index, step)
-    if before is None or after is None or (step is None and _identity(before) != _identity(after)):
-        raise HubError(
-            f"{where} of plan {plan_id} changed place on the hub (revision {latest['revision']}) while this ran; "
-            "nothing was written. Check it with `evo-agents hub plan show` and run the command again",
-            409,
-            "conflict",
-        )
-    clashes = [key for key in updates if before.get(key) != after.get(key) and after.get(key) != updates[key]]
-    if clashes:
-        raise HubError(
-            f"{', '.join(clashes)} of {where} in plan {plan_id} changed on the hub (revision {latest['revision']}) "
-            "after it was read, so it was not overwritten. Check it with `evo-agents hub plan show` and run the "
-            "command again to set it anyway",
-            409,
-            "conflict",
-        )
-
-
-def patch_item(
-    hub,
-    project: str,
-    plan_id: str,
-    section: str,
-    updates: dict,
-    *,
-    index: int | None = None,
-    step=None,
-    if_revision: int | None = None,
-    attempts: int = ATTEMPTS,
-) -> dict:
-    """Set ``updates`` on one item; with ``if_revision``, against that revision only, else on the latest one."""
-    path = plans_path(project, plan_id)
-    request = {"section": section, "updates": updates}
-    request.update({"step": step} if step is not None else {"index": index})
-    if if_revision is not None:
-        return write_plan(hub, "PATCH", path, {**request, "if_revision": if_revision}, project)
-    base = hub.call("GET", path)
-    for attempt in range(attempts):
-        try:
-            return write_plan(hub, "PATCH", path, {**request, "if_revision": base["revision"]}, project)
-        except HubError as exc:
-            if exc.code != REVISION_CONFLICT or attempt == attempts - 1:
-                raise
-        latest = hub.call("GET", path)
-        check_retry(base, latest, plan_id, section, index, step, updates)
-        base = latest
-    raise AssertionError("unreachable")
-
-
-def complete_plan(hub, project: str, plan_id: str, if_revision: int | None = None, attempts: int = ATTEMPTS) -> dict:
-    """Move the plan to completed. The hub checks that every step is done in the revision it completes, so a
-    conflict is retried on the latest revision unless ``if_revision`` pins one."""
-    path = plans_path(project, plan_id)
-    for attempt in range(attempts):
-        revision = if_revision if if_revision is not None else hub.call("GET", path)["revision"]
-        try:
-            return hub.call("POST", f"{path}/complete", {"if_revision": revision})
-        except HubError as exc:
-            if exc.code != REVISION_CONFLICT or if_revision is not None or attempt == attempts - 1:
-                raise
-    raise AssertionError("unreachable")
-
-
-def _post_revisioned(hub, project: str, plan_id: str, action: str, request: dict, if_revision, attempts: int) -> dict:
-    path = plans_path(project, plan_id)
-    for attempt in range(attempts):
-        revision = if_revision if if_revision is not None else hub.call("GET", path)["revision"]
-        try:
-            return hub.call("POST", f"{path}/{action}", {**request, "if_revision": revision})
-        except HubError as exc:
-            if exc.code != REVISION_CONFLICT or if_revision is not None or attempt == attempts - 1:
-                raise
-    raise AssertionError("unreachable")
-
-
-def abandon_plan(
-    hub,
-    project: str,
-    plan_id: str,
-    reason: str,
-    superseded_by: str | None = None,
-    if_revision: int | None = None,
-    attempts: int = ATTEMPTS,
-) -> dict:
-    """Move the plan to completed as abandoned (superseded with ``superseded_by``), steps untouched."""
-    request = {"reason": reason}
-    if superseded_by:
-        request["superseded_by"] = superseded_by
-    return _post_revisioned(hub, project, plan_id, "abandon", request, if_revision, attempts)
-
-
-def reopen_plan(hub, project: str, plan_id: str, if_revision: int | None = None, attempts: int = ATTEMPTS) -> dict:
-    """Put an abandoned plan back in active."""
-    return _post_revisioned(hub, project, plan_id, "reopen", {}, if_revision, attempts)
-
-
-@dataclass
-class ImportResult:
-    root: Path
-    project: str
-    plans: list[dict] = field(default_factory=list)  # {plan_id, path, status, revision, message}
-
-    @property
-    def failed(self) -> list[dict]:
-        return [p for p in self.plans if p["status"] in ("conflict", "failed")]
-
-    def as_json(self) -> dict:
-        return {"root": str(self.root), "project": self.project, "plans": self.plans}
-
-
-def import_plans(hub, root: Path | str | None, project: str | None = None) -> ImportResult:
-    """Push every plans/<area>/*.yaml of the harness that the hub does not hold yet."""
-    root = harness_root(root)
-    project = harness_project(root, project)
-    result = ImportResult(root, project)
-    held = {plan["plan_id"]: plan for plan in hub.call("GET", plans_path(project))}
-    for path in sorted((root / "plans").glob("*/*.yaml")):
-        relative = path.relative_to(root).as_posix()
-        entry = {"plan_id": path.stem, "path": relative, "status": "failed", "revision": None, "message": ""}
-        result.plans.append(entry)
-        if path.parent.name not in AREAS:
-            entry.update(status="skipped", message=f"plans/{path.parent.name}/ is neither active nor completed")
-            continue
-        try:
-            found = read_plan(path)
-        except HubError as exc:
-            entry["message"] = str(exc)
-            continue
-        if found.plan_id != path.stem or not PLAN_ID.fullmatch(path.stem):
-            entry["message"] = f"its id is {found.plan_id!r}: a plan file is named after its id, so rename one of them"
-            continue
-        current = held.get(found.plan_id)
-        if current is not None:
-            entry["revision"] = current["revision"]
-            if (current["digest"], current["area"]) == (found.digest, found.area):
-                entry["status"] = "unchanged"
-            else:
-                entry.update(
-                    status="conflict",
-                    message=f"differs from revision {current['revision']} on the hub ({current['area']}); push it "
-                    f"with `evo-agents hub plan put {relative} --if-revision {current['revision']}` or restore the "
-                    "hub's copy with `evo-agents hub plan export`",
-                )
-            continue
-        try:
-            answer = hub.call("PUT", plans_path(project, found.plan_id), {"body": found.body, "area": found.area})
-        except HubError as exc:
-            if exc.status in (401, 403):  # the same for every other file: stop here
-                raise
-            entry["message"] = str(exc)
-            continue
-        entry.update(
-            status="created" if answer["created"] else "unchanged",
-            revision=answer["revision"],
-            message=f"{len(answer['warnings'])} warning(s)" if answer["warnings"] else "",
-        )
-    return result
 
 
 # Commands

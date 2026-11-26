@@ -576,6 +576,12 @@ class Hub:
 # GitHub's device flow
 
 
+def signed_in() -> tuple[Hub, Credentials]:
+    """The hub this machine is signed in to, with the credentials it signs in with (``load_credentials``)."""
+    credentials = load_credentials()
+    return Hub(credentials.url, credentials.token), credentials
+
+
 @dataclass(frozen=True)
 class DeviceCode:
     device_code: str
