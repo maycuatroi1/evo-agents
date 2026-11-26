@@ -1,9 +1,9 @@
 "use client";
 
-import { Ban } from "lucide-react";
+import { Ban, Check } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { memo, type ReactNode } from "react";
+import { memo, type MouseEvent, type ReactNode } from "react";
 
 import { ProblemChips } from "@/components/data/problem-chips";
 import { calendarDay, changeKind, currentPosition, planFinished, planName } from "@/lib/plan-list";
@@ -75,6 +75,10 @@ function CurrentStep({ plan }: { plan: PlanSummary }) {
  * step, the step strip with the steps done of the total, then its problems, who changed it last and when. The name's
  * link covers the row; the problem chips and the run's mark sit above that cover and open their own pages. A plan
  * whose steps are all done or descoped is written faint. The row holds no button: a plan changes from the CLI.
+ *
+ * From 768 px a click on the name (or Enter on its link) opens the plan's peek panel through `onPeek` instead of the
+ * plan's page; a click with a modifier key still opens the page, in a new tab if asked. On a phone `onPeek` is null and
+ * the link goes to the page. The checkbox before the name ticks the plan for the selection bar.
  */
 export const PlanRow = memo(function PlanRow({
   project,
@@ -82,6 +86,10 @@ export const PlanRow = memo(function PlanRow({
   activity,
   today,
   timeZone,
+  selected,
+  onSelect,
+  onPeek,
+  peeked,
 }: {
   project: string;
   plan: PlanSummary;
@@ -89,10 +97,21 @@ export const PlanRow = memo(function PlanRow({
   activity: ReactNode;
   today: string | null;
   timeZone: string;
+  selected: boolean;
+  onSelect: (planId: string, selected: boolean) => void;
+  /** Opens the peek panel on the plan; null where the link opens the plan's page (below 768 px). */
+  onPeek: ((planId: string) => void) | null;
+  /** The peek panel shows this plan. */
+  peeked: boolean;
 }) {
   const t = useTranslations("plans");
   const name = planName(plan);
   const finished = planFinished(plan);
+  const peek = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!onPeek || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    onPeek(plan.plan_id);
+  };
   return (
     <li
       className={cn(
@@ -100,15 +119,40 @@ export const PlanRow = memo(function PlanRow({
         "md:grid-cols-[minmax(0,1fr)_minmax(8rem,13rem)_minmax(0,15rem)] md:items-center",
         "[&_:is(a,button):not([data-row-link])]:relative [&_:is(a,button):not([data-row-link])]:z-[1]",
         finished && "text-muted-foreground",
+        (selected || peeked) && "bg-surface-selected",
       )}
       data-testid="plan-row"
       data-plan-id={plan.plan_id}
       data-finished={finished}
+      data-selected={selected}
+      aria-current={peeked || undefined}
     >
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
+          {/* A 24 px target above the row's link, drawn as a 16 px box. */}
+          <span className="relative z-[1] -my-1 -ml-1 inline-flex size-6 shrink-0 items-center justify-center">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(event) => onSelect(plan.plan_id, event.target.checked)}
+              aria-label={t("list.select", { plan: name })}
+              className="peer absolute inset-0 m-0 size-6 cursor-pointer opacity-0"
+              data-testid="plan-select"
+            />
+            <span
+              aria-hidden="true"
+              className={cn(
+                "pointer-events-none flex size-4 items-center justify-center rounded-xs border transition-colors",
+                "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
+                selected ? "border-primary bg-primary text-primary-foreground" : "border-control bg-card",
+              )}
+            >
+              {selected ? <Check className="size-3" strokeWidth={3} /> : null}
+            </span>
+          </span>
           <Link
             href={planHref(project, plan.plan_id)}
+            onClick={peek}
             title={name}
             data-row-link=""
             data-testid="plan-link"

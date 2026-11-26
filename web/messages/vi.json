@@ -1400,7 +1400,8 @@
       "blocked": "Bị chặn:",
       "stepsCount": "{done}/{total}",
       "changedBy": "Sửa lần cuối bởi",
-      "yesterday": "Hôm qua"
+      "yesterday": "Hôm qua",
+      "select": "Chọn {plan}"
     },
     "complete": {
       "button": "Done",
@@ -1590,6 +1591,71 @@
       "oldText": "Nội dung ở revision {revision}",
       "newText": "Nội dung ở revision {revision}",
       "text": "Nội dung"
+    },
+    "peek": {
+      "goalLess": "Thu gọn",
+      "goalAll": "Đọc hết",
+      "noSteps": "Plan chưa có bước nào.",
+      "runHere": "Lượt chạy {id} dừng ở đây",
+      "runsError": "Không tải được các lượt chạy plan.",
+      "noRuns": "Chưa có lượt chạy plan nào.",
+      "openRun": "Mở lượt chạy {id}",
+      "changed": "Lần sửa cuối",
+      "problems": "Vấn đề",
+      "repos": "Repo",
+      "actions": "Thao tác với plan",
+      "abandon": "Bỏ plan",
+      "copyId": "Chép id",
+      "notFound": "Plan {plan} không có trên hub, hoặc bị ẩn với bạn.",
+      "about": "Thông tin",
+      "goal": "Mục tiêu",
+      "steps": "Các bước {done}/{total}",
+      "runs": "Lượt chạy plan gần đây",
+      "openPage": "Mở trang plan",
+      "close": "Đóng panel",
+      "titleUnknown": "Plan",
+      "status": {
+        "done": "Xong",
+        "in_progress": "Đang làm",
+        "blocked": "Bị chặn",
+        "pending": "Chưa làm",
+        "descoped": "Bỏ khỏi phạm vi",
+        "other": "Khác"
+      }
+    },
+    "write": {
+      "reason": "Lý do",
+      "reasonMissing": "Ghi lý do để cả nhóm đọc lại sau.",
+      "reasonHint": "Lưu trên từng plan.",
+      "failed": "{count} plan bị từ chối",
+      "noReason": "Hub trả về {status}.",
+      "cancel": "Huỷ",
+      "retry": "Thử lại",
+      "abandon": {
+        "titleOne": "Bỏ {plan}?",
+        "title": "Bỏ {count} plan?",
+        "description": "Plan chuyển sang Đã xong với trạng thái bị bỏ.",
+        "pending": "Đang bỏ",
+        "confirm": "{count, plural, one {Bỏ plan} other {Bỏ # plan}}",
+        "doneOne": "Đã bỏ {plan}",
+        "done": "Đã bỏ {count} plan"
+      },
+      "close": {
+        "titleOne": "Đóng {plan}?",
+        "title": "Đóng {count} plan?",
+        "description": "Mọi bước đã xong hoặc bỏ khỏi phạm vi; plan chuyển sang Đã xong.",
+        "pending": "Đang đóng",
+        "confirm": "{count, plural, one {Đóng plan} other {Đóng # plan}}",
+        "doneOne": "Đã đóng {plan}",
+        "done": "Đã đóng {count} plan"
+      }
+    },
+    "selection": {
+      "label": "Plan đã chọn",
+      "count": "Đã chọn {count}",
+      "close": "Đóng",
+      "abandon": "Bỏ plan",
+      "clear": "Bỏ chọn"
     }
   },
   "states": {

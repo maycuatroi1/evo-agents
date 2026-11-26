@@ -126,7 +126,8 @@ export function usePlanActivity(project: string, planId: string, enabled = true)
   return { query, active, planRun: activePlanRun(active, planId), trace, loaded: !query.isPending };
 }
 
-function useLockText() {
+/** The words of a Run plan lock, for the button's tooltip and the peek panel's menu. */
+export function useLockText() {
   const t = useTranslations("runs.planRun.lock");
   const tState = useStatusText("run");
   return (lock: PlanRunLock | "loading"): string => {

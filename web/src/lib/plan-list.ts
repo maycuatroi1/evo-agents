@@ -1,4 +1,4 @@
-import type { PlanSummary } from "@/lib/plans";
+import { PLAN_ID, type PlanSummary } from "@/lib/plans";
 
 /**
  * The plans list of a project as one list (web/DESIGN.md, Plans): which plans it shows, in what order and under which
@@ -20,6 +20,8 @@ export type PlanListFilters = {
   repo: string | null;
   group: PlanGroupBy;
   sort: PlanSort;
+  /** The plan whose peek panel is open (`?plan=`), so a reload or a shared link opens it again. */
+  plan: string | null;
 };
 
 export const DEFAULT_FILTERS: PlanListFilters = {
@@ -30,6 +32,7 @@ export const DEFAULT_FILTERS: PlanListFilters = {
   repo: null,
   group: "none",
   sort: "updated",
+  plan: null,
 };
 
 const MAX_QUERY = 200;
@@ -44,8 +47,12 @@ function value(params: URLSearchParams, name: string): string | null {
   return raw ? raw.slice(0, MAX_VALUE) : null;
 }
 
-/** The filters an address names (`?view=completed&q=kg&repo=lumen-api&group=repo&sort=name`); junk reads as the default. */
+/**
+ * The filters an address names (`?view=completed&q=kg&repo=lumen-api&group=repo&sort=name&plan=kg-wiring`); junk reads
+ * as the default, and a `plan` that is no plan id as none.
+ */
 export function readFilters(params: URLSearchParams): PlanListFilters {
+  const plan = (params.get("plan") ?? "").trim();
   return {
     view: oneOf(PLAN_VIEWS, params.get("view"), DEFAULT_FILTERS.view),
     q: (params.get("q") ?? "").trim().slice(0, MAX_QUERY),
@@ -54,13 +61,14 @@ export function readFilters(params: URLSearchParams): PlanListFilters {
     repo: value(params, "repo"),
     group: oneOf(PLAN_GROUPS, params.get("group"), DEFAULT_FILTERS.group),
     sort: oneOf(PLAN_SORTS, params.get("sort"), DEFAULT_FILTERS.sort),
+    plan: PLAN_ID.test(plan) ? plan : null,
   };
 }
 
 /** The address of `filters`, without the defaults, so the plain page stays `/plans`. */
 export function writeFilters(filters: PlanListFilters): string {
   const params = new URLSearchParams();
-  for (const name of ["view", "q", "owner", "problem", "repo", "group", "sort"] as const) {
+  for (const name of ["view", "q", "owner", "problem", "repo", "group", "sort", "plan"] as const) {
     const current = filters[name];
     if (current && current !== DEFAULT_FILTERS[name]) params.set(name, current);
   }
@@ -93,6 +101,17 @@ export function planName(plan: Pick<PlanSummary, "plan_id" | "title" | "goal">):
 export function planFinished(plan: Pick<PlanSummary, "steps_total" | "steps_done">): boolean {
   return plan.steps_total > 0 && plan.steps_done >= plan.steps_total;
 }
+
+/**
+ * Close is offered for the plans ticked only when each is still open and every one of its steps is done or descoped:
+ * POST .../complete then moves it without marking a step done.
+ */
+export function canCloseAll(plans: readonly Pick<PlanSummary, "area" | "steps_total" | "steps_done">[]): boolean {
+  return plans.length > 0 && plans.every((plan) => plan.area === "active" && planFinished(plan));
+}
+
+/** The plan runs the peek panel lists, newest first. */
+export const PEEK_RUNS = 6;
 
 /** The marks of the step strip, one per step in the plan's order. */
 export const STRIP_STATUSES = ["done", "in_progress", "blocked", "pending", "descoped", "other"] as const;

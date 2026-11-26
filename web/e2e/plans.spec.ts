@@ -12,7 +12,9 @@ import {
   DONE_AT,
   EVIDENCE,
   EVIDENCE_STEP,
+  FINISHED_PLAN,
   open,
+  seedFinishedPlan,
   seedPlans,
 } from "./support/plans";
 
@@ -98,12 +100,125 @@ test.describe("plans", () => {
     await expect(completed).toBeVisible();
     await expect(page.getByText("Hiện 1 trên 2 plan")).toBeVisible();
 
-    // A plan page also counts the done steps of the fixture plan correctly.
+    // A row opens the peek panel; its head opens the plan page, which also counts the done steps correctly.
     await completed.getByTestId("plan-link").click();
+    await page.getByTestId("plan-peek-open").click();
+    await expect(page).toHaveURL(new RegExp(`/plans/${COMPLETED_PLAN}$`));
     await expect(page.getByTestId("plan-progress")).toContainText(`${COMPLETED_STEPS} trên ${COMPLETED_STEPS} bước đã xong`);
     await expect(page.getByTestId("count-done")).toHaveText(String(COMPLETED_STEPS));
     await expect(page.getByTestId("board-column-done").getByTestId("column-count")).toHaveText(String(COMPLETED_STEPS));
     expect(writes.map((r) => `${r.method()} ${r.url()}`)).toEqual([]);
+  });
+
+  test("a row opens the plan's peek panel", async ({ page, member }) => {
+    const writes = watchPlanWrites(page);
+    const { project } = await seeded(member);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, `/p/${project}/plans`);
+    const row = page.getByTestId("plans-list").locator(`[data-plan-id="${ACTIVE_PLAN}"]`);
+    const link = row.getByTestId("plan-link");
+
+    // A click opens the panel beside the list, not the plan page, and the address names the plan.
+    await link.click();
+    const peek = page.getByTestId("plan-peek");
+    await expect(peek).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/plans\\?plan=${ACTIVE_PLAN}$`));
+    await expect(peek.getByTestId("plan-peek-title")).toHaveText(/^Knowledge graph được dùng hằng ngày/);
+    await expect(peek.getByTestId("plan-peek-title")).toBeFocused();
+    await expect(row).toHaveAttribute("aria-current", "true");
+    const steps = peek.getByTestId("plan-peek-step");
+    await expect(steps).toHaveCount(ACTIVE_STEPS);
+    await expect(steps.nth(0)).toHaveAttribute("data-status", "done");
+    await expect(steps.nth(ACTIVE_DONE)).toHaveAttribute("data-status", "in_progress");
+    await expect(steps.nth(ACTIVE_DONE + 1)).toHaveAttribute("data-status", "blocked");
+    await expect(peek.getByTestId("plan-peek-repos")).not.toBeEmpty();
+    await expect(peek.getByTestId("plan-peek-no-runs")).toBeVisible();
+
+    // The address keeps it open across a reload; Esc closes it and gives focus back to the row.
+    await page.reload();
+    await expect(page.getByTestId("plan-peek")).toBeVisible();
+    await expect(page.getByTestId("plan-peek").getByTestId("plan-peek-steps")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("plan-peek")).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/p/${project}/plans$`));
+    await expect(link).toBeFocused();
+
+    // Enter on the row opens it again; the menu holds Run plan, Abandon and Copy id.
+    await page.keyboard.press("Enter");
+    await expect(peek).toBeVisible();
+    await peek.getByTestId("plan-peek-menu").click();
+    await expect(page.getByTestId("plan-peek-run")).toBeVisible();
+    await expect(page.getByTestId("plan-peek-abandon")).toBeVisible();
+    await expect(page.getByTestId("plan-peek-copy")).toHaveText("Chép id");
+    await page.keyboard.press("Escape");
+    await peek.getByTestId("plan-peek-open").click();
+    await expect(page).toHaveURL(new RegExp(`/plans/${ACTIVE_PLAN}$`));
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(ACTIVE_PLAN);
+
+    // On a phone a tap opens the plan page, with no panel.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await open(page, `/p/${project}/plans`);
+    await page.getByTestId("plans-list").locator(`[data-plan-id="${ACTIVE_PLAN}"]`).getByTestId("plan-link").click();
+    await expect(page).toHaveURL(new RegExp(`/plans/${ACTIVE_PLAN}$`));
+    await expect(page.getByTestId("plan-peek")).toHaveCount(0);
+    expect(writes.map((r) => `${r.method()} ${r.url()}`)).toEqual([]);
+  });
+
+  test("selected plans can be abandoned together", async ({ page, member }) => {
+    const { me, project } = await seeded(member);
+    await seedFinishedPlan(me, project);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, `/p/${project}/plans`);
+    const list = page.getByTestId("plans-list");
+    await expect(list.getByTestId("plan-row")).toHaveCount(2);
+    const finished = list.locator(`[data-plan-id="${FINISHED_PLAN}"]`);
+    const active = list.locator(`[data-plan-id="${ACTIVE_PLAN}"]`);
+    const bar = page.getByTestId("plans-selection-bar");
+    await expect(bar).toHaveCount(0);
+
+    // Close shows only while every ticked plan has all its steps done.
+    await finished.getByTestId("plan-select").check();
+    await expect(finished).toHaveAttribute("data-selected", "true");
+    await expect(bar.getByTestId("plans-selection-count")).toHaveText("Đã chọn 1");
+    await expect(bar.getByTestId("plans-bulk-close")).toBeVisible();
+    await active.getByTestId("plan-select").check();
+    await expect(bar.getByTestId("plans-selection-count")).toHaveText("Đã chọn 2");
+    await expect(bar.getByTestId("plans-bulk-close")).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/p/${project}/plans$`));
+
+    // One dialog and one reason for both; the hub refuses one of them, and the dialog says which.
+    const abandons: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/abandon")) abandons.push(new URL(request.url()).pathname);
+    });
+    const refused = `**/v1/projects/${project}/plans/${ACTIVE_PLAN}/abandon`;
+    await page.route(refused, (route) =>
+      route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "conflict", message: "the plan changed since", request_id: null }) }),
+    );
+    await bar.getByTestId("plans-bulk-abandon").click();
+    const dialog = page.getByTestId("plans-abandon-dialog");
+    await expect(dialog.getByTestId("plans-write-targets").locator("li")).toHaveCount(2);
+    await dialog.getByTestId("plans-abandon-confirm").click();
+    await expect(dialog.getByTestId("plans-abandon-missing")).toBeVisible();
+    await dialog.getByTestId("plans-abandon-reason").fill("Gộp vào plan lumen-ops mới");
+    await dialog.getByTestId("plans-abandon-confirm").click();
+    const failed = dialog.getByTestId("plans-write-failed");
+    await expect(failed.locator("li")).toHaveCount(1);
+    await expect(failed.locator(`li[data-plan-id="${ACTIVE_PLAN}"]`)).toContainText("the plan changed since");
+    expect(abandons).toHaveLength(2);
+    await expect(finished).toHaveCount(0);
+    await expect(bar.getByTestId("plans-selection-count")).toHaveText("Đã chọn 1");
+
+    // Tried again once the hub takes it, the dialog closes and the open view is empty.
+    await page.unroute(refused);
+    await dialog.getByTestId("plans-abandon-confirm").click();
+    await expect(dialog).toHaveCount(0);
+    await expect(list.getByTestId("plan-row")).toHaveCount(0);
+    await expect(bar).toHaveCount(0);
+    await page.getByTestId("plans-view-completed").click();
+    await expect(list.getByTestId("plan-row")).toHaveCount(4);
+    await expect(list.locator(`[data-plan-id="${FINISHED_PLAN}"]`)).toBeVisible();
+    await expect(list.locator(`[data-plan-id="${ACTIVE_PLAN}"]`)).toBeVisible();
   });
 
   test("the list passes axe at 1440 and 375 px in light and dark, and never scrolls sideways from 375 to 1440 px", async ({ page, member }) => {

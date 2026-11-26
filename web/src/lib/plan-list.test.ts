@@ -20,9 +20,11 @@ function plan(id: string, fields: Partial<PlanSummary> = {}): PlanSummary {
 
 describe("plan list filters", () => {
   it("reads junk in the address as the defaults and writes only what differs from them", () => {
-    const filters = readFilters(new URLSearchParams("view=archived&group=repo&sort=nope&q=%20kg%20&owner="));
-    expect(filters).toEqual({ view: "open", q: "kg", owner: null, problem: null, repo: null, group: "repo", sort: "updated" });
+    const filters = readFilters(new URLSearchParams("view=archived&group=repo&sort=nope&q=%20kg%20&owner=&plan=Not%20a%20plan"));
+    expect(filters).toEqual({ view: "open", q: "kg", owner: null, problem: null, repo: null, group: "repo", sort: "updated", plan: null });
     expect(writeFilters(filters)).toBe("?q=kg&group=repo");
+    // The plan of the peek panel is kept, so a reload opens it again.
+    expect(writeFilters(readFilters(new URLSearchParams("plan=kg-wiring&view=completed")))).toBe("?view=completed&plan=kg-wiring");
     expect(writeFilters(readFilters(new URLSearchParams()))).toBe("");
   });
 });

@@ -1400,7 +1400,8 @@
       "blocked": "Blocked:",
       "stepsCount": "{done}/{total}",
       "changedBy": "Last changed by",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "select": "Select {plan}"
     },
     "complete": {
       "button": "Done",
@@ -1590,6 +1591,71 @@
       "oldText": "Text in revision {revision}",
       "newText": "Text in revision {revision}",
       "text": "Text"
+    },
+    "peek": {
+      "goalLess": "Show less",
+      "goalAll": "Read all",
+      "noSteps": "The plan has no step yet.",
+      "runHere": "Run {id} is stopped here",
+      "runsError": "The plan runs could not be loaded.",
+      "noRuns": "No plan run yet.",
+      "openRun": "Open run {id}",
+      "changed": "Last change",
+      "problems": "Problems",
+      "repos": "Repos",
+      "actions": "Plan actions",
+      "abandon": "Abandon",
+      "copyId": "Copy id",
+      "notFound": "Plan {plan} is not on the hub, or is hidden from you.",
+      "about": "About",
+      "goal": "Goal",
+      "steps": "Steps {done}/{total}",
+      "runs": "Recent plan runs",
+      "openPage": "Open the plan page",
+      "close": "Close panel",
+      "titleUnknown": "Plan",
+      "status": {
+        "done": "Done",
+        "in_progress": "In progress",
+        "blocked": "Blocked",
+        "pending": "Pending",
+        "descoped": "Descoped",
+        "other": "Other"
+      }
+    },
+    "write": {
+      "reason": "Reason",
+      "reasonMissing": "Say why, so the team can read it later.",
+      "reasonHint": "Kept on each plan.",
+      "failed": "{count, plural, one {# plan was refused} other {# plans were refused}}",
+      "noReason": "The hub answered {status}.",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "abandon": {
+        "titleOne": "Abandon {plan}?",
+        "title": "Abandon {count} plans?",
+        "description": "{count, plural, one {The plan moves to Completed as abandoned.} other {The plans move to Completed as abandoned.}}",
+        "pending": "Abandoning",
+        "confirm": "{count, plural, one {Abandon plan} other {Abandon # plans}}",
+        "doneOne": "Abandoned {plan}",
+        "done": "Abandoned {count} plans"
+      },
+      "close": {
+        "titleOne": "Close {plan}?",
+        "title": "Close {count} plans?",
+        "description": "{count, plural, one {Every step is done or descoped; the plan moves to Completed.} other {Every step is done or descoped; the plans move to Completed.}}",
+        "pending": "Closing",
+        "confirm": "{count, plural, one {Close plan} other {Close # plans}}",
+        "doneOne": "Closed {plan}",
+        "done": "Closed {count} plans"
+      }
+    },
+    "selection": {
+      "label": "Selected plans",
+      "count": "{count, plural, one {# selected} other {# selected}}",
+      "close": "Close",
+      "abandon": "Abandon",
+      "clear": "Clear"
     }
   },
   "states": {

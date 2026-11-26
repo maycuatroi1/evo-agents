@@ -2,7 +2,6 @@ import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { PlansList } from "@/components/plans/plans-list";
 import { runsSummaryQuery } from "@/components/runs/queries";
 import { NotFoundState } from "@/components/states/states";
 import { HydrationBoundary } from "@/lib/api/hydration-boundary";
@@ -10,6 +9,8 @@ import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { plansQuery } from "@/lib/plan-queries";
 import { PROJECT_NAME } from "@/lib/queries";
+
+import { PlansRoute } from "./plans-route";
 
 type Props = { params: Promise<{ project: string }> };
 
@@ -30,7 +31,7 @@ export default async function PlansPage({ params }: Props) {
   ]);
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <PlansList project={project} initialError={error} />
+      <PlansRoute project={project} initialError={error} />
     </HydrationBoundary>
   );
 }
