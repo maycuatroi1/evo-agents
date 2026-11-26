@@ -242,7 +242,7 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.collect",
     "evo_agents.hub.worker -> evo_agents.hub.server.context_answer_reuse",
     "evo_agents.hub.worker -> evo_agents.hub.server.curator_shift",
-    "evo_agents.hub.worker -> evo_agents.hub.server.digests",
+    "evo_agents.hub.worker -> evo_agents.hub.server.digests.service.sessions",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
@@ -670,6 +670,41 @@ events, the API's shapes) import none of them. Move the code that reaches up int
 or a message into the service, a query into the repository, a shape or a limit into the models. Other modules import \
 the service and the models, never the routes. A new module of the package goes into one of the four layers. See \
 docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-evolve-layers"
+name = "The evolutions of the Curator go from their routes and MCP tool to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.evolve"]
+layers = ["routes | mcp", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.evolve a route handler (routes) and the curator_evolve tool of the hub's /mcp (mcp) only \
+pass the request's parts to a public function of the service, which checks who may start an evolution and what its \
+run may read and post, and decides (start, views, worker, runs queues and ends its run, report ends it); the \
+repository holds every query on curator_evolve_runs, curator_evolve_candidates, curator_evolve_arm_cache and the \
+tasks, probes and changes an evolution reads; the models (the API's shapes, the states, the audit actions, the \
+limits) import none of them. Move the code that reaches up into the layer that needs it: a check or a message into \
+the service, a query into the repository, a shape or a limit into the models. Other modules import the service and \
+the models, never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, \
+section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-digests-layers"
+name = "Session digests and the summary push of Today go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.digests"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.digests a route handler (routes) only passes the request's parts to a public function of \
+the service, which checks who may push and read a session's digest and decides (sessions, with the job \
+hub.prune_digests; today, the job hub.today_digest); the repository holds every query on session_digests and the \
+members, marks and notifications of the summary push; the models (the digest's shapes, the limits of a request, \
+BoundedRoute, the texts of the refusals) import none of them. Move the code that reaches up into the layer that \
+needs it: a check or a message into the service, a query into the repository, a shape or a limit into the models. \
+Other modules import the service and the models, never the routes. A new module of the package goes into one of the \
+four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

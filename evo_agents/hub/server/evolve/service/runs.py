@@ -1,6 +1,6 @@
 """The evolve runs of the Curator on the hub: an evolution of a harness in a repo (target ``git``) or of an agent's
 configuration in an agent system (target ``agent_config``), its tasks, its run, its claim and its end
-(``evo_agents.hub.evolve`` holds the model, ``evo_agents.hub.server.evolve`` the routes).
+(``evo_agents.hub.evolve`` holds the model, ``evo_agents.hub.server.evolve.routes`` the routes).
 
 An evolution is a row of curator_evolve_runs. When it starts (``start``), the hub picks its tasks once: light replay
 tasks of the ``select`` split and active probes of the paths it evolves (``evolve.light_tasks``); a task of the holdout
@@ -18,40 +18,28 @@ with that key alone (``evolve.EVOLVE_KEY_HEADER``). A run that ends before its r
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 
-from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, evolve, runs, tables
+from evo_agents.hub import curator, evolve, runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.charter_settings import EvolveSettings
+from evo_agents.hub.server.evolve.models import EVOLVE_RUN, OPEN_STATES, key_digest, reason_text
+from evo_agents.hub.server.evolve.repository import candidates, evolutions, tasks
+from evo_agents.hub.server.evolve.repository.evolutions import set_row
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 
 log = logging.getLogger(__name__)
-
-EVOLVE_RUN = "curator.evolve_run"  # an evolve run was queued: "<project> run:<id> evolve:<id>"
-STATES = ("queued", "running", "done", "failed")  # curator_evolve_runs.state
-OPEN_STATES = STATES[:2]
-REASON_CHARS = 1000
-
-
-def key_digest(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def settings_of(charter: dict) -> EvolveSettings:
     """The charter's ``evolve`` block, its defaults for a charter written before it had one."""
     found = charter.get("evolve") if isinstance(charter.get("evolve"), dict) else {}
     return EvolveSettings.model_validate(found)
-
-
-def reason_text(text: str | None) -> str | None:
-    return None if text is None else text[:REASON_CHARS]
 
 
 # The tasks
@@ -68,26 +56,22 @@ def _probe_paths(arms) -> list[str]:
 async def pick_tasks(conn: AsyncConnection, project_id: int, repo: str | None, paths: list[str], settings) -> list:
     """The light tasks of an evolution of ``paths`` in ``repo`` (None: every repo, an agent's configuration): the
     select split of the project's replay tasks alone, read so, and its active probes (``evolve.light_tasks``)."""
-    t, p = tables.replay_tasks, tables.curator_probes
-    query = select(t.c.id, t.c.split, t.c.repo, t.c.unusable, t.c.commits, t.c.base_sha)
-    rows = (await conn.execute(query.where(t.c.project_id == project_id, t.c.split == evolve.SELECT))).all()
-    tasks = [{**row._asdict(), "commits": list(row.commits or [])} for row in rows]
-    query = select(p.c.id, p.c.state, p.c.repo, p.c.arms, p.c.base_sha)
-    rows = (await conn.execute(query.where(p.c.project_id == project_id, p.c.state == "active"))).all()
+    rows = await tasks.select_replays(conn, project_id)
+    replays = [{**row._asdict(), "commits": list(row.commits or [])} for row in rows]
+    rows = await tasks.active_probes(conn, project_id)
     found = [{**row._asdict(), "paths": _probe_paths(row.arms)} for row in rows]
-    picked = evolve.light_tasks(tasks, found, repo=repo, paths=paths, limit=settings.tasks, probe_limit=settings.probes)
+    picked = evolve.light_tasks(
+        replays, found, repo=repo, paths=paths, limit=settings.tasks, probe_limit=settings.probes
+    )
     return [{**task, "ref": evolve.task_ref(task["kind"], task["id"])} for task in picked]
 
 
 async def task_inputs(conn: AsyncConnection, project_id: int, picked: list[dict]) -> list[dict]:
     """The tasks of an evolution as its trusted daemon gets them: each with its prompt, base commit, paths and verify,
     read again now; a replay task that left the select split, or a probe no longer active, is left out."""
-    t, p = tables.replay_tasks, tables.curator_probes
     ids = {kind: [task["id"] for task in picked if task.get("kind") == kind] for kind in evolve.TASK_KINDS}
-    query = select(t).where(t.c.project_id == project_id, t.c.id.in_(ids["replay"]), t.c.split == evolve.SELECT)
-    replays = {row.id: row for row in (await conn.execute(query)).all()}
-    query = select(p).where(p.c.project_id == project_id, p.c.id.in_(ids["probe"]), p.c.state == "active")
-    probes = {row.id: row for row in (await conn.execute(query)).all()}
+    replays = await tasks.replays_of(conn, project_id, ids["replay"])
+    probes = await tasks.probes_of(conn, project_id, ids["probe"])
     found = []
     for task in picked:
         ref = evolve.task_ref(task["kind"], task["id"])
@@ -117,17 +101,10 @@ def _task(task: dict, ref: str, base_sha, prompt: str, paths: list[str], verify:
 async def cached_arms(conn: AsyncConnection, row) -> dict:
     """arm_key -> result of each baseline arm the project's cache holds for a task of evolution ``row``, on its
     runtime and model: the worker reads the one its own baseline's key names, and runs the rest."""
-    ac = tables.curator_evolve_arm_cache
     pairs = {(task.get("kind"), task.get("id")) for task in row.tasks or []}
     if not pairs:
         return {}
-    query = select(ac.c.key, ac.c.task_kind, ac.c.task_id, ac.c.result).where(
-        ac.c.project_id == row.project_id,
-        ac.c.runtime == row.runtime,
-        ac.c.model.is_not_distinct_from(row.model),
-        ac.c.task_id.in_([task_id for _, task_id in pairs]),
-    )
-    rows = (await conn.execute(query.order_by(ac.c.created_at))).all()
+    rows = await candidates.cached_arms(conn, row, [task_id for _, task_id in pairs])
     return {item.key: item.result for item in rows if (item.task_kind, item.task_id) in pairs}
 
 
@@ -164,11 +141,6 @@ def _budget(gate, row) -> dict:
     if isinstance(cap, (int, float)) and cap < budget["max_usd"]:
         budget["max_usd"] = float(cap)
     return budget
-
-
-async def set_row(conn: AsyncConnection, evolve_id: int, **values) -> None:
-    e = tables.curator_evolve_runs
-    await conn.execute(update(e).values(**values, updated_at=func.now()).where(e.c.id == evolve_id))
 
 
 async def queue_run(conn: AsyncConnection, due, gate, row, *, asked_by: str | None = None) -> int | None:
@@ -213,9 +185,7 @@ async def queue_evolve(conn: AsyncConnection, due, gate) -> int | None:
     charter's ``evolve.enabled``; None when there is none or it waits."""
     if not settings_of(due.body).enabled:
         return None
-    e = tables.curator_evolve_runs
-    query = select(e).where(e.c.project_id == due.project_id, e.c.state == "queued").order_by(e.c.id).limit(1)
-    row = (await conn.execute(query.with_for_update(skip_locked=True))).one_or_none()
+    row = await evolutions.oldest_queued(conn, due.project_id)
     if row is None:
         return None
     return await queue_run(conn, due, gate, row)
@@ -224,9 +194,7 @@ async def queue_evolve(conn: AsyncConnection, due, gate) -> int | None:
 async def evolve_claim(conn: AsyncConnection, run_id: int) -> dict:
     """What the claim of evolve run ``run_id`` adds for its worker: the evolution and a new key of the run
     (``evolve_key``), whose SHA-256 alone the hub keeps; nothing when the run evolves nothing now."""
-    e = tables.curator_evolve_runs
-    query = select(e.c.id, e.c.target).where(e.c.run_id == run_id, e.c.state == "running").with_for_update()
-    row = (await conn.execute(query)).one_or_none()
+    row = await evolutions.running_of_run(conn, run_id)
     if row is None:
         return {}
     key = secrets.token_urlsafe(32)
@@ -236,8 +204,7 @@ async def evolve_claim(conn: AsyncConnection, run_id: int) -> dict:
 
 async def run_prompt(conn: AsyncConnection, view) -> str:
     """The prompt of evolve run ``view``: its worker builds the prompt of each task and of the proposer itself."""
-    e = tables.curator_evolve_runs
-    row = (await conn.execute(select(e.c.id, e.c.target).where(e.c.run_id == view.id))).one_or_none()
+    row = await evolutions.target_of_run(conn, view.id)
     if row is None:
         return "This evolve run evolves nothing: end it."
     return f"Evolution #{row.id} of target {row.target}: the worker runs its loop and builds each prompt."
@@ -247,9 +214,7 @@ async def evolve_ended(conn: AsyncConnection, found: RunStep, new: str, *, reaso
     """What the end of evolve run ``found`` does: an evolution it left open fails, with why."""
     if new not in runs.TERMINAL_STATES:
         return
-    e = tables.curator_evolve_runs
-    query = select(e.c.id, e.c.state).where(e.c.run_id == found.run_id).with_for_update()
-    row = (await conn.execute(query)).one_or_none()
+    row = await evolutions.state_of_run(conn, found.run_id)
     if row is None or row.state not in OPEN_STATES:
         return
     why = found.error or reason

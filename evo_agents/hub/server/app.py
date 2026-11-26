@@ -542,9 +542,7 @@ def _include_curator_routes(app: FastAPI) -> None:
         autonomy_stops,
         build_now,
         change_routes,
-        digests,
         earlier,
-        evolve,
         kg_health,
         ledger,
         merged_work,
@@ -559,6 +557,8 @@ def _include_curator_routes(app: FastAPI) -> None:
         worker_doctor,
         worker_shares,
     )
+    from evo_agents.hub.server.digests import routes as digests
+    from evo_agents.hub.server.evolve import routes as evolve
     from evo_agents.hub.server.history import routes as history_routes
     from evo_agents.hub.server.proposal_plans import routes as proposal_plans
 

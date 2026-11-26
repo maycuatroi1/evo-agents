@@ -20,7 +20,7 @@ defaults.
 
 today_marks (0158) holds what Today (``evo_agents.hub.server.today``) keeps of a member: ``seen_at``, the moment up to
 which they saw what changed, which only moves forward; and ``digest_on``, the local day of their last summary push
-(``evo_agents.hub.server.today_digest``), so it goes at most once a day. A member without a row saw nothing yet.
+(``evo_agents.hub.server.digests.service.today``), so it goes at most once a day. A member without a row saw nothing yet.
 
 plan_run_choices (0238) holds a member's last choice in the Run plan dialog of a project
 (``evo_agents.hub.server.plan_run_choice``): where the plan runs (``target``, TARGETS; ``system``, the slug of a system

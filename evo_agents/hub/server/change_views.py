@@ -485,7 +485,8 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
     if policy.role == "probe":  # a run of a plugin's probe has no change
         found.update(await probe_claim(conn, change, view.id))
     if policy.role == "evolve":  # an evolution has no change while it runs
-        from evo_agents.hub.server.evolve_runs import evolve_claim  # it imports the runs service, which imports this
+        # it imports the runs service, which imports this
+        from evo_agents.hub.server.evolve.service.runs import evolve_claim
 
         found.update(await evolve_claim(conn, view.id))
     return found

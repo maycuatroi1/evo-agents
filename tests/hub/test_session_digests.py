@@ -33,7 +33,8 @@ from evo_agents.hub import jobs, tables
 from evo_agents.hub.digest import STATE_FILE, DigestState, build
 from evo_agents.hub.memory_places import slug
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.digests import DIGEST_DAYS, prune_digests
+from evo_agents.hub.server.digests.models.sessions import DIGEST_DAYS
+from evo_agents.hub.server.digests.service.sessions import prune_digests
 from evo_agents.hub.worker import queue
 from tests.hub.live import bearer, sql
 from tests.hub.test_digest import (

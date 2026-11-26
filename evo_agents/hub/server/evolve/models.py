@@ -1,15 +1,25 @@
 """The shapes of the evolve routes of the Curator (``evo_agents.hub.server.evolve``): what an owner sends to start an
-evolution and reads of one, and what the worker of an evolve run reads and posts with the run's own key."""
+evolution and reads of one, and what the worker of an evolve run reads and posts with the run's own key; the states of
+an evolution, the actions of its audit rows and the limits of what it keeps."""
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import curator, evolve
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.runs.models import MAX_ID
+
+EVOLVE_START = "curator.evolve_start"  # a member started an evolution: "<project> evolve:<id> target:<target>"
+EVOLVE_RUN = "curator.evolve_run"  # an evolve run was queued: "<project> run:<id> evolve:<id>"
+STATES = ("queued", "running", "done", "failed")  # curator_evolve_runs.state
+OPEN_STATES = STATES[:2]
+REASON_CHARS = 1000
+MAX_LISTED = 100
 
 MAX_PATHS = 50  # the files one evolution of a harness may rewrite
 MAX_PARENTS = 2  # a merge has two parents, a mutation one
@@ -26,15 +36,22 @@ Score = Annotated[float, Field(ge=-1e9, le=1e9)]
 Id = Annotated[int, Field(ge=1, le=MAX_ID)]
 
 
+def key_digest(key: str) -> str:
+    """What the hub keeps of an evolve run's own key: its SHA-256."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def reason_text(text: str | None) -> str | None:
+    return None if text is None else text[:REASON_CHARS]
+
+
 # The owner
 
 
-class EvolveStart(BaseModel):
+class EvolveStart(StrictModel):
     """An evolution to start: of a harness's files in a repo (target git: ``repo`` and ``paths``), or of an agent of
     an agent system (target agent_config: ``system_id`` and ``agent``); ``proposal_id`` names the accepted proposal
     whose planned change takes the branch of a git evolution."""
-
-    model_config = ConfigDict(extra="forbid")
 
     target: evolve.Target
     repo: Name | None = None
@@ -160,9 +177,7 @@ class EvolveInputs(BaseModel):
     evolvable_paths: list[str]
 
 
-class ArmIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ArmIn(StrictModel):
     task_kind: evolve.TaskKind
     task_id: Id
     base_sha: Sha | None = None
@@ -177,9 +192,7 @@ class ArmOut(BaseModel):
     cached: bool = Field(description="true: the cache held this key already, and keeps what it held")
 
 
-class CandidateIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CandidateIn(StrictModel):
     parents: list[Id] = Field(default_factory=list, max_length=MAX_PARENTS)
     origin: evolve.Origin
     iteration: int = Field(0, ge=0, le=MAX_ITERATIONS)
@@ -197,18 +210,14 @@ class CandidateOut(BaseModel):
     frontier: list[FrontItem]
 
 
-class HoldoutPair(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class HoldoutPair(StrictModel):
     baseline: Score
     candidate: Score
 
 
-class ReportIn(BaseModel):
+class ReportIn(StrictModel):
     """The end of an evolution. ``holdout`` (target agent_config) holds the scores of the baseline and of the best
     candidate on tasks of the holdout split, which the hub checks before it pins a new version of the profile."""
-
-    model_config = ConfigDict(extra="forbid")
 
     state: Literal["done", "failed"]
     best_candidate_id: Id | None = None

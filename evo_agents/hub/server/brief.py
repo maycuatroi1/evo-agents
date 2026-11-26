@@ -53,9 +53,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
-from evo_agents.hub.server import agent_placement, probe_report, today_digest
+from evo_agents.hub.server import agent_placement, probe_report
 from evo_agents.hub.server.curator import curator_state, night_figures
 from evo_agents.hub.server.curator_shift import due_schedules, owner_access
+from evo_agents.hub.server.digests.service import today as today_digest
 from evo_agents.hub.server.loop import notices as loop_notices
 from evo_agents.hub.server.night_duty import on_duty
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER

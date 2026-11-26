@@ -734,7 +734,7 @@ hours, and a mark older than seven days counts from seven days ago. `POST /v1/me
 its `seen_at` (now when left out, never past now); a later mark stays where it is. Today on the web (`/today`) opens with
 Today and posts `seen_until` once the end of the list has been on screen.
 
-The job `hub.today_digest` runs every minute (`today_digest.py`, through `brief.send_today_digests`). A member gets a
+The job `hub.today_digest` runs every minute (`digests/service/today.py`, through `brief.send_today_digests`). A member gets a
 summary push when they have a push device that reaches them, have been away from the hub for 8 hours (by
 `users.last_seen_at` and by their seen mark, since the hub writes `last_seen_at` at most once a day a token), did not
 set the tier of `today` to `off`, and it is their `digest_at` (default `07:30`) in their time zone, or up to three hours

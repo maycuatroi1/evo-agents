@@ -14,15 +14,15 @@ them nothing is pinned, and the evolution says why.
 
 from __future__ import annotations
 
-from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import replay, tables
+from evo_agents.hub import replay
 from evo_agents.hub.server import system_curation
+from evo_agents.hub.server.base.errors import Unprocessable
 from evo_agents.hub.server.change_views import set_change
-from evo_agents.hub.server.evolve_models import ReportIn
-from evo_agents.hub.server.evolve_runs import reason_text, set_row
+from evo_agents.hub.server.evolve.models import ReportIn, reason_text
+from evo_agents.hub.server.evolve.repository import candidates, evolutions, tasks
+from evo_agents.hub.server.evolve.repository.evolutions import set_row
 from evo_agents.hub.server.projects import access_of
 from evo_agents.hub.server.security import Principal
 
@@ -36,9 +36,7 @@ async def _attach(conn: AsyncConnection, row, run_id: int, body: ReportIn) -> tu
     pushed = f"branch {body.branch} at {body.head_sha[:12]}"
     if row.proposal_id is None:
         return None, f"{pushed} waits: the evolution names no accepted proposal whose planned change takes it"
-    c = tables.curator_changes
-    query = select(c).where(c.c.proposal_id == row.proposal_id, c.c.project_id == row.project_id).with_for_update()
-    change = (await conn.execute(query)).one_or_none()
+    change = await tasks.change_of(conn, row.project_id, row.proposal_id)
     if change is None:
         return None, f"{pushed} waits: proposal #{row.proposal_id} has no change of the Curator"
     if change.state != "planned":
@@ -55,20 +53,11 @@ async def _attach(conn: AsyncConnection, row, run_id: int, body: ReportIn) -> tu
 
 async def _holdout_refs(conn: AsyncConnection, project_id: int, holdout: dict) -> None:
     """422 unless each ref of ``holdout`` is a replay task of the project's holdout split."""
-    t = tables.replay_tasks
     ids = [int(ref.split(":", 1)[1]) for ref in holdout if ref.startswith("replay:")]
-    query = select(t.c.id).where(t.c.project_id == project_id, t.c.split == HOLDOUT, t.c.id.in_(ids))
-    known = {f"replay:{task_id}" for task_id in (await conn.scalars(query)).all()}
+    known = {f"replay:{task_id}" for task_id in await tasks.split_ids(conn, project_id, HOLDOUT, ids)}
     unknown = sorted(set(holdout) - known)
     if unknown:
-        raise HTTPException(422, f"{', '.join(unknown[:5])}: no replay task of the project's holdout split")
-
-
-async def _components(conn: AsyncConnection, row, *, origin: str | None = None, candidate_id: int | None = None):
-    ec = tables.curator_evolve_candidates
-    query = select(ec.c.components).where(ec.c.evolve_id == row.id)
-    query = query.where(ec.c.origin == origin) if origin else query.where(ec.c.id == candidate_id)
-    return (await conn.execute(query.order_by(ec.c.id).limit(1))).scalar_one_or_none()
+        raise Unprocessable(f"{', '.join(unknown[:5])}: no replay task of the project's holdout split")
 
 
 async def _pin(conn: AsyncConnection, user: Principal, row, best: dict, body: ReportIn) -> str:
@@ -78,11 +67,10 @@ async def _pin(conn: AsyncConnection, user: Principal, row, best: dict, body: Re
     held_up, why = system_curation.holdout_verdict(holdout)
     if not held_up:
         return why
-    seed = await _components(conn, row, origin="seed")
+    seed = await candidates.components(conn, row.id, origin="seed")
     if seed is None:
         return "the evolution has no seed candidate to compare the profile with: the profile keeps its version"
-    p = tables.projects
-    name = await conn.scalar(select(p.c.name).where(p.c.id == row.project_id))
+    name = await evolutions.project_name_or_none(conn, row.project_id)
     access = None if name is None else await access_of(conn, user.user_id, name)
     if access is None:
         return "the evolution's project is gone: the profile keeps its version"
@@ -95,9 +83,9 @@ async def ended(conn: AsyncConnection, user: Principal, row, run_id: int, body: 
         why = body.reason or "its run gave no reason"
         await set_row(conn, row.id, state="failed", evolve_key=None, reason=reason_text(why))
         return f"Evolution #{row.id} failed: {why}."
-    best = await _components(conn, row, candidate_id=body.best_candidate_id)
+    best = await candidates.components(conn, row.id, candidate_id=body.best_candidate_id)
     if best is None:
-        raise HTTPException(422, f"candidate #{body.best_candidate_id} is no candidate of evolution #{row.id}")
+        raise Unprocessable(f"candidate #{body.best_candidate_id} is no candidate of evolution #{row.id}")
     change_id = None
     if row.target == "git":
         change_id, why = await _attach(conn, row, run_id, body)

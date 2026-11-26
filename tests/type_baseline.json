@@ -7448,48 +7448,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/digests.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 87,
-                    "endColumn": 95,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 71,
-                    "endColumn": 84,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 90,
-                    "endColumn": 97,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 86,
-                    "endColumn": 99,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 52,
-                    "endColumn": 83,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/doc_versions.py": [
             {
                 "code": "reportInvalidTypeForm",

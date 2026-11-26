@@ -13,7 +13,7 @@ from evo_agents.hub import history, review
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.base.scope import Scope
-from evo_agents.hub.server.digests import SessionId
+from evo_agents.hub.server.digests.models.sessions import SessionId
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.history.models import (
     KINDS,
