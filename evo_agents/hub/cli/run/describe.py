@@ -7,10 +7,10 @@ from __future__ import annotations
 import json
 
 from evo_agents.hub.chats import chat_link
+from evo_agents.hub.cli.base import when
 from evo_agents.hub.cli.run.events import RAW_CHARS, clip, clock
 from evo_agents.hub.cli.run.options import kind_text
 from evo_agents.hub.cli.run.spend import spend_lines
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.client import origin
 from evo_agents.hub.runs import STEADY_GAP_SECONDS, STEADY_SECONDS, TERMINAL_STATES
 

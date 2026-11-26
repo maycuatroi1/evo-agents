@@ -271,7 +271,6 @@ def test_a_corpus_left_on_this_machine_answers_no_read(tmp_path, kg_env, monkeyp
     root = str(left.harness.root)
     monkeypatch.setattr("evo_agents.hub.mcp_proxy.session_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
     monkeypatch.setattr("evo_agents.hub.client.load_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
-    monkeypatch.setattr("evo_agents.hub.cli_client.load_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
     for backend in ("auto", "hub"):
         assert main(["kg", "query", "kg_search", "rank_results", "--project", root, "--backend", backend]) == 1
         assert capsys.readouterr().out == "error: the hub: not signed in\n"

@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 from evo_agents.hub.chats import MAX_MESSAGE_BYTES, emoji_problem
 from evo_agents.hub.cli import attach as attach_cli
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
 EXIT_USAGE = 2

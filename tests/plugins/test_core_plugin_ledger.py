@@ -28,10 +28,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from evo_agents.hub import plugin_calls, tables
-from evo_agents.hub.cli_plugin_commands import (
+from evo_agents.hub.cli.extensions import (
     CACHE_FILE,
+    Extensions,
     cached,
-    register_plugin_commands,
     request_of,
     wants_refresh,
 )
@@ -283,7 +283,7 @@ def test_plugin_cli_leaves_out_a_plugin_named_as_a_command_of_the_clis_own():
     hsub = parser.add_subparsers(dest="hub_command")
     hsub.add_parser("migrate")
     command = {"name": "list", "http": {"method": "GET", "path": "entries"}}
-    register_plugin_commands(hsub, [{"id": "migrate", "commands": [command]}, {"id": PLUGIN, "commands": [command]}])
+    Extensions([{"id": "migrate", "commands": [command]}, {"id": PLUGIN, "commands": [command]}]).attach(hsub)
     assert set(hsub.choices) == {"migrate", PLUGIN}
     assert parser.parse_args([PLUGIN, "list"]).plugin_id == PLUGIN
 

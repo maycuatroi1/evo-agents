@@ -18,9 +18,9 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote
 
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.cli.run.keys import RUN_KEYS
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
 EXIT_USAGE = 2

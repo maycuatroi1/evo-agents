@@ -9,7 +9,7 @@ import sys
 
 from evo_agents.clikit.json_output import json_option, returns_object
 from evo_agents.hub import local_outputs, local_sync
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
+from evo_agents.hub.cli.base import client_command, print_json, signed_in
 from evo_agents.hub.client import HubError
 from evo_agents.hub.local_send import SEND_KEYS, files_to_send, send_files, send_json, send_queued, session_of
 

@@ -4,9 +4,8 @@ became, and whether a ruleset keeps the Curator's App off each repo's default br
 from __future__ import annotations
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, when
 from evo_agents.hub.cli.curator.resources import CHANGE, REPO_CHECK_KEYS, Changes, Protection
-from evo_agents.hub.cli_client import when
 
 
 class CuratorChanges(HubCommand):
