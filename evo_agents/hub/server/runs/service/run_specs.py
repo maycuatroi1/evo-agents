@@ -405,7 +405,7 @@ async def _release_spec(conn: AsyncConnection, view: Run):
 
 async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> CuratorSpec | None:
     from evo_agents.hub.server.change_views import run_curator  # it reads runs through this package
-    from evo_agents.hub.server.history import history_claim  # it queues runs through this package
+    from evo_agents.hub.server.history.service.runs import history_claim  # it queues runs through this package
 
     found = await run_curator(conn, project_id, view)
     if found is None and view.kind == "judge":  # a judge run of the merge queue is guarded as the Curator's are

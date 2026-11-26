@@ -54,7 +54,7 @@ from evo_agents.hub.memory_places import HARNESS
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import memories, memory_agents, run_audience
 from evo_agents.hub.server.audit import record
-from evo_agents.hub.server.history import owner_access
+from evo_agents.hub.server.history.service.readers import owner_access
 from evo_agents.hub.server.kg_audience import person_audience
 from evo_agents.hub.server.mcp_text import memory_about
 from evo_agents.hub.server.memory_audience import label_audience, with_audience
