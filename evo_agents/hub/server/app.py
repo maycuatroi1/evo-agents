@@ -488,8 +488,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         local_runs,
         member_tasks,
         overview,
-        proposal_reads,
-        proposals,
         release_claims,
         releases,
         today,
@@ -497,6 +495,8 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     from evo_agents.hub.server.attachments import routes as attachments
     from evo_agents.hub.server.decisions import routes as decisions
     from evo_agents.hub.server.outputs import routes as outputs
+    from evo_agents.hub.server.proposals.routes import reads as proposal_reads
+    from evo_agents.hub.server.proposals.routes import record as proposals
     from evo_agents.hub.server.push import routes as push
     from evo_agents.hub.server.webhooks import routes as webhooks
 
@@ -541,7 +541,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         autonomy_routes,
         autonomy_stops,
         build_now,
-        change_routes,
         digests,
         earlier,
         evolve,
@@ -559,6 +558,7 @@ def _include_curator_routes(app: FastAPI) -> None:
         worker_doctor,
         worker_shares,
     )
+    from evo_agents.hub.server.changes import routes as change_routes
     from evo_agents.hub.server.history import routes as history_routes
     from evo_agents.hub.server.proposal_plans import routes as proposal_plans
 

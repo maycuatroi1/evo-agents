@@ -8,7 +8,7 @@ Telegram) makes its draft a plan on the hub in the same transaction (``plan_from
 accepted it, labelled as the proposal: the Curator's plan ``curator-<proposal>-<slug>``, in the repo the proposal
 names, on the branch ``curator/<proposal>-<slug>``, and a row of curator_changes, state ``planned``, with the line
 ``planned`` in the proposal's ledger. A proposal that names several repos of the project, each on GitHub, becomes one
-plan in them all, owner before consumer by the project's seams (``change_repos``), and its change has a row of
+plan in them all, owner before consumer by the project's seams (``changes.service.repos``), and its change has a row of
 curator_change_repos per repo in that order. A proposal that names a repo the project does not have, one without an
 origin, or several repos one of which is not on GitHub cannot become one: its change is recorded ``open``, without a
 plan, with the reason and the line ``left_open``, and nothing of it runs. Either way the change is audited as curator.plan. Accepting a proposal of a
@@ -32,10 +32,10 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.change_views import Change
+from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.proposal_models import ItemId
 from evo_agents.hub.server.proposal_plans import service
+from evo_agents.hub.server.proposals.models import ItemId
 from evo_agents.hub.server.security import CurrentUser
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})

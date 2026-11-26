@@ -156,7 +156,7 @@ from evo_agents.hub.server.share_leases import (
 
 if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
-    from evo_agents.hub.server.change_views import CuratorPolicy
+    from evo_agents.hub.server.changes.models.views import CuratorPolicy
 
 log = logging.getLogger(__name__)
 
@@ -416,7 +416,7 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
     ended = await ended_refusal(conn, row.dispatched_by, row.owner, what=f"leasing run {run_id}", lock=lock)
     if ended is not None:
         raise HTTPException(403, ended)
-    from evo_agents.hub.server.change_views import (
+    from evo_agents.hub.server.changes.service.policy import (
         curator_policy,
     )  # it reads runs through the routes that import this one
 

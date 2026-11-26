@@ -29,9 +29,10 @@ For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health
 (``evo_agents.hub.server.release_github``), the commits a commit has that the newest release tag lacks
 (``compare_commits``), and for landing it (``evo_agents.hub.server.release_land``), the tag made on its merge commit
 (``create_ref``, with the merge's token); for the tier of a change of knowledge.yaml
-(``evo_agents.hub.server.change_tiers``), a pull request's merge base (``compare``) and the text of a file at a commit
-(``file_text``); for a global skill the hub publishes from a merge commit (``evo_agents.hub.server.skill_release``),
-the files of the skill's directory at that commit, its tree and then each file's blob (``directory_files``).
+(``evo_agents.hub.server.changes.service.tiers``), a pull request's merge base (``compare``) and the text of a file at a
+commit (``file_text``); for a global skill the hub publishes from a merge commit
+(``evo_agents.hub.server.skill_release``), the files of the skill's directory at that commit, its tree and then each
+file's blob (``directory_files``).
 
 ``check_ruleset`` answers whether the Curator's App is kept off a repo's default branch: GET /repos/{o}/{r} names the
 default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply to it, and for each ruleset with a rule

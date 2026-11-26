@@ -447,7 +447,7 @@ async def curator_brief(context: JobContext, timestamp: int | None = None) -> di
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, lock=jobs.CURATOR_CHANGES, queueing_lock=jobs.CURATOR_CHANGES)
 async def curator_changes(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.changes import advance
+    from evo_agents.hub.server.changes.service.job import advance
 
     found = hub(context)
     curator_app = getattr(found, "curator_app", None)
@@ -461,7 +461,9 @@ async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict
         merge_ancestry,
         merge_check,
     )  # a run's pull request on github.com, judged at its head
-    from evo_agents.hub.server.changes import merge_gate  # the queue's job, through the module of the Curator's changes
+    from evo_agents.hub.server.changes.service.job import (
+        merge_gate,  # the queue's job, through the module of the Curator's changes
+    )
 
     found = hub(context)
     outcomes = await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)

@@ -81,7 +81,6 @@ from evo_agents.hub.server import (
     probe_report,
     problem_evidence,
     projects,
-    proposals,
     replays,
     run_events,
     skills,
@@ -115,6 +114,7 @@ from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.plans import routes as plans
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.proposals.service import record as proposal_service
 from evo_agents.hub.server.security import (
     LOGIN_HINT,
     Principal,
@@ -762,7 +762,9 @@ class HubMcp(MCPServer):
             night = date.fromisoformat(arguments["night"]) if "night" in arguments else None
         except ValueError:
             raise Refusal(f"{arguments['night']!r} is not a date: give the night as YYYY-MM-DD") from None
-        found = await proposals.show_figures(caller.request, project, caller.user, night=night, sink=caller.sink)
+        found = await proposal_service.night_figures(
+            caller.request.app.state.engine, caller.user, project, night, caller.sink
+        )
         span = f"{found.since:%Y-%m-%d %H:%M} to {found.until:%Y-%m-%d %H:%M} UTC"
         head = f"Figures of project {project} for the night of {found.night} (sessions and runs from {span}):"
         text = head + "\n" + json.dumps(found.figures, ensure_ascii=False, indent=1, default=str)

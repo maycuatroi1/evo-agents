@@ -1,4 +1,4 @@
-"""The night shift's side of the Curator's changes (``evo_agents.hub.server.changes`` describes the design): it
+"""The night shift's side of the Curator's changes (``evo_agents.hub.server.changes.service.job`` describes the design): it
 queues the judge run of a change waiting for one and the Builder of a planned change, and moves a change on when a run
 of it ends."""
 
@@ -6,15 +6,18 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import curator, judge, runs, tables
+from evo_agents.hub import curator, judge, runs
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, change_repos, merge_gate
+from evo_agents.hub.server import audit, merge_gate
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server.change_views import change_of_plan, set_change
+from evo_agents.hub.server.changes.repository import repos as repo_store
+from evo_agents.hub.server.changes.repository import shift as store
+from evo_agents.hub.server.changes.repository.views import change_of_plan, plan_body
+from evo_agents.hub.server.changes.service import repos as change_repos
+from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.protection import (
     reason_line,
@@ -36,19 +39,7 @@ async def _owner_secret(conn: AsyncConnection, owner_id: int, project_id: int, n
     """Whether the owner has a live git secret ``name`` bound to the project."""
     if not name:
         return False
-    s, b = tables.secrets, tables.secret_bindings
-    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id)
-    query = select(
-        exists().where(
-            s.c.owner_id == owner_id,
-            s.c.name == name,
-            s.c.kind == "git",
-            s.c.deleted_at.is_(None),
-            (s.c.expires_at.is_(None)) | (s.c.expires_at > func.now()),
-            bound,
-        )
-    )
-    return bool((await conn.execute(query)).scalar_one())
+    return await store.owner_secret(conn, owner_id, project_id, name)
 
 
 def _run_values(
@@ -89,12 +80,7 @@ async def _waits(conn: AsyncConnection, change, why: str) -> str:
     reason says something else; the line the job's log names it by."""
     text = reason_line(why)
     if change.reason != text:
-        c = tables.curator_changes
-        await conn.execute(
-            update(c)
-            .values(reason=text, updated_at=func.now())
-            .where(c.c.id == change.id, c.c.state == "planned", c.c.reason.is_distinct_from(text))
-        )
+        await store.set_planned_reason(conn, change.id, text)
     return f"{change.plan_id}: {why}"
 
 
@@ -122,19 +108,7 @@ async def _run_wait(conn: AsyncConnection, project_id: int, change, held) -> str
     active, or no step ready to run; None when the night shift may queue it. Takes the plan's lock."""
     await lock_plan(conn, project_id, change.plan_id)
     activity = await plan_activity(conn, project_id, change.plan_id)
-    r = tables.runs
-    judging = (
-        await conn.execute(
-            select(
-                exists().where(
-                    r.c.project_id == project_id,
-                    r.c.plan_id == change.plan_id,
-                    r.c.kind == "judge",
-                    r.c.state.in_(runs.ACTIVE_STATES),
-                )
-            )
-        )
-    ).scalar_one()
+    judging = await store.judging(conn, project_id, change.plan_id)
     if activity.plan_run is not None or activity.steps or judging:
         return f"a run of its plan {change.plan_id} is still active: the night shift builds it once that run ends"
     unready = unready_steps(held.body)
@@ -155,7 +129,7 @@ async def _build_wait(conn: AsyncConnection, due, gate, change, runtime: str, *,
             f"its plan {change.plan_id} is not on the hub, or {due.owner}, the night shift's owner, may not read it",
         )
     why, repos = None, await change_repos.repo_names(conn, change)
-    if change.forge == "github":  # the ruleset of each of its repos (``change_repos``)
+    if change.forge == "github":  # the ruleset of each of its repos (``service.repos``)
         why = await change_repos.ruleset_waits(conn, due.project_id, repos, curator_app=curator_app)
     elif change.forge == "gitlab":
         why = await _git_secret_wait(conn, due, change)
@@ -191,9 +165,7 @@ async def queue_builder(conn: AsyncConnection, due, gate, *, curator_app: bool, 
     ``only`` alone (``build_now``); its run's id, or None (see ``changes``). Each planned change it passes
     over keeps why as its reason (``_waits``). ``curator_app``: whether this hub has the Curator's App. Called under the
     schedule's row lock."""
-    c = tables.curator_changes
-    query = select(c).where(c.c.project_id == due.project_id, c.c.state == "planned")
-    planned = (await conn.execute((query.where(c.c.id == only) if only else query).order_by(c.c.id))).all()
+    planned = await store.planned(conn, due.project_id, only)
     if not planned:
         return None
     builder = due.body.get("builder") or {}
@@ -231,16 +203,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     Codex when the project's policy clears Codex for the change's label and the worker on duty has it, else on Claude
     Code with a model other than the Builder's (``judge.judge_runtime``); a runtime of ``gate.avoid`` is not on duty.
     Called under the schedule's row lock."""
-    c, p = tables.curator_changes, tables.proposals
-    waiting = (
-        await conn.execute(
-            select(c, p.c.label.label("proposal_label"), p.c.title.label("proposal_title"))
-            .join_from(c, p, p.c.id == c.c.proposal_id)
-            .where(c.c.project_id == due.project_id, c.c.state == "judge_pending")
-            .order_by(c.c.id)
-            .limit(1)
-        )
-    ).one_or_none()
+    waiting = await store.judge_waiting(conn, due.project_id)
     if waiting is None:
         return None
     access, duty, charter = gate.access, gate.duty, due.body
@@ -252,7 +215,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     activity = await plan_activity(conn, due.project_id, waiting.plan_id)
     if activity.plan_run is not None or activity.steps:
         return None  # a Builder of the change still runs: never both at once
-    row = await change_repos.next_to_judge(conn, waiting.id)  # a change in several repos: one repo at a time
+    row = await repo_store.next_to_judge(conn, waiting.id)  # a change in several repos: one repo at a time
     repo, head_sha = (row.repo, row.head_sha) if row is not None else (waiting.repo, waiting.head_sha)
     usable = {name for name in runs.RUNTIMES if duty.runtime(name) is not None and name not in gate.avoid}
     cleared = judge.codex_cleared(access.rules, waiting.proposal_label)
@@ -327,10 +290,7 @@ async def builder_ended(conn: AsyncConnection, found: RunStep, old: str, new: st
     change = await change_of_plan(conn, found.project_id, found.plan_id, lock=True)
     if change is None or change.state != "planned" or old == "parked":
         return
-    pl = tables.plans
-    body = (
-        await conn.execute(select(pl.c.body).where(pl.c.project_id == found.project_id, pl.c.plan_id == found.plan_id))
-    ).scalar_one_or_none()
+    body = await plan_body(conn, found.project_id, found.plan_id)
     if new == "done" and _all_done(body):
         state = "pr_pending" if change.forge == "github" else "judge_pending"
         await set_change(conn, change.id, state=state, builder_run_id=found.run_id, reason=None)
@@ -382,7 +342,7 @@ async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
     attempts = change.judge_attempts + 1
     why = found.error or reason
     left = "open" if attempts >= judge.JUDGE_ATTEMPTS else "judge_pending"
-    await change_repos.judge_left(conn, change.id, found.run_id, left, reason_line(f"judge run #{found.run_id}: {why}"))
+    await repo_store.judge_left(conn, change.id, found.run_id, left, reason_line(f"judge run #{found.run_id}: {why}"))
     if attempts >= judge.JUDGE_ATTEMPTS:
         await set_change(
             conn,

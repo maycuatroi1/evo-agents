@@ -584,12 +584,14 @@ async def record_move(
     plan run left in progress."""
     found = await run_step(conn, run_id)
     if found.kind == "review":
-        from evo_agents.hub.server import proposals  # it reads runs through the routes that import this module
+        from evo_agents.hub.server import review_inbox  # it reads runs through the routes that import this module
 
-        await proposals.review_ended(conn, found, old, new, reason=reason)
+        await review_inbox.review_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "judge":
-        from evo_agents.hub.server import change_shift  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.changes.service import (
+            shift as change_shift,  # it reads runs through the routes that import this module
+        )
 
         await change_shift.judge_ended(conn, found, old, new, reason=reason)
         return None
@@ -643,7 +645,9 @@ async def record_move(
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await run_ended(conn, found, old, new, reason=reason)
-        from evo_agents.hub.server import change_shift  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.changes.service import (
+            shift as change_shift,  # it reads runs through the routes that import this module
+        )
 
         await change_shift.builder_ended(conn, found, old, new, reason=reason)
         return revision

@@ -40,8 +40,8 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.proposal_models import EvidenceIn
-from evo_agents.hub.server.proposals import held_review_run, resolve, writer_of
+from evo_agents.hub.server.proposals.models import EvidenceIn
+from evo_agents.hub.server.proposals.service.record import held_review_run, resolve, writer_of
 from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID, RunId

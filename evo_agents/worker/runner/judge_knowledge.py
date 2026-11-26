@@ -1,6 +1,6 @@
 """The checks a judge run runs for a change of knowledge.yaml besides the plan's verify (``JudgeInputs.knowledge``, which
-``evo_agents.hub.server.change_tiers`` gives a change of kind kg_source whose pull request changed the file): first
-``evo-agents harness validate`` in the worktree at the commit judged, as code the worker does not trust
+``evo_agents.hub.server.changes.service.tiers`` gives a change of kind kg_source whose pull request changed the file):
+first ``evo-agents harness validate`` in the worktree at the commit judged, as code the worker does not trust
 (``verify.run_untrusted``), then a trial sync of each source the change edits, by the worker's own code.
 
 A trial sync loads the project from a view of the harness as the commit judged has it, written under the run's

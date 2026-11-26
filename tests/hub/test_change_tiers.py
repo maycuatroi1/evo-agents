@@ -1,5 +1,5 @@
-"""The tier rules of step 8 of plan history-driven-curator on the hub (``evo_agents.hub.server.change_tiers``): a
-proposal's path the knowledge graph lacks, holds older than the default branch or cannot read is at least tier 1; the
+"""The tier rules of step 8 of plan history-driven-curator on the hub (``evo_agents.hub.server.changes.service.tiers``):
+a proposal's path the knowledge graph lacks, holds older than the default branch or cannot read is at least tier 1; the
 tier the hub computes again from a pull request's real files reads the graph too; a change of kind kg_source that edits
 only the ref, fetch, refresh, include, exclude or allow of a source in knowledge.yaml stays tier 0, its Judge running
 harness validate and a trial sync of the source, and the hub merges it; any other change of the file is at least tier
@@ -25,8 +25,9 @@ from sqlalchemy import column, func, insert, select, table, update
 
 from evo_agents.hub import kg_snapshots, knowledge_diff, tables
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import change_tiers, kg
-from evo_agents.hub.server import proposals as proposal_routes
+from evo_agents.hub.server import kg
+from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.proposals.service import record as proposal_routes
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (app_key is a fixture)
 from tests.hub.test_curator import PROJECT

@@ -403,7 +403,7 @@ def at_revision(access: ProjectAccess, found: Held, given: int | None) -> None:
 
 async def _write_refused(conn: AsyncConnection, access: ProjectAccess, found: Held | None, body: dict, **curator):
     """The 422 of a verify or a problem ``body`` names anew, or the 409 of a write of a plan of the Curator's."""
-    from evo_agents.hub.server.change_views import plan_write_refusal  # it reads plans through this package
+    from evo_agents.hub.server.changes.service.policy import plan_write_refusal  # it reads plans through this package
 
     before = None if found is None else found.body
     unrunnable = unrunnable_verify(before, body)

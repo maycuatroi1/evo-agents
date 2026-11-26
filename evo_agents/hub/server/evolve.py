@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, evolve, runs, tables
 from evo_agents.hub.server import audit, evolve_report, evolve_runs, system_curation
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.change_views import charter_of
+from evo_agents.hub.server.changes.repository.views import charter_of
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.evolve_models import (
     ArmIn,

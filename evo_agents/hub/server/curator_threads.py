@@ -54,17 +54,21 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import autonomy_gates, changes, merge_gate, triage
-from evo_agents.hub.server.change_views import Change, change_view, change_with_origin
+from evo_agents.hub.server import autonomy_gates, merge_gate, triage
+from evo_agents.hub.server.changes.models.views import Change
+from evo_agents.hub.server.changes.repository.job import night_paused
+from evo_agents.hub.server.changes.repository.views import change_view, change_with_origin
+from evo_agents.hub.server.changes.service import job as changes
 from evo_agents.hub.server.chats.service import agents as chat_agents
 from evo_agents.hub.server.chats.service.agents import AgentRun
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.proposal_models import Proposal, ProposalAnswer
-from evo_agents.hub.server.proposal_reads import answer_proposal_as
-from evo_agents.hub.server.proposals import planned_tiers_of
+from evo_agents.hub.server.proposals.models import ProposalAnswer
+from evo_agents.hub.server.proposals.service.reads import answer_proposal_as
+from evo_agents.hub.server.proposals.service.record import planned_tiers_of
+from evo_agents.hub.server.proposals.service.shapes import Proposal
 from evo_agents.hub.server.protection import github_target
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -484,7 +488,7 @@ async def _left_change(conn: AsyncConnection, frame: Frame, change_id: int):
     why = _not_left(change)
     if why is not None:
         raise HTTPException(409, f"change #{change_id} is not merged: {why}")
-    if await changes.night_paused(conn, change.project_id):
+    if await night_paused(conn, change.project_id):
         raise HTTPException(409, f"change #{change_id} is not merged: {changes.PAUSED}")
     if await agent_access(conn, frame.chat_id, frame.agent.profile, frame.owner.user_id) is None:
         raise HTTPException(409, f"@{frame.agent.profile.handle} is not in chat {frame.chat_id} any more")
@@ -509,7 +513,7 @@ async def _merge_now(
         moved = locked is None or _not_left(locked) is not None or locked.head_sha != change.head_sha
         if moved:
             return f"change #{change.id} moved while the hub read GitHub: run the command again", 0, None
-        if await changes.night_paused(conn, change.project_id):  # paused while the hub read GitHub
+        if await night_paused(conn, change.project_id):  # paused while the hub read GitHub
             return changes.PAUSED, 0, None
         act = changes.merge_act(change, read)
         said = await autonomy_gates.check(conn, frame.chat_run_id, "K5", **act)

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import replay, tables
 from evo_agents.hub.server import system_curation
-from evo_agents.hub.server.change_views import set_change
+from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.evolve_models import ReportIn
 from evo_agents.hub.server.evolve_runs import reason_text, set_row
 from evo_agents.hub.server.projects import access_of

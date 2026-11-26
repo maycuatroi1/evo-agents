@@ -2,15 +2,17 @@
 merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the model,
 ``evo_agents.hub.server.proposal_plans`` how an accepted proposal becomes the Curator's plan and its change, and
 ``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch. This module
-holds the job, its pull requests and merges; ``change_views`` the models and the reading of a change, ``change_shift``
-the night shift's side, ``change_routes`` the routes and ``change_watch`` what the job reads again.
+holds the job, its pull requests and merges; in the package ``evo_agents.hub.server.changes``, ``models`` holds the
+models, ``repository`` the reading and writing of a change, ``service.policy`` the refusals and what a run of the
+Curator gets, ``service.shift`` the night shift's side, ``routes`` and ``service.judge`` the routes and
+``service.watch`` what the job reads again.
 
 Accepting a proposal of a tier the charter's ``planned_tiers`` names (tiers 0 to 2 unless it names others,
 ``judge.planned_tiers``) makes its draft the Curator's plan ``curator-<proposal>-<slug>``, on the branch
 ``curator/<proposal>-<slug>`` of its one repo, and a row of curator_changes, state ``planned``; a draft that cannot
 become one leaves its change ``open``, with the reason, and nothing of it runs (``proposal_plans.plan_from_proposal``).
 A write of a Curator's plan that names another repo or branch for it, or changes anything but the progress of its steps
-(status, done_at, evidence and note) and its status, is refused (``plan_write_refusal``, from ``plans._store``): its
+(status, done_at, evidence and note) and its status, is refused (``service.policy.plan_write_refusal``, from ``plans.service``): its
 what, goal, context, verify and acceptance stay as the hub made them. A plan whose id starts with ``curator-`` is made
 this way alone, never by hand. No member dispatches a run of a Curator's plan, step or plan
 (``refuse_manual_dispatch``): the night shift alone runs it, at any hour.
@@ -37,11 +39,11 @@ of its own (a Builder that reverted its own work), or "its branch has no commit 
 made outside the repo, on the hub's data, or one whose commits are on the default branch already), once no pull request
 of the branch merged or closed by hand settles it (``settle_by_branch``). Otherwise it opens the pull request with the workers' App, reads its
 files and runs ``diff_signs.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
-files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
+files also give the proposal its tier again (``service.tiers.retier``: ``tiers.tier_of`` over the paths the pull request
 really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
 key, which only ever raises it), so a proposal of docs whose pull request changes code is tier 1 from then on. A list of
 files GitHub cuts short is a sign too. A judge run reads what it needs with GET /v1/worker/runs/{id}/judge, the hidden
-checks of the charter and the checks of knowledge.yaml included (``change_tiers.judge_knowledge``), and posts its
+checks of the charter and the checks of knowledge.yaml included (``service.tiers.judge_knowledge``), and posts its
 verdict with POST /v1/worker/runs/{id}/verdict, those checks' results among its verify results. Both take, besides the
 worker's token, the run's own key (``judge.JUDGE_KEY_HEADER``), which the hub makes when the run is claimed, hands the
 daemon in the claim alone and keeps as a SHA-256 (``issue_judge_key``): the worker token, which code on the worker's
@@ -54,11 +56,11 @@ ruleset with the Curator's App, the files and the tier they give, the checks the
 message), and merging a change of a tier the charter's ``auto_merge`` names (tier 0 alone unless it names more, up to 3)
 at the head the Judge passed; anything else, a tier the charter does not name, a sign or a protected path, stays open
 for its owner with the reason.
-Before it merges or leaves a change open it reads the change again under its row lock (``_unchanged``): one a person
+Before it merges or leaves a change open it reads the change again under its row lock (``repository.job.unchanged``): one a person
 closed or an agent merged while the pass read GitHub is left as it is (MOVED).
 CI must be green, or, when the charter has ``merge_without_ci``, may be none at all or, with a ruleset that requires no
 check, what ran: a check that ran and failed still leaves the change open, and one still running makes it wait. A
-change of a harness alone whose replays won merges as tier 0 (``change_tiers.merge_tier``), and the merge of one
+change of a harness alone whose replays won merges as tier 0 (``service.tiers.merge_tier``), and the merge of one
 releases its global skill (``evo_agents.hub.server.skill_release``, part of each pass).
 A change left open for its owner is told in its proposal's thread when the charter has the agent answer, and the agent
 may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head`` and ``record_merge``, which the
@@ -77,7 +79,7 @@ GET /v1/projects/{p}/curator/changes (reader) lists the project's changes the ca
 plan when it has one, through the project's hub sink), newest first, each with its reason. POST
 .../curator/changes/{id}/close (admin), with a reason, closes a change left ``open`` with no pull request, such as one
 whose proposal named no repo: the reason becomes the change's, and its proposal's ledger gets the line. A change with a
-pull request closes when its pull request does. POST /v1/worker/runs/{id}/curator/drop (``change_routes.drop_change``, behind
+pull request closes when its pull request does. POST /v1/worker/runs/{id}/curator/drop (``routes.drop_change``, behind
 ``evo-agents worker curator drop``) is the Builder's own way out: the plan run of a change's plan closes that change
 while it is ``planned`` or ``pr_pending`` with no pull request, for the member who dispatched the run, an admin of the
 project, with a reason and what it measured as a note, so a change its measurements or its owner's decision say not
@@ -89,16 +91,20 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import partial
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables, tiers
-from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
-from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
-from evo_agents.hub.server.change_watch import settle_by_branch, watch_pass
+from evo_agents.hub import approval_heads, diff_signs, guard, judge, tiers
+from evo_agents.hub.server import audit, autonomy_gates, merge_gate, skill_release
+from evo_agents.hub.server.changes.repository import job as store
+from evo_agents.hub.server.changes.repository.job import night_paused, unchanged
+from evo_agents.hub.server.changes.repository.views import change_of_plan, charter_of, plan_body, raise_tier
+from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.changes.service.moves import set_change
+from evo_agents.hub.server.changes.service.watch import settle_by_branch, watch_pass
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.protection import (
@@ -115,7 +121,6 @@ log = logging.getLogger(__name__)
 PULL = "curator.pull"  # the hub opened a change's pull request: "<project>/<plan> change:<id> pr=<url>"
 MERGE = "curator.merge"  # the hub merged a change's pull request: "<project>/<plan> change:<id> pr=<url> sha=<sha>"
 CI_WAIT = timedelta(hours=6)  # CI still running this long after the verdict leaves the pull request open
-NIGHT_SHIFT = "night_shift"
 PAUSED = "the night shift of the project is paused: the hub merges nothing while it is"
 MOVED = "moved"  # the outcome of a change closed, merged or judged again while a pass of curator.changes read it
 NOTHING = "nothing"  # the outcome of a change whose branch changes no file: closed, with no pull request
@@ -126,22 +131,8 @@ EMPTY = "curator.empty"  # the hub closed a change whose branch changes nothing:
 
 
 async def _due_changes(engine: AsyncEngine) -> list:
-    c, pr, cr = tables.curator_changes, tables.project_repos, tables.curator_change_repos
-    several = exists().where(cr.c.change_id == c.c.id).label("several")  # a change in several repos (change_repos)
     async with engine.begin() as conn:
-        query = (
-            select(c, pr.c.origin, several)
-            .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
-            .where(c.c.state.in_(("pr_pending", "judged")))
-            .order_by(c.c.id)
-        )
-        return (await conn.execute(query)).all()
-
-
-async def _owner_of(conn: AsyncConnection, project_id: int) -> int | None:
-    s = tables.schedules
-    query = select(s.c.owner_id).where(s.c.project_id == project_id, s.c.kind == NIGHT_SHIFT)
-    return (await conn.execute(query)).scalar_one_or_none()
+        return await store.due_changes(conn)
 
 
 def _pr_body(project: str, change, proposal_title: str) -> str:
@@ -154,7 +145,7 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
     )
 
 
-def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[dict]:
+def signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[dict]:
     """``diff_signs.hack_signs`` of a pull request's files, and first, so the cap on signs never drops it, the sign of a
     list of files GitHub did not give whole (``cut``)."""
     signs = diff_signs.hack_signs(
@@ -169,27 +160,16 @@ def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[
     return signs
 
 
-async def _pull_inputs(engine: AsyncEngine, change) -> tuple[str, str, dict, str, dict]:
+async def pull_inputs(engine: AsyncEngine, change) -> tuple[str, str, dict, str, dict]:
     """(its proposal's title, the project, the charter, the trailers the Builder's run signs it with, the plan's body)
     of a change whose pull request the hub opens."""
     from evo_agents.hub.server import pull_trailers
 
     async with engine.begin() as conn:
-        pr, p = tables.proposals, tables.projects
-        title, project = (
-            await conn.execute(
-                select(pr.c.title, p.c.name)
-                .join_from(pr, p, p.c.id == pr.c.project_id)
-                .where(pr.c.id == change.proposal_id)
-            )
-        ).one()
+        title, project = await store.title_and_project(conn, change.proposal_id)
         charter = await charter_of(conn, change.project_id)
-        rev, signed = tables.plans, await pull_trailers.block(conn, change.builder_run_id)
-        body = (
-            await conn.execute(
-                select(rev.c.body).where(rev.c.project_id == change.project_id, rev.c.plan_id == change.plan_id)
-            )
-        ).scalar_one_or_none() or {}
+        signed = await pull_trailers.block(conn, change.builder_run_id)
+        body = await plan_body(conn, change.project_id, change.plan_id)
     return title, project, charter, signed, body
 
 
@@ -274,7 +254,7 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         async with engine.begin() as conn:
             await set_change(conn, change.id, state="open", reason="its repo has no origin on GitHub")
         return "open"
-    title, project, charter, signed, body = await _pull_inputs(engine, change)
+    title, project, charter, signed, body = await pull_inputs(engine, change)
     opened = opener(engine, app, target, change, title, project, signed)
     try:
         found = await pulls.with_token(app, target.owner, target.name, "open", opened)
@@ -297,11 +277,11 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         raise GitHubUnavailable("GitHub answered without the pull request's number and head")
 
     async def read(token: str) -> tuple[list[dict], str | None]:
-        return await _files_of(app, token, target, number, made.get("changed_files"))
+        return await files_of(app, token, target, number, made.get("changed_files"))
 
     files, cut = await pulls.with_token(app, target.owner, target.name, "read", read)
     diff = diff_signs.from_github_files(files)
-    signs = _signs_of(diff, change, charter, body, cut)
+    signs = signs_of(diff, change, charter, body, cut)
     facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), made, reader)
     return await _pull_opened(engine, change, project, made, found["base"], signs, facts, charter)
 
@@ -341,7 +321,7 @@ async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str,
     return NOTHING
 
 
-async def _files_of(app: GitHubApp, token: str, target: Target, number: int, expected) -> tuple[list[dict], str | None]:
+async def files_of(app: GitHubApp, token: str, target: Target, number: int, expected) -> tuple[list[dict], str | None]:
     """(the files of pull request ``number`` as GitHub lists them, why that list is not the whole of them or None):
     a list GitHub cuts short, or that holds fewer files than the pull request says it changes, is not read in part."""
     from evo_agents.hub.server import pulls
@@ -355,13 +335,6 @@ async def _files_of(app: GitHubApp, token: str, target: Target, number: int, exp
     return files, None
 
 
-async def night_paused(conn: AsyncConnection, project_id: int) -> bool:
-    """Whether the project's night shift is paused (a member paused it, or its circuit breaker): it merges nothing."""
-    s = tables.schedules
-    query = select(exists().where(s.c.project_id == project_id, s.c.kind == NIGHT_SHIFT, s.c.paused_at.is_not(None)))
-    return bool((await conn.execute(query)).scalar_one())
-
-
 async def _left_for_owner(conn: AsyncConnection, change_id: int) -> None:
     """Tell the thread of the change's proposal, when it has the agent answer, that the hub left the change open for
     its owner (``curator_threads.on_left_open``, in a savepoint of this transaction)."""
@@ -370,28 +343,18 @@ async def _left_for_owner(conn: AsyncConnection, change_id: int) -> None:
     await on_left_open(conn, change_id)
 
 
-async def _unchanged(conn: AsyncConnection, change) -> bool:
-    """Whether ``change`` is still as this pass read it, in the same state at the same head, its row locked until the
-    caller's transaction ends: a person may have closed it, or an agent merged it, since."""
-    c = tables.curator_changes
-    query = select(c.c.state, c.c.head_sha).where(c.c.id == change.id).with_for_update()
-    row = (await conn.execute(query)).first()
-    return row is not None and (row.state, row.head_sha) == (change.state, change.head_sha)
-
-
-async def _reopen(engine: AsyncEngine, change, why: str | None, kept: str | None = None) -> str:
+async def reopen(engine: AsyncEngine, change, why: str | None, kept: str | None = None) -> str:
     """Leave a judged change open for a person, saying ``why``; with ``kept``, the outcome of a change left as it is for
     a later pass (its night shift paused, its principal asked). MOVED, and nothing written, for a change that moved on
     since the pass read it."""
     async with engine.begin() as conn:
-        if not await _unchanged(conn, change):
+        if not await unchanged(conn, change):
             return MOVED
         if kept is None:
             await set_change(conn, change.id, state="open", reason=why)
             await _left_for_owner(conn, change.id)
         else:
-            c = tables.curator_changes
-            await conn.execute(update(c).values(reason=why).where(c.c.id == change.id))
+            await store.set_reason(conn, change.id, why)
     return kept or "open"
 
 
@@ -458,7 +421,7 @@ async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dic
     from evo_agents.hub.server import pulls
 
     found = await pulls.pull(app, token, target.owner, target.name, change.pr_number)
-    files, cut = await _files_of(app, token, target, change.pr_number, found.get("changed_files"))
+    files, cut = await files_of(app, token, target, change.pr_number, found.get("changed_files"))
     head = (found.get("head") or {}).get("sha")
     runs_found = await pulls.check_runs(app, token, target.owner, target.name, head) if judge.is_sha(head) else None
     statuses = await pulls.combined_status(app, token, target.owner, target.name, head) if judge.is_sha(head) else None
@@ -487,7 +450,7 @@ async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dic
 
 
 async def _tier_again(engine: AsyncEngine, app: GitHubApp, change, target: Target, diff, pull: dict, charter, reader):
-    """The tier of a judged change from its pull request's files as GitHub lists them now (``change_tiers.retier``),
+    """The tier of a judged change from its pull request's files as GitHub lists them now (``service.tiers.retier``),
     kept on the change when it rose."""
     facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), pull, reader)
     async with engine.begin() as conn:
@@ -518,7 +481,7 @@ class MergedBy:
     login: str
 
 
-def _auto(charter: dict) -> tuple[int, ...]:
+def auto(charter: dict) -> tuple[int, ...]:
     return tuple(item for item in charter.get("auto_merge") or [] if isinstance(item, int))
 
 
@@ -542,7 +505,7 @@ async def merge_read(
     seen = await pulls.with_token(app, target.owner, target.name, "read", partial(_read_merge, app, target, change))
     found = seen["pull"]
     diff = diff_signs.from_github_files(seen["files"])
-    signs = _signs_of(diff, change, charter, body, seen["cut"])
+    signs = signs_of(diff, change, charter, body, seen["cut"])
     tier = change.tier
     if reader is not None:
         tier = await _tier_again(engine, app, change, target, diff, found, charter, reader)
@@ -559,7 +522,7 @@ async def merge_read(
     facts = judge.MergeFacts(
         forge=change.forge,
         tier=tier,
-        auto_merge=_auto(charter),
+        auto_merge=auto(charter),
         repo_checked=ruleset is not None and ruleset.protected,
         passed=bool(change.passed),
         judged_sha=change.head_sha,
@@ -611,11 +574,9 @@ async def record_merge(
     await set_change(
         conn, change.id, state="merged", merged_at=func.now(), merge_sha=merged, reason=None, ledger_extra=extra
     )
-    project = (
-        await conn.execute(select(tables.projects.c.name).where(tables.projects.c.id == change.project_id))
-    ).scalar_one()
+    project = await store.project_name(conn, change.project_id)
     who = "The hub" if by is None else by.agent
-    owner_id = await _owner_of(conn, change.project_id) if by is None else by.user_id
+    owner_id = await store.owner_of(conn, change.project_id) if by is None else by.user_id
     if owner_id is not None:
         from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
@@ -661,31 +622,25 @@ async def _merge(
 ) -> str:
     if not change.passed:
         failures = (change.verdict or {}).get("failures") or []
-        return await _reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
+        return await reopen(engine, change, reason_line("the Judge did not pass it: " + "; ".join(failures)))
     async with engine.begin() as conn:
         charter = await charter_of(conn, change.project_id)
         tier, waits = await change_tiers.merge_tier(conn, change)
-        body = (
-            await conn.execute(
-                select(tables.plans.c.body).where(
-                    tables.plans.c.project_id == change.project_id, tables.plans.c.plan_id == change.plan_id
-                )
-            )
-        ).scalar_one_or_none() or {}
+        body = await plan_body(conn, change.project_id, change.plan_id)
         paused = await night_paused(conn, change.project_id)
-    if tier not in _auto(charter):  # no call to GitHub for a change the hub would never merge
+    if tier not in auto(charter):  # no call to GitHub for a change the hub would never merge
         why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
-        return await _reopen(engine, change, why)
+        return await reopen(engine, change, why)
     if paused:
-        return await _reopen(engine, change, PAUSED, "paused")
+        return await reopen(engine, change, PAUSED, "paused")
     read = await merge_read(engine, app, curator_app, change, charter, body, reader)
     decided, reasons = judge.merge_decision(read.facts)
     if decided == "wait":
         async with engine.begin() as conn:
-            if not await _unchanged(conn, change):
+            if not await unchanged(conn, change):
                 return MOVED
             verdict_at = change.updated_at  # when the verdict, then its check run, was written
-            if verdict_at is not None and await _older_than(conn, verdict_at, CI_WAIT):
+            if verdict_at is not None and await store.older_than(conn, verdict_at, CI_WAIT):
                 await set_change(
                     conn,
                     change.id,
@@ -694,41 +649,31 @@ async def _merge(
                 )
                 await _left_for_owner(conn, change.id)
                 return "open"
-            await conn.execute(
-                update(tables.curator_changes)
-                .values(reason=reason_line("; ".join(reasons)))
-                .where(tables.curator_changes.c.id == change.id)
-            )
+            await store.set_reason(conn, change.id, reason_line("; ".join(reasons)))
         return "wait"
     if decided == "open":
-        return await _reopen(engine, change, reason_line("; ".join(reasons)))
+        return await reopen(engine, change, reason_line("; ".join(reasons)))
 
     async with engine.begin() as conn:
-        if not await _unchanged(conn, change):  # closed or merged while the hub read GitHub
+        if not await unchanged(conn, change):  # closed or merged while the hub read GitHub
             return MOVED
         paused = paused or await night_paused(conn, change.project_id)  # paused while the hub read GitHub
         act = merge_act(change, read)
         said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
     if paused:
-        return await _reopen(engine, change, PAUSED, "paused")
+        return await reopen(engine, change, PAUSED, "paused")
     if not said.act:  # K5 of the principal of the Builder's run (``autonomy_gates``)
-        return await _reopen(engine, change, reason_line(said.reason), "wait" if said.waits else None)
+        return await reopen(engine, change, reason_line(said.reason), "wait" if said.waits else None)
     try:
         merged = await merge_at_head(app, change, read.facts.tier)
     except GitHubRefused as exc:
-        return await _reopen(engine, change, reason_line(f"GitHub refused the merge: {exc}"))
+        return await reopen(engine, change, reason_line(f"GitHub refused the merge: {exc}"))
     async with engine.begin() as conn:
-        c = tables.curator_changes
-        state = select(c.c.state).where(c.c.id == change.id).with_for_update()
-        if (await conn.execute(state)).scalar_one_or_none() == "merged":  # an agent recorded its merge meanwhile
+        if await store.locked_state(conn, change.id) == "merged":  # an agent recorded its merge meanwhile
             return MOVED
         await record_merge(conn, change, merged, read, act)
     log.info("curator change merged", extra={"change_id": change.id, "sha": merged})
     return "merged"
-
-
-async def _older_than(conn: AsyncConnection, moment: datetime, span: timedelta) -> bool:
-    return bool((await conn.execute(select(func.now() - span > moment))).scalar_one())
 
 
 async def _judged_elsewhere(engine: AsyncEngine, change) -> str:
@@ -736,7 +681,7 @@ async def _judged_elsewhere(engine: AsyncEngine, change) -> str:
     (``merge_gate.curator_judged``); MOVED for a change that moved on since the pass read it."""
     outcome, why = await merge_gate.curator_judged(engine, change)
     async with engine.begin() as conn:
-        if not await _unchanged(conn, change):
+        if not await unchanged(conn, change):
             return MOVED
         await set_change(conn, change.id, state="open", reason=reason_line(why))
     return outcome
@@ -759,9 +704,9 @@ async def _move_on(
         outcomes["no_app"] += 1
         return
     if change.several:
-        from evo_agents.hub.server import change_repos  # it reads the pull requests and merges of this module
+        from evo_agents.hub.server.changes.service import repos  # it reads the pull requests and merges of this module
 
-        outcomes[await change_repos.move_on(engine, github_app, curator_app, change, reader)] += 1
+        outcomes[await repos.move_on(engine, github_app, curator_app, change, reader)] += 1
         return
     if change.state == "pr_pending":
         outcomes[await _open_pull(engine, github_app, change, reader)] += 1
@@ -776,7 +721,7 @@ async def advance(
 ) -> dict:
     """One pass of the job ``curator.changes`` (see the module's docstring); how many changes ended in each outcome.
     GitHub failing leaves a change as it is for the next pass. ``blobs`` and ``data_dir`` are where the knowledge
-    graphs the tier rules read come from (``change_tiers.GraphReader``)."""
+    graphs the tier rules read come from (``service.tiers.GraphReader``)."""
     outcomes: Counter = Counter()
     reader = change_tiers.GraphReader.at(blobs, data_dir)
     for change in await _due_changes(engine):

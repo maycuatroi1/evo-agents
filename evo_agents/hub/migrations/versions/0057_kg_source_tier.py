@@ -4,9 +4,9 @@ Revision ID: 0057
 Revises: 0056
 Create Date: 2026-10-20
 
-``evo_agents.hub.tiers``, ``evo_agents.hub.knowledge_diff`` and ``evo_agents.hub.server.change_tiers`` describe the
-design; the list below is a copy of ``tiers.CHANGE_KINDS`` as of this revision, never an import, so a later change to it
-takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions, as
+``evo_agents.hub.tiers``, ``evo_agents.hub.knowledge_diff`` and ``evo_agents.hub.server.changes.service.tiers`` describe
+the design; the list below is a copy of ``tiers.CHANGE_KINDS`` as of this revision, never an import, so a later change
+to it takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions, as
 ``evo_agents.hub.tables_curator`` describes the tables.
 
 proposals.kind takes a twenty-second value, 'kg_source': the ref, fetch, refresh, include, exclude or allow of a git or

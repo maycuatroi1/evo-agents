@@ -17,8 +17,8 @@ index and of the searches and listings of runs (``repository.namespace_condition
 writer of its project restores it (POST /v1/memories/{id}/restore, ``evo-agents hub memory restore``). An agent's
 memory that cites code as the Reviewer's evidence does (``code:REPO:PATH[:LINE]``, ``review.parse_evidence``) is stale
 while the project's latest knowledge graph has no file at one of those paths, read as the person who owns the memory
-(``change_tiers.impact_as_owner``); a project without a graph, or whose graph cannot be read now, keeps the marks it
-had. A memory the Curator promoted into a shared one (``promotion``) is out of the index, and the job leaves it
+(``changes.service.tiers.impact_as_owner``); a project without a graph, or whose graph cannot be read now, keeps the
+marks it had. A memory the Curator promoted into a shared one (``promotion``) is out of the index, and the job leaves it
 alone.
 """
 
@@ -39,7 +39,7 @@ from evo_agents.hub.server import run_audience
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden, Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
-from evo_agents.hub.server.change_tiers import GraphReader, impact_as_owner
+from evo_agents.hub.server.changes.service.tiers import GraphReader, impact_as_owner
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.kg_health import owner_access
 from evo_agents.hub.server.mcp_text import memory_about
