@@ -15,7 +15,8 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import system_context, tables_orchestrator, triage_rules
-from evo_agents.worker import escalate_cli, triage_cli
+from evo_agents.worker import triage_cli
+from evo_agents.worker.cli import escalate
 
 ORCHESTRATED = {
     "nodes": [
@@ -91,15 +92,15 @@ def test_reassign_refuses_an_agent_whose_run_waits_on_the_asker():
 def worker_args(*argv: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="evo-agents worker")
     sub = parser.add_subparsers(dest="command")
-    escalate_cli.register_escalate(sub)
+    escalate.ESCALATE.attach(sub)
     triage_cli.register_triage(sub)
     return parser.parse_args(list(argv))
 
 
 def test_escalate_takes_a_question_and_sends_only_the_brief_fields_given():
     args = worker_args("escalate", "--question", "which retry policy wins?", "--goal", "one policy", "--ref", "run:4")
-    assert args.func is escalate_cli.cmd_escalate
-    assert escalate_cli.payload(args, args.question) == {
+    assert args.func is escalate.ESCALATE
+    assert escalate.payload(args, args.question) == {
         "question": "which retry policy wins?",
         "goal": "one policy",
         "refs": ["run:4"],

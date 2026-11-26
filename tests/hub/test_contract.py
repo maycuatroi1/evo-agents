@@ -34,7 +34,7 @@ from evo_agents.hub.contract import check_command, commands, contract_parsers, f
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_writes import ImportResult
 from evo_agents.hub.registry import PullResult
-from evo_agents.worker import agent_read_cli
+from evo_agents.worker.cli.agent import read_json
 from tests.hub import pg
 from tests.hub.contract_keys import assert_json_keys
 
@@ -68,7 +68,7 @@ BUILT_HERE = {
     "hub send": lambda: local_send.send_json("demo", 7, "session", [], []),
     "hub market seller-key": lambda: cli_market.seller_key_json("seller.key", "ed25519:0", "AA=="),
     "hub inbox": lambda: inbox_command.inbox_json([]),
-    "worker agent read": lambda: agent_read_cli.read_json({}),
+    "worker agent read": lambda: read_json({}),
 }
 
 

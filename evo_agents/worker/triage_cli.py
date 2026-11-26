@@ -167,9 +167,9 @@ def cmd_reassign(args) -> int:
 
 @chat_command
 def cmd_ask_owner(args) -> int:
-    from evo_agents.worker import agent_cli
     from evo_agents.worker.agent_input import decision_option
     from evo_agents.worker.home import WorkerHome
+    from evo_agents.worker.run_decisions import note_decision
 
     run = agent_run("triage ask-owner")
     body = {
@@ -179,7 +179,7 @@ def cmd_ask_owner(args) -> int:
         **({"context": _text(args.context)} if args.context else {}),
     }
     answer = call(run, "triage/ask-owner", body)
-    decision_id = agent_cli.note_decision(WorkerHome(), run.run_id, answer.get("decision_id"))
+    decision_id = note_decision(WorkerHome(), run.run_id, answer.get("decision_id"))
     print(
         f"Asked the owner decision #{decision_id}; the Decision line is message #{answer['message_id']}. End your turn: "
         "the answer comes back in this session."

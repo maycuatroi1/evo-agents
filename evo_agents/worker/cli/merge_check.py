@@ -12,54 +12,58 @@ it prints it. A verdict holds for the head it judged alone: after another push, 
 
 from __future__ import annotations
 
-COMMAND = "merge-check"
+from evo_agents.clikit import Arg, Result, Text
+from evo_agents.worker.cli.base import AgentCommand, AgentRunContext
+from evo_agents.worker.run_decisions import noted_decision
 
 
-def cmd_merge_check(args) -> int:
-    from evo_agents.worker.cli_support import worker_command
-
-    return worker_command(_ask)(args)
-
-
-def _ask(args) -> int:
-    from evo_agents.worker import agent_cli  # it registers this module's parser
-
-    agent = agent_cli.agent_run(COMMAND)
-    workspace = agent_cli.run_workspaces(agent).get(args.repo)
-    body: dict = {"repo": args.repo, "number": args.pr}
-    if workspace is not None:
-        body["branch"] = workspace.branch
-
-    async def work(hub) -> dict:
-        return await hub.merge_check(agent.run_id, body)
-
-    answer = agent_cli.with_hub(agent, work)
-    what = f"pull request #{answer.get('number')} of {args.repo} at {str(answer.get('head_sha') or '')[:12]}"
-    if answer.get("decision_id") is None:
-        reason = f": {answer['reason']}" if answer.get("reason") else "."
-        print(f"The merge check of {what} {answer.get('state')}{reason}")
-        if answer.get("state") == "passed":
-            print(
-                f"Merge only that head: gh pr merge {answer.get('number')} --match-head-commit {answer.get('head_sha')}"
-            )
-        return 0
-    decision_id = agent_cli.noted_decision(agent, {"id": answer.get("decision_id")})
-    print(
-        f"The hub judges {what}: wait #{decision_id} is open until its verdict. End your turn once no work that does "
-        "not depend on it is left: the run waits without the agent and holds no worker slot, and this session goes on "
-        f"with a message naming decision #{decision_id} when the verdict comes. Do not merge it before."
+class MergeCheck(AgentCommand):
+    name = "merge-check"
+    help = (
+        "inside a plan run: have the hub judge the run's pull request on github.com at its head before you merge it; "
+        "ends in a wait for the verdict"
     )
-    return 0
-
-
-def register_merge_check(wsub) -> None:
-    check = wsub.add_parser(
-        COMMAND,
-        help="inside a plan run: have the hub judge the run's pull request on github.com at its head before you merge "
-        "it; ends in a wait for the verdict",
-        description="Have the hub judge the run's pull request on github.com at its head before you merge it, in a "
-        "repo whose policy has merge_check on. The verdict answers a wait of the run: end your turn after it.",
+    parser_options = {
+        "description": "Have the hub judge the run's pull request on github.com at its head before you merge it, in "
+        "a repo whose policy has merge_check on. The verdict answers a wait of the run: end your turn after it."
+    }
+    arguments = (
+        Arg("repo", metavar="REPO", help="the run's repo of the pull request"),
+        Arg("--pr", type=int, metavar="N", help="the pull request; without it, the open one of the branch"),
     )
-    check.add_argument("repo", metavar="REPO", help="the run's repo of the pull request")
-    check.add_argument("--pr", type=int, metavar="N", help="the pull request; without it, the open one of the branch")
-    check.set_defaults(func=cmd_merge_check)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        ctx.check()
+        args = ctx.args
+        workspace = ctx.workspaces().get(args.repo)
+        body: dict = {"repo": args.repo, "number": args.pr}
+        if workspace is not None:
+            body["branch"] = workspace.branch
+
+        async def work(hub) -> dict:
+            return await hub.merge_check(ctx.run_id, body)
+
+        answer = ctx.with_hub(work)
+        what = f"pull request #{answer.get('number')} of {args.repo} at {str(answer.get('head_sha') or '')[:12]}"
+        if answer.get("decision_id") is None:
+            reason = f": {answer['reason']}" if answer.get("reason") else "."
+            lines = [f"The merge check of {what} {answer.get('state')}{reason}"]
+            if answer.get("state") == "passed":
+                lines.append(
+                    f"Merge only that head: gh pr merge {answer.get('number')} --match-head-commit "
+                    f"{answer.get('head_sha')}"
+                )
+            return Result(answer, Text(*lines))
+        decision_id = noted_decision(ctx.home, ctx.run_id, {"id": answer.get("decision_id")})
+        return Result(
+            answer,
+            Text(
+                f"The hub judges {what}: wait #{decision_id} is open until its verdict. End your turn once no work "
+                "that does not depend on it is left: the run waits without the agent and holds no worker slot, and "
+                f"this session goes on with a message naming decision #{decision_id} when the verdict comes. Do not "
+                "merge it before."
+            ),
+        )
+
+
+MERGE_CHECK = MergeCheck()

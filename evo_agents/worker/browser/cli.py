@@ -88,9 +88,17 @@ def cmd_install(args) -> int:
 
 
 def _browser_run(command: str):
-    from evo_agents.worker.agent_cli import agent_run
+    """The run of EVO_RUN_ID that ``worker browser COMMAND`` acts for, of a kind with a browser; WorkerStateError
+    outside one."""
+    from evo_agents.worker.cli.base import AgentRunContext
 
-    return agent_run(command, tuple(kind for kind in RUN_KINDS if kind != browser_login.KIND))
+    agent = AgentRunContext(
+        argparse.Namespace(), command, tuple(kind for kind in RUN_KINDS if kind != browser_login.KIND)
+    )
+    agent.check()
+    agent.config  # noqa: B018 - the worker's state, read now as before
+    agent.token  # noqa: B018
+    return agent
 
 
 def cmd_local_login(args) -> int:
@@ -120,8 +128,6 @@ def cmd_local_login(args) -> int:
 
 
 def cmd_login(args) -> int:
-    from evo_agents.worker.agent_cli import with_hub
-
     if getattr(args, "name", None):
         return cmd_local_login(args)
     if not (args.identity and args.url and args.reason):
@@ -135,7 +141,7 @@ def cmd_login(args) -> int:
     async def work(hub) -> dict:
         return await hub.browser_login(agent.run_id, body)
 
-    answer = with_hub(agent, work)
+    answer = agent.with_hub(work)
     decision_id = answer.get("decision_id")
     if answer.get("outcome") == "failed" or not isinstance(decision_id, int):
         print(f"The run cannot wait for a login and ends: {answer.get('message')}")

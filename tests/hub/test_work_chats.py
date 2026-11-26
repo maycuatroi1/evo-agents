@@ -543,13 +543,13 @@ def test_the_entry_agent_sets_the_work_and_the_card_refreshes(client, hub, hub_d
 def test_work_set_parses_and_sends_only_the_fields_given():
     import argparse
 
-    from evo_agents.worker import work_cli
+    from evo_agents.worker.cli import work
 
     parser = argparse.ArgumentParser(prog="evo-agents worker")
-    work_cli.register_work(parser.add_subparsers(dest="command"))
+    work.WORK.attach(parser.add_subparsers(dest="command"))
     args = parser.parse_args(["work", "set", "--title", "Retry loop", "--done-when", "tests pass"])
-    assert args.func is work_cli.cmd_work_set
-    assert work_cli.payload(args) == {"title": "Retry loop", "done_when": "tests pass"}
+    assert args.func is work.WORK_SET
+    assert work.payload(args) == {"title": "Retry loop", "done_when": "tests pass"}
 
 
 def test_the_hub_runtimes_work_set_tool_sets_the_work(client, hub, hub_db):

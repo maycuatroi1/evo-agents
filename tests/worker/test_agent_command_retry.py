@@ -13,7 +13,8 @@ import pytest
 pytest.importorskip("aiohttp")
 
 from evo_agents.hub.client import HubError  # noqa: E402
-from evo_agents.worker import agent_ask_cli, chat_cli  # noqa: E402
+from evo_agents.worker import chat_cli  # noqa: E402
+from evo_agents.worker.cli.agent import FORWARD_ROUTE  # noqa: E402
 from evo_agents.worker.home import WorkerConfig  # noqa: E402
 
 
@@ -74,7 +75,7 @@ def quick(monkeypatch):
 
 def test_a_forward_that_hits_a_deploy_is_sent_again_and_lands(quick, capsys):
     with Deploying(down=2) as hub:
-        answer = chat_cli.call(agent_run(hub.url), agent_ask_cli.FORWARD_ROUTE, {"run_id": 8741})
+        answer = chat_cli.call(agent_run(hub.url), FORWARD_ROUTE, {"run_id": 8741})
     assert answer == {"message_id": 13240, "refusal": None}
     assert hub.paths == ["/v1/worker/runs/8743/agent/forwards"] * 3
     tries = capsys.readouterr().err.splitlines()
@@ -85,5 +86,5 @@ def test_a_hub_down_past_the_outage_bound_fails_the_command(quick, monkeypatch):
     monkeypatch.setattr(chat_cli, "OUTAGE_SECONDS", 0.2)
     with Deploying(down=10_000) as hub:
         with pytest.raises(HubError, match="answered HTTP 500"):
-            chat_cli.call(agent_run(hub.url), agent_ask_cli.FORWARD_ROUTE, {"run_id": 8741})
+            chat_cli.call(agent_run(hub.url), FORWARD_ROUTE, {"run_id": 8741})
     assert 2 <= len(hub.paths) < 100

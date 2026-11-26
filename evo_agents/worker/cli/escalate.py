@@ -15,17 +15,15 @@ they head the prompt of ``agent ask``.
 
 from __future__ import annotations
 
-import sys
+import argparse
 
-COMMAND = "escalate"
+from evo_agents.clikit import Arg, Result, Stderr, Text
+from evo_agents.worker.cli.agent import chat_failed, chat_only
+from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext, text_of
+from evo_agents.worker.run_decisions import note_decision
+
 ROUTE = "escalate"
 BRIEF = ("goal", "output", "bounds", "done_when", "refs")  # the optional fields of an escalation, as the hub names them
-
-
-def cmd_escalate(args) -> int:
-    from evo_agents.worker.chat_cli import chat_command
-
-    return chat_command(_escalate)(args)
 
 
 def payload(args, question: str) -> dict:
@@ -38,41 +36,48 @@ def payload(args, question: str) -> dict:
     return found
 
 
-def _escalate(args) -> int:
-    from evo_agents.worker import agent_ask_cli, agent_cli, chat_cli
+class Escalate(AgentCommand):
+    name = "escalate"
+    help = "inside a chat run of an agent system: ask the system's Orchestrator; ends in a wait for its answer"
+    kinds = None  # any run's agent reaches it; ``chat_only`` refuses another kind than chat
+    parser_options = {
+        "description": "Ask the Orchestrator of your agent system what you cannot settle yourself. It answers, gives "
+        "the work to another agent of the system, or asks the owner; this run waits for that: end your turn after it."
+    }
+    arguments = (
+        Arg(
+            "--question", required=True, metavar="TEXT", help="what you ask, all it needs, at most 16 KiB (- for stdin)"
+        ),
+    )
 
-    run_id, home, run = agent_ask_cli.chat_run(COMMAND, "escalates")
-    answer = chat_cli.call(run, ROUTE, payload(args, chat_cli.text_of(args.question)))
-    if answer.get("refusal"):
-        print(f"error: the escalation was refused: {answer['refusal']}", file=sys.stderr)
-        return chat_cli.EXIT_FAILED
-    decision_id = agent_cli.note_decision(home, run_id, answer.get("decision_id"))
-    print(
-        f"Escalated to the Orchestrator: its run is #{answer.get('run_id')} (thread #{answer.get('thread_id')}), and "
-        f"wait #{decision_id} of this run is open until it answers. End your turn now: the run waits without the agent "
-        f"and holds no worker, and this session goes on with a message naming decision #{decision_id} when the answer "
-        "comes."
-    )
-    return 0
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        brief = parser.add_argument_group("brief", "heads the Orchestrator's thread")
+        brief.add_argument("--goal", help="what the answer should reach")
+        brief.add_argument("--output", help="what the answer should hold")
+        brief.add_argument("--bounds", help="what it should not do or touch")
+        brief.add_argument("--done-when", dest="done_when", help="when the work is finished")
+        brief.add_argument(
+            "--ref", dest="refs", action="append", metavar="REF", help="a ref it starts from (repo:path, a run, a URL)"
+        )
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        chat_only(ctx, "escalates")
+        answer = ctx.in_chats(ROUTE, payload(ctx.args, text_of(ctx.args.question)))
+        if answer.get("refusal"):
+            return Result(answer, Stderr(Text(f"error: the escalation was refused: {answer['refusal']}")), EXIT_FAILED)
+        decision_id = note_decision(ctx.home, ctx.run_id, answer.get("decision_id"))
+        return Result(
+            answer,
+            Text(
+                f"Escalated to the Orchestrator: its run is #{answer.get('run_id')} (thread #{answer.get('thread_id')}), "
+                f"and wait #{decision_id} of this run is open until it answers. End your turn now: the run waits "
+                f"without the agent and holds no worker, and this session goes on with a message naming decision "
+                f"#{decision_id} when the answer comes."
+            ),
+        )
+
+    def failed(self, exc: Exception) -> int | None:
+        return chat_failed(exc)
 
 
-def register_escalate(wsub) -> None:
-    """``evo-agents worker escalate``, under the parser ``wsub`` of ``evo-agents worker``."""
-    parser = wsub.add_parser(
-        "escalate",
-        help="inside a chat run of an agent system: ask the system's Orchestrator; ends in a wait for its answer",
-        description="Ask the Orchestrator of your agent system what you cannot settle yourself. It answers, gives the "
-        "work to another agent of the system, or asks the owner; this run waits for that: end your turn after it.",
-    )
-    parser.add_argument(
-        "--question", required=True, metavar="TEXT", help="what you ask, all it needs, at most 16 KiB (- for stdin)"
-    )
-    brief = parser.add_argument_group("brief", "heads the Orchestrator's thread")
-    brief.add_argument("--goal", help="what the answer should reach")
-    brief.add_argument("--output", help="what the answer should hold")
-    brief.add_argument("--bounds", help="what it should not do or touch")
-    brief.add_argument("--done-when", dest="done_when", help="when the work is finished")
-    brief.add_argument(
-        "--ref", dest="refs", action="append", metavar="REF", help="a ref it starts from (repo:path, a run, a URL)"
-    )
-    parser.set_defaults(func=cmd_escalate)
+ESCALATE = Escalate()
