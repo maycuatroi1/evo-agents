@@ -15,77 +15,14 @@ and exit status 1; without the worker extra, status 2. TEXT ``-`` reads stdin.
 
 from __future__ import annotations
 
-import asyncio
-import functools
-import os
 import sys
 
+from evo_agents.clikit import Arg, Group, Result, Text
 from evo_agents.hub import probes
-from evo_agents.hub.client import HubError
 from evo_agents.hub.redact import redact
 from evo_agents.worker.agent_input import read_text
-from evo_agents.worker.extra import EXTRA_HINT
-from evo_agents.worker.home import WorkerHome, WorkerStateError
-from evo_agents.worker.run_kinds import kind_refusal
-
-EXIT_FAILED = 1
-EXIT_USAGE = 2
-RUN_VARIABLE = "EVO_RUN_ID"
-COMMAND = "probe add"
-
-
-class MissingExtra(Exception):
-    pass
-
-
-def probe_command(func):
-    """Turn the failures of ``func`` into an ``error:`` line and an exit status."""
-
-    @functools.wraps(func)
-    def run(args) -> int:
-        try:
-            return func(args)
-        except MissingExtra as exc:
-            print(f"error: evo-agents worker probe needs the worker extra ({exc}): {EXTRA_HINT}", file=sys.stderr)
-            return EXIT_USAGE
-        except (HubError, WorkerStateError) as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
-
-    return run
-
-
-def _send(body: dict) -> dict:
-    """POST the probe ``body`` for the review run of EVO_RUN_ID; the hub's probe."""
-    raw = (os.environ.get(RUN_VARIABLE) or "").strip()
-    if not raw.isdigit() or int(raw) < 1:
-        raise WorkerStateError(
-            f"`evo-agents worker {COMMAND}` works only inside a review run of this worker: {RUN_VARIABLE} is not set"
-        )
-    run_id, home = int(raw), WorkerHome()
-    record = home.load_run(run_id)
-    if record is None or record.get("finished_at"):
-        raise WorkerStateError(
-            f"run {run_id} is not running on this worker: `evo-agents worker {COMMAND}` works inside it"
-        )
-    kind = record.get("kind") or "step"
-    if kind != "review":
-        raise WorkerStateError(kind_refusal(run_id, kind, ("review",), COMMAND))
-    try:
-        from evo_agents.worker import hubapi
-    except ImportError as exc:
-        raise MissingExtra(f"missing module {exc.name}") from None
-    config, token = home.load_config(), home.load_token()
-
-    async def go() -> dict:
-        async with hubapi.new_session() as session:
-            hub = hubapi.WorkerHub(config.url, token, session)
-            return await hub.call("POST", f"/v1/worker/runs/{run_id}/probes", body)
-
-    try:
-        return asyncio.run(go())
-    except hubapi.HubProblem as exc:
-        raise HubError(str(exc), exc.status, exc.code) from None
+from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext
+from evo_agents.worker.home import WorkerStateError
 
 
 def _task(args) -> str:
@@ -98,44 +35,58 @@ def _task(args) -> str:
     return redact(text)
 
 
-@probe_command
-def cmd_add(args) -> int:
-    verify = redact(args.verify.strip())
-    why = probes.verify_problem(verify)
-    if why is not None:
-        raise WorkerStateError(f"the probe's verify {why}")
-    body = {"change_id": args.change, "repo": args.repo, "task": _task(args), "verify": verify}
-    if args.commit:
-        body["commit"] = args.commit
-    if args.replaces is not None:
-        body["replaces"] = args.replaces
-    probe = _send(body)
-    replaced = f", in place of probe #{args.replaces}" if args.replaces is not None else ""
-    print(f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}{replaced}.")
-    return 0
+class ProbeAdd(AgentCommand):
+    name = "add"
+    words = "probe add"
+    kinds = ("review",)
+    hub_failed = EXIT_FAILED
+    help = "the task and the verify that say whether an agent repeats the mistake"
+    arguments = (
+        Arg("--change", required=True, type=int, metavar="N", help="the merged change it probes"),
+        Arg("--repo", required=True, help="the repo of the project the task runs in"),
+        Arg("--commit", metavar="SHA", help="the base commit; none: the tip of the default branch"),
+    )
+    more = (
+        Arg(
+            "--verify",
+            required=True,
+            help=f"one shell line, at most {probes.MAX_VERIFY_CHARS} characters, that exits 0 when the agent does not "
+            "repeat the mistake",
+        ),
+        Arg(
+            "--replaces",
+            type=int,
+            metavar="PROBE",
+            help="the change's probe, not reproduced two weeks in a row, that this one replaces; the hub retires it",
+        ),
+    )
+
+    def add_arguments(self, parser) -> None:
+        task = parser.add_mutually_exclusive_group(required=True)
+        task.add_argument("--task", help="the task text the agent is given (- for stdin)")
+        task.add_argument("--task-file", metavar="PATH", help="a file holding the task text (- for stdin)")
+        for arg in self.more:  # after the task, where the help lists them
+            arg.add_to(parser)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        verify = redact(args.verify.strip())
+        why = probes.verify_problem(verify)
+        if why is not None:
+            raise WorkerStateError(f"the probe's verify {why}")
+        body = {"change_id": args.change, "repo": args.repo, "task": _task(args), "verify": verify}
+        if args.commit:
+            body["commit"] = args.commit
+        if args.replaces is not None:
+            body["replaces"] = args.replaces
+        ctx.check()
+        run_id = ctx.run_id
+        probe = ctx.with_hub(lambda hub: hub.call("POST", f"/v1/worker/runs/{run_id}/probes", body))
+        replaced = f", in place of probe #{args.replaces}" if args.replaces is not None else ""
+        said = f"Probe #{probe.get('id')} of change #{probe.get('change_id')} recorded, in {probe.get('repo')}{replaced}."
+        return Result(probe, Text(said))
 
 
-def register_probe(wsub) -> None:
-    """``worker probe`` and its command, for the agent of a review run."""
-    parser = wsub.add_parser("probe", help="inside a review run: add a probe to a merged change that has none")
-    psub = parser.add_subparsers(dest="probe_command", required=True)
-    add = psub.add_parser("add", help="the task and the verify that say whether an agent repeats the mistake")
-    add.add_argument("--change", required=True, type=int, metavar="N", help="the merged change it probes")
-    add.add_argument("--repo", required=True, help="the repo of the project the task runs in")
-    add.add_argument("--commit", metavar="SHA", help="the base commit; none: the tip of the default branch")
-    task = add.add_mutually_exclusive_group(required=True)
-    task.add_argument("--task", help="the task text the agent is given (- for stdin)")
-    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text (- for stdin)")
-    add.add_argument(
-        "--verify",
-        required=True,
-        help=f"one shell line, at most {probes.MAX_VERIFY_CHARS} characters, that exits 0 when the agent does not "
-        "repeat the mistake",
-    )
-    add.add_argument(
-        "--replaces",
-        type=int,
-        metavar="PROBE",
-        help="the change's probe, not reproduced two weeks in a row, that this one replaces; the hub retires it",
-    )
-    add.set_defaults(func=cmd_add)
+PROBE = Group(
+    "probe", "inside a review run: add a probe to a merged change that has none", [ProbeAdd()]
+)

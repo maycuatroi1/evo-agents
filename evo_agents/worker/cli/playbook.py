@@ -17,76 +17,24 @@ line on stderr and exit status 1; without the worker extra, status 2. TEXT ``-``
 
 from __future__ import annotations
 
-import asyncio
-import functools
-import os
 import sys
 
+from evo_agents.clikit import Arg, Group, Result, Text
 from evo_agents.hub import playbook
-from evo_agents.hub.client import HubError
+from evo_agents.hub.review import LENSES
 from evo_agents.worker.agent_input import evidence_items
-from evo_agents.worker.extra import EXTRA_HINT
-from evo_agents.worker.home import WorkerHome, WorkerStateError
-from evo_agents.worker.run_kinds import kind_refusal
+from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext
 
-EXIT_FAILED = 1
-EXIT_USAGE = 2
-RUN_VARIABLE = "EVO_RUN_ID"
+REVIEW = ("review",)
+SPEC = "session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it"
+ENTRY = Arg("entry", metavar="ID", help="the entry, pb-N or N")
 
 
-class MissingExtra(Exception):
-    pass
-
-
-def playbook_command(func):
-    """Turn the failures of ``func`` into an ``error:`` line and an exit status."""
-
-    @functools.wraps(func)
-    def run(args) -> int:
-        try:
-            return func(args)
-        except MissingExtra as exc:
-            print(f"error: evo-agents worker playbook needs the worker extra ({exc}): {EXTRA_HINT}", file=sys.stderr)
-            return EXIT_USAGE
-        except (HubError, WorkerStateError, playbook.PlaybookProblem) as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
-
-    return run
-
-
-def _send(op: str, body: dict) -> dict:
+def _send(ctx: AgentRunContext, op: str, body: dict) -> dict:
     """POST the delta ``body`` for the review run of EVO_RUN_ID; the hub's entry."""
-    raw = (os.environ.get(RUN_VARIABLE) or "").strip()
-    command = f"playbook {op}"
-    if not raw.isdigit() or int(raw) < 1:
-        raise WorkerStateError(
-            f"`evo-agents worker {command}` works only inside a review run of this worker: {RUN_VARIABLE} is not set"
-        )
-    run_id, home = int(raw), WorkerHome()
-    record = home.load_run(run_id)
-    if record is None or record.get("finished_at"):
-        raise WorkerStateError(
-            f"run {run_id} is not running on this worker: `evo-agents worker {command}` works inside it"
-        )
-    kind = record.get("kind") or "step"
-    if kind != "review":
-        raise WorkerStateError(kind_refusal(run_id, kind, ("review",), command))
-    try:
-        from evo_agents.worker import hubapi
-    except ImportError as exc:
-        raise MissingExtra(f"missing module {exc.name}") from None
-    config, token = home.load_config(), home.load_token()
-
-    async def go() -> dict:
-        async with hubapi.new_session() as session:
-            hub = hubapi.WorkerHub(config.url, token, session)
-            return await hub.call("POST", f"/v1/worker/runs/{run_id}/playbook", {"op": op, **body})
-
-    try:
-        return asyncio.run(go())
-    except hubapi.HubProblem as exc:
-        raise HubError(str(exc), exc.status, exc.code) from None
+    ctx.check()
+    run_id = ctx.run_id
+    return ctx.with_hub(lambda hub: hub.call("POST", f"/v1/worker/runs/{run_id}/playbook", {"op": op, **body}))
 
 
 def _text(value: str | None, what: str, limit: int) -> str | None:
@@ -95,66 +43,109 @@ def _text(value: str | None, what: str, limit: int) -> str | None:
     return playbook.clean_text(sys.stdin.read() if value == "-" else value, what, limit)
 
 
-def _said(entry: dict, what: str) -> int:
-    print(
+def _said(entry: dict, what: str) -> Result:
+    said = (
         f"Playbook entry {entry.get('ref')} {what}: helpful {entry.get('helpful')}, harmful {entry.get('harmful')}: "
         f"{entry.get('text')}"
     )
-    return 0
+    return Result(entry, Text(said))
 
 
-@playbook_command
-def cmd_add(args) -> int:
-    body = {"text": _text(args.text, "text", playbook.MAX_TEXT_CHARS), "evidence": evidence_items(args.evidence)}
-    if args.lens:
-        body["lens"] = args.lens
-    if args.until_proposal is not None:
-        body["until_proposal_id"] = args.until_proposal
-    return _said(_send("add", body), "added")
+class PlaybookAdd(AgentCommand):
+    name = "add"
+    words = "playbook add"
+    kinds = REVIEW
+    problems = (playbook.PlaybookProblem,)
+    hub_failed = EXIT_FAILED
+    help = "a new entry: a lesson the playbook lacks, with its evidence"
+    arguments = (
+        Arg("--text", required=True, help=f"the lesson, at most {playbook.MAX_TEXT_CHARS} characters (- for stdin)"),
+        Arg("--evidence", action="append", required=True, metavar="SPEC", help=SPEC),
+        Arg("--lens", choices=list(LENSES), help="the lens it is for (default: every lens)"),
+        Arg(
+            "--until-proposal",
+            type=int,
+            metavar="N",
+            help="the proposal it holds until: the hub retires it once that proposal's change is merged",
+        ),
+    )
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        body = {"text": _text(args.text, "text", playbook.MAX_TEXT_CHARS), "evidence": evidence_items(args.evidence)}
+        if args.lens:
+            body["lens"] = args.lens
+        if args.until_proposal is not None:
+            body["until_proposal_id"] = args.until_proposal
+        return _said(_send(ctx, "add", body), "added")
 
 
-@playbook_command
-def cmd_tag(args) -> int:
+def _tag(ctx: AgentRunContext) -> Result:
+    """One more on the counter ``args.op`` of the entry."""
+    args = ctx.args
     body: dict = {"entry_id": playbook.parse_ref(args.entry), "evidence": evidence_items(args.evidence or [])}
     note = _text(args.note, "note", playbook.MAX_NOTE_CHARS)
     if note:
         body["note"] = note
-    return _said(_send(args.op, body), f"counted {args.op}")
+    return _said(_send(ctx, args.op, body), f"counted {args.op}")
 
 
-@playbook_command
-def cmd_retire(args) -> int:
-    body = {"entry_id": playbook.parse_ref(args.entry), "note": _text(args.note, "note", playbook.MAX_NOTE_CHARS)}
-    return _said(_send("retire", body), "retired")
+TAG_ARGUMENTS = (
+    ENTRY,
+    Arg("--evidence", action="append", metavar="SPEC", help=SPEC),
+    Arg("--note", help="why, in a line (- for stdin)"),
+)
 
 
-def register_playbook(wsub) -> None:
-    """``worker playbook`` and its commands, for the agent of a review run."""
-    from evo_agents.hub.review import LENSES
+class PlaybookHelpful(AgentCommand):
+    name = "helpful"
+    words = "playbook helpful"
+    kinds = REVIEW
+    problems = (playbook.PlaybookProblem,)
+    hub_failed = EXIT_FAILED
+    help = "one more on the counter of an entry that helped this run; once a run"
+    arguments = TAG_ARGUMENTS
 
-    parser = wsub.add_parser("playbook", help="inside a review run: change the Curator's playbook by one delta")
-    psub = parser.add_subparsers(dest="playbook_command", required=True)
-    spec = "session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it"
-    add = psub.add_parser("add", help="a new entry: a lesson the playbook lacks, with its evidence")
-    add.add_argument(
-        "--text", required=True, help=f"the lesson, at most {playbook.MAX_TEXT_CHARS} characters (- for stdin)"
-    )
-    add.add_argument("--evidence", action="append", required=True, metavar="SPEC", help=spec)
-    add.add_argument("--lens", choices=list(LENSES), help="the lens it is for (default: every lens)")
-    add.add_argument(
-        "--until-proposal",
-        type=int,
-        metavar="N",
-        help="the proposal it holds until: the hub retires it once that proposal's change is merged",
-    )
-    add.set_defaults(func=cmd_add)
-    for op, what in (("helpful", "helped"), ("harmful", "misled")):
-        tag = psub.add_parser(op, help=f"one more on the counter of an entry that {what} this run; once a run")
-        tag.add_argument("entry", metavar="ID", help="the entry, pb-N or N")
-        tag.add_argument("--evidence", action="append", metavar="SPEC", help=spec)
-        tag.add_argument("--note", help="why, in a line (- for stdin)")
-        tag.set_defaults(func=cmd_tag, op=op)
-    retire = psub.add_parser("retire", help="an entry that no longer holds: it leaves the prompt and stays listed")
-    retire.add_argument("entry", metavar="ID", help="the entry, pb-N or N")
-    retire.add_argument("--note", required=True, help="why it no longer holds (- for stdin)")
-    retire.set_defaults(func=cmd_retire)
+    def add_arguments(self, parser) -> None:
+        parser.set_defaults(op="helpful")
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        return _tag(ctx)
+
+
+class PlaybookHarmful(AgentCommand):
+    name = "harmful"
+    words = "playbook harmful"
+    kinds = REVIEW
+    problems = (playbook.PlaybookProblem,)
+    hub_failed = EXIT_FAILED
+    help = "one more on the counter of an entry that misled this run; once a run"
+    arguments = TAG_ARGUMENTS
+
+    def add_arguments(self, parser) -> None:
+        parser.set_defaults(op="harmful")
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        return _tag(ctx)
+
+
+class PlaybookRetire(AgentCommand):
+    name = "retire"
+    words = "playbook retire"
+    kinds = REVIEW
+    problems = (playbook.PlaybookProblem,)
+    hub_failed = EXIT_FAILED
+    help = "an entry that no longer holds: it leaves the prompt and stays listed"
+    arguments = (ENTRY, Arg("--note", required=True, help="why it no longer holds (- for stdin)"))
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        body = {"entry_id": playbook.parse_ref(args.entry), "note": _text(args.note, "note", playbook.MAX_NOTE_CHARS)}
+        return _said(_send(ctx, "retire", body), "retired")
+
+
+PLAYBOOK = Group(
+    "playbook",
+    "inside a review run: change the Curator's playbook by one delta",
+    [PlaybookAdd(), PlaybookHelpful(), PlaybookHarmful(), PlaybookRetire()],
+)

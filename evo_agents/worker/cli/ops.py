@@ -16,7 +16,8 @@ project's default system does in an ops thread the hub opened to it for a batch 
 - ``plan-dispatch PLAN --reason TEXT``: hand a stalled plan of the batch (a ``plan.stalled`` item) again to the entry
   agent of the default system, as ``evo-agents hub plan system-dispatch`` does for a person.
 
-All read the run from EVO_RUN_ID like ``worker chat`` (``chat_cli``) and are for a chat run in an ops thread only. The
+Each is a ``ChatCommand`` (``evo_agents.worker.cli.base``): it reads the run from EVO_RUN_ID like ``worker chat`` and
+is for a chat run in an ops thread only. The
 hub refuses what is outside the frame, with the reason, and the command prints it on stderr and exits 1. Each success
 is one line, and the hub posts the ``Decision:`` line in the thread. TEXT ``-`` reads stdin. No ``--json``: this
 module may not import the hub's contract.
@@ -26,10 +27,13 @@ from __future__ import annotations
 
 import sys
 
+from evo_agents.clikit import Arg, Group, Result, Text
 from evo_agents.hub.runs import PRIORITIES
-from evo_agents.worker.chat_cli import agent_run, call, chat_command
+from evo_agents.worker.cli.base import AgentRunContext, ChatCommand
 
 SEVERITIES = ("low", "medium", "high")
+REASON = Arg("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
+FAILED_RUN = Arg("run", type=int, metavar="RUN", help="the failed run's id")
 
 
 def _text(value: str) -> str:
@@ -37,117 +41,139 @@ def _text(value: str) -> str:
     return text.strip() if value == "-" else text
 
 
-def _act(name: str, path: str, body: dict) -> dict:
-    return call(agent_run(f"ops {name}"), f"ops/{path}", body)
+def _said(answer: dict, done: str) -> Result:
+    return Result(answer, Text(f"{done}; the Decision line is message #{answer['message_id']}."))
 
 
-def _said(answer: dict, done: str) -> int:
-    print(f"{done}; the Decision line is message #{answer['message_id']}.")
-    return 0
+class OpsRerun(ChatCommand):
+    name = "rerun"
+    words = "chat ops rerun"
+    help = "run the work of a failed run of the batch again, on any worker that fits"
+    arguments = (FAILED_RUN, REASON)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        answer = ctx.in_chats("ops/rerun", {"run_id": args.run, "reason": _text(args.reason)})
+        return _said(answer, f"Ran the work of run #{args.run} again as run #{answer['run_id']}")
 
 
-@chat_command
-def cmd_rerun(args) -> int:
-    answer = _act("rerun", "rerun", {"run_id": args.run, "reason": _text(args.reason)})
-    return _said(answer, f"Ran the work of run #{args.run} again as run #{answer['run_id']}")
+class OpsRedeliver(ChatCommand):
+    name = "redeliver"
+    words = "chat ops redeliver"
+    help = "hand the work of a failed run of the batch to a healthy worker"
+    arguments = (FAILED_RUN, REASON)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        answer = ctx.in_chats("ops/redeliver", {"run_id": args.run, "reason": _text(args.reason)})
+        return _said(answer, f"Redelivered the work of run #{args.run} as run #{answer['run_id']}")
 
 
-@chat_command
-def cmd_redeliver(args) -> int:
-    answer = _act("redeliver", "redeliver", {"run_id": args.run, "reason": _text(args.reason)})
-    return _said(answer, f"Redelivered the work of run #{args.run} as run #{answer['run_id']}")
-
-
-@chat_command
-def cmd_answer_wait(args) -> int:
-    body = {"decision_id": args.decision, "text": _text(args.text), "reason": _text(args.reason)}
-    answer = _act("answer-wait", "answer-wait", body)
-    return _said(answer, f"Answered wait #{args.decision}, which woke run #{answer['run_id']}")
-
-
-@chat_command
-def cmd_curator_resume(args) -> int:
-    answer = _act("curator-resume", "curator-resume", {"reason": _text(args.reason)})
-    return _said(answer, "Resumed the Curator")
-
-
-@chat_command
-def cmd_read(args) -> int:
-    answer = _act("read", "read", {"notification_id": args.notice, "reason": _text(args.reason)})
-    return _said(answer, f"Marked notice #{args.notice} read")
-
-
-@chat_command
-def cmd_finding(args) -> int:
-    body = {
-        "lens": args.lens,
-        "severity": args.severity,
-        "title": _text(args.title),
-        "body": _text(args.body),
-        "reason": _text(args.reason),
-    }
-    answer = _act("finding", "finding", body)
-    return _said(answer, f"Wrote finding #{answer['finding_id']} for the Curator")
-
-
-@chat_command
-def cmd_priority(args) -> int:
-    body = {"run_id": args.run, "level": args.level, "reason": _text(args.reason)}
-    answer = _act("priority", "priority", body)
-    return _said(answer, f"Set the priority of queued run #{args.run} to {args.level}")
-
-
-@chat_command
-def cmd_plan_dispatch(args) -> int:
-    answer = _act("plan-dispatch", "plan-dispatch", {"plan_id": args.plan, "reason": _text(args.reason)})
-    return _said(answer, f"Handed plan {args.plan} again to the entry agent, in run #{answer['run_id']}")
-
-
-def _reason(parser) -> None:
-    parser.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
-
-
-def register_ops(wsub) -> None:
-    """``evo-agents worker ops`` and its commands, under the parser ``wsub`` of ``evo-agents worker``."""
-    ops = wsub.add_parser(
-        "ops", help="as the Orchestrator, inside an ops thread: act on the batch the hub opened it for"
+class OpsAnswerWait(ChatCommand):
+    name = "answer-wait"
+    words = "chat ops answer-wait"
+    help = "answer a stuck wait of the batch, which wakes its run"
+    arguments = (
+        Arg("decision", type=int, metavar="DECISION", help="the wait's decision id"),
+        Arg("--text", required=True, metavar="TEXT", help="the answer (- for stdin)"),
+        REASON,
     )
-    osub = ops.add_subparsers(dest="ops_command", required=True)
-    for name, func, help_text in (
-        ("rerun", cmd_rerun, "run the work of a failed run of the batch again, on any worker that fits"),
-        ("redeliver", cmd_redeliver, "hand the work of a failed run of the batch to a healthy worker"),
-    ):
-        parser = osub.add_parser(name, help=help_text)
-        parser.add_argument("run", type=int, metavar="RUN", help="the failed run's id")
-        _reason(parser)
-        parser.set_defaults(func=func)
-    wait = osub.add_parser("answer-wait", help="answer a stuck wait of the batch, which wakes its run")
-    wait.add_argument("decision", type=int, metavar="DECISION", help="the wait's decision id")
-    wait.add_argument("--text", required=True, metavar="TEXT", help="the answer (- for stdin)")
-    _reason(wait)
-    wait.set_defaults(func=cmd_answer_wait)
-    resume = osub.add_parser("curator-resume", help="resume the Curator's schedules its breaker paused")
-    _reason(resume)
-    resume.set_defaults(func=cmd_curator_resume)
-    read = osub.add_parser("read", help="mark a notice of the project read")
-    read.add_argument("notice", type=int, metavar="NOTICE", help="the notice's id")
-    _reason(read)
-    read.set_defaults(func=cmd_read)
-    finding = osub.add_parser("finding", help="write a finding for the Curator: fix the system, not the run")
-    finding.add_argument("--lens", required=True, metavar="LENS", help="the review lens, failed_runs for one")
-    finding.add_argument("--severity", required=True, choices=SEVERITIES)
-    finding.add_argument("--title", required=True, metavar="TEXT", help="the finding's title")
-    finding.add_argument("--body", required=True, metavar="TEXT", help="what is wrong, and the fix (- for stdin)")
-    _reason(finding)
-    finding.set_defaults(func=cmd_finding)
-    prio = osub.add_parser("priority", help="give a queued run of the project another priority: the queue's order")
-    prio.add_argument("run", type=int, metavar="RUN", help="the queued run's id")
-    prio.add_argument("level", choices=PRIORITIES, metavar="LEVEL", help=f"one of {', '.join(PRIORITIES)}")
-    _reason(prio)
-    prio.set_defaults(func=cmd_priority)
-    plan = osub.add_parser(
-        "plan-dispatch", help="hand a stalled plan of the batch again to the entry agent of the default system"
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        body = {"decision_id": args.decision, "text": _text(args.text), "reason": _text(args.reason)}
+        answer = ctx.in_chats("ops/answer-wait", body)
+        return _said(answer, f"Answered wait #{args.decision}, which woke run #{answer['run_id']}")
+
+
+class OpsCuratorResume(ChatCommand):
+    name = "curator-resume"
+    words = "chat ops curator-resume"
+    help = "resume the Curator's schedules its breaker paused"
+    arguments = (REASON,)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        answer = ctx.in_chats("ops/curator-resume", {"reason": _text(ctx.args.reason)})
+        return _said(answer, "Resumed the Curator")
+
+
+class OpsRead(ChatCommand):
+    name = "read"
+    words = "chat ops read"
+    help = "mark a notice of the project read"
+    arguments = (Arg("notice", type=int, metavar="NOTICE", help="the notice's id"), REASON)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        answer = ctx.in_chats("ops/read", {"notification_id": args.notice, "reason": _text(args.reason)})
+        return _said(answer, f"Marked notice #{args.notice} read")
+
+
+class OpsFinding(ChatCommand):
+    name = "finding"
+    words = "chat ops finding"
+    help = "write a finding for the Curator: fix the system, not the run"
+    arguments = (
+        Arg("--lens", required=True, metavar="LENS", help="the review lens, failed_runs for one"),
+        Arg("--severity", required=True, choices=SEVERITIES),
+        Arg("--title", required=True, metavar="TEXT", help="the finding's title"),
+        Arg("--body", required=True, metavar="TEXT", help="what is wrong, and the fix (- for stdin)"),
+        REASON,
     )
-    plan.add_argument("plan", metavar="PLAN", help="the stalled plan's id")
-    _reason(plan)
-    plan.set_defaults(func=cmd_plan_dispatch)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        body = {
+            "lens": args.lens,
+            "severity": args.severity,
+            "title": _text(args.title),
+            "body": _text(args.body),
+            "reason": _text(args.reason),
+        }
+        answer = ctx.in_chats("ops/finding", body)
+        return _said(answer, f"Wrote finding #{answer['finding_id']} for the Curator")
+
+
+class OpsPriority(ChatCommand):
+    name = "priority"
+    words = "chat ops priority"
+    help = "give a queued run of the project another priority: the queue's order"
+    arguments = (
+        Arg("run", type=int, metavar="RUN", help="the queued run's id"),
+        Arg("level", choices=PRIORITIES, metavar="LEVEL", help=f"one of {', '.join(PRIORITIES)}"),
+        REASON,
+    )
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        body = {"run_id": args.run, "level": args.level, "reason": _text(args.reason)}
+        answer = ctx.in_chats("ops/priority", body)
+        return _said(answer, f"Set the priority of queued run #{args.run} to {args.level}")
+
+
+class OpsPlanDispatch(ChatCommand):
+    name = "plan-dispatch"
+    words = "chat ops plan-dispatch"
+    help = "hand a stalled plan of the batch again to the entry agent of the default system"
+    arguments = (Arg("plan", metavar="PLAN", help="the stalled plan's id"), REASON)
+
+    def run(self, ctx: AgentRunContext) -> Result:
+        args = ctx.args
+        answer = ctx.in_chats("ops/plan-dispatch", {"plan_id": args.plan, "reason": _text(args.reason)})
+        return _said(answer, f"Handed plan {args.plan} again to the entry agent, in run #{answer['run_id']}")
+
+
+OPS = Group(
+    "ops",
+    "as the Orchestrator, inside an ops thread: act on the batch the hub opened it for",
+    [
+        OpsRerun(),
+        OpsRedeliver(),
+        OpsAnswerWait(),
+        OpsCuratorResume(),
+        OpsRead(),
+        OpsFinding(),
+        OpsPriority(),
+        OpsPlanDispatch(),
+    ],
+)
