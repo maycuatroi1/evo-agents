@@ -22,10 +22,14 @@ ci-ok of ci.yml, whose log names no test and gives the result of each job it nee
 job is, so its id and its log count only when every failed job is a gate (``summary``): else two unrelated failures
 share its id, and its log hides a fault of the infrastructure.
 
-A fix the hub lands must show no sign of test hacking (``release_signs``): of the signs ``diff_signs.hack_signs``
-reads, a test removed, an assertion removed or loosened (an assertion of a test changed in any way but its numbers, an
-assert made always true among them) and a skip or an xfail added, but for ``pytest.importorskip`` and a skip on one
-platform that gives its reason (``allowed_skip``).
+The hub reads a fix it lands for signs of test hacking (``release_signs``): of the signs ``diff_signs.hack_signs``
+reads, a test removed, an assertion removed or rewritten (an assertion of a test changed in any way but its numbers)
+and a skip or an xfail added, but for ``pytest.importorskip`` and a skip on one platform that gives its reason
+(``allowed_skip``); and an assertion made always true (ALWAYS_TRUE, ``always_true``). Only RELEASE_STOPS, a skip added
+and an assertion made always true, keep the fix from landing (``stopping``). A test or an assertion removed lands,
+flagged for its owner: a fix forward mostly brings a test the default branch left behind up to the code it tests, and
+the nine fixes this sign refused from 2026-11-15 to 2026-11-25 were each such a change, merged by hand after a person
+read it.
 
 STOP_CAUSES are why a cycle stops; a stopped cycle waits for its owner's decision (STOP_OPTIONS) and goes on with
 nothing until then.
@@ -33,6 +37,7 @@ nothing until then.
 
 from __future__ import annotations
 
+import ast
 import re
 
 from evo_agents.hub import diff_signs
@@ -59,7 +64,7 @@ STOP_CAUSES = (
     "run_cancelled",  # a run of the cycle was cancelled while the schedule was not paused
     "refused",  # the hub refused to land a run, or a run ended without its branch
     "github",  # GitHub failed LAND_TRIES passes in a row while the hub landed a run
-    "hacking",  # a run's change shows signs of test hacking
+    "hacking",  # a run's change adds a skip or an assert made always true (release_ci.stopping)
     "budget",  # what was left of the cycle's cap was under curator.MIN_RUN_USD: cycles before 0176 dropped the cap
     "same_test",  # one test id failed at two tags in a row
     "timeout",  # no run of the workflow in NO_RUN_MINUTES, or one going over MAX_RUN_HOURS
@@ -102,7 +107,10 @@ INFRA_RULES = (
         ),
     ),
 )
-RELEASE_SIGNS = ("test_removed", "assert_removed", "skip_added")  # of diff_signs.SIGN_KINDS, what stops a fix
+RELEASE_SIGNS = ("test_removed", "assert_removed", "skip_added")  # of diff_signs.SIGN_KINDS, what a landing reads
+ALWAYS_TRUE = "assert_always_true"  # the sign of an assertion a fix adds whose test is a true constant
+RELEASE_STOPS = ("skip_added", ALWAYS_TRUE)  # the signs that keep a fix from landing; the others flag it
+SIGN_TEXTS = {ALWAYS_TRUE: "an assertion made always true"}  # what diff_signs.SIGN_KINDS does not name
 PLATFORM = re.compile(r"\bsys\.platform\b|\bos\.name\b|\bplatform\.system\s*\(|\bprocess\.platform\b")
 REASON = re.compile(r"\breason\s*=\s*[rbuf]*['\"]\s*\S|,\s*['\"`][^'\"`]{3,}['\"`]\s*\)")
 OTHER_SKIP = re.compile(r"\b(?:skip|skipif|xfail|skipTest|SkipTest)\b|\.(?:skip|only|fixme|todo)\s*\(")
@@ -244,15 +252,41 @@ def allowed_skip(text: str) -> bool:
     return bool(PLATFORM.search(text) and REASON.search(text))
 
 
+def always_true(text: str) -> bool:
+    """Whether ``text``, a line of a Python test, asserts a constant that is true: ``assert True``, ``assert 1``."""
+    line = text.strip()
+    if not line.startswith("assert"):
+        return False
+    try:
+        body = ast.parse(line).body
+    except SyntaxError:
+        return False
+    found = body[0] if len(body) == 1 else None
+    return isinstance(found, ast.Assert) and isinstance(found.test, ast.Constant) and bool(found.test.value)
+
+
 def release_signs(files: list[diff_signs.FileDiff], repo: str) -> list[dict]:
     """The signs of test hacking in the diff ``files`` of a release run's change (see the module), each
     ``{kind, path, line, text}`` as ``diff_signs.hack_signs`` gives them."""
     signs = diff_signs.hack_signs(files, repo=repo, protected=[])
-    return [
+    kept = [
         sign
         for sign in signs
         if sign["kind"] in RELEASE_SIGNS and not (sign["kind"] == "skip_added" and allowed_skip(sign["text"]))
     ]
+    for diff in files:
+        if diff.path.endswith(".py") and diff_signs.is_test(repo, diff.path):
+            kept += [
+                {"kind": ALWAYS_TRUE, "path": diff.path, "line": number, "text": text.strip()[:200]}
+                for number, text in diff.added
+                if always_true(text)
+            ]
+    return kept
+
+
+def stopping(signs: list[dict]) -> list[dict]:
+    """The signs of ``release_signs`` that keep a fix from landing (RELEASE_STOPS)."""
+    return [sign for sign in signs if sign["kind"] in RELEASE_STOPS]
 
 
 def signs_text(signs: list[dict], limit: int = 5) -> str:
@@ -260,6 +294,7 @@ def signs_text(signs: list[dict], limit: int = 5) -> str:
     shown = []
     for sign in signs[:limit]:
         where = f"{sign['path']}:{sign['line']}" if sign.get("line") else sign["path"]
-        shown.append(f"{diff_signs.SIGN_KINDS.get(sign['kind'], sign['kind'])} at {where}")
+        kind = sign["kind"]
+        shown.append(f"{SIGN_TEXTS.get(kind) or diff_signs.SIGN_KINDS.get(kind, kind)} at {where}")
     more = f" and {len(signs) - limit} more" if len(signs) > limit else ""
     return "; ".join(shown) + more

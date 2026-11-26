@@ -173,9 +173,13 @@ markers = [
     "empty_db: hub_db is an empty database, not a copy of the migrated template (tests/hub/conftest.py)",
     "structure: evo_agents against its structure budgets (tests/test_structure.py); runs only with -m structure",
     "gateway_image: the model gateway's client against the pinned OmniRoute image (tests/hub/test_gateway_image.py); skipped without Docker",
+    "wall_clock: a budget of elapsed time on the machine that runs it (how fast, not whether something waits); the release gate leaves it out",
 ]
 # The structure budgets are not part of the suite: the lint job of the full ci (a v* tag) runs them, and so can you
 # (docs/structure.md): `python -m pytest -m structure tests/test_structure.py`. Another -m replaces this one.
+# The wall_clock tests run here, and in the ci job wall-clock, which reports them and never fails: on a CI runner that
+# shares its CPUs with three other xdist workers, a 500 ms budget took 822 to 940 ms (v0.73.4 to v0.73.6) and stopped
+# release cycle #41 on the same test twice.
 addopts = ["-m", "not structure"]
 # A test that runs longer fails with the stacks of its threads (pytest-timeout) instead of holding its job.
 timeout = 300
