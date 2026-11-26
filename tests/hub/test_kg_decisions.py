@@ -32,6 +32,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from evo_agents.hub import kg_decisions, tables
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import decisions as kg_decisions_cli
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
@@ -269,24 +270,25 @@ def test_a_member_never_sees_a_kg_decision_about_a_node_above_their_level(hub):
     assert step(hub, "ivan", number, "undo").status_code == 403
 
 
-def test_the_kg_decisions_command_prints_an_array_with_states_and_takes_a_decision(hub, capsys):
+def test_the_kg_decisions_command_prints_an_array_with_states_and_takes_a_decision(hub, capsys, monkeypatch):
     client = InProcessHub(hub.client, hub.wendy)
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (client, None))
     args = SimpleNamespace(
         project=PROJECT, action=None, target=None, state=None, rel=None, to=None, reason=None, base_rev=None, json=True
     )
-    assert kg_decisions_cli._list(client, args) == 0
+    assert kg_decisions_cli.DECISIONS(args) == 0
     printed = json.loads(capsys.readouterr().out)
     assert isinstance(printed, list)
     for d in printed:
         assert set(d) == set(kg_decisions_cli.DECISION) and d["state"] in get_args(State)
 
     took = SimpleNamespace(**{**vars(args), "action": "deprecate", "target": "requirement:KB-77", "reason": "noise"})
-    assert kg_decisions_cli._write(client, took) == 0
+    assert kg_decisions_cli.DECISIONS(took) == 0
     shown = json.loads(capsys.readouterr().out)
     assert set(shown) == set(kg_decisions_cli.DECISION) and shown["state"] == "active"
 
     args.json = False
-    assert kg_decisions_cli._list(client, args) == 0
+    assert kg_decisions_cli.DECISIONS(args) == 0
     text = capsys.readouterr().out
     assert "STATE" in text and "requirement:KB-77" in text and "revision" in text
-    assert kg_decisions_cli._problem(SimpleNamespace(**{**vars(args), "action": "link", "target": "x"})) is not None
+    assert kg_decisions_cli.problem(SimpleNamespace(**{**vars(args), "action": "link", "target": "x"})) is not None

@@ -207,6 +207,7 @@ def test_a_measure_asks_with_the_current_and_the_candidate_tuning_and_leaves_bui
 
 
 def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, capsys):
+    from evo_agents.hub.cli import base
     from evo_agents.hub.cli import kg as kg_cli
     from evo_agents.hub.cli.kg import settings as kg_settings_cli
 
@@ -217,9 +218,9 @@ def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, ca
             calls.append((method, path, timeout))
             return {"build_id": 3, "split": "tune", "questions": 5, "current": {}, "candidate": {}}
 
-    monkeypatch.setattr(kg_settings_cli, "signed_in", lambda: (FakeHub(), None))
+    monkeypatch.setattr(base, "signed_in", lambda: (FakeHub(), None))
     args = SimpleNamespace(project="evo-agents", settings=None, split="tune", max_questions=5, json=True)
-    assert kg_settings_cli.cmd_measure(args) == 0
+    assert kg_settings_cli.MEASURE(args) == 0
     assert calls == [("POST", "/v1/kg/evo-agents/measure", kg_cli.MEASURE_TIMEOUT)]
     assert kg_cli.MEASURE_TIMEOUT >= 600
     assert json.loads(capsys.readouterr().out)["build_id"] == 3

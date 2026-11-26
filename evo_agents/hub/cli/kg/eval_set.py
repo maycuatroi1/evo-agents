@@ -6,24 +6,35 @@ same. Every question needs an id there, since the id fixes its part, tune or hol
 writes the latest version (``--version N`` another) as a set file, header line first, to ``-o FILE`` or the standard
 output: ``--split tune`` for tuning, ``--split holdout`` for the list of holdout questions, which never carry their
 answers off the hub. ``--json`` prints the hub's answer. Standard library only.
+
+:data:`EVAL_SET` is a class command of ``evo_agents.clikit``; :class:`KgEvalSet` is the gateway to its route.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
-from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.contract import JsonOutput, json_option, returns_object
+from evo_agents.clikit import NOTHING, Arg, JsonOutput, Result, Stderr, Text, UsageError, Verbatim, View, returns_object
+from evo_agents.hub.cli import positive
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.kg.resources import KG_PROJECT, KgResource
 
 EVAL_SET_VIEW = ("set", "version", "digest", "created_at", "split", "answers", "questions")
 EVAL_SET_PUT = ("set", "version", "digest", "questions", "holdout", "created")
 
 
-def _path(project: str) -> str:
-    return f"/v1/kg/{quote(project, safe='')}/eval-set"
+class KgEvalSet(KgResource):
+    """The retrieval question set of a project: GET and PUT /v1/kg/{p}/eval-set."""
+
+    collection = "eval-set"
+
+    def put(self, name: str, questions: list[dict]) -> dict:
+        return self.call("PUT", body={"set": name, "questions": questions})
+
+    def get(self, split: str, answers: bool, version: int | None = None) -> dict:
+        return self.call("GET", split=split, answers="true" if answers else "false", version=version or None)
 
 
 def read_set_file(path: str) -> tuple[str | None, list[dict]]:
@@ -56,88 +67,75 @@ def set_lines(view: dict) -> list[str]:
     return [json.dumps(entry, ensure_ascii=False) for entry in [header, *questions]]
 
 
-def _push(hub, args) -> int:
-    try:
-        name, entries = read_set_file(args.file)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    name = args.set or name
-    if not name:
-        print('error: name the set with --set or a header line {"set": NAME}', file=sys.stderr)
-        return 2
-    found = hub.call("PUT", _path(args.project), {"set": name, "questions": entries})
-    if args.json:
-        print_json(found)
-        return 0
+def pushed_line(project: str, found: dict) -> str:
     state = "put as version" if found["created"] else "unchanged: still version"
-    print(
-        f"set {found['set']} of project {args.project} {state} {found['version']}: {found['questions']} questions,"
+    return (
+        f"set {found['set']} of project {project} {state} {found['version']}: {found['questions']} questions,"
         f" {found['holdout']} in holdout"
     )
-    return 0
 
 
-def _pull(hub, args) -> int:
-    params = {"split": args.split, "answers": "false" if args.no_answers else "true"}
-    if args.version:
-        params["version"] = args.version
-    found = hub.call("GET", f"{_path(args.project)}?{urlencode(params)}")
-    if args.json:
-        print_json(found)
-        return 0
+def pulled_view(found: dict, output: str | None) -> View:
+    """The set file of a pull on stdout, or written to ``output`` with a line on stderr that says so."""
     text = "".join(line + "\n" for line in set_lines(found))
-    if args.output:
-        Path(args.output).expanduser().write_text(text, encoding="utf-8")
-        print(
+    if not output:
+        return Verbatim(text)
+    Path(output).expanduser().write_text(text, encoding="utf-8")
+    return Stderr(
+        Text(
             f"wrote {len(found['questions'])} questions of set {found['set']} version {found['version']}"
-            f" ({found['split']}) to {args.output}",
-            file=sys.stderr,
+            f" ({found['split']}) to {output}"
         )
-    else:
-        sys.stdout.write(text)
-    return 0
-
-
-@client_command
-def cmd_eval_set(args) -> int:
-    if args.action == "push" and not args.file:
-        print("error: eval-set push needs the set FILE", file=sys.stderr)
-        return 2
-    if args.action == "pull" and args.file:
-        print("error: eval-set pull takes no FILE; write it with -o FILE", file=sys.stderr)
-        return 2
-    hub, _ = signed_in()
-    return _push(hub, args) if args.action == "push" else _pull(hub, args)
-
-
-def register(ksub) -> None:
-    from evo_agents.hub.cli import positive
-
-    parser = ksub.add_parser(
-        "eval-set", help="put a project's retrieval question set on the hub, or pull it (tune, or holdout unanswered)"
     )
-    parser.add_argument("action", choices=["push", "pull"], help="push a set file, or pull the hub's set")
-    parser.add_argument("file", metavar="FILE", nargs="?", help="with push: the set file (JSONL, docs/kg-eval.md)")
-    parser.add_argument("--project", required=True, help="project name on the hub")
-    parser.add_argument("--set", help="with push: the set's name, when the file has no header line")
-    parser.add_argument("--version", type=positive, help="with pull: this version, not the latest")
-    parser.add_argument(
-        "--split",
-        choices=["all", "tune", "holdout"],
-        default="all",
-        help="with pull: only this part (default all; holdout questions come without answers)",
-    )
-    parser.add_argument("--no-answers", action="store_true", help="with pull: no question carries its answers")
-    parser.add_argument("-o", "--output", metavar="FILE", help="with pull: write the set here, not to stdout")
-    json_option(
-        parser,
-        JsonOutput(
-            "object",
-            EVAL_SET_VIEW,
-            "EvalSetView",
-            variants=(("push", returns_object(*EVAL_SET_PUT, schema="EvalSetPut")),),
+
+
+class KgEvalSetCommand(HubCommand):
+    name = "eval-set"
+    help = "put a project's retrieval question set on the hub, or pull it (tune, or holdout unanswered)"
+    arguments = (
+        Arg("action", choices=["push", "pull"], help="push a set file, or pull the hub's set"),
+        Arg("file", metavar="FILE", nargs="?", help="with push: the set file (JSONL, docs/kg-eval.md)"),
+        KG_PROJECT,
+        Arg("--set", help="with push: the set's name, when the file has no header line"),
+        Arg("--version", type=positive, help="with pull: this version, not the latest"),
+        Arg(
+            "--split",
+            choices=["all", "tune", "holdout"],
+            default="all",
+            help="with pull: only this part (default all; holdout questions come without answers)",
         ),
-        help="machine-readable output: the hub's set, or with push the version it was put as",
+        Arg("--no-answers", action="store_true", help="with pull: no question carries its answers"),
+        Arg("-o", "--output", metavar="FILE", help="with pull: write the set here, not to stdout"),
     )
-    parser.set_defaults(func=cmd_eval_set)
+    output = JsonOutput(
+        "object",
+        EVAL_SET_VIEW,
+        "EvalSetView",
+        variants=(("push", returns_object(*EVAL_SET_PUT, schema="EvalSetPut")),),
+    )
+    json_help = "machine-readable output: the hub's set, or with push the version it was put as"
+
+    def check(self, args: argparse.Namespace) -> None:
+        if args.action == "push" and not args.file:
+            raise UsageError("eval-set push needs the set FILE")
+        if args.action == "pull" and args.file:
+            raise UsageError("eval-set pull takes no FILE; write it with -o FILE")
+
+    def run(self, ctx: HubContext) -> Result:
+        args, sets = ctx.args, KgEvalSet.of(ctx)
+        if args.action == "pull":
+            found = sets.get(args.split, not args.no_answers, args.version)
+            return Result(found, NOTHING if args.json else pulled_view(found, args.output))
+        try:
+            name, entries = read_set_file(args.file)
+        except ValueError as exc:
+            raise UsageError(str(exc)) from None
+        name = args.set or name
+        if not name:
+            raise UsageError('name the set with --set or a header line {"set": NAME}')
+        found = sets.put(name, entries)
+        return Result(found, Text(pushed_line(ctx.project, found)))
+
+
+EVAL_SET = KgEvalSetCommand()
+NODES = (EVAL_SET,)

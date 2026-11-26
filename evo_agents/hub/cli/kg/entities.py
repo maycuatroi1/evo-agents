@@ -7,24 +7,37 @@ the agent's shell lacks it; API keys are taken out of its environment), and post
 a build. The hub takes answers from a run's token only. A login refused or a limit reached stops it at that item:
 what it has is posted, the rest waits for the next run, and it exits 3. ``--limit`` caps the calls of one run. It
 prints counts, never a text or a credential.
+
+:data:`ENTITIES` is a class command of ``evo_agents.clikit``; :class:`KgEntities` is the gateway to its routes.
 """
 
 from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.clikit import Arg, Result, Text, returns_object
+from evo_agents.hub.cli import positive
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.kg.resources import KG_PROJECT, KgResource
 from evo_agents.kg import claude_code
 
 BATCH = 20  # answers in one post
 STOPPED_EXIT = 3
+NO_CLAUDE = "claude is not installed here: run this inside a run of the project's agent pool"
 
 
-def _path(project: str, tail: str) -> str:
-    return f"/v1/kg/{quote(project, safe='')}/entities/{tail}"
+class KgEntities(KgResource):
+    """The entity requests of a project's latest build: GET /v1/kg/{p}/entities/requests, POST .../entities/answers."""
+
+    collection = "entities"
+
+    def requests(self) -> list[dict]:
+        return (self.call("GET", "requests") or {}).get("requests") or []
+
+    def answers(self, answers: dict[str, dict]) -> int:
+        """Post ``answers``; how many the hub kept."""
+        return int((self.call("POST", "answers", body={"answers": answers}) or {}).get("kept") or 0)
 
 
 def done_json(project: str, requests: int = 0) -> dict:
@@ -34,15 +47,14 @@ def done_json(project: str, requests: int = 0) -> dict:
 
 def answer_all(hub, project: str, limit: int | None = None, answer=claude_code.answer) -> dict:
     """Answer the latest requests of ``project`` and post the answers: the counts and why it stopped, if it did."""
-    found = hub.call("GET", _path(project, "requests"))
-    requests = (found or {}).get("requests") or []
+    entities = KgEntities(hub, project)
+    requests = entities.requests()
     done = done_json(project, len(requests))
     batch: dict[str, dict] = {}
 
     def post() -> None:
         if batch:
-            kept = hub.call("POST", _path(project, "answers"), {"answers": dict(batch)})
-            done["kept"] += int((kept or {}).get("kept") or 0)
+            done["kept"] += entities.answers(dict(batch))
             batch.clear()
 
     for request in requests:
@@ -64,33 +76,38 @@ def answer_all(hub, project: str, limit: int | None = None, answer=claude_code.a
     return done
 
 
-@client_command
-def cmd_entities(args) -> int:
-    hub, _ = signed_in()
-    if not claude_code.available():
-        print("error: claude is not installed here: run this inside a run of the project's agent pool", file=sys.stderr)
-        return 1
-    env = claude_code.with_run_login(os.environ)  # one ask of the run's socket, not one a request
-    done = answer_all(hub, args.project, args.limit, answer=lambda request: claude_code.answer(request, env=env))
-    if args.json:
-        print_json(done)
-    else:
-        print(
-            f"{done['answered']} of {done['requests']} entity request(s) of {args.project} answered, "
+class NoClaude(Exception):
+    """Claude Code is not on this machine: ``error: ...`` on stderr and exit status 1."""
+
+
+class KgEntitiesCommand(HubCommand):
+    name = "entities"
+    help = "answer with Claude Code, in a run of the project's agent pool, the entity requests of its latest build"
+    arguments = (
+        KG_PROJECT,
+        Arg("--limit", type=positive, help="calls of Claude Code at most (default: every request)"),
+    )
+    output = returns_object("project", "requests", "answered", "kept", "failed", "stopped")
+
+    def run(self, ctx: HubContext) -> Result:
+        hub = ctx.hub
+        if not claude_code.available():
+            raise NoClaude(NO_CLAUDE)
+        env = claude_code.with_run_login(os.environ)  # one ask of the run's socket, not one a request
+        done = answer_all(hub, ctx.project, ctx.args.limit, answer=lambda request: claude_code.answer(request, env=env))
+        line = (
+            f"{done['answered']} of {done['requests']} entity request(s) of {ctx.project} answered, "
             f"{done['kept']} kept by the hub, {done['failed']} failed"
             + (f"; stopped: {done['stopped']}, the rest waits for the next run" if done["stopped"] else "")
         )
-    return STOPPED_EXIT if done["stopped"] else 0
+        return Result(done, Text(line), STOPPED_EXIT if done["stopped"] else 0)
+
+    def failed(self, exc: Exception) -> int | None:
+        if not isinstance(exc, NoClaude):
+            return super().failed(exc)
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
-def register(ksub) -> None:
-    from evo_agents.hub.cli import positive
-
-    p = ksub.add_parser(
-        "entities",
-        help="answer with Claude Code, in a run of the project's agent pool, the entity requests of its latest build",
-    )
-    p.add_argument("--project", required=True, help="project name on the hub")
-    p.add_argument("--limit", type=positive, help="calls of Claude Code at most (default: every request)")
-    json_option(p, returns_object("project", "requests", "answered", "kept", "failed", "stopped"))
-    p.set_defaults(func=cmd_entities)
+ENTITIES = KgEntitiesCommand()
+NODES = (ENTITIES,)

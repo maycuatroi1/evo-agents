@@ -21,7 +21,7 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import kg_named_graphs
-from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.mcp_tools import KG_TOOLS
 from evo_agents.kg.serve import Session
 from tests.hub import live, pg
@@ -218,7 +218,7 @@ class FakeHub:
 @pytest.fixture
 def fake_hub(monkeypatch):
     hub = FakeHub()
-    monkeypatch.setattr(kg_graphs_cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (hub, None))
     return hub
 
 

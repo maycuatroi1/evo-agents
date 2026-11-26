@@ -3,6 +3,7 @@
 import json
 from types import SimpleNamespace
 
+from evo_agents.hub.cli import base
 from evo_agents.hub.cli.kg import profile as cli
 
 
@@ -34,9 +35,9 @@ def test_it_says_why_there_is_none():
 
 def test_the_command_prints_json(monkeypatch, capsys):
     hub = FakeHub(status({"profile": {"items": 3}}))
-    monkeypatch.setattr(cli, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     args = SimpleNamespace(project="p", sink=None, json=True)
-    assert cli.cmd_profile(args) == 0
+    assert cli.PROFILE(args) == 0
     assert json.loads(capsys.readouterr().out) == {"project": "p", "build_id": 7, "profile": {"items": 3}}
-    monkeypatch.setattr(cli, "signed_in", lambda: (FakeHub(status({})), None))
-    assert cli.cmd_profile(args) == 1
+    monkeypatch.setattr(base, "signed_in", lambda: (FakeHub(status({})), None))
+    assert cli.PROFILE(args) == 1

@@ -1,24 +1,39 @@
 """``evo-agents hub kg branch create|list|show|apply|diff|check|merge|drop``: the draft branches of a hub project's graph
 (``docs/kg.md``, Draft branches). A branch is main with operations applied (node, edge, entity map and decision
 changes) while main does not change; the kg tools read one with ``branch``. Writing needs the writer role. Standard
-library only."""
+library only.
+
+:data:`BRANCH` is the group of class commands of ``evo_agents.clikit``; :class:`KgBranches` is the gateway to its
+routes."""
 
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
-from evo_agents.hub.cli_client import call_object, client_command, print_json, signed_in, table
-from evo_agents.hub.contract import json_option, returns_map, returns_object
+from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, returns_map, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.kg.resources import KG_PROJECT, KgResource
 
 BRANCH_KEYS = ("id", "name", "status", "base_build_id", "created_by", "created_at", "ops")
+BRANCH_OUTPUT = returns_object(*BRANCH_KEYS, schema="BranchOut")
 
 
-def _base(project: str, name: str | None = None) -> str:
-    base = f"/v1/kg/{quote(project, safe='')}/branches"
-    return base if name is None else f"{base}/{quote(name, safe='')}"
+class KgBranches(KgResource):
+    """The draft branches of a project's graph: /v1/kg/{p}/branches, .../branches/{name} and what is under it."""
+
+    collection = "branches"
+
+    def list(self, status: str | None = None) -> dict:
+        return self.object("GET", status=status)
+
+    def create(self, name: str) -> dict:
+        return self.object("POST", body={"name": name})
+
+    def ask(self, method: str, name: str, *parts: str, body: dict | None = None) -> dict:
+        """``method`` on the branch ``name``, or on ``parts`` under it."""
+        return self.object(method, name, *parts, body=body)
 
 
 def read_ops(source: str) -> list:
@@ -33,181 +48,170 @@ def read_ops(source: str) -> list:
     return found
 
 
-def _branch_line(branch: dict) -> str:
+def branch_line(branch: dict) -> str:
     return (
         f"branch {branch['name']}: {branch['status']}, {branch['ops']} operations, "
         f"from build {branch.get('base_build_id') or '-'}"
     )
 
 
-@client_command
-def cmd_branch_list(args) -> int:
-    hub, _ = signed_in()
-    path = _base(args.project) + (f"?status={args.status}" if args.status else "")
-    found = call_object(hub, "GET", path)
-    if args.json:
-        print_json(found)
-        return 0
-    rows = [
-        (b["name"], b["status"], str(b["ops"]), str(b.get("base_build_id") or "-"), b["created_at"])
-        for b in found["branches"]
-    ]
-    table(("BRANCH", "STATUS", "OPS", "FROM BUILD", "CREATED"), rows)
-    return 0
-
-
-@client_command
-def cmd_branch_create(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "POST", _base(args.project), {"name": args.name})
-    if args.json:
-        print_json(found)
-        return 0
-    print(f"created {_branch_line(found)}")
-    return 0
-
-
-@client_command
-def cmd_branch_show(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "GET", _base(args.project, args.name))
-    if args.json:
-        print_json(found)
-        return 0
-    print(_branch_line(found))
-    return 0
-
-
-@client_command
-def cmd_branch_apply(args) -> int:
-    try:
-        ops = read_ops(args.ops)
-    except (OSError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    hub, _ = signed_in()
-    found = call_object(hub, "POST", f"{_base(args.project, args.name)}/ops", {"ops": ops})
-    if args.json:
-        print_json(found)
-        return 0
-    print(
-        f"applied {found['applied']} operations to branch {args.name} ({found['ops']} in all): "
-        f"{found['nodes']} nodes, {found['edges']} edges; main did not change"
-    )
-    return 0
-
-
-def _counts(counts: dict) -> str:
+def counts_text(counts: dict) -> str:
     return ", ".join(f"{key.replace('_', ' ')} {value}" for key, value in counts.items())
 
 
-@client_command
-def cmd_branch_diff(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "GET", f"{_base(args.project, args.name)}/diff")
-    if args.json:
-        print_json(found)
-        return 0
-    print(f"branch {args.name} against main: {_counts(found.get('counts') or {})}")
+def diff_lines(name: str, found: dict) -> list[str]:
+    lines = [f"branch {name} against main: {counts_text(found.get('counts') or {})}"]
     for kind in ("nodes", "edges"):
         for change in ("added", "changed", "removed"):
-            for item in (found.get(kind) or {}).get(change) or []:
-                print(f"  {change} {kind[:-1]} {item.get('id')}")
-    return 0
+            lines += [f"  {change} {kind[:-1]} {item.get('id')}" for item in (found.get(kind) or {}).get(change) or []]
+    return lines
 
 
-@client_command
-def cmd_branch_check(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "GET", f"{_base(args.project, args.name)}/check")
-    if args.json:
-        print_json(found)
-        return 0 if found.get("mergeable") else 1
-    if not found.get("rules"):
-        print("the project's ontology declares no rules")
+def check_lines(name: str, found: dict) -> list[str]:
+    lines = [] if found.get("rules") else ["the project's ontology declares no rules"]
     for v in found.get("new") or []:
         hard = " (hard: blocks the merge)" if v in (found.get("hard") or []) else ""
-        print(f"  {v['rule']} {v['key']}{hard}: {v.get('detail') or ''}")
+        lines.append(f"  {v['rule']} {v['key']}{hard}: {v.get('detail') or ''}")
     for c in found.get("conflicts") or []:
-        print(f"  conflict: operation {c['op']} read {c['id']}, which main changed since")
+        lines.append(f"  conflict: operation {c['op']} read {c['id']}, which main changed since")
     state = "mergeable" if found.get("mergeable") else "not mergeable"
-    print(
-        f"branch {args.name}: {len(found.get('violations') or [])} violations, {len(found.get('new') or [])} new; {state}"
+    violations, new = len(found.get("violations") or []), len(found.get("new") or [])
+    lines.append(f"branch {name}: {violations} violations, {new} new; {state}")
+    return lines
+
+
+NAMED = (Arg("name", metavar="NAME", help="the branch"), KG_PROJECT)
+OPS = Arg(
+    "--ops",
+    required=True,
+    metavar="FILE",
+    help="JSON file of the operations, a list or {ops: [...]}; - reads stdin",
+)
+
+
+class BranchList(HubCommand):
+    name = "list"
+    help = "the draft branches of a project's graph, newest first"
+    arguments = (
+        KG_PROJECT,
+        Arg("--status", choices=("open", "merged", "closed"), help="only branches in this state"),
     )
-    return 0 if found.get("mergeable") else 1
+    output = returns_object("branches", schema="BranchesOut")
+
+    def run(self, ctx: HubContext) -> Result:
+        found = KgBranches.of(ctx).list(ctx.args.status or None)
+        rows = [
+            (b["name"], b["status"], str(b["ops"]), str(b.get("base_build_id") or "-"), b["created_at"])
+            for b in found["branches"]
+        ]
+        return Result(found, Table(("BRANCH", "STATUS", "OPS", "FROM BUILD", "CREATED"), rows, bare=True))
 
 
-@client_command
-def cmd_branch_merge(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "POST", f"{_base(args.project, args.name)}/merge")
-    if args.json:
-        print_json(found)
-        return 0
-    counts = {k: v for k, v in found.items() if k.startswith(("nodes_", "edges_"))}
-    print(f"merged branch {args.name} into main ({found['ops']} operations): {_counts(counts)}")
-    return 0
+class BranchCreate(HubCommand):
+    name = "create"
+    help = "open a draft branch from main (writer role)"
+    arguments = (Arg("name", metavar="NAME", help="a-z, 0-9, '.', '_', '-'; not 'main'"), KG_PROJECT)
+    output = BRANCH_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        found = KgBranches.of(ctx).create(ctx.args.name)
+        return Result(found, Text(f"created {branch_line(found)}"))
 
 
-@client_command
-def cmd_branch_drop(args) -> int:
-    hub, _ = signed_in()
-    found = call_object(hub, "DELETE", _base(args.project, args.name))
-    if args.json:
-        print_json(found)
-        return 0
-    print(f"dropped branch {args.name} and its {found['ops']} operations; main did not change")
-    return 0
+class BranchShow(HubCommand):
+    name = "show"
+    help = "one draft branch"
+    arguments = NAMED
+    output = BRANCH_OUTPUT
+
+    def run(self, ctx: HubContext) -> Result:
+        found = KgBranches.of(ctx).ask("GET", ctx.args.name)
+        return Result(found, Text(branch_line(found)))
 
 
-def _named(sub, name: str, help: str, func, output) -> None:
-    parser = sub.add_parser(name, help=help)
-    parser.add_argument("name", metavar="NAME", help="the branch")
-    parser.add_argument("--project", required=True, help="project name on the hub")
-    if name == "apply":
-        parser.add_argument(
-            "--ops",
-            required=True,
-            metavar="FILE",
-            help="JSON file of the operations, a list or {ops: [...]}; - reads stdin",
+class BranchApply(HubCommand):
+    name = "apply"
+    help = "apply operations to an open branch, all or none"
+    arguments = (*NAMED, OPS)
+    output = returns_map()
+
+    def run(self, ctx: HubContext) -> Result:
+        name = ctx.args.name
+        try:
+            ops = read_ops(ctx.args.ops)  # before signing in, as always
+        except (OSError, ValueError) as exc:
+            raise UsageError(str(exc)) from None
+        found = KgBranches.of(ctx).ask("POST", name, "ops", body={"ops": ops})
+        line = (
+            f"applied {found['applied']} operations to branch {name} ({found['ops']} in all): "
+            f"{found['nodes']} nodes, {found['edges']} edges; main did not change"
         )
-    json_option(parser, output)
-    parser.set_defaults(func=func)
+        return Result(found, Text(line))
 
 
-def register(ksub) -> None:
-    """``hub kg branch``, under the subparsers ``ksub`` of ``hub kg``."""
-    branch = ksub.add_parser(
-        "branch",
-        help="draft branches of a project's graph: change nodes, edges and decisions apart from main, then merge",
-        description="A draft branch is main with operations applied (node.put, node.delete, edge.put, edge.delete, "
-        "entity_map, decision) while main does not change. Read it with the kg tools' branch argument, see its diff "
-        "and the ontology rules it breaks, then merge it into main (refused when main changed what it changes, or it "
-        "breaks a hard rule) or drop it.",
-    )
-    bsub = branch.add_subparsers(dest="branch_command", required=True)
+class BranchDiff(HubCommand):
+    name = "diff"
+    help = "the nodes and edges a branch adds, changes and removes"
+    arguments = NAMED
+    output = returns_map()
 
-    listed = bsub.add_parser("list", help="the draft branches of a project's graph, newest first")
-    listed.add_argument("--project", required=True, help="project name on the hub")
-    listed.add_argument("--status", choices=("open", "merged", "closed"), help="only branches in this state")
-    json_option(listed, returns_object("branches", schema="BranchesOut"))
-    listed.set_defaults(func=cmd_branch_list)
+    def run(self, ctx: HubContext) -> Result:
+        found = KgBranches.of(ctx).ask("GET", ctx.args.name, "diff")
+        return Result(found, Text(*diff_lines(ctx.args.name, found)))
 
-    create = bsub.add_parser("create", help="open a draft branch from main (writer role)")
-    create.add_argument("name", metavar="NAME", help="a-z, 0-9, '.', '_', '-'; not 'main'")
-    create.add_argument("--project", required=True, help="project name on the hub")
-    json_option(create, returns_object(*BRANCH_KEYS, schema="BranchOut"))
-    create.set_defaults(func=cmd_branch_create)
 
-    _named(bsub, "show", "one draft branch", cmd_branch_show, returns_object(*BRANCH_KEYS, schema="BranchOut"))
-    _named(bsub, "apply", "apply operations to an open branch, all or none", cmd_branch_apply, returns_map())
-    _named(bsub, "diff", "the nodes and edges a branch adds, changes and removes", cmd_branch_diff, returns_map())
-    _named(
-        bsub,
-        "check",
-        "the ontology rules a branch breaks and whether it merges (exit 1: not)",
-        cmd_branch_check,
-        returns_map(),
-    )
-    _named(bsub, "merge", "merge an open branch into main", cmd_branch_merge, returns_map())
-    _named(bsub, "drop", "drop an open branch and its operations", cmd_branch_drop, returns_map())
+class BranchCheck(HubCommand):
+    name = "check"
+    help = "the ontology rules a branch breaks and whether it merges (exit 1: not)"
+    arguments = NAMED
+    output = returns_map()
+
+    def run(self, ctx: HubContext) -> Result:
+        found = KgBranches.of(ctx).ask("GET", ctx.args.name, "check")
+        return Result(found, Text(*check_lines(ctx.args.name, found)), 0 if found.get("mergeable") else 1)
+
+
+class BranchMerge(HubCommand):
+    name = "merge"
+    help = "merge an open branch into main"
+    arguments = NAMED
+    output = returns_map()
+
+    def run(self, ctx: HubContext) -> Result:
+        name = ctx.args.name
+        found = KgBranches.of(ctx).ask("POST", name, "merge")
+        counts = {k: v for k, v in found.items() if k.startswith(("nodes_", "edges_"))}
+        return Result(found, Text(f"merged branch {name} into main ({found['ops']} operations): {counts_text(counts)}"))
+
+
+class BranchDrop(HubCommand):
+    name = "drop"
+    help = "drop an open branch and its operations"
+    arguments = NAMED
+    output = returns_map()
+
+    def run(self, ctx: HubContext) -> Result:
+        name = ctx.args.name
+        found = KgBranches.of(ctx).ask("DELETE", name)
+        return Result(found, Text(f"dropped branch {name} and its {found['ops']} operations; main did not change"))
+
+
+BRANCH = Group(
+    "branch",
+    "draft branches of a project's graph: change nodes, edges and decisions apart from main, then merge",
+    (
+        BranchList(),
+        BranchCreate(),
+        BranchShow(),
+        BranchApply(),
+        BranchDiff(),
+        BranchCheck(),
+        BranchMerge(),
+        BranchDrop(),
+    ),
+    description="A draft branch is main with operations applied (node.put, node.delete, edge.put, edge.delete, "
+    "entity_map, decision) while main does not change. Read it with the kg tools' branch argument, see its diff "
+    "and the ontology rules it breaks, then merge it into main (refused when main changed what it changes, or it "
+    "breaks a hard rule) or drop it.",
+)
+NODES = (BRANCH,)

@@ -77,7 +77,7 @@ def _on_hub(args, command, **extra) -> int:
 
 def cmd_profile(args) -> int:
     """``kg profile``: the data profile of the project's newest graph on the hub (``evo-agents hub kg profile``)."""
-    from evo_agents.hub.cli.kg.profile import cmd_profile as on_hub
+    from evo_agents.hub.cli.kg.profile import PROFILE as on_hub
 
     return _on_hub(args, on_hub, sink=args.sink)
 
@@ -85,14 +85,14 @@ def cmd_profile(args) -> int:
 def cmd_semantic(args) -> int:
     """``kg semantic``: whether the project's graph on the hub holds vectors (``evo-agents hub kg semantic``); with
     ``--mode`` or ``--model``, set them in the project's settings on the hub first. The hub embeds at its next build."""
-    from evo_agents.hub.cli.kg.semantic import cmd_semantic as show
-    from evo_agents.hub.cli.kg.settings import cmd_settings
+    from evo_agents.hub.cli.kg.semantic import SEMANTIC as show
+    from evo_agents.hub.cli.kg.settings import SETTINGS
 
     if args.mode or args.model:
         values = [f"semantic_mode={args.mode}"] * bool(args.mode) + [f"semantic_model={args.model}"] * bool(args.model)
         quiet = argparse.Namespace(project=args.project, json=True)  # the settings it printed would come twice
         code = _on_hub(
-            quiet, _quietly(cmd_settings), set=values, undo=False, strategy=None, reason=args.reason, figures=None
+            quiet, _quietly(SETTINGS), set=values, undo=False, strategy=None, reason=args.reason, figures=None
         )
         if code:
             return code
@@ -114,7 +114,7 @@ def _quietly(command):
 def cmd_settings(args) -> int:
     """``kg settings``: show the project's KG settings on the hub, set some (``--set KEY=VALUE``, a reason with
     ``--reason``) or put back the last change (``--undo``), as ``evo-agents hub kg settings`` does."""
-    from evo_agents.hub.cli.kg.settings import cmd_settings as on_hub
+    from evo_agents.hub.cli.kg.settings import SETTINGS as on_hub
 
     return _on_hub(args, on_hub, set=args.set, undo=args.undo, strategy=None, reason=args.reason, figures=args.figures)
 

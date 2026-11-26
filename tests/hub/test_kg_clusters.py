@@ -29,6 +29,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 
 from evo_agents.hub import kg_map
+from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import clusters as kg_clusters_cli
 from evo_agents.hub.server.app import create_app
 from evo_agents.kg import clusters as kg_clusters
@@ -237,20 +238,21 @@ def test_the_whole_graph_is_every_visible_node_and_edge(hub):
     assert capped["truncated"] is True and [n["id"] for n in capped["nodes"]] == ids[:5]
 
 
-def test_the_command_line_prints_the_clusters_and_one_cluster(hub, capsys):
+def test_the_command_line_prints_the_clusters_and_one_cluster(hub, capsys, monkeypatch):
     client = InProcessHub(hub.client, hub.wendy)
+    monkeypatch.setattr(cli_base, "signed_in", lambda: (client, None))
     args = SimpleNamespace(project=PROJECT, action=None, id=None, json=True)
-    assert kg_clusters_cli._list(client, args) == 0
+    assert kg_clusters_cli.CLUSTERS(args) == 0
     printed = json.loads(capsys.readouterr().out)
     assert isinstance(printed, list) and printed == cluster_map(hub, "wendy")["clusters"]
     assert all({"id", "label", "size"} <= set(c) for c in printed)
 
     cid = printed[0]["id"]
-    assert kg_clusters_cli._show(client, SimpleNamespace(project=PROJECT, action="show", id=cid, json=True)) == 0
+    assert kg_clusters_cli.CLUSTERS(SimpleNamespace(project=PROJECT, action="show", id=cid, json=True)) == 0
     shown = json.loads(capsys.readouterr().out)
     assert set(shown) == set(kg_clusters_cli.CLUSTER_DETAIL) and shown["cluster"]["id"] == cid
 
-    assert kg_clusters_cli._list(client, SimpleNamespace(project=PROJECT, action=None, id=None, json=False)) == 0
+    assert kg_clusters_cli.CLUSTERS(SimpleNamespace(project=PROJECT, action=None, id=None, json=False)) == 0
     text = capsys.readouterr().out
     assert cid in text and "CLUSTER" in text
 
