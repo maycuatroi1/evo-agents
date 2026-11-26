@@ -38,7 +38,7 @@ each with where it came from, and the project's shared memories (``memory_lines`
 ``evo_agents.hub.server.memories.service.promotion.for_prompt``): the Reviewer may propose, as a proposal of kind memory, to
 promote what agents learned into a shared memory, new or one it merges them into.
 
-The prompt holds the run's probe assignments too (``assignment_lines``, ``evo_agents.hub.server.probe_fixes``): a
+The prompt holds the run's probe assignments too (``assignment_lines``, ``evo_agents.hub.server.probes.service.fixes``): a
 change whose probe recurred on one model two weekly reports in a row, for a fix proposal of its rule (``--fix-of``, at
 least tier 1, the probe results as its evidence, a hook or a check preferred to words) or a finding that says why not;
 a probe not reproduced or stale two weeks in a row, for a probe in its place (``worker probe add --replaces``). Probe
@@ -665,7 +665,7 @@ def _audience(item: dict) -> str:
 
 
 def assignment_lines(assignments: list[dict]) -> list[str]:
-    """What the weekly probe report asks of this run (``evo_agents.hub.server.probe_fixes``, ``Assignment.prompt``):
+    """What the weekly probe report asks of this run (``evo_agents.hub.server.probes.service.fixes``, ``Assignment.prompt``):
     nothing when it asks nothing."""
     if not assignments:
         return []

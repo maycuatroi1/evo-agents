@@ -235,7 +235,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 
         return await question_prompt(conn, view)
     if view.kind == "judge":  # the merge queue's on no plan, else the Curator's
-        from evo_agents.hub.server.change_views import judge_prompt
+        from evo_agents.hub.server.changes.service.policy import judge_prompt
         from evo_agents.hub.server.merge_judge import merge_prompt
 
         return await merge_prompt(conn, view) or await judge_prompt(conn, view)
@@ -244,18 +244,18 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 
         return RUN_PROMPT
     if view.kind == "probe":
-        from evo_agents.hub.server.probe_runs import run_prompt as probe_prompt
+        from evo_agents.hub.server.probes.service.runs import run_prompt as probe_prompt
 
         return await probe_prompt(conn, view)
     if view.kind == "evolve":
-        from evo_agents.hub.server.evolve_runs import run_prompt as evolve_prompt
+        from evo_agents.hub.server.evolve.service.runs import run_prompt as evolve_prompt
 
         return await evolve_prompt(conn, view)
     if view.kind == "release":
         from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
 
         return await release_prompt(conn, view)
-    from evo_agents.hub.server.replays import run_prompt
+    from evo_agents.hub.server.replays.service import run_prompt
 
     return await run_prompt(conn, view)
 
@@ -405,7 +405,7 @@ async def _release_spec(conn: AsyncConnection, view: Run):
 
 
 async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> CuratorSpec | None:
-    from evo_agents.hub.server.change_views import run_curator  # it reads runs through this package
+    from evo_agents.hub.server.changes.service.policy import run_curator  # it reads runs through this package
     from evo_agents.hub.server.history.service.runs import history_claim  # it queues runs through this package
 
     found = await run_curator(conn, project_id, view)

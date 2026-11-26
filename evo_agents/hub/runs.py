@@ -433,7 +433,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # run_outputs: files a run's agent sent, or left in its outputs directory, gathered a minute a run, which the hub alone
 # sends to the run's owner (``server.outputs.service.notices``)
 # curator_probe_report: the weekly report of a project's probes, on Monday at the charter's brief_at, to the owner of its
-# night shift's schedule (``server.probe_report``)
+# night shift's schedule (``server.probes.service.report``)
 OUTPUT_NOTICE = "run_outputs"
 PROBE_REPORT_NOTICE = "curator_probe_report"
 NOTICE_KINDS = (
@@ -462,7 +462,7 @@ NOTICE_KINDS = (
     "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
     "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market_licenses``)
-    "today",  # Today's summary push, to the member's devices alone, once a day (``server.today_digest``)
+    "today",  # Today's summary push, to the member's devices alone, once a day (``server.digests.service.today``)
     "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
     "agent_pool_empty",  # a run of an agent in pool mode queued with no node of its pool ready (``agent_placement``)
     "srs_adopt",  # a plan holds use cases of an SRS goal's backlog out of the Loop's builds (``server.loop.notices``)

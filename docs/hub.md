@@ -1880,7 +1880,7 @@ on a fit worker (409 while it is still held). Every success posts a `Decision:` 
 
 A Curator charter with `answer_by: agent` has the hub open a thread in the same chat for each proposal recorded open,
 or open again after a defer (`proposal_threads`, schema 0188), and its agent answers the proposal for the schedule's
-owner through `POST /v1/worker/runs/{id}/curator/answer` (`evo_agents/hub/server/curator_threads.py`,
+owner through `POST /v1/worker/runs/{id}/curator/answer` (`evo_agents/hub/server/curator/service/threads.py`,
 `docs/curator.md`, "The agent answers"): only the proposal of its thread, only for a dispatcher who is an admin of the
 project, only while the charter still says `agent` and the proposal is open or deferred. A change of that proposal the
 hub leaves open for its owner is told in the thread, and the agent merges it through `POST
@@ -2864,7 +2864,7 @@ its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint 
 that loosen a test, change a plan's verify or change CI are tier 3, always. In a project with a graph on the hub, a
 path the graph has no file for, one the latest measure of its health found missing, stale or deleted (each source's
 `off`, below), or any path while the graph cannot be read, makes it at least tier 1, the reason saying which
-(`evo_agents/hub/server/change_tiers.py`). A protected file the graph says a path reaches (`kg_impact`) makes a
+(`evo_agents/hub/server/changes/service/tiers.py`). A protected file the graph says a path reaches (`kg_impact`) makes a
 proposal at least tier 2; once its pull request is open, tier 3 only when the diff removes or changes the signature of
 a module-level name that file uses (`evo_agents/hub/api_surface.py`, at most 40 files read a pull request), or the hub
 could not read it. A proposal like one the owner rejected in
@@ -2987,15 +2987,15 @@ test or verify weakened (`instruction_weakened`, `judge.weakened`: a line added 
 verify, lint or CI unless it forbids that, or more lines about them removed than added), and a binary or unknown file
 where tests, CI, configuration or a harness live. A list of files GitHub cuts short (more than it lists, or fewer
 than the pull request says it changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The
-files also give the proposal its tier again (`change_tiers.retier`: `tiers.tier_of` over the paths the pull request really changes, what the graph says
-they reach and cannot tell, read as the night shift's owner, and for kind `kg_source` what it does to each
-knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the head and compared key by key,
-which only ever raises it), at the pull request and again before a merge, so a proposal of docs whose pull request
-changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`, `refresh`, `include`,
-`exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read of the file stays
-with the change (`curator_changes.knowledge`). A change of kind `docs`, `skill` or `global_config` whose diff edits a
-harness alone (the files of one skill directory, AGENTS.md and CLAUDE.md files) merges as tier 0 once its replays won
-(The Curator's replays, below; `tiers.replay_tier`), its proposal keeping the tier its rules gave.
+files also give the proposal its tier again (`changes.service.tiers.retier`: `tiers.tier_of` over the paths the pull
+request really changes, what the graph says they reach and cannot tell, read as the night shift's owner, and for kind
+`kg_source` what it does to each knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the
+head and compared key by key, which only ever raises it), at the pull request and again before a merge, so a proposal of
+docs whose pull request changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`,
+`refresh`, `include`, `exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read
+of the file stays with the change (`curator_changes.knowledge`). A change of kind `docs`, `skill` or `global_config`
+whose diff edits a harness alone (the files of one skill directory, AGENTS.md and CLAUDE.md files) merges as tier 0 once
+its replays won (The Curator's replays, below; `tiers.replay_tier`), its proposal keeping the tier its rules gave.
 Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
 project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
 the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
@@ -3037,21 +3037,21 @@ keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
 
-**A change in several repos** (schema 0256, `evo_agents/hub/server/change_repos.py`). An accepted proposal whose paths
-and draft name several repos of the project, each on GitHub, becomes one plan in them all (`judge.curator_repos_plan`),
-the repos ordered owner before consumer by the seams of the project's graph, and a row of `curator_change_repos` for
-each, with the repos merged before it. The change itself keeps the first repo. The Builder waits until the ruleset of
-each repo was checked; after it the hub opens a pull request in each repo, queues the judge runs one repo at a time (each
-judge run's inputs and verdict are of its own repo), and merges a repo's pull request only once each repo it depends on
-merged (`merge_waits`). The change is judged when every repo's Judge passed and merged when every pull request merged.
-A write of the plan that drops or adds a repo, or a step in a repo the plan does not name, is refused (409). The
-change's view lists its repos (`repos`: each with its position, `depends_on`, state, pull request and verdict; empty for
-a change in one repo).
+**A change in several repos** (schema 0256, `evo_agents/hub/server/changes/service/repos.py`). An accepted proposal
+whose paths and draft name several repos of the project, each on GitHub, becomes one plan in them all
+(`judge.curator_repos_plan`), the repos ordered owner before consumer by the seams of the project's graph, and a row of
+`curator_change_repos` for each, with the repos merged before it. The change itself keeps the first repo. The Builder
+waits until the ruleset of each repo was checked; after it the hub opens a pull request in each repo, queues the judge
+runs one repo at a time (each judge run's inputs and verdict are of its own repo), and merges a repo's pull request only
+once each repo it depends on merged (`merge_waits`). The change is judged when every repo's Judge passed and merged when
+every pull request merged. A write of the plan that drops or adds a repo, or a step in a repo the plan does not name, is
+refused (409). The change's view lists its repos (`repos`: each with its position, `depends_on`, state, pull request and
+verdict; empty for a change in one repo).
 
 ## The Curator's replays
 
 A replay measures a change of the Curator on the project's own history (schema 0056, `evo_agents/hub/replay.py`,
-`evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays.py`): the agent does a step of a plan done before
+`evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays/`): the agent does a step of a plan done before
 twice, from the code as it was before that step, once with the harness of the default branch (arm `a`) and once with
 the harness of the change (arm `b`), and the worker runs the step's verify on each arm's work.
 
@@ -3100,10 +3100,10 @@ cost and turns, `saving` (arm b's share lower) and the harness `paths` arm b ran
 **What the replays decide.** They won when at least `replay.MIN_HOLDOUT` (6) such tasks are in, and arm b passed more
 of them than arm a, or as many with a mean cost or turns at least `replay.MIN_SAVING` (10%) lower. A change of kind
 `docs`, `skill` or `global_config` whose pull request edits a harness alone and whose replays won merges as tier 0 when
-the Judge and CI pass and the charter's `auto_merge` holds 0 (`change_tiers.merge_tier`, `retier`); one with too few
-replays, replays that lost, or another file keeps its tier, and the reason it stays open names its replays' verdict.
-A replay done that makes the replays of a change the Judge passed and the hub left open win puts the change back to
-`judged`, and the next pass reads its pull request again.
+the Judge and CI pass and the charter's `auto_merge` holds 0 (`changes.service.tiers.merge_tier`, `retier`); one with
+too few replays, replays that lost, or another file keeps its tier, and the reason it stays open names its replays'
+verdict. A replay done that makes the replays of a change the Judge passed and the hub left open win puts the change
+back to `judged`, and the next pass reads its pull request again.
 
 **A global skill's release.** The hub's merge of such a change names, on its ledger line `merged`, the verdict
 (`details.replay`) and, when the one skill directory arm b ran with is a global skill of the hub whose latest version
@@ -3128,8 +3128,8 @@ evo-agents hub curator replay show 4                  # change #4's replays, arm
 ## The Curator's probes
 
 A probe measures, every week after a change of the Curator merged, whether the rule it made from a correction still
-keeps the mistake away (schemas 0130 to 0133, `evo_agents/hub/probes.py`, `evo_agents/hub/server/probes.py`,
-`probe_routes.py`, `probe_runs.py`, `probe_report.py`, `probe_fixes.py`): a task in one repo from a base commit, and a
+keeps the mistake away (schemas 0130 to 0133, `evo_agents/hub/probes.py` and the package `evo_agents/hub/server/probes/`:
+`routes/`, `service/probes.py`, `service/runs.py`, `service/report.py`, `service/fixes.py`): a task in one repo from a base commit, and a
 one-line verify that exits 0 when an agent given the task does not make the mistake again. `docs/curator.md`, Probes,
 says what they are for and how to read them.
 
@@ -3210,7 +3210,7 @@ own after the brief, and its failure leaves the brief as it went (`probe_report_
 
 **The fixes.** A probe `recurring` on the same runtime and model in the two weekly reports before a review run's week
 puts a fix assignment in that run's prompt, and one `not_reproduced` or `stale` on both a replace assignment
-(`probe_fixes`; a stale one names why it was stale each week). A proposal or a finding with `fix_of` (`evo-agents worker propose --fix-of CHANGE`,
+(`probes.service.fixes`; a stale one names why it was stale each week). A proposal or a finding with `fix_of` (`evo-agents worker propose --fix-of CHANGE`,
 `evo-agents worker finding --fix-of CHANGE`) and a probe with `replaces` get 422 when no such assignment exists. A fix proposal is at least tier 1
 (`tiers.tier_of`, `FIX_TIER`), the hub adds the two weeks' probe results to its evidence (kind `probe`, which no agent
 may submit), and a change has at most one open or deferred fix proposal: 409 for a second, and the partial unique
@@ -3229,7 +3229,7 @@ evo-agents hub curator probe report --weeks 2 --json    # keys weeks, unprobed, 
 ## The Curator's evolutions
 
 What `docs/curator.md`, Evolving a harness, describes (schemas 0256 and 0257, `evo_agents/hub/evolve.py`,
-`evo_agents/hub/server/evolve.py`, `evolve_runs.py`, `evolve_report.py`). A writer of the project starts an evolution
+the package `evo_agents/hub/server/evolve/`). A writer of the project starts an evolution
 with `POST /v1/projects/{p}/curator/evolve` (`target` `git` with `repo` and `paths`, each one of the charter's
 `evolve.evolvable_paths`, or `agent_config` with `system_id` and `agent`; `proposal_id` names the accepted proposal
 whose planned change takes the branch), 409 while `evolve.enabled` is false; any reader lists them with `GET
@@ -3373,7 +3373,7 @@ evo-agents hub curator history lines SESSION 120 --before 5 --after 5           
 ## The Curator's memory
 
 What the review runs of a project remember of it (schema 0060, `evo_agents/hub/server/earlier.py`,
-`evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook.py`).
+`evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook/`).
 
 **Earlier nights.** A finding's status comes from the proposals that name it whose label the reader reads through the
 sink, their changes and their ledgers:
@@ -5005,7 +5005,7 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.today_digest`, every minute: the summary push of Today to each member with a push device who has been away from
   the hub for 8 hours, at their `digest_at` in their time zone (07:30 until they choose), once a local day, when
   something changed since they last looked: a notice `today` delivered to their devices alone
-  (`evo_agents.hub.server.today_digest`, through `evo_agents.hub.server.brief`; `docs/notifications.md`, Today and its
+  (`evo_agents.hub.server.digests.service.today`, through `evo_agents.hub.server.brief`; `docs/notifications.md`, Today and its
   summary push).
 - `hub.prune_run_events`, daily at 04:13: deletes the events of runs that ended more than `EVO_HUB_RUN_LOG_DAYS` ago,
   once the tool figures of each such run are written from them (a run writes them when it ends; this covers the runs

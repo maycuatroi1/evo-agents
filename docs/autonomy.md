@@ -119,7 +119,7 @@ labels an env secret (schema 0114 adds `secrets.environment`).
 
 **K5 at the merge** (`evo_agents/hub/server/autonomy_gates.py`): the GitLab merge queue (`merge_gate.ready`), the
 Curator's tier merge (`changes`, the principal of the Builder's run) and the merge the agent of a proposal's thread
-makes of a change the hub left open (`curator_threads`, the principal of its chat run). A repo on github.com whose project policy has `merge_check: on` adds a step
+makes of a change the hub left open (`curator.service.threads`, the principal of its chat run). A repo on github.com whose project policy has `merge_check: on` adds a step
 before a run merges its own pull request: the hub's Judges check it at its head, on the head merged with the base, and
 the run waits parked for the verdict (`docs/merge-queue.md`, The merge check on GitHub). The hook of the worker holds
 the agent's own merge command to it (below, K5 and the merge check), and the job `hub.merge_queue` reads each merge

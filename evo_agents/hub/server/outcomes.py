@@ -16,8 +16,8 @@ Telegram, and accepts it as any proposal of tier 1: it becomes the Curator's pla
 branch of its own and whose pull request waits for its owner. The outcome of a change with replays keeps, besides the
 figures of its lens, their verdict at the head it merged (``replay``, ``change_tiers.replay_verdict``).
 
-``check_circuit`` is the circuit breaker, which the night shift's gate (``curator.gate_of``) runs under the schedule's
-row lock each minute, before anything else and whether the window is open or not: once the charter's
+``check_circuit`` is the circuit breaker, which the night shift's gate (``curator.service.shift.gate_of``) runs under
+the schedule's row lock each minute, before anything else and whether the window is open or not: once the charter's
 ``circuit_breaker.max_failed_in_a_row`` jobs of the night in a row went wrong (``curator.failed_in_a_row``), counting
 since the schedule last changed (a resume, a new worker), it pauses every schedule of the project with the reason
 (``schedules.pause_reason``, no member in ``paused_by``), cancels the runs they queued that are still queued, tells the
@@ -39,8 +39,9 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, ledger, ops_events, review, tables, tiers
-from evo_agents.hub.server import audit, change_tiers, skill_release
+from evo_agents.hub.server import audit, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
+from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.shift_hours import cancel_queued
 
 log = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
     """Count the figures of merged change ``change_id`` again and record its outcome, in the caller's transaction; a
     word for the job's summary."""
     from evo_agents.hub.server.collect import compute_figures  # it queues runs through modules that import this one
-    from evo_agents.hub.server.curator_shift import owner_access
+    from evo_agents.hub.server.curator.service.shift import owner_access
 
     c, lg, p = tables.curator_changes, tables.curator_ledger, tables.proposals
     change = (await conn.execute(select(c).where(c.c.id == change_id).with_for_update(skip_locked=True))).one_or_none()
@@ -192,7 +193,7 @@ async def propose_revert(conn: AsyncConnection, change, proposal, found: dict, a
     """Propose reverting the merge commit of ``change`` (of ``proposal``), whose figures got worse (``found``); the new
     proposal's id. Its owner gets it in the Inbox."""
     from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-    from evo_agents.hub.server.proposals import proposal_link
+    from evo_agents.hub.server.review_inbox import proposal_link
 
     p = tables.proposals
     paths = [
@@ -346,9 +347,10 @@ def _named(items: list[str]) -> str:
 
 
 async def check_circuit(conn: AsyncConnection, due, night: date, since: datetime) -> bool:
-    """Trip the circuit breaker of schedule ``due`` (a row of ``curator_shift.due_schedules``, its row locked) for ``night`` when the
-    night's last jobs since ``since`` went wrong in a row as often as the charter allows (see the module's docstring):
-    pause the project's schedules, cancel what they queued, tell their owners. Whether it tripped."""
+    """Trip the circuit breaker of schedule ``due`` (a row of ``curator.repository.shift.due_schedules``, its row
+    locked) for ``night`` when the night's last jobs since ``since`` went wrong in a row as often as the charter allows
+    (see the module's docstring): pause the project's schedules, cancel what they queued, tell their owners. Whether it
+    tripped."""
     breaker = due.body.get("circuit_breaker") or {}
     most = breaker.get("max_failed_in_a_row")
     most = most if isinstance(most, int) and most >= 1 else CIRCUIT_DEFAULT

@@ -12,9 +12,9 @@ makes the hub open one thread for a run however often it handles its failure. ``
 of a project: off, a failed run sends its owner the notice ``run_failed`` and opens no thread.
 
 proposal_threads (0188) holds the thread of each proposal of the Curator the project's agent answers (a charter whose
-``answer_by`` is ``agent``, ``evo_agents.hub.server.curator_threads``): its chat and the first message of the thread,
-the chat run the latest mention made, and when the hub last asked the agent. A proposal has one row at most, so it has
-one thread however often it opens again after a defer.
+``answer_by`` is ``agent``, ``evo_agents.hub.server.curator.service.threads``): its chat and the first message of the
+thread, the chat run the latest mention made, and when the hub last asked the agent. A proposal has one row at most, so
+it has one thread however often it opens again after a defer.
 """
 
 from __future__ import annotations

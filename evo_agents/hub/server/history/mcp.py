@@ -14,10 +14,11 @@ from fastapi import Request
 from evo_agents.hub import history as history_model
 from evo_agents.hub import playbook as playbook_model
 from evo_agents.hub.mcp_tools import HISTORY_READ_NAMES
-from evo_agents.hub.server import earlier, playbook
+from evo_agents.hub.server import earlier
 from evo_agents.hub.server.base.errors import Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.history.service import readers, runs, search
+from evo_agents.hub.server.playbook import service as playbook
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
 

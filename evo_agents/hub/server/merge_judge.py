@@ -46,7 +46,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, merge_pass
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.change_views import (
+from evo_agents.hub.server.changes.models.views import (
     HiddenResult,
     JudgeKey,
     SecurityPass,

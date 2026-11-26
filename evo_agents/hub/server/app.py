@@ -481,22 +481,22 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.state.join_limit = cache.Window(app.state.cache, "join", app.state.join_refusals)  # ...or shared on Redis
 
     from evo_agents.hub.server import (
-        curator,
         dlp_policy,
         doc_versions,
         kg_worker,
         local_runs,
         member_tasks,
         overview,
-        proposal_reads,
-        proposals,
         release_claims,
         releases,
         today,
     )
     from evo_agents.hub.server.attachments import routes as attachments
+    from evo_agents.hub.server.curator.routes import charter as curator_routes
     from evo_agents.hub.server.decisions import routes as decisions
     from evo_agents.hub.server.outputs import routes as outputs
+    from evo_agents.hub.server.proposals.routes import reads as proposal_reads
+    from evo_agents.hub.server.proposals.routes import record as proposals
     from evo_agents.hub.server.push import routes as push
     from evo_agents.hub.server.webhooks import routes as webhooks
 
@@ -513,7 +513,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         push.config_router,  # what a client needs to subscribe, without a sign-in
         overview.router,
         today.router,  # what waits for a member and what changed since they last looked
-        curator.router,
+        curator_routes.router,
         proposals.router,
         proposals.worker_router,
         proposal_reads.router,  # reading findings and proposals, and answering one
@@ -541,26 +541,26 @@ def _include_curator_routes(app: FastAPI) -> None:
         autonomy_routes,
         autonomy_stops,
         build_now,
-        change_routes,
-        digests,
         earlier,
-        evolve,
         kg_health,
         ledger,
         merged_work,
         org,
-        playbook,
-        probe_report,
-        probe_routes,
-        probe_runs,
         protection,
-        replays,
         transcripts,
         worker_doctor,
         worker_shares,
     )
+    from evo_agents.hub.server.changes import routes as change_routes
+    from evo_agents.hub.server.digests import routes as digests
+    from evo_agents.hub.server.evolve import routes as evolve
     from evo_agents.hub.server.history import routes as history_routes
+    from evo_agents.hub.server.playbook import routes as playbook_routes
+    from evo_agents.hub.server.probes.routes import probes as probe_routes
+    from evo_agents.hub.server.probes.routes import report as probe_report
+    from evo_agents.hub.server.probes.routes import runs as probe_runs
     from evo_agents.hub.server.proposal_plans import routes as proposal_plans
+    from evo_agents.hub.server.replays import routes as replay_routes
 
     for routes in (
         change_routes.router,
@@ -572,14 +572,14 @@ def _include_curator_routes(app: FastAPI) -> None:
         digests.router,
         transcripts.router,
         kg_health.router,
-        replays.router,
-        replays.worker_router,
+        replay_routes.router,
+        replay_routes.worker_router,
         history_routes.router,
         history_routes.worker_router,
         history_routes.search_router,
         earlier.router,
-        playbook.router,
-        playbook.worker_router,
+        playbook_routes.router,
+        playbook_routes.worker_router,
         probe_routes.router,  # the Curator's probes (plan correction-recurrence)
         probe_routes.worker_router,
         probe_runs.worker_router,  # the probe runs' sessions (plan correction-recurrence)
@@ -623,7 +623,6 @@ def _include_member_routes(app: FastAPI) -> None:
         credential_shares,
         credentials,
         cron_jobs,
-        curator_threads,
         features,
         gateway_proxy,
         kg_shared_pool_api,
@@ -678,6 +677,7 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import members as chat_members
     from evo_agents.hub.server.chats.routes import people as chat_people
     from evo_agents.hub.server.chats.routes import read as chat_read
+    from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
@@ -747,7 +747,7 @@ def _include_member_routes(app: FastAPI) -> None:
         orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
         ops_actions.worker_router,  # and the Orchestrator of a default system in its ops threads
         work_cards.worker_router,  # the entry agent of a system sets the work of its trace
-        curator_threads.worker_router,  # the agent of a proposal's thread answers it
+        curator_thread_routes.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
         plugin_publishers.router,

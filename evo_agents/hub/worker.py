@@ -105,9 +105,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.opportunity_deadlines``).
 - ``hub.today_digest``, every minute: the summary push of Today to each member with a push device who has been away
   from the hub for 8 hours, at the local time they chose, when something changed since they last looked, once a day
-  (``evo_agents.hub.server.today_digest``, through ``evo_agents.hub.server.brief``).
+  (``evo_agents.hub.server.digests.service.today``, through ``evo_agents.hub.server.brief``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
-  (``evo_agents.hub.server.digests``).
+  (``evo_agents.hub.server.digests.service.sessions``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
 - ``hub.context_answer_reuse``, daily at 00:09: the answers loaded into prompts the day before, posted as the signal
@@ -124,7 +124,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
   that ended, for search, once (``evo_agents.hub.history_index``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``); on Monday, for a charter that runs
-  probes, the weekly report of their ISO week just ended too, once a week (``evo_agents.hub.server.probe_report``).
+  probes, the weekly report of their ISO week just ended too, once a week (``evo_agents.hub.server.probes.service.report``).
 - ``curator.changes``, every minute, one pass at a time: the Curator's changes move on: their pull requests opened,
   the Judge's check runs written, the tier 0 ones merged when everything allows it, the others left open for their
   owner and read again hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits
@@ -420,7 +420,7 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.FIRE_SCHEDULES, pass_context=True, queueing_lock=jobs.FIRE_SCHEDULES)
 async def fire_schedules(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.curator_shift import fire_schedules as fire
+    from evo_agents.hub.server.curator.service.shift import fire_schedules as fire
 
     found = hub(context)
     return await fire(found.engine, curator_app=getattr(found, "curator_app", None) is not None)
@@ -447,7 +447,7 @@ async def curator_brief(context: JobContext, timestamp: int | None = None) -> di
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.CURATOR_CHANGES, pass_context=True, lock=jobs.CURATOR_CHANGES, queueing_lock=jobs.CURATOR_CHANGES)
 async def curator_changes(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.changes import advance
+    from evo_agents.hub.server.changes.service.job import advance
 
     found = hub(context)
     curator_app = getattr(found, "curator_app", None)
@@ -461,7 +461,9 @@ async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict
         merge_ancestry,
         merge_check,
     )  # a run's pull request on github.com, judged at its head
-    from evo_agents.hub.server.changes import merge_gate  # the queue's job, through the module of the Curator's changes
+    from evo_agents.hub.server.changes.service.job import (
+        merge_gate,  # the queue's job, through the module of the Curator's changes
+    )
 
     found = hub(context)
     outcomes = await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)
@@ -647,7 +649,7 @@ async def prune_audit_rows(context: JobContext, timestamp: int | None = None) ->
 @queue.periodic(cron="23 4 * * *")
 @queue.task(name=jobs.PRUNE_DIGESTS, pass_context=True, queueing_lock=jobs.PRUNE_DIGESTS)
 async def prune_digests(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.digests import prune_digests as prune
+    from evo_agents.hub.server.digests.service.sessions import prune_digests as prune
 
     return await prune(hub(context).engine)
 

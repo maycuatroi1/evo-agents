@@ -1088,7 +1088,8 @@ A project whose Curator charter has `answer_by: agent` gets a thread in the same
 run records open, and a new message in it when a deferred proposal opens again (`docs/curator.md`, The agent answers).
 The thread names the skill `answering-curator-proposals` of the evo-hub plugin and mentions the project's default
 agent, which starts a chat run for the schedule's owner. Its agent answers the proposal, and merges the change the hub left open, with
-one command each, for the owner, inside a frame the hub checks on each call (`evo_agents.hub.server.curator_threads`):
+one command each, for the owner, inside a frame the hub checks on each call
+(`evo_agents.hub.server.curator.service.threads`):
 
 | Command | Route | What |
 | --- | --- | --- |

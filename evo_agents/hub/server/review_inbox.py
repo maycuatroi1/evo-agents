@@ -3,7 +3,7 @@ when it failed, and its open tier 2 proposals as Inbox items of its owner (notif
 evidence first, as long as the day has room under the charter's ``max_decisions_per_day``: the proposals that became
 Inbox items on the same local day of the charter's time zone count against it; the others stay in the list alone. A
 review run that is done counts once on each playbook entry its prompt showed, and the playbook's maintenance runs
-(``playbook.exposed``). ``run_state`` calls ``review_ended`` in the transaction that ends the run.
+(``playbook.service.exposed``). ``run_state`` calls ``review_ended`` in the transaction that ends the run.
 """
 
 from __future__ import annotations
@@ -46,7 +46,8 @@ async def review_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
         return []
     project_id = found.project_id
     if new == "done" and project_id is not None:
-        from evo_agents.hub.server import playbook  # it reads the runs of the routes that import this module
+        # it reads the runs of the routes that import this module
+        from evo_agents.hub.server.playbook import service as playbook
 
         await playbook.exposed(conn, found.run_id, project_id)
     if new == "failed":

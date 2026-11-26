@@ -1,5 +1,5 @@
 """The Curator's lens ``agent_system`` (plan multi-agent-systems, criterion a8; ``docs/curator.md``, The lens
-agent_system), for ``evo_agents.hub.server.proposals``, ``proposal_reads`` and ``collect``.
+agent_system), for ``evo_agents.hub.server.proposals`` (``service.record`` and ``service.reads``) and ``collect``.
 
 An agent system whose curator node has an ``optimizes`` edge to an agent or a kg node asks the Curator to tune that
 target. The night's review run looks through the lens when a system of the project has such an edge and a trace in the
@@ -17,8 +17,8 @@ on the project's graph (deprecate, merge or link). The hub checks it when the ru
 is valid, and the evidence cites a span of that system. It keeps it in proposals.system_change with the version of the
 profile it read.
 
-Accepting it (``apply``, from ``proposal_reads.answer_proposal_as``) changes nothing by hand. For an agent the hub
-writes the next version of its profile, then the next revision of the system's spec, which pins that version at the
+Accepting it (``apply``, from ``proposals.service.reads.answer_proposal_as``) changes nothing by hand. For an agent the
+hub writes the next version of its profile, then the next revision of the system's spec, which pins that version at the
 target node; every other system that pins the profile keeps its version, and ``system_spec.check_refs`` warns it that
 a newer version exists. A profile that changed since the proposal was recorded makes the accept a 409 and nothing is
 written. For a kg node the hub changes the named graph's sources, or takes the decision, active at once with origin

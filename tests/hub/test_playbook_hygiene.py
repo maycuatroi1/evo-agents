@@ -42,7 +42,7 @@ if pg.DSN:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server.change_views import set_change
+    from evo_agents.hub.server.changes.service.moves import set_change
     from tests.hub.live import sql
     from tests.hub.test_history_runs import lab  # noqa: F401 (lab is a fixture)
     from tests.hub.test_history_search import held_review, two_sessions
@@ -154,7 +154,7 @@ def test_the_charters_exposure_limit_is_the_one_the_curator_retires_by(lab):
         lab.db,
         select(ch.c.project_id, ch.c.revision, ch.c.body, ch.c.created_by).order_by(ch.c.revision.desc()).limit(1),
     )
-    from evo_agents.hub.server import playbook as playbook_routes
+    from evo_agents.hub.server.playbook import service as playbook_routes
 
     assert on_db(lab.db, lambda conn: playbook_routes.exposure_limit_of(conn, project_id)) == playbook.EXPOSURE_LIMIT
     for offset, held, limit in ((1, 5, 5), (2, 0, 0), (3, None, playbook.EXPOSURE_LIMIT)):

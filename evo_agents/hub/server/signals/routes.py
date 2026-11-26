@@ -45,7 +45,7 @@ Sink = Annotated[str | None, Header(alias=SINK_HEADER)]
 
 class BoundedRoute(APIRoute):
     """Reads at most MAX_BATCH_BYTES of a request before FastAPI parses it: a larger one is a 413, whether it says its
-    length or not (as ``evo_agents.hub.server.digests.BoundedRoute`` does for digests)."""
+    length or not (as ``evo_agents.hub.server.digests.models.sessions.BoundedRoute`` does for digests)."""
 
     def get_route_handler(self):
         handler = super().get_route_handler()

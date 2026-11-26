@@ -445,8 +445,9 @@ def risk_of(
     unknown: Mapping[tuple[str, str], str] | None = None,
 ) -> dict:
     """The risk of a diff of ``repo`` touching ``paths``: ``{"high": bool, "reasons": [...]}``, the reasons that make
-    it high first, then what the knowledge graph could not tell (``unknown``, from ``change_tiers.unknown_paths``),
-    at most MAX_RISK_REASONS. ``impacted`` are the files the graph says the paths reach."""
+    it high first, then what the knowledge graph could not tell (``unknown``, from
+    ``changes.service.tiers.unknown_paths``), at most MAX_RISK_REASONS. ``impacted`` are the files the graph says the
+    paths reach."""
     globs = (*RISK_PATHS, *(glob for glob in risk_paths if isinstance(glob, str) and glob))
     guarded = [glob for glob in protected if isinstance(glob, str)]
     named = sorted(set(paths))

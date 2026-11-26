@@ -84,7 +84,7 @@ def test_a_system_change_names_one_target_with_at_least_one_change():
 
 def test_a_proposal_carries_a_system_change_only_with_the_lens_and_the_kind():
     _system_curation()
-    from evo_agents.hub.server.proposal_models import ProposalIn
+    from evo_agents.hub.server.proposals.service.shapes import ProposalIn
 
     base = {
         "title": "Tighten @scout",

@@ -209,12 +209,12 @@ def vapid_key() -> str:
 WARM_MODULES = (
     "evo_agents.hub.server.app",
     "evo_agents.hub.server.collect",
-    "evo_agents.hub.server.curator",
-    "evo_agents.hub.server.curator_shift",
+    "evo_agents.hub.server.curator.routes.charter",
+    "evo_agents.hub.server.curator.service.shift",
     "evo_agents.hub.server.brief",
     "evo_agents.hub.server.release_cycles",
     "evo_agents.hub.server.canvas.value_check",
-    "evo_agents.hub.server.probe_runs",
+    "evo_agents.hub.server.probes.service.runs",
     "evo_agents.hub.plugin_events",
     "evo_agents.hub.kg_build",
     "evo_agents.hub.worker",
@@ -538,7 +538,7 @@ def brief_curator(dsn: str, body: dict) -> dict:
     from sqlalchemy.pool import NullPool
 
     from evo_agents.hub.server.brief import _send
-    from evo_agents.hub.server.curator_shift import due_schedules
+    from evo_agents.hub.server.curator.repository.shift import due_schedules
 
     at = datetime.fromisoformat(str(body["at"]))
 
@@ -560,15 +560,16 @@ def brief_curator(dsn: str, body: dict) -> dict:
 
 def fire_curator(dsn: str, body: dict) -> dict:
     """One pass of the night shift for one project's schedule, as ``hub.fire_schedules`` runs it every minute at the
-    database's now (``evo_agents.hub.server.curator_shift._fire``): the night's review run, a judge run or a Builder,
-    each when it may. The stack has no Curator App, so a planned change on GitHub waits for its ruleset and keeps that
-    as its reason. Other specs' projects are left alone, so their runs and changes stay as they expect."""
+    database's now (``evo_agents.hub.server.curator.service.shift._fire``): the night's review run, a judge run or a
+    Builder, each when it may. The stack has no Curator App, so a planned change on GitHub waits for its ruleset and
+    keeps that as its reason. Other specs' projects are left alone, so their runs and changes stay as they expect."""
     import asyncio
 
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from evo_agents.hub.server.curator_shift import _fire, due_schedules
+    from evo_agents.hub.server.curator.repository.shift import due_schedules
+    from evo_agents.hub.server.curator.service.shift import _fire
 
     async def once() -> dict:
         engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)

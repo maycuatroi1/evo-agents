@@ -17,7 +17,7 @@ for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). 
 put its agent's reaction on the message that started it (``chats.service.runs.chat_run_moved``). A judge run writes no step
 either: its end moves its change of the Curator on, and a failure sends the notice ``run_failed``
 (``change_shift.judge_ended``); a replay run writes none either: its end moves its replay on, and a failure sends the
-notice ``run_failed`` (``replays.replay_ended``), as does a history run's (``history.service.runs.history_ended``); a release run
+notice ``run_failed`` (``replays.service.replay_ended``), as does a history run's (``history.service.runs.history_ended``); a release run
 writes none either: one that fails stops its release cycle, and one done with its branch waits for the hub to land it
 (``release_claims.release_run_moved``); and a plan run of a plan the Curator made moves its change on as it ends
 (``change_shift.builder_ended``). Its moves write no step, except that a plan run that ends ``failed`` or
@@ -584,27 +584,33 @@ async def record_move(
     plan run left in progress."""
     found = await run_step(conn, run_id)
     if found.kind == "review":
-        from evo_agents.hub.server import proposals  # it reads runs through the routes that import this module
+        from evo_agents.hub.server import review_inbox  # it reads runs through the routes that import this module
 
-        await proposals.review_ended(conn, found, old, new, reason=reason)
+        await review_inbox.review_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "judge":
-        from evo_agents.hub.server import change_shift  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.changes.service import (
+            shift as change_shift,  # it reads runs through the routes that import this module
+        )
 
         await change_shift.judge_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "replay":
-        from evo_agents.hub.server import replays  # it reads runs through the routes that import this module
+        # it reads runs through the routes that import this module
+        from evo_agents.hub.server.replays import service as replays
 
         await replays.replay_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "probe":  # it writes no step: its sessions reach the hub through its own route
-        from evo_agents.hub.server import probe_runs  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.probes.service import (
+            runs as probe_runs,
+        )  # it reads runs through the routes that import this module
 
         await probe_runs.probe_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "evolve":  # it writes no step: its candidates and its end reach the hub through its own routes
-        from evo_agents.hub.server import evolve_runs  # it reads runs through the routes that import this module
+        # it reads runs through the routes that import this module
+        from evo_agents.hub.server.evolve.service import runs as evolve_runs
 
         await evolve_runs.evolve_ended(conn, found, new, reason=reason)
         return None
@@ -643,7 +649,9 @@ async def record_move(
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await run_ended(conn, found, old, new, reason=reason)
-        from evo_agents.hub.server import change_shift  # it reads runs through the routes that import this module
+        from evo_agents.hub.server.changes.service import (
+            shift as change_shift,  # it reads runs through the routes that import this module
+        )
 
         await change_shift.builder_ended(conn, found, old, new, reason=reason)
         return revision

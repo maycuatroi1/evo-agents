@@ -135,7 +135,7 @@ def test_judge_the_paths_of_a_judge_runs_diff_raise_the_tier_and_never_lower_it(
 def test_judge_the_graph_read_for_a_verdict_holds_no_lock_on_the_run(world, monkeypatch):  # noqa: F811
     """The graph read for the tier can wait minutes for a snapshot load; the run row it locked made the worker's
     heartbeat and claim wait too, each holding a pool connection, until the pool timed out."""
-    from evo_agents.hub.server import change_tiers
+    from evo_agents.hub.server.changes.service import tiers as change_tiers
 
     accepted(world)
     builder(world)

@@ -27,7 +27,7 @@ from sqlalchemy import func, insert, select
 from evo_agents.hub import replay, skills, tables
 from evo_agents.hub.blobs import blob_key
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.changes import advance
+from evo_agents.hub.server.changes.service.job import advance
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, app_key  # noqa: F401 (a fixture)
 from tests.hub.test_credentials_api import hub_config as credentials_config
