@@ -38,8 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, probes, runs
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server.curator import charter_row
-from evo_agents.hub.server.curator_shift import owner_access
+from evo_agents.hub.server.curator.repository.charter import charter_row
+from evo_agents.hub.server.curator.service.shift import owner_access
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plans import service as plan_service

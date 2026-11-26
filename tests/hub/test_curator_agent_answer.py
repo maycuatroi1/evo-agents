@@ -1,5 +1,5 @@
-"""The project's agent answers the Curator's proposals for their owner (``evo_agents.hub.server.curator_threads``):
-criterion a1 of the plan proposals-answer-themselves.
+"""The project's agent answers the Curator's proposals for their owner
+(``evo_agents.hub.server.curator.service.threads``): criterion a1 of the plan proposals-answer-themselves.
 
 With a charter whose answer_by is agent, each proposal a review run records open, and each deferred one that opens
 again, has a thread in the project's triage chat that mentions the project's default agent: the proposal's facts, its
@@ -35,7 +35,7 @@ from sqlalchemy import func, select, update
 from evo_agents.hub import tables
 from evo_agents.hub.server import autonomy_gates
 from evo_agents.hub.server.collect import reopen_deferred
-from evo_agents.hub.server.curator_threads import SKILL
+from evo_agents.hub.server.curator.models.threads import SKILL
 from evo_agents.worker.cli.base import AgentRunContext
 from evo_agents.worker.cli.curator import CuratorAnswer, CuratorMerge
 from tests.hub.live import sql

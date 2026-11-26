@@ -241,7 +241,7 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.changes",
     "evo_agents.hub.worker -> evo_agents.hub.server.collect",
     "evo_agents.hub.worker -> evo_agents.hub.server.context_answer_reuse",
-    "evo_agents.hub.worker -> evo_agents.hub.server.curator_shift",
+    "evo_agents.hub.worker -> evo_agents.hub.server.curator.service.shift",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests.service.sessions",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
@@ -721,6 +721,55 @@ a review run (fixes); the repository holds every query on the tables; the models
 the limits and the texts of the report) import none of them. Move the code that reaches up into the layer that needs \
 it: a check or a message into the service, a query into the repository, a shape or a limit into the models. Other \
 modules import the service and the models, never the routes. A new module of the package goes into one of the four \
+layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-curator-layers"
+name = "The night shift of the Curator goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.curator"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """In evo_agents.hub.server.curator a route handler opens the request's transaction and passes it with the request's \
+parts to a public function of the service: charter (who may read and write the charter, a new revision), status \
+(where the night shift stands, its nights, pausing it), shift (the job hub.fire_schedules and the gate of each \
+night's run) or threads (the thread the project's agent answers a proposal in). The repository holds the SQL of the \
+charters, the schedules and the proposals' threads; the models (the charter's shapes and settings, the audit \
+actions, the bodies of the agent's answer) import none of them. Move the code that reaches up into the layer that \
+needs it: a check or a refusal into the service, a query into the repository, a shape or a limit into the models. \
+Other modules import the service, the repository's due_schedules and charter_row, and the models, never the \
+routes. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-playbook-layers"
+name = "The Curator's playbook goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.playbook"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """In evo_agents.hub.server.playbook a route handler opens the request's transaction and passes it to a public \
+function of the service, which checks the run or the reader, records a delta and builds the views the review run's \
+prompt and the MCP tool curator_playbook read; the repository holds the SQL of playbook_entries and \
+playbook_deltas; the models (the bodies, the views, the refusals) import none of them. Move the code that reaches up \
+into the layer that needs it: a check or a refusal into the service, a query into the repository, a shape into the \
+models. Other modules import the service and the models, never the routes. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-replays-layers"
+name = "The Curator's replays go from their routes and MCP tool to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.replays"]
+layers = ["routes | mcp", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """In evo_agents.hub.server.replays a route handler, and the MCP tool curator_replay (mcp), open the request's \
+transaction and pass it to a public function of the service, which queues the night's replay runs, hands the claim \
+its replay, checks the worker's report with the run's own key and builds the reads; the repository holds the SQL of \
+curator_replays and replay_tasks; the models (the bodies, the audit action, the refusals) import none of them. The \
+routes and the MCP tool import neither each other. Move the code that reaches up into the layer that needs it: a \
+check or a refusal into the service, a query into the repository, a shape into the models. Other modules import the \
+service, the MCP tool and the models, never the routes. A new module of the package goes into one of the four \
 layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]

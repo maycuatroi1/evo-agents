@@ -1,6 +1,6 @@
 """The job of the night shift: ``fire_schedules`` (the job hub.fire_schedules) and the gate it and the other jobs of the
-night queue their runs through (``gate_of``). ``evo_agents.hub.server.curator`` holds the charter, the schedules and
-pausing them; its docstring says what the job does."""
+night queue their runs through (``gate_of``). The package's docstring says what the job does; ``repository.shift``
+reads the schedules due."""
 
 from __future__ import annotations
 
@@ -8,17 +8,16 @@ import logging
 from collections import Counter
 from dataclasses import replace
 from datetime import date, datetime
-from typing import cast
 
 from fastapi import HTTPException
-from sqlalchemy import ColumnElement, and_, func, literal, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, runs, tables
+from evo_agents.hub import curator, runs
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, hub_settings
-from evo_agents.hub.server.curator import NIGHT_SHIFT, zone_sql
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.curator.models.charter import DISPATCH
+from evo_agents.hub.server.curator.repository import shift as store
 from evo_agents.hub.server.infra_breaker import infra_of
 from evo_agents.hub.server.night_cost import next_run_budget, night_figures
 from evo_agents.hub.server.night_duty import Duty, idle_nodes, on_duty
@@ -31,41 +30,6 @@ from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.server.shift_hours import cancel_queued, changes_waiting
 
 log = logging.getLogger(__name__)
-
-DISPATCH = "curator.dispatch"  # a schedule queued a plan run: "<project>/<plan> run:<id> schedule:<id> night=<date>"
-
-
-def due_schedules(now: datetime | None):
-    """Each night_shift schedule of a live project the Curator is on for, with its project, its owner's login, the
-    newest revision of its charter, and the local time in the charter's zone at ``now`` (the database's now when None)."""
-    s, c, p, u = tables.schedules, tables.charters, tables.projects, tables.users
-    newest = (
-        select(c.c.project_id, func.max(c.c.revision).label("revision")).group_by(c.c.project_id).subquery("newest")
-    )
-    moment = func.now() if now is None else literal(now)
-    return (
-        select(
-            s.c.id,
-            s.c.project_id,
-            p.c.name.label("project"),
-            s.c.owner_id,
-            u.c.login.label("owner"),
-            c.c.revision,
-            c.c.body,
-            func.timezone(zone_sql(c.c.body), moment).label("local_now"),
-            moment.label("now"),
-        )
-        .join_from(s, p, p.c.id == s.c.project_id)
-        .join(u, u.c.id == s.c.owner_id)
-        .join(newest, newest.c.project_id == s.c.project_id)
-        .join(c, and_(c.c.project_id == newest.c.project_id, c.c.revision == newest.c.revision))
-        .where(
-            s.c.kind == NIGHT_SHIFT,
-            p.c.archived_at.is_(None),  # an archived project has no night shift (project_archive)
-            cast(ColumnElement[bool], hub_settings.feature_on("curator", s.c.project_id)),
-        )
-        .order_by(s.c.id)
-    )
 
 
 async def owner_access(conn: AsyncConnection, owner_id: int, login: str, project: str) -> ProjectAccess | None:
@@ -200,9 +164,7 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
     from evo_agents.hub.server.outcomes import check_circuit  # it pauses through this module
 
-    s = tables.schedules
-    locked = select(s.c.paused_at, s.c.updated_at).where(s.c.id == due.id).with_for_update(skip_locked=True)
-    found = (await conn.execute(locked)).one_or_none()
+    found = await store.lock_schedule(conn, due.id)
     if found is None:
         return "locked", None
     inside, night = curator.shift_state(due.body, due.local_now)
@@ -252,7 +214,7 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
 async def project_gate(conn: AsyncConnection, project_id: int):
     """(the project's night_shift schedule, the word, the gate) for a Builder a member asks for now: ``gate_of`` at
     any hour and beside the schedule's other runs; (None, "none", None) for a project without one."""
-    due = (await conn.execute(due_schedules(None).where(tables.schedules.c.project_id == project_id))).one_or_none()
+    due = await store.due_of_project(conn, project_id)
     if due is None:
         return None, "none", None
     word, gate = await gate_of(conn, due, any_hour=True, beside=True)
@@ -268,7 +230,7 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     from evo_agents.hub.server.evolve.service.runs import queue_evolve  # it queues runs through this module
     from evo_agents.hub.server.history.service.runs import queue_history  # it queues runs through this module
     from evo_agents.hub.server.probes.service.runs import queue_probe  # it queues runs through this module
-    from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
+    from evo_agents.hub.server.replays.service import queue_replay  # it queues runs through this module
 
     word, gate = await gate_of(conn, due, any_hour=True)
     if gate is None:
@@ -321,7 +283,7 @@ async def fire_schedules(engine: AsyncEngine, *, curator_app: bool, now: datetim
     """One pass of ``hub.fire_schedules`` over each night_shift schedule, in a transaction of its own, at ``now`` (the
     database's now when None), ``curator_app`` whether this hub has the Curator's App; how many ended each outcome."""
     async with engine.begin() as conn:
-        due = (await conn.execute(due_schedules(now))).all()
+        due = await store.all_due(conn, now)
     outcomes: Counter = Counter()
     for row in due:
         try:

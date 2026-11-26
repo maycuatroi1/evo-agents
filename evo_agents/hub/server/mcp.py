@@ -79,7 +79,6 @@ from evo_agents.hub.server import (
     problem_evidence,
     projects,
     proposals,
-    replays,
     run_events,
     skills,
     tool_stats,
@@ -115,6 +114,7 @@ from evo_agents.hub.server.plans import routes as plans
 from evo_agents.hub.server.probes import mcp as probe_report
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.replays import mcp as replays
 from evo_agents.hub.server.security import (
     LOGIN_HINT,
     Principal,

@@ -1880,7 +1880,7 @@ on a fit worker (409 while it is still held). Every success posts a `Decision:` 
 
 A Curator charter with `answer_by: agent` has the hub open a thread in the same chat for each proposal recorded open,
 or open again after a defer (`proposal_threads`, schema 0188), and its agent answers the proposal for the schedule's
-owner through `POST /v1/worker/runs/{id}/curator/answer` (`evo_agents/hub/server/curator_threads.py`,
+owner through `POST /v1/worker/runs/{id}/curator/answer` (`evo_agents/hub/server/curator/service/threads.py`,
 `docs/curator.md`, "The agent answers"): only the proposal of its thread, only for a dispatcher who is an admin of the
 project, only while the charter still says `agent` and the proposal is open or deferred. A change of that proposal the
 hub leaves open for its owner is told in the thread, and the agent merges it through `POST
@@ -3051,7 +3051,7 @@ a change in one repo).
 ## The Curator's replays
 
 A replay measures a change of the Curator on the project's own history (schema 0056, `evo_agents/hub/replay.py`,
-`evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays.py`): the agent does a step of a plan done before
+`evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays/`): the agent does a step of a plan done before
 twice, from the code as it was before that step, once with the harness of the default branch (arm `a`) and once with
 the harness of the change (arm `b`), and the worker runs the step's verify on each arm's work.
 
@@ -3373,7 +3373,7 @@ evo-agents hub curator history lines SESSION 120 --before 5 --after 5           
 ## The Curator's memory
 
 What the review runs of a project remember of it (schema 0060, `evo_agents/hub/server/earlier.py`,
-`evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook.py`).
+`evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook/`).
 
 **Earlier nights.** A finding's status comes from the proposals that name it whose label the reader reads through the
 sink, their changes and their ledgers:

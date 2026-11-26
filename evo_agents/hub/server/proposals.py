@@ -670,7 +670,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
         what = f"dropped as a repeat of rejected proposal #{rejected.id}" if dropped else f"tier {tier.tier}"
         event = {"text": f"proposal #{proposal_id} ({body.kind}, {what}): {body.title}", "proposal": proposal_id}
         await write_event(conn, run_id, event)
-        from evo_agents.hub.server.curator_threads import on_open  # it answers through this module
+        from evo_agents.hub.server.curator.service.threads import on_open  # it answers through this module
 
         await on_open(conn, proposal_id)
         row = (await conn.execute(proposals_query().where(p.c.id == proposal_id))).one()

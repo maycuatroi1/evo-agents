@@ -27,7 +27,7 @@ from sqlalchemy import func, insert, literal, select
 from evo_agents.hub import facets, tables
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server.collect import compute_figures
-from evo_agents.hub.server.curator_shift import owner_access
+from evo_agents.hub.server.curator.service.shift import owner_access
 from tests.hub.live import sql
 from tests.hub.test_curator import OWNER, PROJECT, user_id
 from tests.hub.test_curator import night as night  # noqa: F401 (a fixture)

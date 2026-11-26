@@ -11,7 +11,7 @@ from evo_agents.hub import probes as probe_shape
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
-from evo_agents.hub.server.curator import charter_row
+from evo_agents.hub.server.curator.repository.charter import charter_row
 from evo_agents.hub.server.probes.models.fixes import Assignment
 from evo_agents.hub.server.probes.models.probe import PROBE, Probe, ProbeAdd, ProbeEdit, ProbeRetire, ReviewProbe, view
 from evo_agents.hub.server.probes.models.runs import ProbeRequeue

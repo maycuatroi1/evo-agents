@@ -154,7 +154,7 @@ def test_the_charters_exposure_limit_is_the_one_the_curator_retires_by(lab):
         lab.db,
         select(ch.c.project_id, ch.c.revision, ch.c.body, ch.c.created_by).order_by(ch.c.revision.desc()).limit(1),
     )
-    from evo_agents.hub.server import playbook as playbook_routes
+    from evo_agents.hub.server.playbook import service as playbook_routes
 
     assert on_db(lab.db, lambda conn: playbook_routes.exposure_limit_of(conn, project_id)) == playbook.EXPOSURE_LIMIT
     for offset, held, limit in ((1, 5, 5), (2, 0, 0), (3, None, playbook.EXPOSURE_LIMIT)):

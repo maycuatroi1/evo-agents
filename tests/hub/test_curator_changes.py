@@ -920,7 +920,8 @@ def queue_now(world, which: str):
     gate (which waits while any run of the schedule is queued or held), so their own rule is what answers."""
     from evo_agents.hub.server import change_shift
     from evo_agents.hub.server.collect import Gate
-    from evo_agents.hub.server.curator_shift import due_schedules, writer_access
+    from evo_agents.hub.server.curator.repository.shift import due_schedules
+    from evo_agents.hub.server.curator.service.shift import writer_access
     from evo_agents.hub.server.night_duty import on_duty
 
     async def go():

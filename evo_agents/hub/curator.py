@@ -48,7 +48,7 @@ At the charter's ``brief_at``, in its time zone, the hub sends the schedule's ow
 
 The charter's ``answer_by`` (ANSWERERS) says who answers the Curator's proposals: ``owner``, the default, leaves them
 to the project's admins; ``agent`` has the hub open a thread for each proposal in the project's triage chat, where the
-project's default agent answers it for the schedule's owner (``evo_agents.hub.server.curator_threads``).
+project's default agent answers it for the schedule's owner (``evo_agents.hub.server.curator.service.threads``).
 
 The circuit breaker stops a night shift that keeps failing: once the charter's ``circuit_breaker.max_failed_in_a_row``
 jobs of one night failed in a row (``failed_in_a_row``), a run of the schedule that ended failed or a merged change of

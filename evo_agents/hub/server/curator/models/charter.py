@@ -1,6 +1,6 @@
 """The models of the night shift's routes (``evo_agents.hub.server.curator``): the charter an admin writes and shows,
-its revisions, the schedules, the night, and where a project's Curator stands. ``evo_agents.hub.curator`` holds the
-rules they check."""
+its revisions, the schedules, the night, and where a project's Curator stands, with the audit actions of the night
+shift and the limits of its lists. ``evo_agents.hub.curator`` holds the rules they check."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from evo_agents.hub import curator, ledger, runs
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.judge import PLANNED_TIERS, PlannableTier
 from evo_agents.hub.plans import PLAN_ID
-from evo_agents.hub.server.charter_settings import (
+from evo_agents.hub.server.curator.models.settings import (
     EvolveSettings,
     HistorySettings,
     ProbeModel,
@@ -22,6 +22,14 @@ from evo_agents.hub.server.charter_settings import (
     ReviewSettings,
 )
 from evo_agents.hub.server.runs.models import ModelName
+
+CHARTER = "curator.charter"  # an admin wrote a revision: "<project> revision=<n>"
+PAUSE = "curator.pause"  # every schedule of the project paused: "<project>"
+RESUME = "curator.resume"  # and let run again: "<project>"
+DISPATCH = "curator.dispatch"  # a schedule queued a plan run: "<project>/<plan> run:<id> schedule:<id> night=<date>"
+NIGHT_SHIFT = "night_shift"
+MAX_CHARTER_REVISIONS = 1000  # the revisions GET .../charter/revisions lists at most
+DEFAULT_NIGHTS, MAX_NIGHTS = 14, 90  # the nights GET .../curator/nights lists, by default and at most
 
 CuratorState = Literal["running", "on_duty", "idle", "paused"]
 CURATOR_STATES: tuple[str, ...] = get_args(CuratorState)  # where a project's night shift stands, for people
