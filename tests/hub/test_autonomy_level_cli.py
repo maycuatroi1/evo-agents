@@ -1,4 +1,4 @@
-"""The commands of the autonomy levels (``evo_agents.hub.cli_autonomy``), as criteria a2 and a3 of plan autonomy-levels
+"""The commands of the autonomy levels (``evo_agents.hub.cli.autonomy``), as criteria a2 and a3 of plan autonomy-levels
 name them: `hub autonomy show [--login] [--agent] [--project] [--repo] [--json]`, `hub autonomy set --level A0..A5
 [--class Kn=mode]... [--reset]`, and `hub autonomy ceiling set` with `--class`, `--environment` and `--worker`, over
 HTTP alone; a refusal of the hub prints its reason and exits 1, a wrong command line exits 2 before the hub.
@@ -11,8 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.hub import cli_autonomy
+from evo_agents.clikit import UsageError
 from evo_agents.hub.autonomy_levels import CLASSES
+from evo_agents.hub.cli import autonomy as cli_autonomy
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
@@ -60,9 +61,9 @@ def test_autonomy_level_show_prints_each_class_with_its_mode_and_source():
 def test_autonomy_level_pref_overrides_read_from_the_command_line_in_class_order():
     assert cli_autonomy.overrides(["K10=deny", "k6=ASK"]) == {"K6": "ask", "K10": "deny"}
     assert list(cli_autonomy.overrides(["K10=deny", "K6=ask"])) == ["K6", "K10"]
-    with pytest.raises(cli_autonomy.Usage, match="twice"):
+    with pytest.raises(UsageError, match="twice"):
         cli_autonomy.overrides(["K6=deny", "K6=ask"])
-    with pytest.raises(cli_autonomy.Usage, match="never takes ask"):
+    with pytest.raises(UsageError, match="never takes ask"):
         cli_autonomy.overrides(["K2=ask"])
 
 

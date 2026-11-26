@@ -4,7 +4,7 @@
 
 answers, for any member signed in, the commands of each plugin installed on the hub and turned on, as their manifests
 declare them: a name, help, the plugin's route each one calls (``http``), whether it takes ``--project``, its arguments
-and how to print the answer. The CLI keeps the answer (``evo_agents.hub.cli_plugins``) and asks again with
+and how to print the answer. The CLI keeps the answer (``evo_agents.hub.cli.extensions``) and asks again with
 ``If-None-Match``: the ETag is the SHA-256 of the answer, so a 304 costs nothing while no plugin changed. A command runs
 only as a call of a route, with the member's own token, which the route checks as any other call: the list grants
 nothing.

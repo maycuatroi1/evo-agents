@@ -32,8 +32,7 @@ from typing import ClassVar
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, UsageError, Views, returns_array, returns_object
 from evo_agents.hub import goals
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_client import when
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.client import HubError
 
 SHOWN_STATEMENT_CHARS = 60  # of a goal's statement in a row of list

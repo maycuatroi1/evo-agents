@@ -1,5 +1,5 @@
 """``evo-agents hub agent list|show|create|edit|delete``: the agent profiles of a project (``evo_agents.hub.profiles``),
-over GET, POST, PATCH and DELETE /v1/projects/{p}/agents. ``agent account`` is in ``cli_agent_accounts``.
+over GET, POST, PATCH and DELETE /v1/projects/{p}/agents. ``agent account`` is in ``cli.agent.account``.
 
 ``list`` prints the project's profiles, the default first, with the axes each one limits; ``--deleted`` adds the
 deleted ones. ``show`` prints one profile whole, each axis with its allowlist. Every member of the project may read
@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.mirror import harness_project, harness_root
@@ -326,8 +326,8 @@ def _handle(parser) -> None:
 
 
 def register_agents(hsub) -> None:
-    from evo_agents.hub.cli_account_pools import register_account_pools, register_agent_account_pool
-    from evo_agents.hub.cli_agent_accounts import register_agent_accounts
+    from evo_agents.hub.cli.account_pool import ACCOUNT_POOL, AGENT_ACCOUNT_POOL
+    from evo_agents.hub.cli.agent.account import AGENT_ACCOUNT
 
     agent = hsub.add_parser("agent", help="the agent profiles of a project: who its agents are and what they may use")
     asub = agent.add_subparsers(dest="agent_command", required=True)
@@ -371,6 +371,6 @@ def register_agents(hsub) -> None:
     json_option(delete, returns_object(*AGENT_KEYS, schema="Agent"))
     delete.set_defaults(func=cmd_delete)
 
-    register_agent_accounts(asub)
-    register_agent_account_pool(asub)
-    register_account_pools(hsub)
+    AGENT_ACCOUNT.attach(asub)
+    AGENT_ACCOUNT_POOL.attach(asub)
+    ACCOUNT_POOL.attach(hsub)

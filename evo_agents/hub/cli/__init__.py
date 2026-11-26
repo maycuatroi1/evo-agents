@@ -8,14 +8,14 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
-``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli_emails``, ``release`` by
-``cli.curator.release``, ``policy`` by ``cli_policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
-``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli_org`` and ``autonomy`` by ``cli_autonomy``; they need nothing beyond the core
+attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
+``cli.plugin``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
+``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
+``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
+``cli_merge``, ``loop`` by ``cli_loop``, ``org`` by ``cli.org`` and ``autonomy`` by ``cli.autonomy``; they need nothing beyond the core
 package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API
 document; ``hub contract check`` does not. The commands of plugins (``pm``, ``crm`` and ``marketing`` of the core
-plugins installed with the CLI among them) come from their manifests, registered last by ``cli_plugin_commands``.
+plugins installed with the CLI among them) come from their manifests, registered last by ``cli.extensions``.
 """
 
 from __future__ import annotations
@@ -329,10 +329,64 @@ def _register_client_commands(hsub) -> None:
 
 
 def _register_workspace_commands(hsub) -> None:
-    """The client's groups from hub login to hub emails."""
-    from evo_agents.hub.cli_client import register_client
+    """The client's groups from hub login to hub kg."""
+    from evo_agents.hub.cli.session import SESSION
 
-    register_client(hsub)
+    SESSION.attach(hsub)  # login, logout, whoami, token, admin, project, registry
+    from evo_agents.hub.cli.plan import PLAN
+
+    PLAN.attach(hsub)
+
+    from evo_agents.hub.cli.run import RUN
+
+    RUN.attach(hsub)
+
+    from evo_agents.hub.cli.decision import DECISION
+    from evo_agents.hub.cli.notifications import NOTIFICATIONS
+
+    DECISION.attach(hsub)
+    NOTIFICATIONS.attach(hsub)
+
+    from evo_agents.hub.cli.curator import CURATOR
+
+    CURATOR.attach(hsub)
+
+    from evo_agents.hub.cli_memory import register_memory
+
+    register_memory(hsub)
+
+    from evo_agents.hub.cli_skills import register_skills
+
+    register_skills(hsub)
+
+    from evo_agents.hub.cli.account import ACCOUNT
+    from evo_agents.hub.cli.model_catalog import MODEL_CATALOG
+    from evo_agents.hub.cli.provider_account import PROVIDER_ACCOUNT
+    from evo_agents.hub.cli.secret import SECRET
+
+    SECRET.attach(hsub)
+    ACCOUNT.attach(hsub)
+    MODEL_CATALOG.attach(hsub)  # the providers an account is added for
+    PROVIDER_ACCOUNT.attach(hsub)
+
+    from evo_agents.hub.cli.kg import KG
+
+    KG.attach(hsub)
+    _register_team_commands(hsub)
+
+
+def _register_team_commands(hsub) -> None:
+    """The client's groups from hub mcp to hub emails."""
+    from evo_agents.hub.mcp_proxy import register_mcp
+
+    register_mcp(hsub)
+
+    # the commands of the evo-hub plugin: its hooks, and `hub send`, which the hooks start in the background
+    from evo_agents.hub.cli.send import register_send
+    from evo_agents.hub.hooks import register_hooks
+
+    register_hooks(hsub)
+    register_send(hsub)
 
     from evo_agents.hub.cli_agents import register_agents
 
@@ -350,13 +404,13 @@ def _register_workspace_commands(hsub) -> None:
 
     register_chats(hsub)
 
-    from evo_agents.hub.cli_plugins import register_plugins
+    from evo_agents.hub.cli.plugin import PLUGIN
 
-    register_plugins(hsub)
+    PLUGIN.attach(hsub)
 
-    from evo_agents.hub.cli_market import register_market
+    from evo_agents.hub.cli.market import MARKET
 
-    register_market(hsub)
+    MARKET.attach(hsub)
 
     from evo_agents.hub.cli_srs import register_srs
 
@@ -386,9 +440,9 @@ def _register_workspace_commands(hsub) -> None:
 
     register_sessions(hsub)
 
-    from evo_agents.hub.cli_emails import register_emails
+    from evo_agents.hub.cli.email import EMAIL
 
-    register_emails(hsub)
+    EMAIL.attach(hsub)
 
 
 def _register_steering_commands(hsub) -> None:
@@ -397,9 +451,9 @@ def _register_steering_commands(hsub) -> None:
 
     RELEASE.attach(hsub)
 
-    from evo_agents.hub.cli_policy import register_policy
+    from evo_agents.hub.cli.policy import POLICY
 
-    register_policy(hsub)
+    POLICY.attach(hsub)
 
     from evo_agents.hub.cli.goal import GOAL
 
@@ -425,11 +479,11 @@ def _register_steering_commands(hsub) -> None:
 
     register_loop(hsub)
 
-    from evo_agents.hub.cli_autonomy import register_autonomy
-    from evo_agents.hub.cli_org import register_org
+    from evo_agents.hub.cli.autonomy import AUTONOMY
+    from evo_agents.hub.cli.org import ORG
 
-    register_org(hsub)
-    register_autonomy(hsub)
+    ORG.attach(hsub)
+    AUTONOMY.attach(hsub)
 
     from evo_agents.hub.cli_browser import register_browser
 
@@ -467,9 +521,9 @@ def register(sub) -> None:
     OWN_COMMANDS.clear()
     OWN_COMMANDS.update(hsub.choices)
 
-    from evo_agents.hub.cli_plugin_commands import register_plugin_commands
+    from evo_agents.hub.cli.extensions import EXTENSIONS
 
-    register_plugin_commands(hsub)  # last: a plugin whose id is a command of the CLI's own is left out
+    EXTENSIONS.attach(hsub)  # last: a plugin whose id is a command of the CLI's own is left out
 
 
 def _register_serve(hsub) -> None:

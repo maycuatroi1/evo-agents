@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 
 from evo_agents.clikit import Arg, Result, Table, Text, Views, returns_object
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, when
 from evo_agents.hub.cli.curator.resources import Figures, Findings
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.review import LENSES
 
 

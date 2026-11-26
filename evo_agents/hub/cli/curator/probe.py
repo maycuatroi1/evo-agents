@@ -35,7 +35,7 @@ from pathlib import Path
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_object
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_client import HubError
+from evo_agents.hub.client import HubError
 from evo_agents.hub.probes import MAX_TASK_BYTES, STATES
 
 PROBE_KEYS = (

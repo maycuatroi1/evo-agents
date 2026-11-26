@@ -32,7 +32,7 @@ import sys
 from urllib.parse import quote
 
 from evo_agents.hub import opportunities, problems
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli.base import client_command, print_json, signed_in, table, when
 from evo_agents.hub.cli_problems import METRIC_OPTIONS, NEEDED, PROJECT_HELP, SHOWN_STATEMENT_CHARS, project_of
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 

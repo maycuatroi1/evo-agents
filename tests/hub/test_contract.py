@@ -14,7 +14,6 @@ import pytest
 
 from evo_agents import __version__
 from evo_agents.hub import (
-    cli_market,
     contract,
     kg_remote,
     local_send,
@@ -24,6 +23,7 @@ from evo_agents.hub import (
 )
 from evo_agents.hub.cli import inbox as inbox_command
 from evo_agents.hub.cli import kg as kg_cli
+from evo_agents.hub.cli import market as cli_market
 from evo_agents.hub.cli import plan as plan_cli
 from evo_agents.hub.cli.kg import entities as kg_entities_cli
 from evo_agents.hub.cli.kg import graphs as kg_graphs_cli
@@ -119,7 +119,7 @@ def test_commands_match_the_golden_copy():
 
 
 def test_the_contract_leaves_out_the_plugin_commands_a_machine_kept_from_its_hub(monkeypatch, tmp_path):
-    from evo_agents.hub import cli_plugin_commands as cpc
+    from evo_agents.hub.cli import extensions as cpc
 
     monkeypatch.setenv("EVO_HUB_HOME", str(tmp_path))
     held = [

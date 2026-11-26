@@ -37,7 +37,7 @@ The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Co
 modules of this package named in parentheses above holding theirs: ``resources`` holds the gateways to the routes
 (:class:`Runs`, :class:`PlanRuns`, :class:`AuthorRuns`, :class:`SystemDispatch`), ``options`` the arguments and the
 value object :class:`RunOptions` that turns them into the body of a dispatch, a plan run, an author run or a rerun,
-and ``describe`` what ``show`` says of a run. :data:`RUN` is the group, attached by ``evo_agents.hub.cli_client``.
+and ``describe`` what ``show`` says of a run. :data:`RUN` is the group, attached by ``evo_agents.hub.cli``.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ from evo_agents.clikit import (
 from evo_agents.hub.author import MAX_REQUEST_BYTES
 from evo_agents.hub.chats import chat_link
 from evo_agents.hub.cli.attach import describe as files_text
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, when
 from evo_agents.hub.cli.run.access import RunAccess
 from evo_agents.hub.cli.run.candidates import RunCandidates
 from evo_agents.hub.cli.run.describe import repos_text, shown_lines, step_text, timeout_text
@@ -87,7 +87,6 @@ from evo_agents.hub.cli.run.send import RunSend
 from evo_agents.hub.cli.run.spend import usd
 from evo_agents.hub.cli.run.watch import RunWatch
 from evo_agents.hub.cli.run.workers import worker_id
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.client import origin
 from evo_agents.hub.plan_writes import checked_plan_id
 from evo_agents.hub.runs import EVENT_KINDS, TERMINAL_STATES

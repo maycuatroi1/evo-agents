@@ -147,7 +147,7 @@ def graph_of(project: Project) -> tuple[Snapshot, SnapshotView, dict] | None:
 
 def sign_in(monkeypatch, *projects: Project) -> GraphHub:
     """This machine signed in to a GraphHub of ``projects``, for the REST calls and for /mcp."""
-    from evo_agents.hub import cli_client, client, mcp_proxy
+    from evo_agents.hub import client, mcp_proxy
 
     hub = GraphHub({project.name: project for project in projects})
     credentials = client.Credentials(hub.url, "alice", hub.token)
@@ -158,8 +158,6 @@ def sign_in(monkeypatch, *projects: Project) -> GraphHub:
 
     monkeypatch.setattr(client, "load_credentials", lambda: credentials)
     monkeypatch.setattr(client, "Hub", lambda url, token, **kwargs: hub)
-    monkeypatch.setattr(cli_client, "load_credentials", lambda: credentials)  # signed_in of the hub kg commands
-    monkeypatch.setattr(cli_client, "Hub", lambda url, token, **kwargs: hub)
     monkeypatch.setattr(mcp_proxy, "session_credentials", lambda: credentials)
     monkeypatch.setattr(mcp_proxy.McpClient, "call_tool", call_tool)
     return hub

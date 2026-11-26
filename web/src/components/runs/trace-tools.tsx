@@ -2,6 +2,7 @@
 
 import {
   ChevronRight,
+  Download,
   FilePen,
   FlaskConical,
   GitBranch,
@@ -46,6 +47,7 @@ export const INTENT_ICON: Record<Intent, LucideIcon> = {
   git: GitBranch,
   github: GitPullRequest,
   hub: Send,
+  "hub-read": Download,
   run: Terminal,
   tool: Wrench,
 };
@@ -205,6 +207,8 @@ export function useGroupLabel() {
         return { title: t("git", { count }), detail: someOf(groupPrograms(group, 2).map((program) => program.replace(/^git\s+/, ""))) };
       case "github":
         return { title: t("github", { count }), detail: someOf(groupPrograms(group, 3).map((program) => program.replace(/^gh\s+/, ""))) };
+      case "hub-read":
+        return { title: t("hubRead", { count }), detail: lastLine ? programOf(lastLine) : null };
       case "hub":
         return { title: t("hub", { count }), detail: lastLine ? programOf(lastLine) : null };
       case "run":

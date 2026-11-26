@@ -272,9 +272,11 @@ class Outputs:
         """Wait for the queue to empty: ``floor`` seconds, or as long as sending what the wait began with takes at
         the run's rate (RATE_MARGIN over it), at most ``most``; the hard stop of the daemon ends it at once. What the
         wait began with is what it sent since and what is left, the files the last scan adds included, so the end
-        does not move while the hub does not answer."""
+        does not move while the hub does not answer. A scan still in the queue holds the floor and the rate's time
+        back until it ends, never past ``most``."""
         loop = asyncio.get_running_loop()
         started, put = loop.time(), self.put_bytes
+        begun, ceiling = started, started + max(floor, most)  # begun: when the files left were all in the queue
         deadline, checked = started + floor, started - 1.0
         stop = self.run.daemon.hard_stop
         try:
@@ -282,13 +284,21 @@ class Outputs:
                 now = loop.time()
                 if now - checked >= 1.0 or now >= deadline:  # the queue's sizes on disk, once a second
                     checked = now
-                    needed = (self.put_bytes - put + self.queue.pending_bytes()) / self.rate() * RATE_MARGIN
-                    deadline = started + min(max(floor, needed), max(floor, most))
+                    if self._scanning():  # its files are not in the queue yet (hashing them takes a while on a slow
+                        # disk): the floor and the time sending them needs count from the scan's end, look again soon
+                        begun, deadline, checked = now, ceiling, now - 1.0
+                    else:
+                        needed = (self.put_bytes - put + self.queue.pending_bytes()) / self.rate() * RATE_MARGIN
+                        deadline = min(begun + max(floor, needed), ceiling)
                 if now >= deadline:
                     return
                 await asyncio.sleep(0.05)
         finally:
             self.waited += loop.time() - started
+
+    def _scanning(self) -> bool:
+        """A scan of .evo-run/outputs/ waits in the queue, or runs."""
+        return any(item.scan for item in self.queue.items())
 
     async def settle(self, grace: float = END_GRACE) -> None:
         """At the end of the run, before its last report: scan .evo-run/outputs/, and wait for the queue to empty, at

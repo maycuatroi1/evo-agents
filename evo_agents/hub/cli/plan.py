@@ -29,8 +29,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from evo_agents.clikit import Arg, Group, Result, Table, Text, Verbatim, returns_array, returns_object
-from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
-from evo_agents.hub.cli_client import when
+from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, routing_line
 from evo_agents.hub.mirror import export, render

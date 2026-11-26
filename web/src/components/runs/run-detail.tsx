@@ -1,17 +1,16 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import type { Route } from "next";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { curatorHref } from "@/components/curator/queries";
 import { useLiveSignal } from "@/components/live/live-context";
-import { localAccount } from "@/components/local-run";
 import { planHref, stepHref } from "@/components/plans/links";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
@@ -21,13 +20,12 @@ import { useMediaQuery, XL_QUERY } from "@/hooks/use-media-query";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { chatHref } from "@/lib/chat-keys";
 import { cn } from "@/lib/utils";
 
-import { AgentTrace, type TraceContext, type TraceReveal } from "./agent-trace";
+import type { TraceContext, TraceReveal } from "./agent-trace";
 import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
-import { CHAT_TAB, chatKey, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
+import { CHAT_TAB, chatKey, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runDiffHref, runKey, runQuery } from "./queries";
 import { RunActions } from "./run-actions";
 import { RunNotices } from "./run-notes";
 import { RunChatPanel } from "./run-chat";
@@ -37,27 +35,28 @@ import { loginDone } from "./login-done";
 import { RunDecisions } from "./run-decisions";
 import { DetailsToggle, RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
-import { taskBranch } from "./model";
 import { runControls } from "./run-model";
-import { useDescribeMove, useSessionTab, useShowDecision, useShowSession, useTraceScreen } from "./run-page-state";
+import { AGENT_PARAM, useDescribeMove, useSessionTab, useShowDecision, useShowSession, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
-import { RunTasksPanel } from "./run-tasks-panel";
+import { AgentLanes } from "./agent-lanes";
 import { RunTimeline } from "./run-timeline";
+import { RunTraceView, ScreenHead } from "./run-trace-view";
 import { TracePreview } from "./trace-preview";
 import { RunBrowserPanel } from "./run-browser-lazy";
 import { browserAccess, useLiveTab } from "./run-live-tabs";
 import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
+import { useRunSub } from "./run-sub";
+import { ProgressView } from "./progress-view";
+import { PROGRESS_VIEW, RunViewTabs, useRunView } from "./run-view-tabs";
+import { StepSoFar } from "./step-so-far-card";
+import { useRunAgents } from "./use-run-agents";
 import { logSignal, useRunLog } from "./use-run-log";
 import { OutputsPreview } from "./run-outputs-preview";
 import { TraceOutputsContext, useRunOutputs } from "./use-run-outputs";
 
 /** The Outputs tab's grid, loaded once a run has files. */
 const RunOutputsPanel = dynamic(() => import("./run-outputs").then((module) => module.RunOutputsPanel));
-
-/** The plan and step under the head: `brand` links with a quiet underline, told apart from the line's words without
- * colour (the kit draws them bare; axe's link-in-text-block asks for more than a colour). */
-const SUB_LINK = "rounded-xs text-brand underline decoration-brand/40 underline-offset-4 hover:decoration-current";
 
 /** The Terminal tab, for the run's owner on a worker of theirs that allows the web terminal; null for anyone else. */
 function useRunTerminalTab(run: Run, viewer: ReturnType<typeof useRunViewer>) {
@@ -89,6 +88,10 @@ function RunPage({ run }: { run: Run }) {
   const params = useSearchParams();
   const [screenOpen, openScreen, closeScreen] = useTraceScreen(setSessionTab, firstTab);
   const showSession = useShowSession(logId, mobile, setSessionTab, openScreen);
+  // Progress is a view of its own over the same page: what it opens (an agent's profile, a call in the trace) is on Live,
+  // which stays mounted under it, so the page goes there first.
+  const hasProgress = run.kind !== "local" && (run.kind === "plan" || run.step_key !== null);
+  const [view, chooseView, showInLive] = useRunView(hasProgress, showSession);
   const takeOver = terminal?.open ? () => showSession("terminal") : undefined;
   const describe = useDescribeMove();
   const log = useRunLog({ project: run.project, runId: run.id, knownLastSeq: run.last_seq, describe });
@@ -102,7 +105,9 @@ function RunPage({ run }: { run: Run }) {
   const outputs = useRunOutputs({ run, viewer, events: log.events, onShowInTrace: showInTrace });
   const traceOutputs = useMemo(() => ({ index: outputs.index, open: outputs.open }), [outputs.index, outputs.open]);
   const working = run.state === "running" && log.status !== "ended";
-  const tasks = <RunTasksPanel events={log.events} working={working} onShow={(call) => showInTrace({ call, seq: null })} />;
+  // The run's subagents and background commands, read once for the panel, the trace and a subagent's profile.
+  const { tasks: runTaskList, profile, viewed, openAgent, openMain, showCall } = useRunAgents(log.events, showInLive, setReveal);
+  const tasks = <AgentLanes events={log.events} tasks={runTaskList} working={working} onShow={showCall} onOpen={openAgent} onOpenMain={openMain} />;
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   // While the stream (or its fallback) carries the run, it is what the top bar's LiveIndicator follows; before it opens
   // and once it ended, the run's own query (every 5 seconds while active) does.
@@ -149,78 +154,20 @@ function RunPage({ run }: { run: Run }) {
       active,
       webOfBranch,
       showDecision: authoring ? showDecision : undefined,
+      openAgent,
     }),
-    [run.id, run.project, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision],
+    [run.id, run.project, run.dispatched_by, viewer?.login, describe, openIds, working, active, webOfBranch, authoring, showDecision, openAgent],
   );
 
   // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.
   const split = useMediaQuery(XL_QUERY);
 
-  const review = run.kind === "review";
-  const title = run.title ?? (plan ? run.plan_id : t("untitled"));
-  const planLink = (chunks: ReactNode) => (
-    <Link href={planHref(run.project, run.plan_id)} className={SUB_LINK} data-testid="run-plan-link">
-      {chunks}
-    </Link>
-  );
-
-  const sub =
-          local
-            ? t.rich("local.sub", { machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none", planLink })
-            : run.kind === "chat"
-            ? t.rich("chatSub", {
-                agent: run.profile ?? run.project,
-                hop: run.hop ?? 1,
-                chatLink: (chunks) =>
-                  run.chat_id ? (
-                    <Link href={chatHref(run.chat_id, run.chat_message_id)} className={SUB_LINK} data-testid="run-chat-link">
-                      {chunks}
-                    </Link>
-                  ) : (
-                    chunks
-                  ),
-              })
-            : run.kind === "browser"
-            ? t("browserSub", { title })
-            : run.kind === "task"
-            ? t("taskSub", { agent: run.profile ?? run.project, branch: taskBranch(run) })
-            : authoring
-            ? run.plan_id
-              ? t.rich("authorPlanSub", { plan: run.plan_id, title, planLink })
-              : t("authorNewSub", { title })
-            : review
-            ? t.rich("reviewSub", {
-                curatorLink: (chunks) => (
-                  <Link href={curatorHref(run.project)} className={SUB_LINK} data-testid="run-curator-link">
-                    {chunks}
-                  </Link>
-                ),
-                proposalsLink: (chunks) => (
-                  <Link href={`${curatorHref(run.project, "proposals")}?run=${run.id}` as Route} className={SUB_LINK} data-testid="run-proposals-link">
-                    {chunks}
-                  </Link>
-                ),
-              })
-            : plan || run.step_key === null
-            ? // The plan once, as its link; its title after it only when it says more than the id.
-              run.title && run.title !== run.plan_id
-              ? t.rich("planSubTitled", { plan: run.plan_id, title: run.title, planLink })
-              : t.rich("planSub", { plan: run.plan_id, planLink })
-            : t.rich("sub", {
-                plan: run.plan_id,
-                step: run.step_key,
-                title,
-                planLink,
-                stepLink: (chunks) => (
-                  <Link
-                    href={stepHref(run.project, run.plan_id, run.step_key ?? "")}
-                    className={SUB_LINK}
-                    data-testid="run-step-link"
-                  >
-                    {chunks}
-                  </Link>
-                ),
-              });
+  const sub = useRunSub(run, {
+    plan: planHref(run.project, run.plan_id),
+    step: run.step_key ? stepHref(run.project, run.plan_id, run.step_key) : null,
+    curator: curatorHref(run.project),
+    proposals: `${curatorHref(run.project, "proposals")}?run=${run.id}` as Route,
+  });
   const decisionCard = plan || local ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} /> : null;
   const stepLink = (key: string) => (
     <Link href={stepHref(run.project, run.plan_id, key)} className="font-mono text-xs text-brand underline-offset-4 hover:underline">
@@ -242,7 +189,7 @@ function RunPage({ run }: { run: Run }) {
   const detailsToggle = <DetailsToggle open={details} controls={detailsId} onToggle={() => setDetails((open) => !open)} />;
   // On a phone the session is a screen of its own: opened from the preview, on a tab other than the first, or asked for
   // by the address (`?view=`, an author run's `?tab=chat`) until the person leaves it.
-  const [asked, setAsked] = useState(() => params.has(RUN_VIEW_PARAM) || params.get("tab") === CHAT_TAB);
+  const [asked, setAsked] = useState(() => (params.has(RUN_VIEW_PARAM) && params.get(RUN_VIEW_PARAM) !== PROGRESS_VIEW) || params.has(AGENT_PARAM) || params.get("tab") === CHAT_TAB);
   const screen = mobile && (screenOpen || sessionTab !== firstTab || asked);
   const leaveScreen = () => {
     setAsked(false);
@@ -260,14 +207,13 @@ function RunPage({ run }: { run: Run }) {
         log={log}
         frozen={{ at: frozenAt, set: setFrozenAt }}
         active={active}
-        composer={controls.message && !authoring ? <RunComposer run={run} /> : null}
+        composer={controls.message && !authoring ? <RunComposer run={run} to={viewed?.name ?? null} /> : null}
         chat={authoring ? (shown) => <RunChatPanel run={run} owner={controls.owner} shown={shown} fill /> : null}
         tab={sessionTab}
         onTabChange={setSessionTab}
         trace={(shown) => (
           <TraceOutputsContext value={traceOutputs}>
-            {tasks}
-            <AgentTrace events={log.events} status={log.status} context={traceContext} shown={shown} fill={fill} reveal={reveal} />
+            <RunTraceView viewed={viewed} profile={profile} panel={tasks} events={log.events} status={log.status} context={traceContext} tasks={runTaskList} shown={shown} fill={fill} reveal={reveal} />
           </TraceOutputsContext>
         )}
         outputs={outputs.data?.count ? { count: outputs.data.count, panel: () => <RunOutputsPanel state={outputs} runId={run.id} fill={fill} /> } : null}
@@ -289,6 +235,7 @@ function RunPage({ run }: { run: Run }) {
   const showTimeline = run.state === "queued" || run.state === "leased" || (!active && !run.started_at);
 
   const overview = mobile && !screen;
+  const progress = hasProgress && view === "progress" && !screen;
   return (
     // From xl the page is one window tall (the window less the top bar and the gutters), and the split below the
     // timeline takes what the head leaves: as tall as the window allows, at least 30rem, the page scrolling past the
@@ -298,22 +245,16 @@ function RunPage({ run }: { run: Run }) {
     // each part in its place in the tree, so the session (and a connected terminal) stays mounted when the width crosses
     // 768 px.
     <div
-      className={screen ? "flex h-[calc(100dvh-5.25rem)] min-h-[28rem] flex-col gap-3" : "flex flex-col gap-6 xl:h-[calc(100dvh-6.25rem)] xl:min-h-fit"}
+      className={screen ? "flex h-[calc(100dvh-5.25rem)] min-h-[28rem] flex-col gap-3" : cn("flex flex-col gap-6", !progress && "xl:h-[calc(100dvh-6.25rem)] xl:min-h-fit")}
       data-testid="run-detail"
       data-run-id={run.id}
       data-state={run.state}
       data-kind={run.kind}
       data-screen={screen ? "session" : undefined}
+      data-view={hasProgress ? view : undefined}
     >
       {screen ? (
-        <div className="-ml-2 flex items-center gap-2">
-          <Button type="button" variant="ghost" size="icon" onClick={leaveScreen} aria-label={tPreview("back", { id: run.id })} data-testid="run-screen-back">
-            <ChevronLeft aria-hidden="true" />
-          </Button>
-          <h1 className="text-[15px] leading-[22px] font-semibold">
-            {t("title")} <span className="tabular-nums">#{run.id}</span>
-          </h1>
-        </div>
+        <ScreenHead runId={run.id} agent={viewed?.name ?? null} onBack={viewed ? profile.close : leaveScreen} />
       ) : (
         <RunActions run={run} controls={controls}>
           {({ buttons, menu }) => (
@@ -331,8 +272,32 @@ function RunPage({ run }: { run: Run }) {
       )}
       {screen || local ? null : <RunNotices run={run} controls={controls} />}
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
+      {hasProgress && !screen ? (
+        <RunViewTabs
+          view={view}
+          onChange={(next) => chooseView(next, next === "live" && sessionTab !== firstTab ? sessionTab : null)}
+          diffHref={run.diff_sha256 ? runDiffHref(run.project, run.id) : null}
+        />
+      ) : null}
       {/* Above the session while Details is closed, as it needs the owner; open, it heads the side column. */}
       {overview || (!screen && !details) ? decisionCard : null}
+      {progress ? (
+        <ProgressView
+          run={run}
+          events={log.events}
+          tasks={runTaskList}
+          working={working}
+          onOpenAgent={openAgent}
+          onOpenMain={openMain}
+          onShowCall={showCall}
+          onLive={() => chooseView("live", sessionTab !== firstTab ? sessionTab : null)}
+          stepHref={(key) => stepHref(run.project, run.plan_id, key)}
+          composer={controls.message && !authoring ? <RunComposer run={run} toMainAgent /> : null}
+        />
+      ) : null}
+      {/* Progress keeps Live mounted under it (a terminal stays connected, the trace keeps its place), out of sight. */}
+      <div className={progress ? "hidden" : "contents"} data-testid="run-live">
+      {!screen && !local && (plan || run.step_key) ? <StepSoFar run={run} events={log.events} tasks={runTaskList} onOpenAgent={openAgent} /> : null}
       {/* Under 768 px: then the subagents and background commands running, the trace's latest rows, then the details. */}
       {overview ? tasks : null}
       {overview ? <TracePreview events={log.events} active={active} loading={log.status === "connecting"} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
@@ -373,6 +338,7 @@ function RunPage({ run }: { run: Run }) {
           {session}
         </div>
       )}
+      </div>
       {outputs.viewer}
     </div>
   );

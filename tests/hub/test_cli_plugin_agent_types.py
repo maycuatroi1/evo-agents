@@ -1,5 +1,5 @@
 """``evo-agents hub plugin agent-type list|enable|disable`` and ``hub plugin enable --records-level``
-(``evo_agents.hub.cli_plugin_agent_types``, ``cli_plugin_projects``): the routes they call, the bodies they send and
+(``evo_agents.hub.cli.plugin.agent_types``, ``cli.plugin.projects``): the routes they call, the bodies they send and
 what they print, against a hub that answers in this process. No hub, no Postgres."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from evo_agents.hub import cli_plugin_agent_types, cli_plugin_projects
+from evo_agents.hub.cli import base
 
 TRIAGER = {
     "plugin": "lumen-qa",
@@ -59,8 +59,7 @@ class FakeHub:
 @pytest.fixture
 def fake_hub(monkeypatch):
     hub = FakeHub()
-    monkeypatch.setattr(cli_plugin_agent_types, "signed_in", lambda: (hub, None))
-    monkeypatch.setattr(cli_plugin_projects, "signed_in", lambda: (hub, None))
+    monkeypatch.setattr(base, "signed_in", lambda: (hub, None))
     return hub
 
 

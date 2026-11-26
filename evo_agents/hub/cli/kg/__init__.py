@@ -38,7 +38,7 @@ import sys
 
 from evo_agents.clikit import Arg, Group, Result, Stderr, Table, Text, UsageError, View, Views, returns_object
 from evo_agents.hub.cli import positive
-from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.base import HubCommand, HubContext, when
 from evo_agents.hub.cli.kg import (
     answer,
     branches,
@@ -56,7 +56,6 @@ from evo_agents.hub.cli.kg import (
     settings,
     upload,
 )
-from evo_agents.hub.cli_client import when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.kg_push import PushReport
 from evo_agents.hub.kg_remote import push, push_json
