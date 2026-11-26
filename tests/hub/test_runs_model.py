@@ -902,6 +902,7 @@ def test_a_task_dispatch_prompt_names_the_branch_and_repos_and_cuts_the_task_to_
     )
     assert prompt.startswith("You are @triager (Triager), agent type triager of plugin triage in project demo")
     assert "never use a question tool" in prompt and "the hub opens a draft pull request of it" in prompt
+    assert "go under $TMPDIR, this run's own directory" in prompt and "never straight under /tmp" in prompt
     assert "- app" in prompt and "- docs" in prompt and prompt.endswith("# The task\nFix it.\n")
     huge = task_runs.build_task_prompt(
         agent=agent, plugin="triage", agent_type="triager", login="owner", branch="task/7", task="đ" * 40_000

@@ -21,6 +21,7 @@ from evo_agents.hub.runs import (
     PLAN_FILE,
     RESULT_DIR,
     RESULT_FILE,
+    SCRATCH_RULE,
     SHORT_BYTES,
     clip,
     plan_steps,
@@ -33,9 +34,7 @@ OUTPUTS_RULE = (
     "- To show the people who read this run a file you made (a screenshot, a video, a report), send it with "
     f"`{OUTPUT_COMMAND} FILE --caption TEXT` (several files at once if you like), or leave it in {OUTPUTS_DIR}/ "
     "under the current directory, which the worker sends at each step you report and when the run ends. The run's "
-    "page on the hub shows them; the images of your tools' results may get there by themselves. Scratch files, "
-    "clones and throwaway environments go under $TMPDIR, this run's own directory, which the worker deletes once the "
-    "run ends; never straight under /tmp, which nothing cleans."
+    "page on the hub shows them; the images of your tools' results may get there by themselves. " + SCRATCH_RULE
 )
 ATTACH_RULE = "  Add `--attach FILE` for a screenshot or a file the owner should see with the question."
 
