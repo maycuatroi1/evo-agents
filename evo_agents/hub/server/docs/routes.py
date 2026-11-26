@@ -10,10 +10,13 @@ A page is served from the hub's origin as an interactive answer of a chat is (``
 text/html, ``nosniff``, no referrer, kept no longer than a revalidation, under a Content-Security-Policy whose
 ``sandbox`` gives it an opaque origin, so it reads no cookie and calls nothing; only the hub's pages frame it. Its
 scripts, styles, fonts and images load from the CDNs of ``outputs.INTERACTIVE_POLICY`` when the project is not
-restricted (``store.cdn_allowed``), and from nowhere (``outputs.HTML_POLICY``) when it is. Writers upload images (POST
+restricted (``service.cdn_allowed``), and from nowhere (``outputs.HTML_POLICY``) when it is. Writers upload images (POST
 .../images, the image's bytes as the body) and save a document's next version, creating it at version 1 (PUT
 .../documents/{slug}). Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's
 error body; nothing is written.
+
+Each handler parses the request and hands it to ``service`` in one transaction (``UnitOfWork``); the service
+checks and decides, and the repository reads and writes.
 """
 
 from __future__ import annotations
@@ -26,43 +29,35 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import outputs
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.docs import images, store
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.docs import images, service
 from evo_agents.hub.server.docs.models import (
+    IMAGE_BODY,
+    RACE,
+    SINK_HEADER,
     DocsDocument,
     DocsDocumentSummary,
+    DocsError,
     DocsSave,
     DocsSaved,
     DocsUploadedImage,
     DocsVersion,
-    detail_model,
-    summary_model,
-    version_model,
 )
-from evo_agents.hub.server.docs.store import DocsError
 from evo_agents.hub.server.errors import ErrorBody, error_response
-from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.tables_docs import MAX_IMAGE_BYTES, SLUG
+from evo_agents.hub.tables_docs import SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
-RACE = "another save of the document took the same version number at the same moment: nothing was written; try again"
 ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
 Slug = Annotated[str, Path(pattern=SLUG)]
 Sha256 = Annotated[str, Path(pattern=r"^[0-9a-f]{64}$")]
-Sink = Annotated[str | None, Header(alias=store.SINK_HEADER)]
+Sink = Annotated[str | None, Header(alias=SINK_HEADER)]
 Version = Annotated[int | None, Query(ge=1, description="a version's number; the latest when left out")]
 IfNoneMatch = Annotated[str | None, Header(description="the ETag of the image the browser holds")]
-IMAGE_BODY = {
-    "requestBody": {
-        "required": True,
-        "description": f"the image's bytes, a PNG, JPEG, WebP or GIF image of at most {MAX_IMAGE_BYTES} bytes",
-        "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
-    }
-}
 PAGE: dict[int | str, dict[str, Any]] = {
     200: {"content": {"text/html": {}}, "description": "the HTML version as a page, under a sandbox"}
 }
-IMAGE = {
+IMAGE: dict[int | str, dict[str, Any]] = {
     200: {"content": {"image/png": {}}, "description": "the image's bytes, in its own media type"},
     304: {"description": "the image the browser holds, named by If-None-Match"},
     503: {"model": ErrorBody},
@@ -74,7 +69,7 @@ router = APIRouter(tags=["plugins"], responses={401: {"model": ErrorBody}, **REF
 async def _answer(request: Request, work):
     """``work(conn)`` in one transaction; a refusal as the hub's error body, nothing written."""
     try:
-        async with request.app.state.engine.begin() as conn:
+        async with UnitOfWork(request.app.state.engine) as conn:
             return await work(conn)
     except DocsError as exc:
         return error_response(request, exc.status, exc.message)
@@ -90,8 +85,7 @@ async def list_documents(request: Request, project: ProjectName, user: CurrentUs
     """The documents of the project the caller sees, by title, each with its latest version."""
 
     async def work(conn: AsyncConnection):
-        access = await project_access(conn, user, project)
-        return [summary_model(row) for row in await store.documents(conn, access, sink)]
+        return await service.listed(conn, user, project, sink)
 
     return await _answer(request, work)
 
@@ -103,11 +97,7 @@ async def show_document(
     """A document with every version, the newest first, and one version whole: the latest, or ``version``."""
 
     async def work(conn: AsyncConnection):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        shown = detail_model(project, slug, await store.version(conn, doc, version))
-        versions = [version_model(row) for row in await store.versions(conn, doc.id)]
-        return DocsDocument(**summary_model(doc).model_dump(), versions=versions, shown=shown)
+        return await service.shown(conn, user, project, slug, version, sink)
 
     return await _answer(request, work)
 
@@ -117,9 +107,7 @@ async def list_versions(request: Request, project: ProjectName, slug: Slug, user
     """Every version of a document, the newest first: its number, title, summary, author and time."""
 
     async def work(conn: AsyncConnection):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        return [version_model(row) for row in await store.versions(conn, doc.id)]
+        return await service.versions_of(conn, user, project, slug, sink)
 
     return await _answer(request, work)
 
@@ -137,12 +125,7 @@ async def show_image(
     """An image a version of the document shows, from the hub's own blob store, for the document's readers."""
 
     async def work(conn: AsyncConnection):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        found = await store.shows_image(conn, doc, sha256)
-        if found is None:
-            raise DocsError(404, f"no version of document {slug} shows image {sha256}")
-        return found
+        return await service.image_shown(conn, user, project, slug, sha256, sink)
 
     found = await _answer(request, work)
     if isinstance(found, Response):
@@ -169,14 +152,7 @@ async def show_page(
     a Markdown version is 404 here."""
 
     async def work(conn: AsyncConnection):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink)
-        row = await store.version(conn, doc, version)
-        if row.format != "html":
-            raise DocsError(
-                404, f"version {row.number} of document {slug} is Markdown, not a page: read it at .../{slug}"
-            )
-        return row.body or "", store.cdn_allowed(access)
+        return await service.page(conn, user, project, slug, version, sink)
 
     found = await _answer(request, work)
     if isinstance(found, Response):
@@ -197,14 +173,8 @@ async def show_page(
 )
 async def upload_image(request: Request, project: ProjectName, user: CurrentUser):
     """Upload an image for the project's documents, kept once by its SHA-256; a version then shows it by a name."""
-
-    async def check(conn: AsyncConnection) -> int:
-        access = await project_access(conn, user, project)
-        store.writer(access, "uploading an image of a document")
-        return access.project_id
-
     try:
-        found, held = await images.upload(request, user.user_id, check)
+        found, held = await images.upload(request, user.user_id, service.uploader(user, project))
     except DocsError as exc:
         return error_response(request, exc.status, exc.message)
     return DocsUploadedImage(**found, held=held)
@@ -217,15 +187,6 @@ async def save_document(
     """Save the next version of a document, or create it at version 1; a save that changes nothing writes nothing."""
 
     async def work(conn: AsyncConnection):
-        access = await project_access(conn, user, project)
-        content = {"title": body.title, "body": body.body, "format": body.format, "summary": body.summary.strip()}
-        shown = {image.name: image.sha256 for image in body.images}
-        label = body.label.model_dump(exclude_none=True) if body.label is not None else None
-        saved = await store.save(
-            conn, access, user.user_id, slug, content, shown, base_version=body.base_version, label=label, sink=sink
-        )
-        return DocsSaved(
-            document=summary_model(saved.document), version=saved.version, created=saved.created, changed=saved.changed
-        )
+        return await service.saved(conn, user, project, slug, body, sink)
 
     return await _answer(request, work)

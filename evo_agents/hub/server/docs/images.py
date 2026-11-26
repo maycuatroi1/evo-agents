@@ -3,8 +3,8 @@
 A writer uploads an image as the body of a request, at most MAX_IMAGE_BYTES: the hub streams it into a temporary file
 while it counts and hashes it, takes it only when its first bytes are those of a PNG, JPEG, WebP or GIF image (never
 SVG, which can carry a script), puts it in the blob store unless the store has it, and records it for the project
-(``docs_images``) once by its SHA-256, holding the blob lock shared so a deletion of the same bytes cannot run between
-the two (``evo_agents.hub.blob_gc``). The row refers to the blob, and nothing drops it.
+(``docs_images``, ``repository.record_image``) once by its SHA-256, holding the blob lock shared so a deletion of the
+same bytes cannot run between the two (``evo_agents.hub.blob_gc``). The row refers to the blob, and nothing drops it.
 
 A reader of a document gets an image a version of it shows from the hub's origin (``serve``): its media type as
 recorded, ``nosniff``, a Content-Security-Policy that runs nothing, ``Cross-Origin-Resource-Policy: same-origin``, its
@@ -21,12 +21,12 @@ from pathlib import Path
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, tables
+from evo_agents.hub import blob_gc
 from evo_agents.hub.blobs import BlobStoreUnavailable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import blob_store
+from evo_agents.hub.server.docs import repository
 from evo_agents.hub.tables_docs import MAX_IMAGE_BYTES
 
 log = logging.getLogger(__name__)
@@ -73,25 +73,13 @@ async def _receive(request: Request, path: Path) -> tuple[str, int, bytes]:
     return digest.hexdigest(), size, head
 
 
-async def _record(conn: AsyncConnection, project_id: int, user_id: int, found: dict) -> bool:
-    """The project's row of the image; True when this call wrote it."""
-    i = tables.docs.images
-    added = (
-        pg_insert(i)
-        .values(project_id=project_id, uploaded_by=user_id, **found)
-        .on_conflict_do_nothing(index_elements=[i.c.project_id, i.c.sha256])
-        .returning(i.c.sha256)
-    )
-    return (await conn.execute(added)).first() is not None
-
-
 async def upload(request: Request, user_id: int, check) -> tuple[dict, bool]:
     """Receive an image, put it in the blob store and record it for the project; ``check(conn)`` is the caller's
     test of who may upload, run before the bytes are read and again in the transaction that records them, and
     returns the project's id. (sha256, media_type, size) and whether the project held it already."""
     store = blob_store(request)
     engine = request.app.state.engine
-    async with engine.begin() as conn:
+    async with UnitOfWork(engine) as conn:
         await check(conn)
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "image"
@@ -102,12 +90,12 @@ async def upload(request: Request, user_id: int, check) -> tuple[dict, bool]:
         found = {"sha256": sha256, "media_type": kind, "size": size}
         try:
             await asyncio.to_thread(store.put_file, sha256, path)
-            async with engine.begin() as conn:
+            async with UnitOfWork(engine) as conn:
                 project_id = await check(conn)
                 await blob_gc.lock_shared(conn)
                 if await blob_gc.revive(conn, [sha256]):  # its object may be gone: put it back before the row commits
                     await asyncio.to_thread(store.put_file, sha256, path, replace=True)
-                added = await _record(conn, project_id, user_id, found)
+                added = await repository.record_image(conn, project_id, user_id, found)
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None
     log.info("document image uploaded", extra={"size": size, "added": added, "media_type": kind})

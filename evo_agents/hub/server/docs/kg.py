@@ -22,7 +22,9 @@ from urllib.parse import quote
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.docs import store
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.docs import repository
+from evo_agents.hub.server.docs.models import KgDocument
 from evo_agents.hub.server.docs.page_text import page_text
 from evo_agents.kg.ids import utc_text
 from evo_agents.kg.text import split_markdown
@@ -35,7 +37,7 @@ def document_url(base_url: str, project: str, slug: str) -> str:
     return f"{base_url.rstrip('/')}/p/{quote(project, safe='')}/x/docs/documents/{quote(slug, safe='')}"
 
 
-def document_item(source: str, row: store.KgDocument, page: tuple[str, str] | None = None) -> dict:
+def document_item(source: str, row: KgDocument, page: tuple[str, str] | None = None) -> dict:
     """The kg/1 item of a document's latest version, as the hub finishes it (see the module). With ``page`` (the hub's
     public URL and the project's name), its ``uri`` is the document's page on the hub's web."""
     item = {
@@ -59,7 +61,7 @@ async def read(conn: AsyncConnection, source: str, project_id: int, project: str
     """The answer of the source: an item per document of the project, no identifiers, and as its cursor the document
     saved last; each document links its page on the hub's web when the hub knows its public URL (``base_url``)."""
     page = (base_url, project) if base_url else None
-    rows = await store.kg_documents(conn, project_id)
+    rows = await repository.kg_documents(conn, project_id)
     answer: dict = {"items": [document_item(source, row, page) for row in rows], "identifiers": []}
     if rows:
         newest = max(rows, key=lambda row: (row.updated_at, row.slug))
@@ -74,7 +76,7 @@ async def kg_source(params: dict, context: CoreContext) -> dict:
         return {"items": [], "identifiers": []}
     base_url = getattr(context.config, "public_url", None)
     base_url = base_url if isinstance(base_url, str) else None
-    async with context.engine.begin() as conn:
+    async with UnitOfWork(context.engine) as conn:
         return await read(conn, params["source"], context.project_id, context.project or params["project"], base_url)
 
 
