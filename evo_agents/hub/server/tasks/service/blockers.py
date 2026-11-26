@@ -5,89 +5,23 @@ A blocker is a flag beside a task's status, never a status. It names why (``reas
 for, in one of three forms: a member with a grant on the project, another task of the project (never the task itself),
 or a text for someone outside. A task has as many open blockers as it has rows not cleared; setting and clearing one
 are rows of the task's history (field ``blocker``). An open decision of a run that belongs to the task is a blocker
-too, read when asked (``blocker_queries``): the run's owner is who it waits for, the time the decision was asked is
-since, and answering it ends it. The caller holds the transaction and has checked the writer role.
+too, read when asked (``repository.blockers``): the run's owner is who it waits for, the time the decision was asked
+is since, and answering it ends it. The caller holds the transaction and has checked the writer role.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
-
-from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.server.tasks import blocker_queries
-from evo_agents.hub.server.tasks.settings import Settings, TasksError, number_of
-from evo_agents.hub.server.tasks.store import TaskRow, members, visible
-from evo_agents.hub.server.tasks.writes import Writer, record
+from evo_agents.hub.server.tasks.models.rows import DECISION, MANUAL, BlockerRow, TaskRow, Waiting
+from evo_agents.hub.server.tasks.models.values import Settings, TasksError, Writer, number_of, visible
+from evo_agents.hub.server.tasks.repository import blockers as repository
+from evo_agents.hub.server.tasks.repository import history
+from evo_agents.hub.server.tasks.repository import tasks as task_rows
+from evo_agents.hub.server.tasks.service.project import members
 from evo_agents.hub.tables_tasks import MAX_REASON_CHARS, MAX_WAITING_CHARS
 
-MANUAL, DECISION = "manual", "decision"
-KINDS = (MANUAL, DECISION)
-WAITING_KINDS = ("member", "task", "text")
-
-
-@dataclass(frozen=True)
-class BlockerRow:
-    """A blocker as it is read: ``id`` is the row's for a blocker set by hand, None for an open decision."""
-
-    id: int | None
-    kind: str
-    reason: str
-    waiting_kind: str
-    waiting_on: str
-    since: datetime
-    set_by: str | None
-    cleared_at: datetime | None = None
-    cleared_by: str | None = None
-    decision_id: int | None = None
-    run_id: int | None = None
-
-
-@dataclass
-class Waiting:
-    """Who or what a blocker waits for: exactly one of the three is given."""
-
-    member: str | None = None
-    task: str | None = None
-    text: str | None = None
-
-    def given(self) -> int:
-        return sum(value is not None for value in (self.member, self.task, self.text))
-
-
-def _manual_query(config: Settings):
-    b, u = tables.tasks.blockers, tables.users
-    setter, waiter, cleaner, other = (
-        u.alias("setter"),
-        u.alias("waiter"),
-        u.alias("cleaner"),
-        tables.tasks.items.alias("other"),
-    )
-    query = (
-        select(
-            b.c.id,
-            b.c.task_id,
-            b.c.reason,
-            b.c.since,
-            b.c.cleared_at,
-            b.c.waiting_text,
-            setter.c.login.label("set_by"),
-            waiter.c.login.label("waiting_login"),
-            cleaner.c.login.label("cleared_by"),
-            other.c.number.label("waiting_number"),
-        )
-        .select_from(
-            b.join(setter, setter.c.id == b.c.created_by)
-            .outerjoin(waiter, waiter.c.id == b.c.waiting_user_id)
-            .outerjoin(cleaner, cleaner.c.id == b.c.cleared_by)
-            .outerjoin(other, other.c.id == b.c.waiting_task_id)
-        )
-        .order_by(b.c.id)
-    )
-    return query
+FIELD = "blocker"  # of the history of a task
 
 
 def _manual(config: Settings, row) -> BlockerRow:
@@ -106,18 +40,9 @@ async def open_for(conn: AsyncConnection, config: Settings, task_ids: list[int])
     found: dict[int, list[BlockerRow]] = {task_id: [] for task_id in task_ids}
     if not task_ids:
         return found
-    b = tables.tasks.blockers
-    query = _manual_query(config).where(b.c.task_id.in_(task_ids), b.c.cleared_at.is_(None))
-    for row in await conn.execute(query):
+    for row in await repository.manual_rows(conn, task_ids):
         found[row.task_id].append(_manual(config, row))
-    u = tables.users
-    decisions = blocker_queries.open_decisions(task_ids).subquery()
-    asked = (
-        select(decisions, u.c.login)
-        .join_from(decisions, u, u.c.id == decisions.c.dispatched_by)
-        .order_by(decisions.c.asked_at, decisions.c.decision_id)
-    )
-    for row in await conn.execute(asked):
+    for row in await repository.decision_rows(conn, task_ids):
         view = BlockerRow(
             None, DECISION, row.question, "member", row.login, row.asked_at, None,
             decision_id=row.decision_id, run_id=row.run_id,
@@ -127,9 +52,15 @@ async def open_for(conn: AsyncConnection, config: Settings, task_ids: list[int])
 
 
 async def one(conn: AsyncConnection, config: Settings, task_id: int, blocker_id: int) -> BlockerRow | None:
-    b = tables.tasks.blockers
-    row = (await conn.execute(_manual_query(config).where(b.c.task_id == task_id, b.c.id == blocker_id))).first()
+    row = await repository.manual_row(conn, task_id, blocker_id)
     return _manual(config, row) if row else None
+
+
+async def _one(conn: AsyncConnection, config: Settings, task_id: int, blocker_id: int) -> BlockerRow:
+    """Blocker ``blocker_id`` of task ``task_id``, which the caller wrote in this transaction."""
+    found = await one(conn, config, task_id, blocker_id)
+    assert found is not None
+    return found
 
 
 # Writing
@@ -145,16 +76,12 @@ async def _waiting_columns(conn: AsyncConnection, writer: Writer, row: TaskRow, 
     if given.given() != 1:
         raise TasksError(422, "a blocker waits on one of a member, a task of the project, or a text: give exactly one")
     access = writer.access
-    columns = {"waiting_user_id": None, "waiting_task_id": None, "waiting_text": None}
+    columns: dict[str, int | str | None] = {"waiting_user_id": None, "waiting_task_id": None, "waiting_text": None}
     if given.member is not None:
         login = given.member.strip()
         columns["waiting_user_id"] = (await members(conn, access, {login}))[login]
     elif given.task is not None:
-        t = tables.tasks.items
-        query = select(t.c.id, t.c.label).where(
-            t.c.project_id == access.project_id, t.c.number == number_of(given.task)
-        )
-        found = (await conn.execute(query)).first()
+        found = await task_rows.task_label(conn, access.project_id, number_of(given.task))
         if found is None or not visible(access, found.label, writer.sink):
             raise TasksError(422, f"no task {given.task} in project {access.name} that you can see, to wait on")
         if found.id == row.id:
@@ -183,11 +110,10 @@ async def put(conn: AsyncConnection, writer: Writer, row: TaskRow, reason: str, 
         "created_by": writer.user_id,
         **await _waiting_columns(conn, writer, row, waiting),
     }
-    b = tables.tasks.blockers
-    blocker_id = await conn.scalar(insert(b).values(**values).returning(b.c.id))
-    blocker = await one(conn, writer.settings, row.id, blocker_id)
-    await record(conn, row.id, writer.user_id, FIELD, None, _shown(blocker))
-    await _touch(conn, row.id)
+    blocker_id = await repository.insert_blocker(conn, values)
+    blocker = await _one(conn, writer.settings, row.id, blocker_id)
+    await history.record(conn, row.id, writer.user_id, FIELD, None, _shown(blocker))
+    await task_rows.update_task(conn, row.id, {})
     return blocker
 
 
@@ -215,38 +141,16 @@ async def change(
         values.update(await _waiting_columns(conn, writer, row, waiting))
     elif waiting is not None:
         raise TasksError(422, "a blocker waits on one of a member, a task of the project, or a text: give exactly one")
-    if clear:
-        values.update(cleared_at=func.now(), cleared_by=writer.user_id)
-    if not values:
+    if not values and not clear:
         raise TasksError(422, "give what to change: a reason, who it waits on, or clear it")
-    b = tables.tasks.blockers
-    await conn.execute(update(b).where(b.c.id == blocker_id).values(**values))
-    after = await one(conn, writer.settings, row.id, blocker_id)
+    await repository.update_blocker(conn, blocker_id, values, cleared_by=writer.user_id if clear else None)
+    after = await _one(conn, writer.settings, row.id, blocker_id)
     if clear:
-        await record(conn, row.id, writer.user_id, FIELD, _shown(before), None)
+        await history.record(conn, row.id, writer.user_id, FIELD, _shown(before), None)
     elif _shown(before) != _shown(after):
-        await record(conn, row.id, writer.user_id, FIELD, _shown(before), _shown(after))
-    await _touch(conn, row.id)
+        await history.record(conn, row.id, writer.user_id, FIELD, _shown(before), _shown(after))
+    await task_rows.update_task(conn, row.id, {})
     return after
 
 
-async def _touch(conn: AsyncConnection, task_id: int) -> None:
-    t = tables.tasks.items
-    await conn.execute(update(t).where(t.c.id == task_id).values(updated_at=func.now()))
-
-
-FIELD = "blocker"  # of the history of a task
-
-__all__ = [
-    "DECISION",
-    "FIELD",
-    "KINDS",
-    "MANUAL",
-    "WAITING_KINDS",
-    "BlockerRow",
-    "Waiting",
-    "change",
-    "one",
-    "open_for",
-    "put",
-]
+__all__ = ["FIELD", "change", "one", "open_for", "put"]

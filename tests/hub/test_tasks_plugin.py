@@ -27,7 +27,7 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import plugin_calls, plugin_events, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.tasks.events import steps_done
+from evo_agents.hub.server.tasks.service.steps import steps_done
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live

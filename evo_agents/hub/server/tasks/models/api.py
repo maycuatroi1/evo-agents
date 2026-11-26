@@ -11,11 +11,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.server.tasks import GROUPS
-from evo_agents.hub.server.tasks.blockers import KINDS, WAITING_KINDS, BlockerRow, Waiting
-from evo_agents.hub.server.tasks.imports import Plan, TasksFile
-from evo_agents.hub.server.tasks.links import LinkView
-from evo_agents.hub.server.tasks.settings import Settings
-from evo_agents.hub.server.tasks.store import CommentRow, EventRow, People, SprintRow, TaskRow
+from evo_agents.hub.server.tasks.models.files import Plan, TasksFile
+from evo_agents.hub.server.tasks.models.rows import (
+    KINDS,
+    WAITING_KINDS,
+    BlockerRow,
+    CommentRow,
+    EventRow,
+    LinkView,
+    People,
+    SprintRow,
+    TaskRow,
+    Waiting,
+)
+from evo_agents.hub.server.tasks.models.values import Settings
 from evo_agents.hub.tables_tasks import (
     LINK_KINDS,
     MAX_COMMENT_CHARS,
@@ -38,7 +47,7 @@ SprintName = Field(min_length=1, max_length=MAX_SPRINT_NAME_CHARS)
 class TasksStatus(BaseModel):
     key: str
     name: str
-    group: Literal[GROUPS] = Field(description="what the status means, whatever the project names it")
+    group: Literal[GROUPS] = Field(description="what the status means, whatever the project names it")  # pyright: ignore[reportInvalidTypeForm]
 
 
 class TasksSettings(BaseModel):
@@ -65,8 +74,8 @@ class TasksItem(BaseModel):
     type: str
     title: str
     status: str
-    status_group: Literal[GROUPS] | None = Field(description="None for a status the config no longer lists")
-    priority: Literal[PRIORITIES]
+    status_group: Literal[GROUPS] | None = Field(description="None for a status the config no longer lists")  # pyright: ignore[reportInvalidTypeForm]
+    priority: Literal[PRIORITIES]  # pyright: ignore[reportInvalidTypeForm]
     due_on: date | None
     sprint: str | None
     parent: str | None = Field(description="the ref of the task it belongs to")
@@ -91,7 +100,7 @@ class TasksLink(BaseModel):
     """What a task links to, as it is now; only the fields of its kind are set."""
 
     id: int
-    kind: Literal[LINK_KINDS]
+    kind: Literal[LINK_KINDS]  # pyright: ignore[reportInvalidTypeForm]
     hidden: bool = Field(description="its target is above what the caller may read: nothing of it is shown")
     code: str | None = Field(description="srs_item: the item's code now")
     item_kind: str | None = Field(description="srs_item: use_case, business_rule, screen, nfr or cbr")
@@ -131,9 +140,9 @@ class TasksBlocker(BaseModel):
     """What a task waits on: a blocker set by hand, or an open decision of a run that belongs to the task."""
 
     id: int | None = Field(description="the blocker's id for PATCH; None for an open decision")
-    kind: Literal[KINDS] = Field(description="manual: set with POST blockers; decision: an open decision of a run")
+    kind: Literal[KINDS] = Field(description="manual: set with POST blockers; decision: an open decision of a run")  # pyright: ignore[reportInvalidTypeForm]
     reason: str = Field(description="why; a decision's question")
-    waiting_kind: Literal[WAITING_KINDS] = Field(description="who or what it waits on: a member, a task or a text")
+    waiting_kind: Literal[WAITING_KINDS] = Field(description="who or what it waits on: a member, a task or a text")  # pyright: ignore[reportInvalidTypeForm]
     waiting_on: str = Field(description="the member's login, the task's ref, or the text")
     since: datetime = Field(description="when it was set; when a decision was asked")
     set_by: str | None = Field(description="who set it; None for a decision")
@@ -187,12 +196,12 @@ class TasksItemIn(BaseModel):
     outcome_md: str = Field("", max_length=MAX_DESCRIPTION_CHARS)
     type: str | None = Field(None, max_length=40)
     status: str | None = Field(None, max_length=40)
-    priority: Literal[PRIORITIES] = "medium"
+    priority: Literal[PRIORITIES] = "medium"  # pyright: ignore[reportInvalidTypeForm]
     due_on: date | None = None
     sprint: str | None = Field(None, max_length=MAX_SPRINT_NAME_CHARS)
     parent: str | None = Field(None, max_length=20, description="the ref of the task it belongs to")
     assignees: list[str] = Field(default_factory=list, max_length=MAX_PEOPLE)
-    roles: TasksRolesIn = Field(default_factory=TasksRolesIn)
+    roles: TasksRolesIn = Field(default_factory=TasksRolesIn)  # pyright: ignore[reportArgumentType]
     links: TasksLinksIn = Field(default_factory=TasksLinksIn)
     label: LabelIn | None = Field(None, description="a label above the project's default; an admin's to give")
 
@@ -208,12 +217,12 @@ class TasksItemEdit(BaseModel):
     outcome_md: str | None = Field(None, max_length=MAX_DESCRIPTION_CHARS)
     type: str | None = Field(None, max_length=40)
     status: str | None = Field(None, max_length=40)
-    priority: Literal[PRIORITIES] | None = None
+    priority: Literal[PRIORITIES] | None = None  # pyright: ignore[reportInvalidTypeForm]
     due_on: date | None = None
     sprint: str | None = Field(None, max_length=MAX_SPRINT_NAME_CHARS)
     parent: str | None = Field(None, max_length=20)
     assignees: list[str] | None = Field(None, max_length=MAX_PEOPLE)
-    roles: TasksRolesIn = Field(default_factory=TasksRolesIn)
+    roles: TasksRolesIn = Field(default_factory=TasksRolesIn)  # pyright: ignore[reportArgumentType]
     links: TasksLinksIn = Field(default_factory=TasksLinksIn)
     unlink: list[int] = Field(default_factory=list, max_length=MAX_LINKS, description="ids of links to drop")
 
@@ -271,7 +280,7 @@ class TasksSprint(BaseModel):
     goal: str
     starts_on: date | None
     ends_on: date | None
-    state: Literal[SPRINT_STATES]
+    state: Literal[SPRINT_STATES]  # pyright: ignore[reportInvalidTypeForm]
     created_by: str
     created_at: datetime
     closed_at: datetime | None
@@ -298,7 +307,7 @@ class TasksSprintEdit(BaseModel):
     goal: str | None = Field(None, max_length=MAX_GOAL_CHARS)
     starts_on: date | None = None
     ends_on: date | None = None
-    state: Literal[SPRINT_STATES] | None = None
+    state: Literal[SPRINT_STATES] | None = None  # pyright: ignore[reportInvalidTypeForm]
     move_to: str | None = Field(None, max_length=MAX_SPRINT_NAME_CHARS, description="closing: the sprint to move to")
 
     def values(self) -> dict:

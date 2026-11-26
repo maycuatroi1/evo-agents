@@ -398,6 +398,22 @@ the routes. A new module of the package goes into one of the layers. See docs/st
 boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-tasks-layers"
+name = "The tasks of a project go from their routes, MCP tool, graph source and events to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.tasks"]
+layers = ["routes | agent | kg | events", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.tasks a route handler (routes), the MCP tool (agent), the knowledge graph's source (kg) and \
+the plan.step event (events) only open a transaction (evo_agents.hub.server.base.unit_of_work) and pass it with the \
+request's parts to a public function of the service (requests, agents, backlog, steps), which checks and decides; \
+the repository holds every SQL statement; the models import none of them. Move the code that reaches up into the \
+layer that needs it: a check or a message into the service, a query into the repository, a shape, a row or a limit \
+into the models. Other modules import the service, the repository and the models, never the routes. A new module of \
+the package goes into one of the seven layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "hub-decisions-layers"
 name = "The decisions of a run go from their routes to their service to their repository to their models, never back"
 type = "layers"

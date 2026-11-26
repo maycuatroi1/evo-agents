@@ -37,8 +37,7 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plugin_api_access import Acting, acting, feature_on, granted
 from evo_agents.hub.server.task_dispatch import plugin_of_request
-from evo_agents.hub.server.tasks import store, writes
-from evo_agents.hub.server.tasks.models import (
+from evo_agents.hub.server.tasks.models.api import (
     MAX_PEOPLE,
     TasksComment,
     TasksCommentIn,
@@ -48,8 +47,19 @@ from evo_agents.hub.server.tasks.models import (
     TasksRolesIn,
     comment_model,
 )
-from evo_agents.hub.server.tasks.server import task_detail
-from evo_agents.hub.server.tasks.settings import Settings, TasksError, number_of, settings
+from evo_agents.hub.server.tasks.models.values import (
+    LinksIn,
+    Settings,
+    TaskChanges,
+    TaskInput,
+    TasksError,
+    Writer,
+    number_of,
+)
+from evo_agents.hub.server.tasks.repository import history
+from evo_agents.hub.server.tasks.service import reads, writes
+from evo_agents.hub.server.tasks.service.project import settings
+from evo_agents.hub.server.tasks.service.project import writer as writer_role
 from evo_agents.hub.tables_tasks import MAX_DESCRIPTION_CHARS, MAX_TITLE_CHARS, PRIORITIES
 
 log = logging.getLogger(__name__)
@@ -114,9 +124,9 @@ def _stored(who: Acting, key: str) -> str:
     return f"{who.plugin}:{key}"
 
 
-def _writer(who: Acting, config: Settings) -> writes.Writer:
-    store.writer(who.access, f"plugin {who.plugin} writing a task")
-    return writes.Writer(who.access, who.user_id, config, None)
+def _writer(who: Acting, config: Settings) -> Writer:
+    writer_role(who.access, f"plugin {who.plugin} writing a task")
+    return Writer(who.access, who.user_id, config, None)
 
 
 async def _own(conn: AsyncConnection, who: Acting, ref: str) -> tuple[int, str]:
@@ -132,7 +142,7 @@ async def _own(conn: AsyncConnection, who: Acting, ref: str) -> tuple[int, str]:
 
 
 async def _shown(conn: AsyncConnection, who: Acting, config: Settings, number: int, key: str) -> PluginTask:
-    found = await task_detail(conn, who.access, config, number, None)
+    found = await reads.task_detail(conn, who.access, config, number, None)
     return PluginTask(**found.model_dump(), key=key)
 
 
@@ -167,7 +177,7 @@ async def create_task(request: Request, project: ProjectName, body: PluginTaskIn
         held = (await conn.execute(query)).scalar_one_or_none()
         if held is not None:
             raise TasksError(409, f"plugin {who.plugin} made task {config.ref(held)} under key {body.key} already")
-        task = writes.TaskInput(
+        task = TaskInput(
             title=body.title,
             description_md=body.description_md,
             type=body.type,
@@ -175,7 +185,7 @@ async def create_task(request: Request, project: ProjectName, body: PluginTaskIn
             priority=body.priority,
             assignees=body.assignees,
             roles=body.roles.given(),
-            links=writes.LinksIn(**body.links.model_dump()),
+            links=LinksIn(**body.links.model_dump()),
             external_key=stored,
             external_ref={"plugin": who.plugin, "key": body.key},
         )
@@ -209,12 +219,12 @@ async def edit_task(request: Request, project: ProjectName, ref: Ref, body: Task
         who, config = await _acting(request, conn, project)
         writer = _writer(who, config)
         number, key = await _own(conn, who, ref)
-        row = await store.task(conn, who.access, number, None, lock=True)
-        changes = writes.TaskChanges(
+        row = await reads.task(conn, who.access, number, None, lock=True)
+        changes = TaskChanges(
             values=body.values(),
             assignees=body.assignees,
             roles=body.roles.given(),
-            links=writes.LinksIn(**body.links.model_dump()),
+            links=LinksIn(**body.links.model_dump()),
             unlink=body.unlink,
         )
         await writes.edit(conn, writer, row, changes)
@@ -234,9 +244,9 @@ async def add_comment(request: Request, project: ProjectName, ref: Ref, body: Ta
         who, config = await _acting(request, conn, project)
         writer = _writer(who, config)
         number, _ = await _own(conn, who, ref)
-        row = await store.task(conn, who.access, number, None)
+        row = await reads.task(conn, who.access, number, None)
         comment_id = await writes.comment(conn, writer, row.id, body.body)
-        return comment_model(next(c for c in await store.comments(conn, row.id) if c.id == comment_id))
+        return comment_model(next(c for c in await history.comments(conn, row.id) if c.id == comment_id))
 
     return await _answer(request, work)
 
