@@ -20,9 +20,10 @@ if not pg.DSN:
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
+from evo_agents.clikit import UsageError
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import tables
-from evo_agents.hub.cli.autonomy import Usage, reach_groups
+from evo_agents.hub.cli.autonomy import reach_groups
 from evo_agents.hub.server import autonomy_store, run_access, run_access_rules
 from evo_agents.hub.server.autonomy_models import RunReachSet
 from evo_agents.hub.server.run_access_rules import REACH_GROUPS, refusal
@@ -396,7 +397,7 @@ def test_allow_parses_a_comma_separated_list_into_the_hubs_order():
     assert reach_groups(" workers , workers ,") == ["workers"]
     assert reach_groups("runs,answers,releases,agents,workers,curator") == list(REACH_GROUPS)
     for wrong, said in (("", "names one or more"), (",", "names one or more"), ("agents,secrets", "'secrets'")):
-        with pytest.raises(Usage) as refused:
+        with pytest.raises(UsageError) as refused:
             reach_groups(wrong)
         assert said in str(refused.value), wrong
 

@@ -18,22 +18,24 @@ curator (the Curator's writes); ``--allow agents,workers`` replaces them with th
 ``--json`` prints login and groups, and previous too after ``--allow`` or ``--none``. No run's token reads or sets it.
 A refusal (403, 404, 409, 422) prints the hub's reason and exits 1.
 
-Standard library only, like the rest of the client.
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes): :class:`Autonomy` is
+the gateway to their routes, which belong to the hub and not to a project. Standard library only, like the rest of
+the client.
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
 from urllib.parse import urlencode
 
-from evo_agents.clikit import Legacy
+from evo_agents.clikit import Arg, Group, Result, Text, UsageError
 from evo_agents.hub import autonomy_levels
 from evo_agents.hub.autonomy_levels import CLASSES, LEVELS
-from evo_agents.hub.cli.base import client_command, print_json, signed_in
-from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.cli.base import HubCommand, HubContext, call_object
+from evo_agents.hub.client import Hub
+from evo_agents.hub.contract import returns_object
 from evo_agents.hub.credentials import RUN_REACH_GROUPS
 
-EXIT_USAGE = 2
 # The keys of the hub's answers these commands print with --json (``evo_agents.hub.server.autonomy_models`` and
 # ``.org_models``).
 SHOW_KEYS = ("principal", "project", "agent", "level", "classes", "environments", "workers")
@@ -51,44 +53,34 @@ CEILING_KEYS = (
 )
 REACH_KEYS = ("login", "groups")
 REACH_WRITTEN_KEYS = ("login", "groups", "previous")
-RUN_REACH_PATH = "/v1/autonomy/run-reach"
 CLASS_HELP = (
     "a class and its mode, K1 to K12 = deny, ask, notify or auto (e.g. K6=deny, K5=notify:ask_on_risk_paths); repeat it"
 )
 
 
-class Usage(Exception):
-    """A command line the hub is not asked about; exit 2 with this sentence."""
-
-
-def _usage(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
-
-
 def overrides(given: list[str] | None) -> dict[str, str]:
-    """``Kn=mode`` flags as a map in class order; Usage naming the first wrong one or a class given twice."""
+    """``Kn=mode`` flags as a map in class order; UsageError naming the first wrong one or a class given twice."""
     found: dict[str, str] = {}
     for text in given or ():
         try:
             klass, mode = autonomy_levels.parse_override(text)
         except ValueError as exc:
-            raise Usage(f"--class {exc}") from None
+            raise UsageError(f"--class {exc}") from None
         if klass in found:
-            raise Usage(f"--class names {klass} twice")
+            raise UsageError(f"--class names {klass} twice")
         found[klass] = mode
     return {klass: found[klass] for klass in CLASSES if klass in found}
 
 
 def reach_groups(text: str) -> list[str]:
-    """``--allow agents,workers`` as the groups it names, once each in the hub's order; Usage naming a wrong one."""
+    """``--allow agents,workers`` as the groups it names, once each in the hub's order; UsageError naming a wrong one."""
     names = [name.strip() for name in text.split(",") if name.strip()]
     choices = ", ".join(RUN_REACH_GROUPS)
     if not names:
-        raise Usage(f"--allow names one or more of {choices}; --none clears them")
+        raise UsageError(f"--allow names one or more of {choices}; --none clears them")
     for name in names:
         if name not in RUN_REACH_GROUPS:
-            raise Usage(f"--allow: no group {name!r}; the groups are {choices}")
+            raise UsageError(f"--allow: no group {name!r}; the groups are {choices}")
     return [group for group in RUN_REACH_GROUPS if group in names]
 
 
@@ -113,53 +105,96 @@ def show_lines(view: dict) -> list[str]:
     return lines
 
 
-@client_command
-def cmd_show(args) -> int:
-    if (args.agent or args.repo) and not args.project:
-        return _usage("--agent and --repo name a profile or a repo within a project: add --project")
-    named = {"login": args.login, "project": args.project, "agent": args.agent, "repo": args.repo}
-    query = urlencode({key: value for key, value in named.items() if value is not None})
-    hub, _ = signed_in()
-    view = hub.call("GET", "/v1/autonomy" + (f"?{query}" if query else ""))
-    if args.json:
-        print_json(view)
-    else:
-        print("\n".join(show_lines(view)))
-    return 0
+class Autonomy:
+    """The autonomy routes of the hub: GET /v1/autonomy, PUT /v1/autonomy/prefs, GET and PUT
+    /v1/autonomy/run-reach, and PUT /v1/org/ceilings (Gateway)."""
+
+    path = "/v1/autonomy"
+
+    def __init__(self, hub: Hub):
+        self.hub = hub
+
+    def view(self, **named: str | None) -> dict:
+        query = urlencode({key: value for key, value in named.items() if value is not None})
+        return call_object(self.hub, "GET", self.path + (f"?{query}" if query else ""))
+
+    def prefer(self, body: dict) -> dict:
+        return call_object(self.hub, "PUT", f"{self.path}/prefs", body)
+
+    def set_ceiling(self, body: dict) -> dict:
+        return call_object(self.hub, "PUT", "/v1/org/ceilings", body)
+
+    def run_reach(self) -> dict:
+        return call_object(self.hub, "GET", f"{self.path}/run-reach")
+
+    def set_run_reach(self, groups: list[str]) -> dict:
+        return call_object(self.hub, "PUT", f"{self.path}/run-reach", {"groups": groups})
 
 
-@client_command
-def cmd_set(args) -> int:
-    try:
-        classes = overrides(args.klass)
-    except Usage as exc:
-        return _usage(str(exc))
+CLASS = Arg("--class", dest="klass", action="append", metavar="Kn=MODE", help=CLASS_HELP)
+
+
+class AutonomyShow(HubCommand):
+    name = "show"
+    help = "the effective level and the mode of each class, with the source of each"
+    arguments = (
+        Arg("--login", help="the person (default: you); a lead sees those below them, an admin everyone"),
+        Arg("--agent", metavar="HANDLE", help="running this agent profile of --project"),
+        Arg("--project", help="the project of --agent and --repo"),
+        Arg("--repo", help="acting on this repo of --project, under its policy"),
+    )
+    output = returns_object(*SHOW_KEYS, schema="AutonomyView")
+
+    def check(self, args: argparse.Namespace) -> None:
+        if (args.agent or args.repo) and not args.project:
+            raise UsageError("--agent and --repo name a profile or a repo within a project: add --project")
+
+    def run(self, ctx: HubContext) -> Result:
+        args = ctx.args
+        view = Autonomy(ctx.hub).view(login=args.login, project=args.project, agent=args.agent, repo=args.repo)
+        return Result(view, Text("\n".join(show_lines(view))))
+
+
+def pref_body(args) -> dict:
+    """The body of PUT /v1/autonomy/prefs for the command line ``args``; UsageError when it sets nothing."""
+    classes = overrides(args.klass)
     if args.level is None and not classes and not args.reset:
-        return _usage("nothing to set: pass --level, --class or --reset")
+        raise UsageError("nothing to set: pass --level, --class or --reset")
     body: dict = {"classes": classes, "reset": args.reset}
     if args.level is not None:
         body["level"] = args.level
-    hub, _ = signed_in()
-    written = hub.call("PUT", "/v1/autonomy/prefs", body)
-    if args.json:
-        print_json(written)
-        return 0
-    shown = "".join(f" {klass}={mode}" for klass, mode in written["classes"].items())
-    print(
-        f"Your preference is {written['level']}{shown} (was {written['previous'] or 'none'}), "
-        f"revision {written['revision']}."
+    return body
+
+
+def _modes(classes: dict[str, str]) -> str:
+    return "".join(f" {klass}={mode}" for klass, mode in classes.items())
+
+
+class AutonomySet(HubCommand):
+    name = "set"
+    help = "your own preference: a level, class overrides, or a reset"
+    arguments = (
+        Arg("--level", choices=LEVELS, help="the level you prefer (the ceilings above you still decide)"),
+        CLASS,
+        Arg("--reset", action="store_true", help="drop your class overrides; A5 unless --level"),
     )
-    print("Effective now: evo-agents hub autonomy show")
-    return 0
+    output = returns_object(*PREF_KEYS, schema="PrefWritten")
+
+    def check(self, args: argparse.Namespace) -> None:
+        pref_body(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        written = Autonomy(ctx.hub).prefer(pref_body(ctx.args))
+        said = (
+            f"Your preference is {written['level']}{_modes(written['classes'])} "
+            f"(was {written['previous'] or 'none'}), revision {written['revision']}."
+        )
+        return Result(written, Text(said, "Effective now: evo-agents hub autonomy show"))
 
 
-@client_command
-def cmd_ceiling_set(args) -> int:
-    try:
-        classes = overrides(args.klass)
-    except Usage as exc:
-        return _usage(str(exc))
-    body: dict = {"level": args.level, "note": args.note, "classes": classes}
+def ceiling_body(args) -> dict:
+    """The body of PUT /v1/org/ceilings for the command line ``args``; UsageError naming a wrong --class."""
+    body: dict = {"level": args.level, "note": args.note, "classes": overrides(args.klass)}
     body |= {"environments": _places(args.environment), "workers": _places(args.worker)}
     if args.unit is not None:
         body["unit"] = args.unit
@@ -167,108 +202,107 @@ def cmd_ceiling_set(args) -> int:
         body["login"] = args.login
     else:
         body["seat"] = args.seat
-    hub, _ = signed_in()
-    written = hub.call("PUT", "/v1/org/ceilings", body)
-    if args.json:
-        print_json(written)
-        return 0
-    before = written["previous"] or "none"
-    limits = "".join(f" {klass}={mode}" for klass, mode in written["classes"].items())
+    return body
+
+
+def ceiling_line(written: dict) -> str:
+    """What the terminal prints of a ceiling written."""
+    limits = _modes(written["classes"])
     for name in ("environments", "workers"):
         limits += f"; {name} {', '.join(written[name])}" if written[name] else ""
-    print(
+    before = written["previous"] or "none"
+    return (
         f"Ceiling of {written['target']} is {written['level']}{limits} (was {before}), revision {written['revision']}."
     )
-    return 0
 
 
-@client_command
-def cmd_run_reach(args) -> int:
-    try:
-        groups = [] if args.none else None if args.allow is None else reach_groups(args.allow)
-    except Usage as exc:
-        return _usage(str(exc))
-    hub, _ = signed_in()
-    if groups is None:
-        held = hub.call("GET", RUN_REACH_PATH)
-    else:
-        held = hub.call("PUT", RUN_REACH_PATH, {"groups": groups})
-    if args.json:
-        print_json(held)
-        return 0
-    was = "" if groups is None else f" (was {_groups(held['previous'])})"
-    print(f"Your runs that run as you also reach: {_groups(held['groups'])}{was}.")
-    if groups is None:
-        print(f"The groups: {', '.join(RUN_REACH_GROUPS)}. Change it with --allow GROUP[,GROUP...] or --none.")
-    return 0
+CEILING_SCOPES = (
+    Arg("--unit", metavar="SLUG", help="the ceiling of a unit, which every unit below it keeps to"),
+    Arg("--login", help="the ceiling of a person's primary seat"),
+    Arg("--seat", type=int, metavar="ID", help="the ceiling of one seat, such as an agent's"),
+)
 
 
-# Registering
-
-
-def _register_ceiling(asub) -> None:
-    ceiling = asub.add_parser("ceiling", help="the ceilings the org chart sets on autonomy levels")
-    csub = ceiling.add_subparsers(dest="autonomy_ceiling_command", required=True)
-
-    written = csub.add_parser("set", help="the next ceiling revision of a unit, a person's primary seat or a seat")
-    scope = written.add_mutually_exclusive_group(required=True)
-    scope.add_argument("--unit", metavar="SLUG", help="the ceiling of a unit, which every unit below it keeps to")
-    scope.add_argument("--login", help="the ceiling of a person's primary seat")
-    scope.add_argument("--seat", type=int, metavar="ID", help="the ceiling of one seat, such as an agent's")
-    written.add_argument("--level", required=True, choices=LEVELS, help="the highest level allowed")
-    written.add_argument("--note", required=True, help="why, for the history (at most 1000 characters)")
-    written.add_argument("--class", dest="klass", action="append", metavar="Kn=MODE", help=CLASS_HELP)
-    written.add_argument(
-        "--environment",
-        action="append",
-        metavar="NAME",
-        help="an environment it allows (host, <plugin>/<name>); repeat it",
+class CeilingSet(HubCommand):
+    name = "set"
+    help = "the next ceiling revision of a unit, a person's primary seat or a seat"
+    arguments = (
+        Arg("--level", required=True, choices=LEVELS, help="the highest level allowed"),
+        Arg("--note", required=True, help="why, for the history (at most 1000 characters)"),
+        CLASS,
+        Arg(
+            "--environment",
+            action="append",
+            metavar="NAME",
+            help="an environment it allows (host, <plugin>/<name>); repeat it",
+        ),
+        Arg("--worker", action="append", metavar="NAME", help="a worker it allows; repeat it"),
     )
-    written.add_argument("--worker", action="append", metavar="NAME", help="a worker it allows; repeat it")
-    json_option(written, returns_object(*CEILING_KEYS, schema="CeilingWritten"))
-    written.set_defaults(func=cmd_ceiling_set)
+    output = returns_object(*CEILING_KEYS, schema="CeilingWritten")
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        scope = parser.add_mutually_exclusive_group(required=True)  # first, before --level
+        for arg in CEILING_SCOPES:
+            scope.add_argument(*arg.flags, **arg.options)
+        super().configure(parser)
+
+    def check(self, args: argparse.Namespace) -> None:
+        overrides(args.klass)
+
+    def run(self, ctx: HubContext) -> Result:
+        written = Autonomy(ctx.hub).set_ceiling(ceiling_body(ctx.args))
+        return Result(written, Text(ceiling_line(written)))
 
 
-def register_autonomy(hsub) -> None:
-    group = hsub.add_parser("autonomy", help="the autonomy levels A0 to A5 of people and agents")
-    asub = group.add_subparsers(dest="autonomy_command", required=True)
+def chosen_groups(args) -> list[str] | None:
+    """The groups ``--allow`` or ``--none`` sets; None when the command only reads them."""
+    return [] if args.none else None if args.allow is None else reach_groups(args.allow)
 
-    show = asub.add_parser("show", help="the effective level and the mode of each class, with the source of each")
-    show.add_argument("--login", help="the person (default: you); a lead sees those below them, an admin everyone")
-    show.add_argument("--agent", metavar="HANDLE", help="running this agent profile of --project")
-    show.add_argument("--project", help="the project of --agent and --repo")
-    show.add_argument("--repo", help="acting on this repo of --project, under its policy")
-    json_option(show, returns_object(*SHOW_KEYS, schema="AutonomyView"))
-    show.set_defaults(func=cmd_show)
 
-    pref = asub.add_parser("set", help="your own preference: a level, class overrides, or a reset")
-    pref.add_argument("--level", choices=LEVELS, help="the level you prefer (the ceilings above you still decide)")
-    pref.add_argument("--class", dest="klass", action="append", metavar="Kn=MODE", help=CLASS_HELP)
-    pref.add_argument("--reset", action="store_true", help="drop your class overrides; A5 unless --level")
-    json_option(pref, returns_object(*PREF_KEYS, schema="PrefWritten"))
-    pref.set_defaults(func=cmd_set)
+def reached(held: dict) -> str:
+    return f"Your runs that run as you also reach: {_groups(held['groups'])}"
 
-    _register_ceiling(asub)
 
-    reach = asub.add_parser(
-        "run-reach",
-        help="what your runs that run as you reach besides what every run's token reaches: "
-        + ", ".join(RUN_REACH_GROUPS),
+REACH_WRITTEN = returns_object(*REACH_WRITTEN_KEYS, schema="RunReachWritten")
+
+
+class RunReach(HubCommand):
+    name = "run-reach"
+    help = "what your runs that run as you reach besides what every run's token reaches: " + ", ".join(RUN_REACH_GROUPS)
+    output = returns_object(
+        *REACH_KEYS, schema="RunReach", variants=(("--allow", REACH_WRITTEN), ("--none", REACH_WRITTEN))
     )
-    chosen = reach.add_mutually_exclusive_group()
-    chosen.add_argument(
-        "--allow",
-        metavar="GROUP[,GROUP...]",
-        help=f"replace it with these groups, comma-separated, of {', '.join(RUN_REACH_GROUPS)}",
-    )
-    chosen.add_argument("--none", action="store_true", help="clear it: your runs reach none of the groups")
-    written = returns_object(*REACH_WRITTEN_KEYS, schema="RunReachWritten")
-    json_option(
-        reach,
-        returns_object(*REACH_KEYS, schema="RunReach", variants=(("--allow", written), ("--none", written))),
-    )
-    reach.set_defaults(func=cmd_run_reach)
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        chosen = parser.add_mutually_exclusive_group()
+        chosen.add_argument(
+            "--allow",
+            metavar="GROUP[,GROUP...]",
+            help=f"replace it with these groups, comma-separated, of {', '.join(RUN_REACH_GROUPS)}",
+        )
+        chosen.add_argument("--none", action="store_true", help="clear it: your runs reach none of the groups")
+
+    def check(self, args: argparse.Namespace) -> None:
+        chosen_groups(args)
+
+    def run(self, ctx: HubContext) -> Result:
+        groups = chosen_groups(ctx.args)
+        autonomy = Autonomy(ctx.hub)
+        held = autonomy.run_reach() if groups is None else autonomy.set_run_reach(groups)
+        if groups is not None:
+            return Result(held, Text(f"{reached(held)} (was {_groups(held['previous'])})."))
+        said = f"The groups: {', '.join(RUN_REACH_GROUPS)}. Change it with --allow GROUP[,GROUP...] or --none."
+        return Result(held, Text(f"{reached(held)}.", said))
 
 
-# The node this module attaches, an adapter of its register function until its commands are classes.
-AUTONOMY = Legacy(register_autonomy)
+CEILING = Group(
+    "ceiling",
+    "the ceilings the org chart sets on autonomy levels",
+    [CeilingSet()],
+    dest="autonomy_ceiling_command",
+)
+AUTONOMY = Group(
+    "autonomy",
+    "the autonomy levels A0 to A5 of people and agents",
+    [AutonomyShow(), AutonomySet(), CEILING, RunReach()],
+)

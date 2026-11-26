@@ -7,16 +7,19 @@ to a unit of the org chart, sharing it when it was not; ``unshare WORKER --unit 
 the last one sharing ends. WORKER is a worker's name, or OWNER/NAME when a hub admin sees two of that name. A refusal
 of the hub prints its reason and exits 1.
 
-Standard library only, like the rest of the client.
+The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes) and ask the hub through
+``evo_agents.hub.cli.org.resources.OrgChart``. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
 import sys
-from urllib.parse import quote
+from collections.abc import Callable
 
-from evo_agents.hub.cli.base import client_command, print_json, signed_in
-from evo_agents.hub.contract import json_option, returns_array, returns_object
+from evo_agents.clikit import Arg, Group, Result, Text
+from evo_agents.hub.cli.base import HubCommand, HubContext
+from evo_agents.hub.cli.org.resources import OrgChart
+from evo_agents.hub.contract import returns_array, returns_object
 
 EXIT_UNKNOWN = 1  # as a 404 of the hub exits
 WORKER_SHARE_KEYS = ("id", "worker", "owner", "shared", "units", "doctor_at", "doctor_high", "doctor_medium")
@@ -54,65 +57,72 @@ def worker_line(row: dict) -> str:
     return f"{row['owner']}/{row['worker']}  {whom}  ({_doctor(row)})"
 
 
-@client_command
-def cmd_list(args) -> int:
-    hub, _ = signed_in()
-    rows = hub.call("GET", "/v1/org/workers")
-    if args.json:
-        print_json(rows)
-        return 0
-    print("\n".join(worker_line(row) for row in rows) if rows else "You have no live worker.")
-    return 0
+class WorkerList(HubCommand):
+    name = "list"
+    help = "your live workers (every one for a hub admin) and whom each is shared with"
+    output = returns_array(*WORKER_SHARE_KEYS, schema="WorkerShares")
+
+    def run(self, ctx: HubContext) -> Result:
+        rows = OrgChart(ctx.hub).workers()
+        return Result(rows, Text("\n".join(worker_line(row) for row in rows) if rows else "You have no live worker."))
 
 
-def _change(args, method: str):
-    hub, _ = signed_in()
-    try:
-        row = find_worker(hub.call("GET", "/v1/org/workers"), args.worker)
-    except Unknown as exc:
-        print(f"error: {exc}", file=sys.stderr)
+WORKER_UNIT = (
+    Arg("worker", metavar="WORKER", help="the worker's name, or OWNER/NAME"),
+    Arg("--unit", required=True, metavar="SLUG", help="the unit of the org chart"),
+)
+
+
+def changed(ctx: HubContext, change: Callable[[OrgChart, int, str], dict]) -> dict:
+    """The row of the worker the command line names after ``change`` gave it the unit or took it back; Unknown when
+    the caller's list does not hold that worker once."""
+    chart = OrgChart(ctx.hub)
+    found = find_worker(chart.workers(), ctx.args.worker)
+    return change(chart, found["id"], ctx.args.unit)
+
+
+def unknown(exc: Exception) -> int | None:
+    """The exit status of a worker name that names no worker (its error printed); None for any other failure."""
+    if not isinstance(exc, Unknown):
         return None
-    return hub.call(method, f"/v1/org/workers/{row['id']}/units/{quote(args.unit, safe='')}")
+    print(f"error: {exc}", file=sys.stderr)
+    return EXIT_UNKNOWN
 
 
-@client_command
-def cmd_share(args) -> int:
-    row = _change(args, "PUT")
-    if row is None:
-        return EXIT_UNKNOWN
-    if args.json:
-        print_json(row)
-        return 0
-    print(f"Worker {row['owner']}/{row['worker']} is shared with {', '.join(row['units'])}.")
-    return 0
+class WorkerShare(HubCommand):
+    name = "share"
+    help = "narrow a worker to a unit and every unit below it, sharing it when it was not"
+    arguments = WORKER_UNIT
+    output = returns_object(*WORKER_SHARE_KEYS, schema="WorkerShares")
+
+    def run(self, ctx: HubContext) -> Result:
+        row = changed(ctx, OrgChart.share)
+        return Result(row, Text(f"Worker {row['owner']}/{row['worker']} is shared with {', '.join(row['units'])}."))
+
+    def failed(self, exc: Exception) -> int | None:
+        return unknown(exc) or super().failed(exc)
 
 
-@client_command
-def cmd_unshare(args) -> int:
-    row = _change(args, "DELETE")
-    if row is None:
-        return EXIT_UNKNOWN
-    if args.json:
-        print_json(row)
-        return 0
-    print(f"Took unit {args.unit} back from worker {row['owner']}/{row['worker']}: {worker_line(row)}")
-    return 0
+class WorkerUnshare(HubCommand):
+    name = "unshare"
+    help = "take a unit back from a worker; with its last unit, sharing ends"
+    arguments = WORKER_UNIT
+    output = returns_object(*WORKER_SHARE_KEYS, schema="WorkerShares")
+
+    def run(self, ctx: HubContext) -> Result:
+        row = changed(ctx, OrgChart.unshare)
+        unit = ctx.args.unit
+        return Result(
+            row, Text(f"Took unit {unit} back from worker {row['owner']}/{row['worker']}: {worker_line(row)}")
+        )
+
+    def failed(self, exc: Exception) -> int | None:
+        return unknown(exc) or super().failed(exc)
 
 
-def register_workers(osub) -> None:
-    group = osub.add_parser("worker", help="whom your shared workers are shared with: units of the org chart")
-    wsub = group.add_subparsers(dest="org_worker_command", required=True)
-
-    listed = wsub.add_parser("list", help="your live workers (every one for a hub admin) and whom each is shared with")
-    json_option(listed, returns_array(*WORKER_SHARE_KEYS, schema="WorkerShares"))
-    listed.set_defaults(func=cmd_list)
-
-    for name, verb, func in (
-        ("share", "narrow a worker to a unit and every unit below it, sharing it when it was not", cmd_share),
-        ("unshare", "take a unit back from a worker; with its last unit, sharing ends", cmd_unshare),
-    ):
-        parser = wsub.add_parser(name, help=verb)
-        parser.add_argument("worker", metavar="WORKER", help="the worker's name, or OWNER/NAME")
-        parser.add_argument("--unit", required=True, metavar="SLUG", help="the unit of the org chart")
-        json_option(parser, returns_object(*WORKER_SHARE_KEYS, schema="WorkerShares"))
-        parser.set_defaults(func=func)
+WORKER = Group(
+    "worker",
+    "whom your shared workers are shared with: units of the org chart",
+    [WorkerList(), WorkerShare(), WorkerUnshare()],
+    dest="org_worker_command",
+)
