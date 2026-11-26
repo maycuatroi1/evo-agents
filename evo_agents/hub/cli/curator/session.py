@@ -21,8 +21,9 @@ import asyncio
 import os
 from types import SimpleNamespace
 
-from evo_agents.clikit import Arg, Result, Text, json_option, returns_object
+from evo_agents.clikit import Arg, Result, Text, returns_object
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource
+from evo_agents.hub.cli.curator.resources import PROPOSAL_KEYS
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.review import LENSES, MAX_BODY_BYTES, SEVERITIES
 from evo_agents.hub.tiers import CHANGE_KINDS, split_target
@@ -199,6 +200,7 @@ def proposal_lines(answer: dict) -> list[str]:
 class Propose(HubCommand):
     name = "propose"
     help = "propose a change from your own session, with its draft plan, as a review run does"
+    output = returns_object(*PROPOSAL_KEYS, schema="Proposal")
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         PROJECT.add_to(parser)
@@ -225,10 +227,6 @@ class Propose(HubCommand):
         )
         for option in SESSION_OPTIONS:
             option.add_to(parser)
-        # The keys of a proposal live in the curator package, which imports this module: read once it is loaded.
-        from evo_agents.hub.cli.curator import PROPOSAL_KEYS
-
-        json_option(parser, returns_object(*PROPOSAL_KEYS, schema="Proposal"), self.json_help)
 
     def run(self, ctx: HubContext) -> Result:
         _ = ctx.hub, ctx.project  # signed in and the project found before any file is read, as before

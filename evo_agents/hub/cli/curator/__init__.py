@@ -45,30 +45,27 @@ what the hub answered, with the keys declared next to the flag. Standard library
 The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Command classes), in a module each along
 the group's seams: ``charter`` (``curator charter``), ``schedules`` (``status``, ``pause``, ``resume``), ``proposal``,
 ``findings`` (``findings``, ``figures``) and ``changes`` (``changes``, ``change close``, ``protection``); the gateways
-to the hub's routes, and the keys of their answers, are in ``resources``. :data:`CURATOR` is the group.
+to the hub's routes, and the keys of their answers, are in ``resources``. ``replay``, ``history``, ``playbook``
+(``playbook``, ``earlier``), ``probe``, ``session`` (``finding``, ``propose``) and ``evolve`` hold the rest of the
+group. :data:`CURATOR` is the group.
 """
 
 from __future__ import annotations
 
-import functools
-
-from evo_agents.clikit import Group, Legacy
-from evo_agents.hub.cli.base import PROJECT
+from evo_agents.clikit import Group
 from evo_agents.hub.cli.curator.changes import CURATOR_CHANGE, CuratorChanges, CuratorProtection
 from evo_agents.hub.cli.curator.charter import CURATOR_CHARTER
-from evo_agents.hub.cli.curator.evolve import register_evolve
+from evo_agents.hub.cli.curator.evolve import EVOLVE
 from evo_agents.hub.cli.curator.findings import CuratorFigures, CuratorFindings
-from evo_agents.hub.cli.curator.history import register_history
-from evo_agents.hub.cli.curator.playbook import register_playbook
-from evo_agents.hub.cli.curator.probe import register_probe
+from evo_agents.hub.cli.curator.history import HISTORY
+from evo_agents.hub.cli.curator.playbook import EARLIER, PLAYBOOK
+from evo_agents.hub.cli.curator.probe import PROBE
 from evo_agents.hub.cli.curator.proposal import CURATOR_PROPOSAL
-from evo_agents.hub.cli.curator.replay import register_replay
+from evo_agents.hub.cli.curator.replay import REPLAY
 from evo_agents.hub.cli.curator.resources import CHANGE_KEYS as CHANGE_KEYS
 from evo_agents.hub.cli.curator.resources import PROPOSAL_KEYS as PROPOSAL_KEYS
 from evo_agents.hub.cli.curator.schedules import CuratorPause, CuratorResume, CuratorStatus
-from evo_agents.hub.cli.curator.session import register_session
-
-WITH_PROJECT = PROJECT.add_to  # how the register_* functions of the modules not moved yet add --project
+from evo_agents.hub.cli.curator.session import FINDING, PROPOSE
 
 CURATOR = Group(
     "curator",
@@ -84,11 +81,13 @@ CURATOR = Group(
         CuratorChanges(),
         CURATOR_CHANGE,
         CuratorProtection(),
-        Legacy(functools.partial(register_replay, with_project=WITH_PROJECT)),
-        Legacy(functools.partial(register_history, with_project=WITH_PROJECT)),
-        Legacy(functools.partial(register_playbook, with_project=WITH_PROJECT)),
-        Legacy(functools.partial(register_probe, with_project=WITH_PROJECT)),
-        Legacy(functools.partial(register_session, with_project=WITH_PROJECT)),
-        Legacy(functools.partial(register_evolve, with_project=WITH_PROJECT)),
+        REPLAY,
+        HISTORY,
+        PLAYBOOK,
+        EARLIER,
+        PROBE,
+        FINDING,
+        PROPOSE,
+        EVOLVE,
     ],
 )
