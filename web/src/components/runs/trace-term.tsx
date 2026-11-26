@@ -54,10 +54,10 @@ export function TermBlock({
   const body = whole ? text.replace(/\n$/, "") : shown;
   return (
     <div className="min-w-0 border-t border-term-border first:border-t-0" data-testid={testId}>
-      {label ? <p className="bg-term-bg px-3 pt-2 font-mono text-[11px] leading-4 text-term-muted">{label}</p> : null}
+      {label ? <p className="bg-term-bg px-3 pt-2 font-mono text-xs leading-4 text-term-muted">{label}</p> : null}
       <pre
         className={cn(
-          "m-0 max-h-[32rem] overflow-auto bg-term-bg px-3 py-2.5 font-mono text-xs leading-[18px] text-term-fg [font-variant-ligatures:none]",
+          "m-0 max-h-[32rem] overflow-auto bg-term-bg px-3 py-2.5 font-mono text-[13px] leading-5 text-term-fg [font-variant-ligatures:none]",
           wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre",
         )}
         tabIndex={0}

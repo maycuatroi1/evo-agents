@@ -32,7 +32,7 @@ function TabCount({ count, label, testId }: { count: number; label: string; test
   const format = useFormatter();
   return (
     <>
-      <span aria-hidden="true" className="rounded-full bg-muted px-1.5 text-[11px] leading-[18px] font-medium text-muted-foreground tabular-nums" data-testid={testId}>
+      <span aria-hidden="true" className="rounded-full bg-muted px-1.5 text-xs leading-[18px] font-medium text-muted-foreground tabular-nums" data-testid={testId}>
         {format.number(count)}
       </span>
       <span className="sr-only">, {label}</span>

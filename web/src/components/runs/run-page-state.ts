@@ -77,19 +77,22 @@ export function useTraceScreen(setTab: (tab: SessionTab) => void, first: Session
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [setTab, first]);
-  const open = (tab: SessionTab) => {
-    setTab(tab);
-    setScreen(true);
-    window.history.pushState({ ...window.history.state, runScreen: true }, "", window.location.href);
-    window.scrollTo(0, 0);
-  };
-  const close = () => {
+  const open = useCallback(
+    (tab: SessionTab) => {
+      setTab(tab);
+      setScreen(true);
+      window.history.pushState({ ...window.history.state, runScreen: true }, "", window.location.href);
+      window.scrollTo(0, 0);
+    },
+    [setTab],
+  );
+  const close = useCallback(() => {
     if ((window.history.state as { runScreen?: boolean } | null)?.runScreen) window.history.back();
     else {
       setScreen(false);
       setTab(first);
     }
-  };
+  }, [setTab, first]);
   return [screen, open, close] as const;
 }
 
@@ -100,16 +103,19 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
  * opens the session's screen on it.
  */
 export function useShowSession(cardId: string, mobile: boolean, setTab: (tab: SessionTab) => void, openScreen: (tab: SessionTab) => void) {
-  return (tab: SessionTab) => {
-    if (mobile) {
-      openScreen(tab);
-      return;
-    }
-    setTab(tab);
-    const card = document.getElementById(cardId);
-    card?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
-    card?.querySelector<HTMLElement>(`[data-testid="run-tab-${tab}"]`)?.focus({ preventScroll: true });
-  };
+  return useCallback(
+    (tab: SessionTab) => {
+      if (mobile) {
+        openScreen(tab);
+        return;
+      }
+      setTab(tab);
+      const card = document.getElementById(cardId);
+      card?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+      card?.querySelector<HTMLElement>(`[data-testid="run-tab-${tab}"]`)?.focus({ preventScroll: true });
+    },
+    [cardId, mobile, setTab, openScreen],
+  );
 }
 
 /** An author run's decisions are cards in its Chat: "Asked you" shows the tab, then the card, once it is drawn. */
@@ -127,4 +133,68 @@ export function useShowDecision(setTab: (tab: SessionTab) => void) {
     },
     [setTab],
   );
+}
+
+/** The tabs of a subagent's profile. */
+export const AGENT_TABS = ["brief", "activity", "result"] as const;
+export type AgentTab = (typeof AGENT_TABS)[number];
+/** The address of a subagent's profile: `?agent=<task id>`, `&tab=brief|activity|result` for one of its tabs. */
+export const AGENT_PARAM = "agent";
+const AGENT_TAB_PARAM = "tab";
+
+type Profile = { agent: string | null; tab: AgentTab | null };
+
+function profileOf(search: URLSearchParams | { get: (key: string) => string | null }): Profile {
+  const agent = search.get(AGENT_PARAM)?.trim() || null;
+  const tab = search.get(AGENT_TAB_PARAM);
+  return { agent, tab: agent && (AGENT_TABS as readonly string[]).includes(tab ?? "") ? (tab as AgentTab) : null };
+}
+
+/** The profile into the URL, as a new entry of the history (`push`) or in place of the current one. */
+function writeProfile(next: Profile, push: boolean) {
+  const url = new URL(window.location.href);
+  if (next.agent) url.searchParams.set(AGENT_PARAM, next.agent);
+  else url.searchParams.delete(AGENT_PARAM);
+  if (next.agent && next.tab) url.searchParams.set(AGENT_TAB_PARAM, next.tab);
+  else if (AGENT_TABS.includes(url.searchParams.get(AGENT_TAB_PARAM) as AgentTab)) url.searchParams.delete(AGENT_TAB_PARAM);
+  const href = `${url.pathname}${url.search}${url.hash}`;
+  if (push) window.history.pushState({ ...window.history.state, runAgent: next.agent }, "", href);
+  else window.history.replaceState(window.history.state, "", href);
+}
+
+/**
+ * The subagent whose profile the page shows, kept in the URL (`?agent=a5&tab=result`), null for the main agent. Opening
+ * one is an entry of the browser's history, so Back goes back to the main agent's trace; changing its tab replaces the
+ * URL. A tab of null is the profile's own first tab (agent-profile.tsx).
+ */
+export function useAgentProfile() {
+  const params = useSearchParams();
+  const [profile, setProfile] = useState<Profile>(() => profileOf(params));
+  useEffect(() => {
+    const onPop = () => setProfile(profileOf(new URL(window.location.href).searchParams));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const open = useCallback((agent: string, tab: AgentTab | null = null) => {
+    const next = { agent, tab };
+    setProfile(next);
+    writeProfile(next, true);
+  }, []);
+  const setTab = useCallback((tab: AgentTab) => {
+    setProfile((previous) => {
+      const next = { ...previous, tab };
+      writeProfile(next, false);
+      return next;
+    });
+  }, []);
+  const close = useCallback(() => {
+    if ((window.history.state as { runAgent?: string | null } | null)?.runAgent) {
+      window.history.back();
+      return;
+    }
+    const next = { agent: null, tab: null };
+    setProfile(next);
+    writeProfile(next, false);
+  }, []);
+  return { ...profile, open, setTab, close };
 }

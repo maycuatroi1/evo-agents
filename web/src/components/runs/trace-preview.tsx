@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Bot, MessageSquare, User } from "lucide-react";
+import { ArrowRight, Bot, MessageSquare, User, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useMemo } from "react";
 
@@ -10,7 +10,8 @@ import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
 import type { RunEvent } from "./queries";
-import { callFailed, callRunning, countCalls, groupByIntent, groupSpan, type NormalItem, type ToolGroup } from "./trace-groups";
+import { eventsOfAgent } from "./run-tasks";
+import { callFailed, callRunning, countCalls, type Delegation, groupByIntent, groupSpan, type NormalItem, type ToolGroup } from "./trace-groups";
 import { buildTrace } from "./trace-model";
 import { useTraceDuration } from "./trace-look";
 import { INTENT_ICON, useGroupLabel } from "./trace-tools";
@@ -18,7 +19,7 @@ import { INTENT_ICON, useGroupLabel } from "./trace-tools";
 /** How many of the latest rows a phone's run page shows before "Open full trace". */
 const PREVIEW_ROWS = 4;
 
-type Shown = Extract<NormalItem, { type: "group" | "agent" | "ask" | "user" }>;
+type Shown = Extract<NormalItem, { type: "group" | "delegation" | "agent" | "ask" | "user" }>;
 
 function GroupLine({ group, active }: { group: ToolGroup; active: boolean }) {
   const t = useTranslations("runs.detail.trace.group");
@@ -48,7 +49,23 @@ function GroupLine({ group, active }: { group: ToolGroup; active: boolean }) {
   );
 }
 
-function TextLine({ item }: { item: Exclude<Shown, ToolGroup> }) {
+/** A handing of work to subagents: how many, and their names. */
+function DelegationLine({ item, active }: { item: Delegation; active: boolean }) {
+  const t = useTranslations("runs.detail.trace.delegation");
+  const running = active && item.calls.some(({ tool }) => callRunning(tool));
+  const names = item.calls.map(({ tool }) => tool.description ?? tool.arg ?? tool.title ?? "").filter(Boolean);
+  return (
+    <>
+      <Users className={cn("mt-0.5 size-4 shrink-0", running ? "text-running" : "text-brand")} aria-hidden="true" />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[15px] leading-[22px] font-medium text-foreground">{t("head", { count: item.calls.length })}</span>
+        {names.length ? <span className="line-clamp-2 text-[13px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere]">{names.join(", ")}</span> : null}
+      </span>
+    </>
+  );
+}
+
+function TextLine({ item }: { item: Exclude<Shown, ToolGroup | Delegation> }) {
   const t = useTranslations("runs.detail.trace");
   const Icon = item.type === "agent" ? Bot : item.type === "ask" ? MessageSquare : User;
   const text = item.type === "ask" ? item.question : item.text;
@@ -84,12 +101,13 @@ export function TracePreview({
 }) {
   const t = useTranslations("runs.detail.preview");
   const id = useId();
-  const items = useMemo(() => groupByIntent(buildTrace(events)), [events]);
+  // The main agent's rows: a subagent's own are in its profile.
+  const items = useMemo(() => groupByIntent(buildTrace(eventsOfAgent(events, null))), [events]);
   const calls = countCalls(items);
   const recent = useMemo(
     () =>
       items
-        .filter((item): item is Shown => item.type === "group" || item.type === "agent" || item.type === "ask" || item.type === "user")
+        .filter((item): item is Shown => item.type === "group" || item.type === "delegation" || item.type === "agent" || item.type === "ask" || item.type === "user")
         .slice(-PREVIEW_ROWS)
         .reverse(),
     [items],
@@ -121,7 +139,13 @@ export function TracePreview({
         <ol className="flex flex-col divide-y">
           {recent.map((item) => (
             <li key={item.key} className="flex min-w-0 items-start gap-2.5 py-2.5" data-testid="run-trace-preview-row" data-type={item.type}>
-              {item.type === "group" ? <GroupLine group={item} active={active} /> : <TextLine item={item} />}
+              {item.type === "group" ? (
+                <GroupLine group={item} active={active} />
+              ) : item.type === "delegation" ? (
+                <DelegationLine item={item} active={active} />
+              ) : (
+                <TextLine item={item} />
+              )}
             </li>
           ))}
         </ol>

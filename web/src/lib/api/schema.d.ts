@@ -33365,6 +33365,11 @@ export interface components {
              * @default 30
              */
             plan_stall_minutes: number;
+            /**
+             * Quiet Workers
+             * @description ids of workers whose queued runs write no run.queued_long
+             */
+            quiet_workers?: number[];
         };
         /** OpsWaitIn */
         OpsWaitIn: {
