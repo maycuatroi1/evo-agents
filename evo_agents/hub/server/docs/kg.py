@@ -10,6 +10,12 @@ reads the codes, plans and files it mentions, and the time that version was save
 whose sink does not let that label through never sees it, as on the feature's pages. Older versions are not read: a
 new version replaces the item, and an image is its name in the Markdown alone.
 
+A document may declare in the YAML block its Markdown opens with a type, links to other documents, a level and an
+audience (``typed``): a declared type is a node of that kind the document defines, each link an edge of its relation,
+and the item's label is the document's joined with the declared level and audience, so a document of a brand space
+shows only to the members of the space's chat. What it may declare is what the project's ontology and ladder name
+(``store.kg_frame``); a document whose audience cannot be read is left out.
+
 A document links its page on the hub's web (``uri``, ``document_url``) when the hub knows its public URL
 (``EVO_HUB_PUBLIC_URL``). The cursor is the document saved last, so ``kg_status`` names how recent the source is
 (``evo_agents.kg.freshness``). It adds no identifiers: a slug is no code another document names.
@@ -22,12 +28,12 @@ from urllib.parse import quote
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.docs import store
+from evo_agents.hub.server.docs import store, typed
 from evo_agents.hub.server.docs.page_text import page_text
 from evo_agents.kg.ids import utc_text
 from evo_agents.kg.text import split_markdown
 
-DOCUMENT = "document"  # the kind in an item's id: plugin.docs:document:<slug>
+DOCUMENT = typed.DOCUMENT  # the kind in an item's id: plugin.docs:document:<slug>
 
 
 def document_url(base_url: str, project: str, slug: str) -> str:
@@ -35,18 +41,33 @@ def document_url(base_url: str, project: str, slug: str) -> str:
     return f"{base_url.rstrip('/')}/p/{quote(project, safe='')}/x/docs/documents/{quote(slug, safe='')}"
 
 
-def document_item(source: str, row: store.KgDocument, page: tuple[str, str] | None = None) -> dict:
+def document_item(
+    source: str,
+    row: store.KgDocument,
+    page: tuple[str, str] | None = None,
+    declared: tuple[typed.Declared, typed.Frame] | None = None,
+    kinds: dict[str, str] | None = None,
+) -> dict:
     """The kg/1 item of a document's latest version, as the hub finishes it (see the module). With ``page`` (the hub's
-    public URL and the project's name), its ``uri`` is the document's page on the hub's web."""
+    public URL and the project's name), its ``uri`` is the document's page on the hub's web. With ``declared``, what
+    its Markdown declares and the project's frame, the item holds the graph it declares and the label joined with it;
+    ``kinds`` maps the slug of each document that declares a type to its typed node's id."""
+    props: dict = {"document": row.slug, "version": row.version, "author": row.author}
     item = {
         "id": f"{source}:{DOCUMENT}:{row.slug}",
         "kind": "doc",
         "title": row.title,
         "rev_time": utc_text(row.updated_at),
-        "props": {"document": row.slug, "version": row.version, "author": row.author},
+        "props": props,
         "label": row.label,
     }
     text = page_text(row.body) if row.format == "html" else row.body
+    if declared is not None and row.format != "html":
+        found, frame = declared
+        text, item["label"] = found.text, typed.label(row.label, found, frame.levels)
+        graph = typed.graph(source, row.slug, row.title, found, kinds or {})
+        if graph is not None:
+            props["graph"] = graph
     if text.strip():
         item["body"] = {"format": "markdown", "text": text}
         item["fragments"] = split_markdown(text)
@@ -60,7 +81,14 @@ async def read(conn: AsyncConnection, source: str, project_id: int, project: str
     saved last; each document links its page on the hub's web when the hub knows its public URL (``base_url``)."""
     page = (base_url, project) if base_url else None
     rows = await store.kg_documents(conn, project_id)
-    answer: dict = {"items": [document_item(source, row, page) for row in rows], "identifiers": []}
+    frame = typed.Frame.of(*await store.kg_frame(conn, project_id))
+    found = {row.slug: typed.declared(row.body, frame) for row in rows if row.format != "html"}
+    kinds = {slug: typed.node_id(source, d.kind, slug) for slug, d in found.items() if d.kind is not None}
+    rows = [row for row in rows if not (row.slug in found and found[row.slug].closed)]
+    items = [
+        document_item(source, row, page, (found[row.slug], frame) if row.slug in found else None, kinds) for row in rows
+    ]
+    answer: dict = {"items": items, "identifiers": []}
     if rows:
         newest = max(rows, key=lambda row: (row.updated_at, row.slug))
         answer["cursor"] = {"item": f"{source}:{DOCUMENT}:{newest.slug}", "at": utc_text(newest.updated_at)}

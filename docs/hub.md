@@ -3744,6 +3744,10 @@ it never sees the document in the graph, as on its pages. A save that writes a v
 when the project has one on the hub; a save that changes nothing queues none. A project that turns the feature off
 drops its documents from the next build.
 
+A document may open with a YAML block that declares its type, its links to other documents, its level and its
+audience, a `chat:<id>` of its brand space; the build makes it a typed node of the project's ontology with edges of the
+declared relations, under the joined label (`docs/kg.md`, Typed documents).
+
 ```sh
 evo-agents kg query kg_search "three hops without progress" --backend hub
 ```
