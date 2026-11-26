@@ -26,8 +26,11 @@ if not pg.DSN:
 from sqlalchemy import insert, select
 
 from evo_agents.hub import plugin_jobs, tables
-from evo_agents.hub.server.canvas import WEEKDAYS, decisions, schedule, server, writes
-from evo_agents.hub.server.canvas.content import CanvasError
+from evo_agents.hub.server import app  # noqa: F401 (the server's modules import in its order)
+from evo_agents.hub.server.canvas import WEEKDAYS, routes, schedule
+from evo_agents.hub.server.canvas.models.content import CanvasError
+from evo_agents.hub.server.canvas.models.writing import Author, Writer
+from evo_agents.hub.server.canvas.service import decisions
 from evo_agents.hub.server.security import Principal, RunScope
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import agent_of, enable, granted, members, mention, running, tool  # noqa: F401
@@ -418,9 +421,9 @@ def test_canvas_baseline_is_never_decided_by_an_agent_or_a_run(client, hub, hub_
     scope = RunScope(run_id=7, project=PROJECT, role="writer", max_level="internal")
     agent = Principal(602, "someone-else", False, 9, "worker", "a" * 64, scope=scope)
     with pytest.raises(CanvasError) as refused:
-        server._no_run(agent, "decides an item of a baseline")
+        routes._no_run(agent, "decides an item of a baseline")
     assert refused.value.status == 403 and "the agent of a run never decides" in refused.value.message
-    as_agent = writes.Writer(None, writes.Author("agent", 1, run_id=7))
+    as_agent = Writer(None, Author("agent", 1, run_id=7))
     with pytest.raises(CanvasError) as refused:
         asyncio.run(
             decisions.decide(None, as_agent, None, made["number"], decisions.Decision("CL-1", "accepted"), TODAY)

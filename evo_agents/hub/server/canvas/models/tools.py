@@ -1,13 +1,17 @@
-"""The MCP tools of the plugin canvas as its manifest declares them (``TOOLS``), and the profile of @strategist, the
-agent type that calls them (``STRATEGIST_INSTRUCTIONS``). Plain data with no import, so reading the manifest loads
-neither the hub nor SQLAlchemy; the names below are copies of ``evo_agents.hub.tables_canvas`` and
-``evo_agents.hub.server.canvas.content``, which ``tests.hub.test_strategist_agent`` holds them to.
+"""The MCP tools of the plugin canvas as its manifest declares them (``TOOLS``, a table of
+``evo_agents.hub.server.base.tools.Tool``, each answered by a function of ``AGENT``), and the profile of @strategist,
+the agent type that calls them (``STRATEGIST_INSTRUCTIONS``). Plain data that imports only the table, so reading the
+manifest loads neither the hub nor SQLAlchemy; the names below are copies of ``evo_agents.hub.tables_canvas`` and
+``evo_agents.hub.server.canvas.models.content``, which ``tests.hub.test_strategist_agent`` holds them to.
 
 The schemas leave out what @strategist never does: no tool takes the status validated, a new claim takes no status
 (it starts as an assumption), and evidence an agent adds is of kind interview, market, doc or simulation only. The hub
 checks the same in code (``agent``, ``rules``), so a schema is a help to the agent, never the guard.
 """
 
+from evo_agents.hub.server.base.tools import Tool, Tools
+
+AGENT = "evo_agents.hub.server.canvas.agent"  # the module whose functions answer the tools
 CELLS = (  # evo_agents.hub.tables_canvas.CELLS
     "problem",
     "customer_segments",
@@ -30,10 +34,10 @@ MAX_TEXT_CHARS = 2_000  # tables_canvas.MAX_TEXT_CHARS, and content.MAX_CARD_TEX
 MAX_REASON_CHARS = 1_000  # tables_canvas.MAX_REASON_CHARS
 MAX_SUMMARY_CHARS = 4_000  # tables_canvas.MAX_SUMMARY_CHARS
 MAX_URL_CHARS = 2_000  # tables_canvas.MAX_URL_CHARS
-MAX_CHANGES = 100  # writes.MAX_CHANGES
-MAX_PROPOSED = 50  # proposals.MAX_PROPOSED
+MAX_CHANGES = 100  # writing.MAX_CHANGES
+MAX_PROPOSED = 50  # writing.MAX_PROPOSED
 VERDICTS = ("supports", "contradicts", "irrelevant")  # tables_canvas.VERDICTS
-MAX_JUDGED = 50  # judging.MAX_ITEMS
+MAX_JUDGED = 50  # judged.MAX_ITEMS
 MAX_SIGNAL_DAYS = 400  # the hub keeps signals 400 days by default (EVO_HUB_SIGNAL_DAYS)
 MAX_LINKS = 20  # content.MAX_LINKS
 MAX_CODE_CHARS = 100  # tables_srs.MAX_CODE_CHARS
@@ -228,8 +232,9 @@ JUDGE_SCHEMA = {
     },
 }
 
-TOOLS = (  # name, title, description, input schema
-    (
+TOOLS = Tools(
+    AGENT,
+    Tool(
         "read",
         "Read the canvases",
         "Read the Lean Canvases of the project: without canvas, the list; with it, its nine cells with each claim's "
@@ -237,14 +242,15 @@ TOOLS = (  # name, title, description, input schema
         "with its evidence and revs.",
         READ_SCHEMA,
     ),
-    (
+    Tool(
         "signals",
         "Find signals",
         "The signals the project measures: without key, the registry of keys with the latest value of each; with "
         "key, its values over the last days, newest first. Only what the member you work for may read.",
         SIGNALS_SCHEMA,
+        handler="find_signals",
     ),
-    (
+    Tool(
         "edit",
         "Edit claims",
         "Change claims of a canvas, each at the rev you read it at, and make new ones (as assumptions), all or "
@@ -252,14 +258,14 @@ TOOLS = (  # name, title, description, input schema
         "with what changed. Only the agent of a chat run of @strategist may call it; never to validated.",
         EDIT_SCHEMA,
     ),
-    (
+    Tool(
         "undo",
         "Undo a command",
         "Take back the member's last command to you in chat: every claim it changed goes back to the rev before it. "
         "With claims, take back the current rev of each instead. Only the agent of a chat run of @strategist.",
         UNDO_SCHEMA,
     ),
-    (
+    Tool(
         "propose",
         "Propose claims",
         "Propose new claims (each starts as an assumption, with a test card) or changes of claims at the rev you read "
@@ -267,7 +273,7 @@ TOOLS = (  # name, title, description, input schema
         "@strategist, or of the Curator's review run on a night of the lens product; never to validated.",
         PROPOSE_SCHEMA,
     ),
-    (
+    Tool(
         "evidence",
         "Add evidence",
         "Add a piece of evidence to a claim: an interview, a market figure, a document or a simulation, which counts "
@@ -275,7 +281,7 @@ TOOLS = (  # name, title, description, input schema
         "@strategist.",
         EVIDENCE_SCHEMA,
     ),
-    (
+    Tool(
         "judge",
         "Judge evidence",
         "In a judging run the hub handed @strategist: without verdicts, each claim's hypothesis and test card and the "
@@ -285,4 +291,4 @@ TOOLS = (  # name, title, description, input schema
     ),
 )
 
-__all__ = ["STRATEGIST_INSTRUCTIONS", "TOOLS"]
+__all__ = ["AGENT", "STRATEGIST_INSTRUCTIONS", "TOOLS"]

@@ -10,60 +10,23 @@ it rests on simulated users (``synthetic``) and its provenance. A writer accepts
 writer's own (kind ``proposal``; the proposal names the claim and the rev), or rejects it, with why; a writer rejects
 open proposals of a canvas together too, with one reason for all (``reject_many``). Once its claim changes, an open
 proposal goes stale (``writes.write_rev``) and is accepted no more; so do the open proposals the Loop's brainstorm of a
-goal made once that goal's statement or metric changes (``stale_for_goal``, from ``server.goals.service.write``): they
+goal made once that goal's statement or metric changes (``brainstorms.stale_for_goal``, from ``server.goals.service``): they
 were brainstormed for a goal that is no more. The caller holds the transaction and the lock of the canvas and has
 checked the role; a refusal raises CanvasError and the transaction writes nothing.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
-
-from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.server.brainstorms import BRAINSTORM, brainstorm_runs, stale_for_goal
-from evo_agents.hub.server.canvas import links, rules, store, writes
-from evo_agents.hub.server.canvas.content import CanvasError, Content, changed, code, diff, number_of
-from evo_agents.hub.server.canvas.store import CanvasRow, Provenance, provenance_of
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.content import CanvasError, Content, changed, diff, number_of
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ProposalRow
+from evo_agents.hub.server.canvas.models.writing import MAX_OPEN, MAX_PROPOSED, NEW_CLAIM_FIELDS, Change, Writer
+from evo_agents.hub.server.canvas.repository import proposals as proposal_rows
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import links, reads, writes
 from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
-
-MAX_PROPOSED = 50  # proposals one call makes
-MAX_OPEN = 200  # open proposals of a canvas, and the most one call rejects together
-NEW_CLAIM_FIELDS = (  # what a proposed new claim may set
-    "cell",
-    "text",
-    "confidence",
-    "delivery",
-    "position",
-    "test_card",
-    "use_cases",
-    "signal_keys",
-    "problems",
-    "opportunities",
-)
-
-
-@dataclass(frozen=True)
-class ProposalRow:
-    id: int
-    kind: str
-    claim_id: int | None
-    claim: str | None  # the claim's code: the one it changes, or the one accepting it made
-    base_rev: int | None
-    fields: dict  # the fields of the claim it sets, checked
-    reason: str
-    synthetic: bool
-    provenance: Provenance
-    created_at: datetime
-    status: str
-    rev: int | None
-    decided_by: str | None
-    decided_at: datetime | None
-    decided_reason: str | None
-    evidence_id: int | None = None  # the evidence a value check proposed it on
 
 
 def _reason(reason: str) -> str:
@@ -75,9 +38,7 @@ def _reason(reason: str) -> str:
 async def _room(conn: AsyncConnection, canvas: CanvasRow, adding: int) -> None:
     if not 1 <= adding <= MAX_PROPOSED:
         raise CanvasError(422, f"one call proposes 1 to {MAX_PROPOSED} changes")
-    p = tables.canvas.proposals
-    query = select(func.count()).select_from(p).where(p.c.canvas_id == canvas.id, p.c.status == "open")
-    held = await conn.scalar(query)
+    held = await proposal_rows.open_count(conn, canvas.id)
     if held + adding > MAX_OPEN:
         raise CanvasError(
             422,
@@ -86,7 +47,7 @@ async def _room(conn: AsyncConnection, canvas: CanvasRow, adding: int) -> None:
         )
 
 
-async def _new_values(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, values: dict) -> dict:
+async def _new_values(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, values: dict) -> dict:
     """The fields a proposed new claim sets, checked as a new claim's: it starts as an assumption, not archived."""
     extra = sorted(set(values) - set(NEW_CLAIM_FIELDS))
     if extra:
@@ -101,9 +62,9 @@ async def _new_values(conn: AsyncConnection, writer: writes.Writer, canvas: Canv
 
 async def propose(
     conn: AsyncConnection,
-    writer: writes.Writer,
+    writer: Writer,
     canvas: CanvasRow,
-    changes: list[writes.Change],
+    changes: list[Change],
     reason: str,
     *,
     synthetic: bool = False,
@@ -112,15 +73,16 @@ async def propose(
     """Keep ``changes`` as open proposals of ``canvas``, all or nothing: a change of a claim at the rev it was read
     at, else a 409; a new claim for a change that names none. Their ids, in the order of ``changes``. ``evidence_id``
     names the evidence a value check proposes on."""
-    store.writable(writer.access, canvas)
+    reads.writable(writer.access, canvas)
     _reason(reason)
     await _room(conn, canvas, len(changes))
     named = [change for change in changes if change.claim is not None]
     numbers = writes.unique_numbers([change.claim for change in named])
     held = await writes.locked(conn, writer, canvas, numbers)
-    await writes.check_revs(conn, held, {n: change.base_rev for n, change in zip(numbers, named, strict=True)})
+    await writes.check_revs(
+        conn, writer, canvas, held, {n: change.base_rev for n, change in zip(numbers, named, strict=True)}
+    )
     evidence = await writes.facts(conn, [row.id for row in held.values()])
-    p = tables.canvas.proposals
     common = {
         "canvas_id": canvas.id,
         "reason": reason,
@@ -144,86 +106,21 @@ async def propose(
             shown = after.as_json()
             fields = {name: shown[name] for name in change.values}
             row = {"kind": "change", "claim_id": claim.id, "base_rev": claim.rev, "fields": fields}
-        statement = insert(p).values(**common, **row, **writer.author.columns()).returning(p.c.id)
-        made.append(await conn.scalar(statement))
+        made.append(await proposal_rows.add(conn, {**common, **row, **writer.author.columns()}))
     return made
-
-
-def _query(canvas_id: int):
-    p, k, users = tables.canvas.proposals, tables.canvas.claims, tables.users
-    decider = users.alias("decider")
-    return (
-        select(
-            p.c.id,
-            p.c.kind,
-            p.c.claim_id,
-            k.c.number,
-            p.c.base_rev,
-            p.c.fields,
-            p.c.reason,
-            p.c.synthetic,
-            p.c.actor,
-            users.c.login,
-            p.c.run_id,
-            p.c.runtime,
-            p.c.model,
-            p.c.chat_message_id,
-            p.c.created_at,
-            p.c.status,
-            p.c.rev,
-            decider.c.login.label("decided_by"),
-            p.c.decided_at,
-            p.c.decided_reason,
-            p.c.evidence_id,
-        )
-        .select_from(
-            p.outerjoin(k, k.c.id == p.c.claim_id)
-            .outerjoin(users, users.c.id == p.c.user_id)
-            .outerjoin(decider, decider.c.id == p.c.decided_by)
-        )
-        .where(p.c.canvas_id == canvas_id)
-    )
-
-
-def _row(found) -> ProposalRow:
-    return ProposalRow(
-        id=found.id,
-        kind=found.kind,
-        claim_id=found.claim_id,
-        claim=code(found.number) if found.number is not None else None,
-        base_rev=found.base_rev,
-        fields=found.fields,
-        reason=found.reason,
-        synthetic=found.synthetic,
-        provenance=provenance_of(found),
-        created_at=found.created_at,
-        status=found.status,
-        rev=found.rev,
-        decided_by=found.decided_by,
-        decided_at=found.decided_at,
-        decided_reason=found.decided_reason,
-        evidence_id=found.evidence_id,
-    )
 
 
 async def proposals(conn: AsyncConnection, canvas: CanvasRow, statuses: tuple[str, ...] = ()) -> list[ProposalRow]:
     """The proposals of ``canvas`` of ``statuses`` (every status when none), newest first."""
-    p = tables.canvas.proposals
-    query = _query(canvas.id).order_by(p.c.id.desc())
-    if statuses:
-        query = query.where(p.c.status.in_(statuses))
-    return [_row(found) for found in await conn.execute(query)]
+    return await proposal_rows.proposals_of(conn, canvas.id, statuses)
 
 
 async def proposal(conn: AsyncConnection, canvas: CanvasRow, proposal_id: int, *, lock: bool = False) -> ProposalRow:
     """Proposal ``proposal_id`` of ``canvas``; 404 when the canvas has none. ``lock`` takes its row lock."""
-    p = tables.canvas.proposals
-    if lock:
-        await conn.execute(select(p.c.id).where(p.c.id == proposal_id, p.c.canvas_id == canvas.id).with_for_update())
-    found = (await conn.execute(_query(canvas.id).where(p.c.id == proposal_id))).first()
+    found = await proposal_rows.proposal_of(conn, canvas.id, proposal_id, lock=lock)
     if found is None:
         raise CanvasError(404, f"canvas {canvas.slug} has no proposal {proposal_id}")
-    return _row(found)
+    return found
 
 
 async def changes_of(conn: AsyncConnection, row: ProposalRow) -> list[dict]:
@@ -232,6 +129,8 @@ async def changes_of(conn: AsyncConnection, row: ProposalRow) -> list[dict]:
         content = Content.from_json({"position": 0, **row.fields})
         card = {f"test_card.{name}" for name in content.test_card or {}}
         return [item for item in diff(None, content) if item["field"] in {*row.fields, *card}]
+    if row.claim_id is None or row.base_rev is None:
+        return []
     base = await store.rev(conn, row.claim_id, row.base_rev)
     return diff(base.content, changed(base.content, row.fields)) if base is not None else []
 
@@ -241,21 +140,19 @@ def _open(row: ProposalRow) -> None:
         raise CanvasError(409, f"proposal {row.id} is {row.status}: only an open proposal is accepted or rejected")
 
 
-def _person(writer: writes.Writer, doing: str) -> None:
+def _person(writer: Writer, doing: str) -> None:
     if writer.author.actor != "person":
         raise CanvasError(403, f"only a member {doing} a proposal; an agent or a run does not")
 
 
-async def _decided(conn: AsyncConnection, writer: writes.Writer, proposal_id: int, **values) -> None:
-    p = tables.canvas.proposals
-    decided = {"decided_by": writer.author.user_id, "decided_at": func.now()}
-    await conn.execute(update(p).where(p.c.id == proposal_id).values(**decided, **values))
+async def _decided(conn: AsyncConnection, writer: Writer, proposal_id: int, **values) -> None:
+    await proposal_rows.decided(conn, proposal_id, writer.author.user_id, **values)
 
 
-async def accept(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, proposal_id: int) -> tuple[int, int]:
+async def accept(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, proposal_id: int) -> tuple[int, int]:
     """Write open proposal ``proposal_id`` as ``writer``'s own rev: (the claim's number, the rev written)."""
     _person(writer, "accepts")
-    store.writable(writer.access, canvas)
+    reads.writable(writer.access, canvas)
     row = await proposal(conn, canvas, proposal_id, lock=True)
     _open(row)
     why = f"proposal {row.id}: {row.reason}"[:MAX_REASON_CHARS]
@@ -268,7 +165,7 @@ async def accept(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow
         await _decided(conn, writer, row.id, status="accepted", claim_id=claim_id, rev=rev)
     else:
         number = number_of(row.claim)
-        claim = await store.claim(conn, writer.access, canvas, number, lock=True)
+        claim = await reads.claim(conn, writer.access, canvas, number, lock=True)
         if claim.rev != row.base_rev:  # writes.write_rev makes it stale first; a row written around it lands here
             raise CanvasError(
                 409, f"{claim.code} changed since rev {row.base_rev}, which proposal {row.id} was made at"
@@ -284,9 +181,7 @@ async def accept(conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow
     return number, rev
 
 
-async def reject(
-    conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, proposal_id: int, reason: str = ""
-) -> None:
+async def reject(conn: AsyncConnection, writer: Writer, canvas: CanvasRow, proposal_id: int, reason: str = "") -> None:
     """Close open proposal ``proposal_id`` without writing it, with why when given."""
     _person(writer, "rejects")
     if len(reason) > MAX_REASON_CHARS:
@@ -297,7 +192,7 @@ async def reject(
 
 
 async def reject_many(
-    conn: AsyncConnection, writer: writes.Writer, canvas: CanvasRow, proposal_ids: list[int], reason: str
+    conn: AsyncConnection, writer: Writer, canvas: CanvasRow, proposal_ids: list[int], reason: str
 ) -> tuple[list[int], list[tuple[int, str]]]:
     """Close each open proposal of ``proposal_ids`` without writing it, with ``reason`` for all: (the ids rejected,
     (id, status) of each one no longer open, left as it is). A 404 when the canvas has no proposal of one of the ids,
@@ -308,31 +203,22 @@ async def reject_many(
     wanted = sorted(set(proposal_ids))
     if not 1 <= len(wanted) <= MAX_OPEN:
         raise CanvasError(422, f"one call rejects 1 to {MAX_OPEN} proposals")
-    p = tables.canvas.proposals
-    query = select(p.c.id, p.c.status).where(p.c.canvas_id == canvas.id, p.c.id.in_(wanted)).order_by(p.c.id)
-    held = {row.id: row.status for row in await conn.execute(query.with_for_update())}
+    held = await proposal_rows.statuses(conn, canvas.id, wanted)
     missing = [number for number in wanted if number not in held]
     if missing:
         raise CanvasError(404, f"canvas {canvas.slug} has no proposal {missing[0]}")
     rejected = [number for number in wanted if held[number] == "open"]
     if rejected:
-        decided = {"decided_by": writer.author.user_id, "decided_at": func.now(), "decided_reason": reason.strip()}
-        await conn.execute(update(p).where(p.c.id.in_(rejected)).values(status="rejected", **decided))
+        await proposal_rows.reject_all(conn, rejected, writer.author.user_id, reason.strip())
     return rejected, [(number, held[number]) for number in wanted if held[number] != "open"]
 
 
 __all__ = [
-    "BRAINSTORM",
-    "MAX_OPEN",
-    "MAX_PROPOSED",
-    "ProposalRow",
     "accept",
-    "brainstorm_runs",
     "changes_of",
     "proposal",
     "proposals",
     "propose",
     "reject",
     "reject_many",
-    "stale_for_goal",
 ]

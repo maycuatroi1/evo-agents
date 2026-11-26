@@ -9,9 +9,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.server.canvas import rules
-from evo_agents.hub.server.canvas.brainstorm import MAX_FOCUS_CHARS
-from evo_agents.hub.server.canvas.content import (
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.content import (
     AGGREGATES,
     CARD_FIELDS,
     COMPARATORS,
@@ -23,11 +22,9 @@ from evo_agents.hub.server.canvas.content import (
     Content,
     diff,
 )
-from evo_agents.hub.server.canvas.judging import JudgingRow
-from evo_agents.hub.server.canvas.proposals import MAX_OPEN, ProposalRow
-from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow, EvidenceRow, Provenance, RevRow
-from evo_agents.hub.server.canvas.transfer import Report
-from evo_agents.hub.server.canvas.writes import ADDED_KINDS, MAX_CHANGES
+from evo_agents.hub.server.canvas.models.judged import JudgingRow
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow, EvidenceRow, ProposalRow, Provenance, RevRow
+from evo_agents.hub.server.canvas.models.writing import ADDED_KINDS, MAX_CHANGES, MAX_FOCUS_CHARS, MAX_OPEN, Report
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.tables_canvas import (
     ACTORS,

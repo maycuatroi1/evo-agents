@@ -14,15 +14,13 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server.canvas.acting import PLUGIN, STRATEGIST
-from evo_agents.hub.server.canvas.store import CanvasRow
+from evo_agents.hub.server.canvas.models.rows import CanvasRow
+from evo_agents.hub.server.canvas.models.writing import MAX_PROPOSALS
+from evo_agents.hub.server.canvas.service.acting import PLUGIN, STRATEGIST
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.task_dispatch import hand_own_task
 
-log = logging.getLogger(__name__)
-
-MAX_PROPOSALS = 10  # what one brainstorm proposes at most
-MAX_FOCUS_CHARS = 2_000
+log = logging.getLogger("evo_agents.hub.server.canvas.brainstorm")  # the name it logged under before the layers
 
 
 def brainstorm_task(project: str, canvas: CanvasRow, asked_by: str, focus: str = "", cells: tuple[str, ...] = ()):
@@ -75,4 +73,4 @@ async def hand_brainstorm(
     return run_id, why
 
 
-__all__ = ["MAX_FOCUS_CHARS", "MAX_PROPOSALS", "brainstorm_task", "hand_brainstorm"]
+__all__ = ["brainstorm_task", "hand_brainstorm"]

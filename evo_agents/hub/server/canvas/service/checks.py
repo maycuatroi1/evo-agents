@@ -37,18 +37,20 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import quote, urlencode
 
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import signals, tables
-from evo_agents.hub.server.canvas import proposals, store, writes
-from evo_agents.hub.server.canvas.content import FEEDBACK, MAX_WINDOW_DAYS, CanvasError
-from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow
+from evo_agents.hub import signals
+from evo_agents.hub.server.canvas.models.content import FEEDBACK, MAX_WINDOW_DAYS, CanvasError
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow
+from evo_agents.hub.server.canvas.models.writing import Author, Change, EvidenceInput, Writer
+from evo_agents.hub.server.canvas.repository import signals as signal_rows
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import proposals, writes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
 from evo_agents.kg.policy import join_all
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("evo_agents.hub.server.canvas.checks")  # the name it logged under before the layers
 
 DEFAULT_WINDOW_DAYS = MAX_WINDOW_DAYS  # of a test card that names none
 CHECK = "check"  # the key of the basis of a check's evidence: number or feedback
@@ -70,8 +72,8 @@ class Hub:
     public_url: str | None = None
 
     @property
-    def writer(self) -> writes.Writer:
-        return writes.Writer(self.access, writes.Author("hub"), None)
+    def writer(self) -> Writer:
+        return Writer(self.access, Author("hub"), None)
 
     @property
     def today(self) -> date:
@@ -86,7 +88,7 @@ async def hub_context(conn: AsyncConnection, project_id: int, config=None) -> Hu
     """The hub checking project ``project_id`` now, by the clock of Postgres."""
     rules = await signals.project_rules(conn, project_id)
     access = ProjectAccess(project_id, rules, "admin", rules.levels[-1] if rules.levels else None)
-    return Hub(access, await conn.scalar(select(func.now())), getattr(config, "public_url", None))
+    return Hub(access, await signal_rows.now(conn), getattr(config, "public_url", None))
 
 
 @dataclass(frozen=True)
@@ -113,10 +115,7 @@ class Measure:
 
 async def signal_key(conn: AsyncConnection, project_id: int, name: str) -> tuple[int, str] | None:
     """(id, kind) of key ``name`` of the project's registry, archived or not; None when it has none."""
-    k = tables.signal_keys
-    query = select(k.c.id, k.c.kind).where(k.c.project_id == project_id, k.c.name == name)
-    row = (await conn.execute(query)).first()
-    return None if row is None else (row.id, row.kind)
+    return await signal_rows.signal_key(conn, project_id, name)
 
 
 def _number(value) -> float | None:
@@ -124,44 +123,17 @@ def _number(value) -> float | None:
 
 
 async def _measure_number(conn: AsyncConnection, hub: Hub, key_id: int, card: dict) -> Measure:
-    s = tables.signals
-    where = [s.c.key_id == key_id, s.c.value.is_not(None), s.c.measured_at > hub.since(card)]
-    if card.get("tenant"):
-        where.append(s.c.tenant == card["tenant"])
-    figures = select(
-        func.count(),
-        func.avg(s.c.value),
-        func.sum(s.c.value),
-        func.percentile_disc(0.5).within_group(s.c.value),
-        func.percentile_disc(0.9).within_group(s.c.value),
-        func.min(s.c.id),
-        func.max(s.c.id),
-        func.bool_or(s.c.synthetic),
-        func.bool_or(s.c.via == "run"),
-    ).where(*where)
-    count, mean, total, p50, p90, first, last, synthetic, by_run = (await conn.execute(figures)).one()
-    latest = await conn.scalar(select(s.c.value).where(*where).order_by(s.c.measured_at.desc(), s.c.id.desc()).limit(1))
-    values = {"last": latest, "mean": mean, "sum": total, "count": count, "p50": p50, "p90": p90}
-    labels = tuple(await conn.scalars(select(s.c.label).where(*where).distinct()))
+    values, (first, last, synthetic, by_run), labels = await signal_rows.number_figures(
+        conn, key_id, hub.since(card), card.get("tenant")
+    )
+    count = values["count"]
     value = _number(values[card["aggregate"]]) if count else None
     return Measure("number", card["metric"], value, count, first, last, bool(synthetic), bool(by_run), labels)
 
 
 async def _measure_feedback(conn: AsyncConnection, hub: Hub, claim_id: int, key_id: int | None, card: dict):
-    j = tables.canvas.judgings
-    where = [j.c.claim_id == claim_id, j.c.verdict.in_(("supports", "contradicts")), j.c.measured_at > hub.since(card)]
-    if key_id is not None:
-        where.append(j.c.key_id == key_id)
-    figures = select(
-        func.count(),
-        func.count().filter(j.c.verdict == "supports"),
-        func.min(j.c.id),
-        func.max(j.c.id),
-        func.bool_or(j.c.synthetic),
-        func.bool_or(j.c.rests_on_run),
-    ).where(*where)
-    count, supporting, first, last, synthetic, by_run = (await conn.execute(figures)).one()
-    labels = tuple(await conn.scalars(select(j.c.label).where(*where).distinct()))
+    figures, labels = await signal_rows.feedback_figures(conn, claim_id, key_id, hub.since(card))
+    count, supporting, first, last, synthetic, by_run = figures
     value = float(supporting) if count else None
     return Measure("feedback", card["metric"], value, count, first, last, bool(synthetic), bool(by_run), labels)
 
@@ -241,21 +213,12 @@ def joined(hub: Hub, *labels) -> dict:
 async def last_result(conn: AsyncConnection, claim_id: int):
     """The newest piece of evidence a check wrote of the claim, withdrawn or not: id, direction, synthetic,
     rests_on_run, created_at, withdrawn_at; None when there is none."""
-    e = tables.canvas.evidence
-    query = (
-        select(e.c.id, e.c.direction, e.c.synthetic, e.c.rests_on_run, e.c.created_at, e.c.withdrawn_at)
-        .where(e.c.claim_id == claim_id, e.c.actor == "hub", e.c.basis.has_key(CHECK))
-        .order_by(e.c.id.desc())
-        .limit(1)
-    )
-    return (await conn.execute(query)).first()
+    return await signal_rows.last_result(conn, claim_id, CHECK)
 
 
 async def _stale_proposals(conn: AsyncConnection, claim_id: int) -> None:
     """The hub's open proposals of the claim go stale: a newer result of its check replaces what they rest on."""
-    p = tables.canvas.proposals
-    rested = (p.c.claim_id == claim_id) & (p.c.status == "open") & (p.c.actor == "hub") & p.c.evidence_id.is_not(None)
-    await conn.execute(update(p).where(rested).values(status="stale"))
+    await signal_rows.stale_hub_proposals(conn, claim_id)
 
 
 async def record(conn: AsyncConnection, hub: Hub, claim: ClaimRow, found: Measure, result: str) -> int | None:
@@ -270,7 +233,7 @@ async def record(conn: AsyncConnection, hub: Hub, claim: ClaimRow, found: Measur
             return None
     card = claim.test_card or {}
     is_key = found.metric != FEEDBACK
-    given = writes.EvidenceInput(
+    given = EvidenceInput(
         kind="signal" if found.check == "number" else "feedback",
         direction=direction,
         summary=_summary(card, found, result),
@@ -321,11 +284,9 @@ async def propose(conn: AsyncConnection, hub: Hub, canvas: CanvasRow, claim: Cla
     target = _target(hub, claim, last)
     if target is None:
         return None
-    p = tables.canvas.proposals
-    made = select(p.c.id).where(p.c.evidence_id == last.id, p.c.fields["status"].astext == target).limit(1)
-    if await conn.scalar(made) is not None:
+    if await signal_rows.proposed_on(conn, last.id, target):
         return None
-    change = writes.Change(claim.code, claim.rev, {"status": target})
+    change = Change(claim.code, claim.rev, {"status": target})
     try:
         (proposal_id,) = await proposals.propose(
             conn,

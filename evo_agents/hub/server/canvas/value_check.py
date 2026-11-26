@@ -22,13 +22,14 @@ import importlib
 import logging
 from collections import Counter
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.canvas import VALUE_CHECK_CRON, VALUE_CHECK_JOB, checks, store
-from evo_agents.hub.server.canvas.content import CanvasError
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.canvas import VALUE_CHECK_CRON, VALUE_CHECK_JOB
+from evo_agents.hub.server.canvas.models.content import CanvasError
+from evo_agents.hub.server.canvas.repository import people, store
+from evo_agents.hub.server.canvas.service import checks
 
 log = logging.getLogger(__name__)
 
@@ -39,19 +40,19 @@ CRON = VALUE_CHECK_CRON
 def _judging():
     """The module ``judging``, its server modules loaded in the order their cycle needs (see the module)."""
     importlib.import_module("evo_agents.hub.server.runs")
-    return importlib.import_module("evo_agents.hub.server.canvas.judging")
+    return importlib.import_module("evo_agents.hub.server.canvas.service.judging")
 
 
 async def check_project(engine: AsyncEngine, config, project: str) -> dict:
     """One pass of the value check over the canvases of ``project``; what it did, counted."""
     judging = _judging()
-    async with engine.begin() as conn:
-        project_id = await conn.scalar(select(tables.projects.c.id).where(tables.projects.c.name == project))
+    async with UnitOfWork(engine) as conn:
+        project_id = await people.project_id_of(conn, project)
         canvases = await store.project_canvases(conn, project_id) if project_id is not None else []
     done = Counter()
     for found in canvases:
         try:
-            async with engine.begin() as conn:
+            async with UnitOfWork(engine) as conn:
                 canvas = await store.lock_canvas(conn, found.id)
                 if canvas is None:
                     continue

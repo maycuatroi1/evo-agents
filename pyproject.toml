@@ -486,6 +486,23 @@ that reaches up into the layer that needs it. Other modules import the service, 
 the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-canvas-layers"
+name = "The canvases of a project go from their routes, tools, graph and jobs to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.canvas"]
+layers = ["routes | agent | kg | value_check | schedule", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.canvas a route handler (routes), an MCP tool of @strategist (agent), the source of the \
+knowledge graph (kg) and the jobs (value_check, schedule) only pass the request's or the job's parts to a public \
+function of the service, which checks who may do what and decides; the repository holds every query on the tables \
+(ClaimStore, a VersionedStore, writes a claim at the rev it was read at); the models (rows, limits, rules, the API's \
+shapes, the tool schemas) import none of them. Move the code that reaches up into the layer that needs it: a check or \
+a message into the service, a query into the repository, a shape or a limit into the models. The package's \
+__init__ holds the manifest alone. Other modules import the service and the models, never the routes. A new module \
+of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

@@ -32,199 +32,70 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.canvas import MANIFEST, events, rules, store
-from evo_agents.hub.server.canvas.content import CanvasError, code
-from evo_agents.hub.server.canvas.store import CanvasRow, ClaimRow, EvidenceRow
+from evo_agents.hub.server.canvas import MANIFEST
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.baseline_rows import (
+    ASKED,
+    DECIDES,
+    DEFAULT_STATUS,
+    MAX_LISTED,
+    OVERDUE_STATUSES,
+    SELF_APPROVAL,
+    BaselineRow,
+    Item,
+    ItemRow,
+)
+from evo_agents.hub.server.canvas.models.content import CanvasError
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow, EvidenceRow
+from evo_agents.hub.server.canvas.repository import baselines as rows
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import events
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.plugins import config as plugin_config
 
-DEFAULT_STATUS = "assumption"  # in effect for a claim no snapshot holds yet
-OVERDUE_STATUSES = ("assumption", "testing")  # what a past deadline without real evidence asks a reviewer about
-ASKED = ("status", "value_check")  # items that ask for a status
-DECIDES = {  # kind of item -> what a member decides of it
-    "status": ("accepted", "rejected", "deferred"),
-    "value_check": ("accepted", "rejected", "deferred"),
-    "overdue": ("extended", "retired", "deferred"),
-    "new": (),
-}
-MAX_LISTED = 100  # baselines one read lists
 PLUGIN = MANIFEST["id"]  # acting.PLUGIN, not imported here: it loads the server's agent types
-SELF_APPROVAL = "self_approval"  # the config's field that lets a proposer decide the item too
-
-
-@dataclass(frozen=True)
-class BaselineRow:
-    id: int
-    canvas_id: int
-    number: int
-    kind: str
-    week: str | None
-    due_at: datetime | None
-    time_zone: str | None
-    status: str
-    label: dict
-    created_by: str | None
-    created_at: datetime
-    approved_at: datetime | None
-    expired_at: datetime | None
-    snapshot: list | None
-
-
-@dataclass(frozen=True)
-class ItemRow:
-    id: int
-    claim_id: int
-    number: int
-    kind: str
-    from_status: str
-    at_status: str
-    to_status: str | None
-    claim_rev: int
-    proposal_id: int | None
-    deadline: date | None
-    evidence_ids: list[int]
-    proposers: list[int]
-    label: dict
-    decision: str | None
-    decided_by: str | None
-    decided_at: datetime | None
-    new_deadline: date | None
-    reason: str | None
-    rev: int | None
-
-    @property
-    def code(self) -> str:
-        return code(self.number)
-
-    @property
-    def waiting(self) -> bool:
-        """Whether a member has still to decide it."""
-        return self.decision is None and bool(DECIDES[self.kind])
-
-    def barred(self, self_approval: bool) -> list[int]:
-        """The members who may not decide it: its proposers, or nobody while the config's self_approval is on."""
-        return [] if self_approval else list(self.proposers)
-
-
-@dataclass(frozen=True)
-class Item:
-    """An item to propose: what it asks of ``claim``."""
-
-    claim: ClaimRow
-    kind: str
-    from_status: str
-    to_status: str | None = None
-    proposal_id: int | None = None
-    deadline: date | None = None
-    evidence_ids: list[int] = field(default_factory=list)
-    proposers: list[int] = field(default_factory=list)
 
 
 # Reading
 
 
-def _baseline_query():
-    b, users = tables.canvas.baselines, tables.users
-    return select(
-        b.c.id,
-        b.c.canvas_id,
-        b.c.number,
-        b.c.kind,
-        b.c.week,
-        b.c.due_at,
-        b.c.time_zone,
-        b.c.status,
-        b.c.label,
-        users.c.login.label("created_by"),
-        b.c.created_at,
-        b.c.approved_at,
-        b.c.expired_at,
-        b.c.snapshot,
-    ).select_from(b.outerjoin(users, users.c.id == b.c.created_by))
-
-
 async def baselines(conn: AsyncConnection, canvas: CanvasRow, limit: int = MAX_LISTED) -> list[BaselineRow]:
     """The baselines of ``canvas``, newest first."""
-    b = tables.canvas.baselines
-    query = _baseline_query().where(b.c.canvas_id == canvas.id).order_by(b.c.number.desc()).limit(limit)
-    return [BaselineRow(**row._mapping) for row in await conn.execute(query)]
+    return await rows.baselines_of(conn, canvas.id, limit)
 
 
 async def baseline(conn: AsyncConnection, canvas: CanvasRow, number: int, *, lock: bool = False) -> BaselineRow:
     """Baseline ``number`` of ``canvas``; 404 when it has none. ``lock`` takes its row lock."""
-    b = tables.canvas.baselines
-    where = (b.c.canvas_id == canvas.id) & (b.c.number == number)
-    if lock:
-        await conn.execute(select(b.c.id).where(where).with_for_update())
-    row = (await conn.execute(_baseline_query().where(where))).first()
+    row = await rows.baseline_of(conn, canvas.id, number, lock=lock)
     if row is None:
         raise CanvasError(404, f"canvas {canvas.slug} has no baseline {number}")
-    return BaselineRow(**row._mapping)
+    return row
 
 
 async def items(conn: AsyncConnection, baseline_id: int) -> list[ItemRow]:
     """The items of a baseline, by claim number."""
-    i, k, users = tables.canvas.baseline_items, tables.canvas.claims, tables.users
-    query = (
-        select(
-            i.c.id,
-            i.c.claim_id,
-            k.c.number,
-            i.c.kind,
-            i.c.from_status,
-            i.c.at_status,
-            i.c.to_status,
-            i.c.claim_rev,
-            i.c.proposal_id,
-            i.c.deadline,
-            i.c.evidence_ids,
-            i.c.proposers,
-            i.c.label,
-            i.c.decision,
-            users.c.login.label("decided_by"),
-            i.c.decided_at,
-            i.c.new_deadline,
-            i.c.reason,
-            i.c.rev,
-        )
-        .select_from(i.join(k, k.c.id == i.c.claim_id).outerjoin(users, users.c.id == i.c.decided_by))
-        .where(i.c.baseline_id == baseline_id)
-        .order_by(k.c.number)
-    )
-    return [ItemRow(**row._mapping) for row in await conn.execute(query)]
+    return await rows.items(conn, baseline_id)
 
 
 async def logins(conn: AsyncConnection, user_ids) -> dict[int, str]:
-    users = tables.users
-    found = await conn.execute(select(users.c.id, users.c.login).where(users.c.id.in_(sorted(set(user_ids)))))
-    return dict(found.all())
+    return await rows.logins(conn, user_ids)
 
 
 async def effective(conn: AsyncConnection, canvas_id: int) -> dict[int, dict]:
     """claim id -> its entry in the latest approved snapshot of canvas ``canvas_id`` (status, rev); none before the
     first approval."""
-    b = tables.canvas.baselines
-    query = (
-        select(b.c.snapshot)
-        .where(b.c.canvas_id == canvas_id, b.c.status == "approved")
-        .order_by(b.c.approved_at.desc(), b.c.id.desc())
-        .limit(1)
-    )
-    snapshot = await conn.scalar(query)
+    snapshot = await rows.latest_snapshot(conn, canvas_id)
     return {entry["claim_id"]: entry for entry in snapshot or []}
 
 
 async def today(conn: AsyncConnection) -> date:
     """The day it is in UTC by Postgres's clock: a test card's deadline passes after it."""
-    return (await conn.scalar(select(func.timezone("UTC", func.now())))).date()
+    return await rows.today(conn)
 
 
 async def config_value(conn: AsyncConnection, project_id: int, name: str):
@@ -247,35 +118,11 @@ async def self_approval(conn: AsyncConnection, project_id: int) -> bool:
 # What a baseline asks
 
 
-async def _value_checks(conn: AsyncConnection, canvas_id: int) -> dict[int, tuple[int, str]]:
-    """claim id -> (the open proposal of the value check, the status it asks) of the claims of a canvas."""
-    p = tables.canvas.proposals
-    query = (
-        select(p.c.claim_id, p.c.id, p.c.fields["status"].astext)
-        .where(
-            p.c.canvas_id == canvas_id,
-            p.c.status == "open",
-            p.c.actor == "hub",
-            p.c.kind == "change",
-            p.c.evidence_id.is_not(None),
-            p.c.fields["status"].astext.is_not(None),
-        )
-        .order_by(p.c.id)
-    )
-    return {claim_id: (proposal_id, status) for claim_id, proposal_id, status in await conn.execute(query)}
-
-
 async def proposers(conn: AsyncConnection, claim_id: int, since_rev: int) -> list[int]:
     """The members who wrote a rev of claim ``claim_id`` from ``since_rev`` on that changed its status, a rev a
     baseline's decision wrote aside."""
-    r = tables.canvas.revs
-    query = (
-        select(r.c.rev, r.c.content["status"].astext, r.c.change, r.c.user_id)
-        .where(r.c.claim_id == claim_id, r.c.rev >= max(1, since_rev - 1))
-        .order_by(r.c.rev)
-    )
     found, before = set(), DEFAULT_STATUS if since_rev <= 1 else None
-    for rev, status, change, user_id in await conn.execute(query):
+    for rev, status, change, user_id in await rows.status_revs(conn, claim_id, max(1, since_rev - 1)):
         moved = before is not None and status != before
         if rev >= since_rev and moved and change != "baseline" and user_id is not None:
             found.add(user_id)
@@ -317,7 +164,7 @@ async def _item(conn, claim: ClaimRow, held: dict | None, checked, evidence: lis
 async def items_for(conn: AsyncConnection, canvas: CanvasRow, today: date, only: ClaimRow | None = None) -> list[Item]:
     """What a baseline of ``canvas`` proposed now asks, of every claim not archived, or of ``only``."""
     held = await effective(conn, canvas.id)
-    checked = await _value_checks(conn, canvas.id)
+    checked = await rows.value_checks(conn, canvas.id)
     claims = [only] if only is not None else await store.claims(conn, canvas.id)
     evidence = await store.evidence(conn, [claim.id for claim in claims])
     found = []
@@ -331,26 +178,18 @@ async def items_for(conn: AsyncConnection, canvas: CanvasRow, today: date, only:
 # Proposing
 
 
-async def _next_number(conn: AsyncConnection, canvas_id: int) -> int:
-    b = tables.canvas.baselines
-    return (await conn.scalar(select(func.max(b.c.number)).where(b.c.canvas_id == canvas_id)) or 0) + 1
-
-
 async def expire_open(conn: AsyncConnection, canvas: CanvasRow) -> int:
     """Expire every baseline of ``canvas`` still proposed; how many."""
-    b = tables.canvas.baselines
-    moved = update(b).where(b.c.canvas_id == canvas.id, b.c.status == "proposed")
-    return (await conn.execute(moved.values(status="expired", expired_at=func.now()))).rowcount
+    return await rows.expire_open(conn, canvas.id)
 
 
 async def _insert_items(conn: AsyncConnection, baseline_id: int, canvas: CanvasRow, found: list[Item], opener):
-    i = tables.canvas.baseline_items
-    now = await conn.scalar(select(func.now()))  # one value for every row: a batch insert binds no SQL function
-    rows = []
+    now = await rows.now(conn)  # one value for every row: a batch insert binds no SQL function
+    found_rows = []
     for item in found:
         new = item.kind == "new"
         named = sorted({*item.proposers, *([opener] if opener is not None else [])})
-        rows.append(
+        found_rows.append(
             {
                 "baseline_id": baseline_id,
                 "claim_id": item.claim.id,
@@ -368,8 +207,7 @@ async def _insert_items(conn: AsyncConnection, baseline_id: int, canvas: CanvasR
                 "decided_at": now if new else None,
             }
         )
-    if rows:
-        await conn.execute(insert(i), rows)
+    await rows.add_items(conn, found_rows)
 
 
 async def propose(
@@ -385,10 +223,9 @@ async def propose(
 ) -> BaselineRow:
     """A new baseline of ``canvas`` asking ``found``: weekly (``week``, ``due_at``, ``time_zone``) or opened at once
     by member ``opener``. Approved at once when no item waits for a member."""
-    b = tables.canvas.baselines
     values = {
         "canvas_id": canvas.id,
-        "number": await _next_number(conn, canvas.id),
+        "number": await rows.next_number(conn, canvas.id),
         "kind": "push" if opener is not None else "weekly",
         "week": week,
         "due_at": due_at,
@@ -396,7 +233,7 @@ async def propose(
         "label": canvas.label,
         "created_by": opener,
     }
-    baseline_id = await conn.scalar(insert(b).values(**values).returning(b.c.id))
+    baseline_id = await rows.add(conn, values)
     await _insert_items(conn, baseline_id, canvas, found, opener)
     made = await baseline(conn, canvas, values["number"])
     if not any(item.waiting for item in await items(conn, baseline_id)):
@@ -407,14 +244,7 @@ async def propose(
 
 async def waiting_in_open(conn: AsyncConnection, claim: ClaimRow) -> int | None:
     """The number of a baseline still proposed that holds an item of ``claim``, or None."""
-    b, i = tables.canvas.baselines, tables.canvas.baseline_items
-    query = (
-        select(b.c.number)
-        .join_from(i, b, b.c.id == i.c.baseline_id)
-        .where(i.c.claim_id == claim.id, b.c.status == "proposed")
-        .limit(1)
-    )
-    return await conn.scalar(query)
+    return await rows.waiting_in_open(conn, claim.id)
 
 
 async def open_now(
@@ -481,9 +311,7 @@ async def approve(conn: AsyncConnection, project_id: int, canvas: CanvasRow, row
         }
         for claim in await store.claims(conn, canvas.id)
     ]
-    b = tables.canvas.baselines
-    approved = {"status": "approved", "approved_at": func.now(), "snapshot": snapshot}
-    await conn.execute(update(b).where(b.c.id == row.id, b.c.status == "proposed").values(**approved))
+    await rows.approved(conn, row.id, snapshot)
     deciders = sorted({item.decided_by for item in found if item.decided_by is not None})
     payload = {
         "canvas": canvas.slug,
@@ -500,11 +328,6 @@ async def approve(conn: AsyncConnection, project_id: int, canvas: CanvasRow, row
 
 
 __all__ = [
-    "ASKED",
-    "DECIDES",
-    "BaselineRow",
-    "Item",
-    "ItemRow",
     "approve",
     "baseline",
     "baselines",

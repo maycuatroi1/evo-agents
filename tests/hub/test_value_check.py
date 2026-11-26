@@ -30,7 +30,8 @@ from sqlalchemy import column, func, insert, select, table, update
 from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import jobs, plugin_jobs, tables
-from evo_agents.hub.server.canvas import rules, value_check
+from evo_agents.hub.server.canvas import value_check
+from evo_agents.hub.server.canvas.models import rules
 from evo_agents.hub.worker import queue
 from tests.hub.live import sql
 from tests.hub.test_ba_agent import agent_of, enable, granted, members, mention, running, tool  # noqa: F401

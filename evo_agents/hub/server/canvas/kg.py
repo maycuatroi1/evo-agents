@@ -35,8 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.kg_problems import ADDRESSES, problem_node_id
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.canvas import links, store
-from evo_agents.hub.server.canvas.content import FEEDBACK
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.canvas.models.content import FEEDBACK
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import links
 from evo_agents.hub.tables_canvas import CELLS
 from evo_agents.hub.tables_srs import kg_node_id
 from evo_agents.kg.ids import utc_text
@@ -70,7 +73,7 @@ def _cell_title(cell: str) -> str:
     return cell.replace("_", " ").capitalize()
 
 
-def _title(row: store.ClaimRow) -> str:
+def _title(row: ClaimRow) -> str:
     """A claim's heading: its number and cell, never its text nor its code. The link stage reads a code in a heading as
     the section defining it, so a heading that held the claim's text would define each code the text names, and one
     that held ``CL-12`` would define ``CL-1`` as well; the fragment declares that it defines its claim instead."""
@@ -83,7 +86,7 @@ def _card_line(card: dict | None) -> str | None:
     return "Test card: " + "; ".join(f"{name.replace('_', ' ')} {value}" for name, value in card.items())
 
 
-def _claim_text(row: store.ClaimRow) -> str:
+def _claim_text(row: ClaimRow) -> str:
     lines = [row.text, "", f"Status: {row.status}. Confidence: {row.confidence}."]
     card = _card_line(row.test_card)
     if card:
@@ -97,14 +100,14 @@ def _claim_text(row: store.ClaimRow) -> str:
     return "\n".join(lines)
 
 
-def measured_by(row: store.ClaimRow) -> list[str]:
+def measured_by(row: ClaimRow) -> list[str]:
     """The signal keys that measure a claim: those it links, and the one its test card's metric names."""
     metric = (row.test_card or {}).get("metric")
     keys = set(row.signal_keys) | ({metric} if metric and metric != FEEDBACK else set())
     return sorted(keys)
 
 
-def _fragments(canvas: store.CanvasRow, claims: list[store.ClaimRow]) -> list[dict]:
+def _fragments(canvas: CanvasRow, claims: list[ClaimRow]) -> list[dict]:
     found = [{"anchor": "_preamble", "level": 0, "text": canvas.description}] if canvas.description.strip() else []
     for cell in CELLS:
         held = [row for row in claims if row.cell == cell]
@@ -118,7 +121,7 @@ def _fragments(canvas: store.CanvasRow, claims: list[store.ClaimRow]) -> list[di
     return found
 
 
-def _graph(item_id: str, claims: list[store.ClaimRow], with_srs: bool) -> dict:
+def _graph(item_id: str, claims: list[ClaimRow], with_srs: bool) -> dict:
     """The nodes and edges a canvas declares (see the module)."""
     nodes, edges = [], []
     for row in claims:
@@ -140,8 +143,8 @@ def _graph(item_id: str, claims: list[store.ClaimRow], with_srs: bool) -> dict:
 
 def canvas_item(
     source: str,
-    canvas: store.CanvasRow,
-    claims: list[store.ClaimRow],
+    canvas: CanvasRow,
+    claims: list[ClaimRow],
     with_srs: bool,
     page: tuple[str, str] | None = None,
 ) -> dict:
@@ -182,7 +185,7 @@ async def kg_source(params: dict, context: CoreContext) -> dict:
         return {"items": [], "identifiers": []}
     base_url = getattr(context.config, "public_url", None)
     base_url = base_url if isinstance(base_url, str) else None
-    async with context.engine.begin() as conn:
+    async with UnitOfWork(context.engine) as conn:
         return await read(conn, params["source"], context.project_id, context.project or params["project"], base_url)
 
 

@@ -30,18 +30,30 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import signals, tables
+from evo_agents.hub import signals
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import CoreContext
-from evo_agents.hub.server.canvas import judging, proposals, rules, store, writes
-from evo_agents.hub.server.canvas.acting import STRATEGIST, Acting, acting, canvas, proposing_run, strategist_run
-from evo_agents.hub.server.canvas.commands import undo_command, undone_text
-from evo_agents.hub.server.canvas.content import LINKS, CanvasError, code, number_of
-from evo_agents.hub.server.canvas.tools import AGENT_EVIDENCE_KINDS
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.canvas.models import rules
+from evo_agents.hub.server.canvas.models.content import LINKS, CanvasError, code, number_of
+from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow, EvidenceRow, ProposalRow, RevRow
+from evo_agents.hub.server.canvas.models.tools import AGENT_EVIDENCE_KINDS
+from evo_agents.hub.server.canvas.models.writing import Change, EvidenceInput, Outcome
+from evo_agents.hub.server.canvas.repository import signals as signal_rows
+from evo_agents.hub.server.canvas.repository import store
+from evo_agents.hub.server.canvas.service import judging, proposals, reads, writes
+from evo_agents.hub.server.canvas.service.acting import (
+    STRATEGIST,
+    Acting,
+    acting,
+    canvas,
+    proposing_run,
+    strategist_run,
+)
+from evo_agents.hub.server.canvas.service.commands import undo_command, undone_text
 from evo_agents.hub.server.signals.service import readable
 from evo_agents.hub.tables_canvas import CELLS
 
@@ -84,8 +96,10 @@ async def _not_judging(conn: AsyncConnection, who: Acting, tool: str | None) -> 
 
 async def _answer(params: dict, context: CoreContext, work) -> dict:
     """``work(conn, acting, arguments)`` in one transaction, its text the tool's answer; a refusal as its error."""
+    if context.engine is None:
+        raise RuntimeError("the plugin's tools of canvas run with the hub's engine")
     try:
-        async with context.engine.begin() as conn:
+        async with UnitOfWork(context.engine) as conn:
             who = await acting(conn, params, context)
             await _not_judging(conn, who, params.get("tool"))
             return _text(await work(conn, who, params.get("arguments") or {}))
@@ -104,13 +118,13 @@ def _card_text(card: dict | None) -> str:
     return "; ".join(f"{name} {value}" for name, value in card.items())
 
 
-def _evidence_counts(rows: list[store.EvidenceRow]) -> str:
+def _evidence_counts(rows: list[EvidenceRow]) -> str:
     live = [row for row in rows if row.withdrawn_at is None]
     real = rules.real_support([row.facts() for row in live])
     return f"{len(live)} piece(s) of evidence, {len(real)} real support" if live else "no evidence"
 
 
-def _claim_lines(row: store.ClaimRow, evidence: list[store.EvidenceRow]) -> list[str]:
+def _claim_lines(row: ClaimRow, evidence: list[EvidenceRow]) -> list[str]:
     archived = ", archived" if row.archived_at is not None else ""
     return [
         f"- {row.code} [{row.status}, {row.confidence}, rev {row.rev}{archived}] {row.text}",
@@ -124,7 +138,7 @@ def _claim_lines(row: store.ClaimRow, evidence: list[store.EvidenceRow]) -> list
     ]
 
 
-def _proposal_line(row: proposals.ProposalRow) -> str:
+def _proposal_line(row: ProposalRow) -> str:
     what = f"a change of {row.claim} at rev {row.base_rev}" if row.kind == "change" else "a new claim"
     synthetic = ", synthetic" if row.synthetic else ""
     who = row.provenance.login or row.provenance.actor
@@ -133,7 +147,7 @@ def _proposal_line(row: proposals.ProposalRow) -> str:
 
 
 async def _canvases(conn: AsyncConnection, who: Acting) -> str:
-    rows = [row for row in await store.canvases(conn, who.access, who.sink) if who.sees(row.label)]
+    rows = [row for row in await reads.canvases(conn, who.access, who.sink) if who.sees(row.label)]
     if not rows:
         return f"Project {who.access.name} has no canvas that {who.person.login} sees."
     counts = await store.counts(conn, [row.id for row in rows])
@@ -144,11 +158,11 @@ async def _canvases(conn: AsyncConnection, who: Acting) -> str:
     return "\n".join(lines)
 
 
-def _visible(who: Acting, rows: list[store.EvidenceRow]) -> list[store.EvidenceRow]:
+def _visible(who: Acting, rows: list[EvidenceRow]) -> list[EvidenceRow]:
     return [row for row in rows if who.sees(row.label)]
 
 
-async def _canvas_text(conn: AsyncConnection, who: Acting, row: store.CanvasRow, archived: bool) -> str:
+async def _canvas_text(conn: AsyncConnection, who: Acting, row: CanvasRow, archived: bool) -> str:
     claims = await store.claims(conn, row.id, with_archived=archived)
     evidence = await store.evidence(conn, [claim.id for claim in claims])
     lines = [f"{row.slug}: {row.name}" + (" (archived)" if row.archived_at else "")]
@@ -168,7 +182,7 @@ async def _canvas_text(conn: AsyncConnection, who: Acting, row: store.CanvasRow,
     return "\n".join(lines)
 
 
-def _rev_line(rev: store.RevRow) -> str:
+def _rev_line(rev: RevRow) -> str:
     who = rev.provenance.login or "the hub"
     if rev.provenance.actor == "agent":
         who = f"an agent for {who} (run #{rev.provenance.run_id})"
@@ -176,15 +190,15 @@ def _rev_line(rev: store.RevRow) -> str:
     return f"- rev {rev.rev} {rev.change} by {who}, {rev.created_at:%Y-%m-%d %H:%M}{reason}"
 
 
-def _evidence_line(row: store.EvidenceRow) -> str:
+def _evidence_line(row: EvidenceRow) -> str:
     why = rules.not_real(row.facts())
     real = "real" if why is None else f"not real: {why}"
     synthetic = ", synthetic" if row.synthetic else ""
     return f"- evidence {row.id}: {row.kind} {row.direction} ({real}{synthetic}): {row.summary}"
 
 
-async def _claim_text(conn: AsyncConnection, who: Acting, row: store.CanvasRow, ref: str) -> str:
-    claim = await store.claim(conn, who.access, row, number_of(ref))
+async def _claim_text(conn: AsyncConnection, who: Acting, row: CanvasRow, ref: str) -> str:
+    claim = await reads.claim(conn, who.access, row, number_of(ref))
     evidence = _visible(who, (await store.evidence(conn, [claim.id]))[claim.id])
     revs = await store.revs(conn, claim.id)
     lines = [f"{claim.code} of canvas {row.slug}, cell {claim.cell}:", *_claim_lines(claim, evidence)]
@@ -228,13 +242,7 @@ async def _rows(conn: AsyncConnection, who: Acting, **options) -> list:
 
 
 async def _registry(conn: AsyncConnection, who: Acting) -> str:
-    k = tables.signal_keys
-    query = (
-        select(k.c.name, k.c.kind, k.c.unit, k.c.description, k.c.source)
-        .where(k.c.project_id == who.access.project_id, k.c.archived_at.is_(None))
-        .order_by(k.c.name)
-    )
-    keys = list(await conn.execute(query))
+    keys = await signal_rows.registry(conn, who.access.project_id)
     if not keys:
         return f"Project {who.access.name} declares no signal key: an admin adds them with `evo-agents hub signal keys add`."
     lines = [f"The signal keys of project {who.access.name}:"]
@@ -249,7 +257,7 @@ async def _registry(conn: AsyncConnection, who: Acting) -> str:
 
 
 async def _signals(conn: AsyncConnection, who: Acting, args: dict) -> str:
-    store.reader(who.access)
+    reads.reader(who.access)
     if not args.get("key"):
         return await _registry(conn, who)
     days, limit = args.get("days") or DEFAULT_DAYS, args.get("limit") or DEFAULT_LIMIT
@@ -268,18 +276,18 @@ async def find_signals(params: dict, context: CoreContext) -> dict:
 # Writing
 
 
-def _change(item: dict) -> writes.Change:
+def _change(item: dict) -> Change:
     values = {name: item[name] for name in CLAIM_FIELDS if name in item}
-    return writes.Change(item.get("claim"), item.get("base_rev"), values)
+    return Change(item.get("claim"), item.get("base_rev"), values)
 
 
-def _no_status_on_new(changes: list[writes.Change]) -> None:
+def _no_status_on_new(changes: list[Change]) -> None:
     for change in changes:
         if change.claim is None and ("status" in change.values or change.values.get("archived")):
             raise CanvasError(422, "a claim @strategist makes starts as an assumption, not archived: leave status out")
 
 
-def _outcomes_text(who: Acting, outcomes: list[writes.Outcome], rows: dict[int, store.ClaimRow]) -> str:
+def _outcomes_text(who: Acting, outcomes: list[Outcome], rows: dict[int, ClaimRow]) -> str:
     lines = [f"Written at once as {who.person.login}'s, by run #{who.run_id}:"]
     for outcome in outcomes:
         row = rows[outcome.number]
@@ -291,12 +299,12 @@ def _outcomes_text(who: Acting, outcomes: list[writes.Outcome], rows: dict[int, 
 
 async def _edit(conn: AsyncConnection, who: Acting, args: dict) -> str:
     strategist_run(who, "edit", ("chat",))
-    store.writer(who.access, "editing claims")
+    reads.writer(who.access, "editing claims")
     row = await canvas(conn, who, args["canvas"], lock=True)
     changes = [_change(item) for item in args["changes"]]
     _no_status_on_new(changes)
     outcomes = await writes.edit(conn, who.writer(), row, changes, args["reason"])
-    found = {o.number: await store.claim(conn, who.access, row, o.number) for o in outcomes}
+    found = {o.number: await reads.claim(conn, who.access, row, o.number) for o in outcomes}
     return _outcomes_text(who, outcomes, found)
 
 
@@ -319,13 +327,13 @@ async def edit(params: dict, context: CoreContext) -> dict:
 
 async def _undo(conn: AsyncConnection, who: Acting, args: dict) -> str:
     strategist_run(who, "undo", ("chat",))
-    store.writer(who.access, "undoing a change")
+    reads.writer(who.access, "undoing a change")
     row = await canvas(conn, who, args["canvas"], lock=True)
     reason = args.get("reason") or ""
     if args.get("claims"):
         targets = [(item["claim"], item["rev"]) for item in args["claims"]]
         outcomes = await writes.undo(conn, who.writer(), row, targets, reason)
-        found = {o.number: await store.claim(conn, who.access, row, o.number) for o in outcomes}
+        found = {o.number: await reads.claim(conn, who.access, row, o.number) for o in outcomes}
         return _outcomes_text(who, outcomes, found)
     done = await undo_command(conn, who.writer(), row, reason)
     lines = [f"Took back the command of chat message {done.message_id}, as {who.person.login}'s, by run #{who.run_id}:"]
@@ -337,7 +345,7 @@ async def undo(params: dict, context: CoreContext) -> dict:
     return await _answer(params, context, _changing(context, _undo))
 
 
-def _cards(changes: list[writes.Change]) -> None:
+def _cards(changes: list[Change]) -> None:
     for change in changes:
         card = change.values.get("test_card") or {}
         if change.claim is None and not (card.get("hypothesis") and card.get("test")):
@@ -348,7 +356,7 @@ def _cards(changes: list[writes.Change]) -> None:
 
 async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     await proposing_run(conn, who)
-    store.writer(who.access, "proposing claims")
+    reads.writer(who.access, "proposing claims")
     row = await canvas(conn, who, args["canvas"], lock=True)
     changes = [_change(item) for item in args["proposals"]]
     _no_status_on_new(changes)
@@ -368,16 +376,14 @@ async def propose(params: dict, context: CoreContext) -> dict:
 
 async def _evidence(conn: AsyncConnection, who: Acting, args: dict) -> str:
     strategist_run(who, "evidence", ("chat", "task"))
-    store.writer(who.access, "adding evidence")
+    reads.writer(who.access, "adding evidence")
     if args["kind"] not in AGENT_EVIDENCE_KINDS:
         raise CanvasError(422, f"@{STRATEGIST} adds evidence of kind {', '.join(AGENT_EVIDENCE_KINDS)} only")
     row = await canvas(conn, who, args["canvas"], lock=True)
-    store.writable(who.access, row)
-    claim = await store.claim(conn, who.access, row, number_of(args["claim"]))
+    reads.writable(who.access, row)
+    claim = await reads.claim(conn, who.access, row, number_of(args["claim"]))
     on = date.fromisoformat(args["observed_on"]) if args.get("observed_on") else None
-    given = writes.EvidenceInput(
-        args["kind"], args["direction"], args["summary"], args.get("url"), on, args["synthetic"]
-    )
+    given = EvidenceInput(args["kind"], args["direction"], args["summary"], args.get("url"), on, args["synthetic"])
     evidence_id = await writes.add_evidence(conn, who.writer(), claim, given)
     synthetic = args["synthetic"] or args["kind"] == "simulation"
     return (

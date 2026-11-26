@@ -28,7 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, goals, tables
-from evo_agents.hub.server.canvas.proposals import brainstorm_runs
+from evo_agents.hub.server.brainstorms import brainstorm_runs
 from evo_agents.hub.server.loop import adopt, baseline
 from evo_agents.hub.server.loop.board_items import (
     ADMIN,

@@ -9,9 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.server.canvas.baselines import DECIDES, BaselineRow, ItemRow
-from evo_agents.hub.server.canvas.models import CODE, CanvasEvidence, evidence_model
-from evo_agents.hub.server.canvas.store import EvidenceRow
+from evo_agents.hub.server.canvas.models.api import CODE, CanvasEvidence, evidence_model
+from evo_agents.hub.server.canvas.models.baseline_rows import DECIDES, BaselineRow, ItemRow
+from evo_agents.hub.server.canvas.models.rows import EvidenceRow
 from evo_agents.hub.tables_canvas import (
     BASELINE_KINDS,
     BASELINE_STATUSES,

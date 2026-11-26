@@ -428,10 +428,7 @@ def test_a_run_scope_reads_and_writes_the_memories_of_its_project_alone(client, 
 
     # The scope caps the grant, role and level alike: a reader's scope writes nothing.
     reader = replace(agent, scope=RunScope(7, "demo", "reader", "public"))
-    assert (
-        refused(memories.put, user=reader, body=MemoryIn(**{**note, "name": "r.md"}), sink="hub").status_code
-        == 403
-    )
+    assert refused(memories.put, user=reader, body=MemoryIn(**{**note, "name": "r.md"}), sink="hub").status_code == 403
     assert names(call(memories.list_memories, user=reader, sink="hub")) == []
 
     async def grant_of(user) -> tuple:

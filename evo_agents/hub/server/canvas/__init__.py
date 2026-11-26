@@ -58,18 +58,20 @@ another to approve (or themselves, with ``self_approval`` on). Every rev emits t
 ``canvas.claim``, every approval ``canvas.baseline``, for plugins granted canvas:read and for the hub's events
 (``events``).
 
-The hub imports this package for the manifest only: ``content`` holds a claim's content, its checks and diff,
-``rules`` the rules of its status, ``links`` checks what a claim links, ``kg`` is the source of the knowledge
-graph, ``store`` reads, ``writes`` keeps, ``proposals`` keeps what is proposed,
-``transfer`` exports and imports, ``models`` and ``server`` are the API; ``acting``, ``agent``, ``commands`` and
-``brainstorm`` are @strategist's; ``value_check``, ``checks`` and ``judging`` are the value check's; ``baselines``,
-``decisions``, ``schedule``, ``notices``, ``baseline_models`` and ``events`` are the baselines'.
+The hub imports this package for the manifest only. Its modules lie in layers (the contract hub-canvas-layers):
+``routes`` is the API, ``agent`` answers @strategist's MCP tools, ``kg`` is the source of the knowledge graph, and
+``value_check`` and ``schedule`` are the jobs; each calls ``service``, which checks and decides (``reads`` and
+``acting`` who may do what, ``writes`` keeps, ``links`` checks what a claim links, ``proposals``, ``baselines`` and
+``decisions``, ``checks`` and ``judging`` of the value check, ``commands`` and ``brainstorm`` of @strategist,
+``transfer`` exports and imports, ``notices`` and ``events``); ``repository`` holds every SQL statement
+(``claims.ClaimStore`` the base_rev write of a claim); ``models`` holds a claim's content (``content``), the rules
+of its status (``rules``), the rows and values (``rows``, ``writing``, ``judged``, ``baseline_rows``), the API's
+models (``api``, ``baselines``) and the MCP tools (``tools``).
 """
 
-from evo_agents.hub.server.canvas.tools import STRATEGIST_INSTRUCTIONS, TOOLS
+from evo_agents.hub.server.canvas.models.tools import STRATEGIST_INSTRUCTIONS, TOOLS
 
-SERVER = "evo_agents.hub.server.canvas.server"
-AGENT = "evo_agents.hub.server.canvas.agent"
+SERVER = "evo_agents.hub.server.canvas.routes"
 KG = "evo_agents.hub.server.canvas.kg"
 VALUE_CHECK = "evo_agents.hub.server.canvas.value_check"
 VALUE_CHECK_JOB = "value_check"  # also the job the hub runs on a batch of signals (plugin_jobs.SIGNAL_JOB)
@@ -116,7 +118,6 @@ CONFIG = {
         },
     },
 }
-HANDLERS = {"signals": "find_signals"}  # a tool whose function is named otherwise, beside the module signals
 
 TABLES = (
     ("canvas_canvases", "The Lean Canvas of each product of a project and the label it carries"),
@@ -178,16 +179,7 @@ MANIFEST = {
                 },
             }
         ],
-        "mcp_tools": [
-            {
-                "name": name,
-                "title": title,
-                "description": text,
-                "python": f"{AGENT}:{HANDLERS.get(name, name)}",
-                "input_schema": schema,
-            }
-            for name, title, text, schema in TOOLS
-        ],
+        "mcp_tools": TOOLS.contributions(),
         "jobs": [
             {
                 "name": VALUE_CHECK_JOB,
