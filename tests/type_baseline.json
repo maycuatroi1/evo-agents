@@ -24530,16 +24530,6 @@
                 }
             }
         ],
-        "./evo_agents/worker/playbook_cli.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 99,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/worker/pool_cli.py": [
             {
                 "code": "reportOptionalSubscript",
@@ -24766,16 +24756,6 @@
                 "range": {
                     "startColumn": 34,
                     "endColumn": 109,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/worker/probe_cli.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 83,
                     "lineCount": 1
                 }
             }

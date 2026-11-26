@@ -1,29 +1,24 @@
-"""``evo-agents worker output FILE... [--caption TEXT]``: the command of a run's agent, of any kind and runtime, that
-sends files to the run's outputs on the hub (source sent), for the people who read the run: a screenshot, a video, a
-report. And ``--attach FILE`` of ``worker ask`` and ``worker chat post`` (``attach_option``, ``attached``): the files
-a question or a message of the agent carries, sent the same way.
+"""The files a run's agent sends to the run's outputs on the hub: ``worker output`` (``evo_agents.worker.cli.output``)
+sends them for the people who read the run, and ``--attach FILE`` of ``worker ask`` and ``worker chat post`` has a
+question or a message carry them (:func:`attached`).
 
-Each reads the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record there, and refuses outside a run of this
-worker. It checks each file here (a regular file, a name the hub takes, at most the hub's limit of a file) and asks
-the hub, with the worker's token, how much the run may still take (GET /v1/worker/runs/{id}/output-settings): a file
-past a limit is one ``error:`` line naming it and exit status 1, and nothing is sent. A hub that does not answer
-then is no refusal: the worker sends the files once it does. Then it puts a copy of each in the run's queue
-(``output_queue``), which the daemon sends in the background, a file of text redacted as the run's events are
-(``runner.outputs``): ``output`` returns at once, while ``--attach`` waits, at most ATTACH_WAIT seconds, for the
-outputs the hub recorded, whose ids the question or the message names (``output_ids``). ``request_scan`` has the
-daemon look at the run's .evo-run/outputs/ (``worker step``). A failure is one ``error:`` line on stderr and exit
-status 1; the check with the hub needs the worker extra, and without it the files go unchecked.
+:func:`checked_files` checks each file here (a regular file, a name the hub takes, at most the hub's limit of a file),
+and :func:`check_room` asks the hub, with the worker's token, how much the run may still take (GET
+/v1/worker/runs/{id}/output-settings): a file past a limit is a WorkerStateError naming it. A hub that does not answer
+then is no refusal: the worker sends the files once it does. The files go to the run's queue (``output_queue``), which
+the daemon sends in the background, a file of text redacted as the run's events are (``runner.outputs``);
+:func:`attached` waits, at most ATTACH_WAIT seconds, for the outputs the hub recorded, whose ids the question or the
+message names (``output_ids``). :func:`request_scan` has the daemon look at the run's .evo-run/outputs/ (``worker
+step``). The check with the hub needs the worker extra, and without it the files go unchecked.
 
-``--interactive`` of ``output`` and of ``chat post`` (with ``--attach``) marks each file an interactive answer, which
-the web shows inside the chat message that carries it: an HTML file of at most ``outputs.MAX_INTERACTIVE_BYTES``
-(``outputs.interactive_problem``), else one ``error:`` line naming why, and nothing is sent. The hub checks it again.
+An interactive file is an interactive answer, which the web shows inside the chat message that carries it: an HTML
+file of at most ``outputs.MAX_INTERACTIVE_BYTES`` (``outputs.interactive_problem``). The hub checks it again.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import functools
 import sys
 import time
 from dataclasses import dataclass
@@ -31,11 +26,9 @@ from pathlib import Path
 
 from evo_agents.hub import outputs
 from evo_agents.hub.client import HubError
-from evo_agents.worker.chat_cli import running_run
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 from evo_agents.worker.output_queue import OutputQueue
 
-EXIT_FAILED = 1
 ATTACH_WAIT = 110.0  # seconds an attachment waits for the worker to send it, within the 2 minutes of a Bash call
 WAIT_STEP = 0.1
 
@@ -46,20 +39,6 @@ class File:
     name: str
     media_type: str
     size: int
-
-
-def output_command(func):
-    """Turn the failures of ``func`` into an ``error:`` line and an exit status."""
-
-    @functools.wraps(func)
-    def run(args) -> int:
-        try:
-            return func(args)
-        except (HubError, WorkerStateError) as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return EXIT_FAILED
-
-    return run
 
 
 def checked_files(paths: list[str], most: int, *, interactive: bool = False) -> list[File]:
@@ -138,32 +117,6 @@ def request_scan(home: WorkerHome, run_id: int) -> None:
         OutputQueue(home, run_id).put_scan()
 
 
-@output_command
-def cmd_output(args) -> int:
-    run_id, home, _ = running_run("output")
-    caption = _caption(args.caption)
-    interactive = bool(getattr(args, "interactive", False))
-    files = checked_files(args.files, outputs.MAX_BATCH, interactive=interactive)
-    check_room(home, run_id, files)
-    queue = OutputQueue(home, run_id)
-    for file in files:
-        queue.put_file(file.path, name=file.name, media_type=file.media_type, caption=caption, interactive=interactive)
-    names = ", ".join(file.name for file in files)
-    kind = "interactive answer(s)" if interactive else "file(s)"
-    print(
-        f"Sending {len(files)} {kind} to the outputs of run #{run_id} on the hub: {names}. The worker uploads them "
-        "in the background; the run's page shows them once the hub has them."
-    )
-    return 0
-
-
-def _caption(value: str | None) -> str | None:
-    try:
-        return outputs.check_caption(value)
-    except ValueError as exc:
-        raise WorkerStateError(str(exc)) from None
-
-
 def attached(home: WorkerHome, run_id: int, paths: list[str] | None, *, interactive: bool = False) -> dict:
     """``{"output_ids": [...]}`` of the files of ``paths``, once the worker sent them as outputs of the run, each an
     interactive answer when ``interactive``; ``{}`` for none. WorkerStateError when one is refused, or not sent within
@@ -196,40 +149,3 @@ def attached(home: WorkerHome, run_id: int, paths: list[str] | None, *, interact
             )
         time.sleep(WAIT_STEP)
     return {"output_ids": [found[item_id] for item_id in waiting]}
-
-
-def attach_option(parser, what: str) -> None:
-    """``--attach FILE`` on ``parser``, the files ``what`` carries."""
-    parser.add_argument(
-        "--attach",
-        action="append",
-        metavar="FILE",
-        help=f"a file {what} carries, a screenshot or a report, sent to the run's outputs first; repeat it, at most "
-        f"{outputs.MAX_ATTACHED}",
-    )
-
-
-def interactive_option(parser, what: str) -> None:
-    """``--interactive`` on ``parser``: ``what`` is an interactive answer."""
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help=f"mark {what} an interactive answer, shown inside the chat message that carries it: an HTML file of at "
-        f"most {outputs.MAX_INTERACTIVE_BYTES} bytes, which may load libraries from esm.sh, cdn.jsdelivr.net and "
-        "cdnjs.cloudflare.com in a chat that is not restricted",
-    )
-
-
-def register_output(wsub) -> None:
-    """``evo-agents worker output``, under the parser ``wsub`` of ``evo-agents worker``."""
-    output = wsub.add_parser(
-        "output",
-        help="inside a run: send files to the run's outputs on the hub, for the people who read the run (a "
-        "screenshot, a video, a report); the worker uploads them in the background",
-    )
-    output.add_argument("files", nargs="+", metavar="FILE", help=f"a file of at most {outputs.MAX_FILE_BYTES} bytes")
-    output.add_argument(
-        "--caption", metavar="TEXT", help=f"what the files show, at most {outputs.MAX_CAPTION_CHARS} characters"
-    )
-    interactive_option(output, "each file")
-    output.set_defaults(func=cmd_output)

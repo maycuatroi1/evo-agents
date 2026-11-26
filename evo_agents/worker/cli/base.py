@@ -8,6 +8,8 @@ agent's command acts for.
   (``home``, ``config``, ``token``), the run's record and its kind, checked against the kinds the command serves.
   :class:`AgentCommand` builds it; a command names its ``words`` and ``kinds`` and, when the refusal of another kind
   reads differently, writes ``refusal``.
+- :class:`ChatCommand` is a command of a run's agent in chats (``worker chat``, ``triage``, ``ops``, ``curator answer``):
+  it serves the kinds of ``chat_runs.COMMAND_KINDS`` and refuses another kind in the words of ``worker chat``.
 
 ``RUN_VARIABLE`` and :class:`MissingExtra` are defined here, the one copy of each; :func:`hubapi` imports the worker
 extra's hub client.
@@ -25,7 +27,7 @@ from functools import cached_property
 from typing import Any, ClassVar, TypeVar
 
 from evo_agents.clikit import Command, Context
-from evo_agents.hub import chats
+from evo_agents.hub import chat_runs, chats
 from evo_agents.hub.client import HubError, exit_status
 from evo_agents.worker.extra import EXTRA_HINT
 from evo_agents.worker.home import WorkerConfig, WorkerHome, WorkerStateError
@@ -115,17 +117,20 @@ class AgentRunContext(WorkerContext):
         words: str,
         kinds: tuple[str, ...] | None = None,
         refusal: Callable[[int, str], str] | None = None,
+        *,
+        inside: str | None = None,
     ):
         super().__init__(args)
         self.words = words
         self.kinds = kinds
         self._refusal = refusal
+        self.inside = inside  # the runs named when EVO_RUN_ID is not set; None: those of kinds
 
     @cached_property
     def run_id(self) -> int:
         raw = (os.environ.get(RUN_VARIABLE) or "").strip()
         if not raw.isdigit() or int(raw) < 1:
-            where = kinds_of(self.kinds) if self.kinds else "a run"
+            where = self.inside or (kinds_of(self.kinds) if self.kinds else "a run")
             raise WorkerStateError(
                 f"`evo-agents worker {self.words}` works only inside {where} of this worker: {RUN_VARIABLE} is not "
                 f"set. {UNSET_HINT}"
@@ -183,7 +188,8 @@ class AgentRunContext(WorkerContext):
         """POST ``body`` to the hub's route of the run's agent in chats, with the worker's token; HubError when the
         hub refuses, or does not answer for OUTAGE_SECONDS. A call the hub does not answer, or answers with a 5xx or
         429 (a deploy swapping its api: run #8743's forward got a 500 of the proxy then), is sent again after a
-        backoff, as the daemon does, each try said on stderr."""
+        backoff, as the daemon does, each try said on stderr. The run is checked first (:meth:`check`)."""
+        self.check()
         api = hubapi()
         run_id = self.run_id
 
@@ -240,3 +246,27 @@ class AgentCommand(Command[AgentRunContext]):
 
     def failed(self, exc: Exception) -> int | None:
         return failure(exc, (self.words or self.name).split()[0], self.problems, self.hub_failed)
+
+
+def chat_refusal(run_id: int, kind: str) -> str:
+    """Why a command of the agent in chats refuses run ``run_id`` of ``kind``, whose agent does not talk in chats."""
+    kinds = chat_runs.COMMAND_KINDS
+    return (
+        f"run {run_id} is a {kind} run, whose agent does not talk in chats: `evo-agents worker chat` is for the "
+        f"agent of a {', '.join(kinds[:-1])} or {kinds[-1]} run"
+    )
+
+
+class ChatCommand(Command[AgentRunContext]):
+    """A command of a run's agent in chats (``worker chat``, ``triage``, ``ops``, ``curator answer|merge``): it works
+    inside a run of a kind of ``chat_runs.COMMAND_KINDS`` and refuses another kind as ``worker chat`` does, without
+    the worker extra it names ``worker chat``, and every refusal of the hub is exit status 1. ``words`` are the
+    command's words after ``worker``, as its refusals name it."""
+
+    words: ClassVar[str]
+
+    def context(self, args: argparse.Namespace) -> AgentRunContext:
+        return AgentRunContext(args, self.words, chat_runs.COMMAND_KINDS, chat_refusal, inside="a run")
+
+    def failed(self, exc: Exception) -> int | None:
+        return failure(exc, "chat", hub_failed=EXIT_FAILED)
