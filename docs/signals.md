@@ -5,8 +5,8 @@ latency of a page) or a piece of feedback in text (what a reader wrote under an 
 them in batches with an ingest key; members can push them too, for results they enter by hand. Signals are the hub's,
 not a plugin's: the canvas plugin's value check (section Value check), the Loop and the Curator all read them.
 
-The code is `evo_agents/hub/signals.py` (taking batches, reading, the retention), `evo_agents/hub/server/signals.py`
-and `evo_agents/hub/server/signal_keys.py` (the routes), and `evo_agents/hub/cli/signal.py` (the command line). The
+The code is `evo_agents/hub/signals.py` (taking batches, reading, the retention), `evo_agents/hub/server/signals/`
+(the routes, in layers), and `evo_agents/hub/cli/signal.py` (the command line). The
 tables are `signal_keys`, `signal_ingest_keys` and `signals` (migration 0074), and `hub_events` (migration 0077)
 keeps the events of a project the Loop reads.
 

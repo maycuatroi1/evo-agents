@@ -1,6 +1,6 @@
 """The candidate opportunities of an ``evo-intake/2`` result (plan opportunity-intake, criterion a3): how each is checked
-and what the hub proposes for it. ``evo_agents.hub.server.intake`` calls these in its put, in the same transaction, so a
-refusal here writes nothing.
+and what the hub proposes for it. The put of an intake (``evo_agents.hub.server.intake.service``) calls these in its
+transaction, so a refusal here writes nothing.
 
 A candidate is a new opportunity or ``matches`` an opportunity of the project (``O-3``):
 
@@ -20,17 +20,18 @@ from __future__ import annotations
 from datetime import date
 
 from pydantic import ValidationError
-from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import intakes, opportunities, tables
+from evo_agents.hub import intakes, opportunities
 from evo_agents.hub.server import opportunity_evidence as lines_of
-from evo_agents.hub.server.opportunities import service as routes
+from evo_agents.hub.server.intake import repository
+from evo_agents.hub.server.intake.models import MAX_SUMMARY_CHARS
+from evo_agents.hub.server.opportunities import service as project_opportunities
+from evo_agents.hub.server.opportunities.models import ProjectOpportunityWrite
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
 OPTIONAL = ("window_until", "window_note", "answers")  # what a new opportunity may say besides its texts
-MAX_SUMMARY_CHARS = 500  # of a proposal's summary (evo_agents.core_plugins.builder.MAX_SUMMARY_CHARS)
 
 
 class Candidate:
@@ -74,7 +75,7 @@ async def checked(
         ref = raw.get("matches")
         held = None
         if ref is not None:
-            held = await routes.found(conn, access.project_id, ref)
+            held = await project_opportunities.found(conn, access.project_id, ref)
             if held is None:
                 reasons.append(f"{name}: project {access.name} has no opportunity {ref}")
                 continue
@@ -141,11 +142,11 @@ async def _new(
     if wrong:
         return wrong
     try:
-        body = routes.ProjectOpportunityWrite.model_validate(_sets(raw))
+        body = ProjectOpportunityWrite.model_validate(_sets(raw))
     except ValidationError as exc:
         return [f"{name} {'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()]
     # the answers: the problems must exist, and a problem of another project needs the writer's grant on it
-    return [f"{name}: {why}" for why in (await routes.values(conn, user, access, body, None))[1]]
+    return [f"{name}: {why}" for why in (await project_opportunities.values(conn, user, access, body, None))[1]]
 
 
 def _summary(intake: str, candidate: Candidate) -> str:
@@ -165,8 +166,7 @@ async def propose(
 ) -> list[dict]:
     """A pending proposal of @builder for each candidate, with no chat; a new opportunity takes the next free code. Each
     item: candidate, kind (new_opportunity or evidence), opportunity, proposal_id, lines."""
-    b = tables.builder_proposals
-    code = await routes.next_code(conn, access.project_id)
+    code = await project_opportunities.next_code(conn, access.project_id)
     number = opportunities.number_of(code) or 1
     made: list[dict] = []
     for candidate in candidates:
@@ -187,7 +187,7 @@ async def propose(
             "base_version": version,
             "proposed_by": user.user_id,
         }
-        proposal_id = (await conn.execute(insert(b).values(values).returning(b.c.id))).scalar_one()
+        proposal_id = await repository.propose(conn, values)
         made.append(
             {
                 "candidate": candidate.at,

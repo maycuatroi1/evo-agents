@@ -27,7 +27,7 @@ from evo_agents.hub import goals, signals, tables
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.goals import service as project_goals
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.signals import readable
+from evo_agents.hub.server.signals.service import readable
 
 CANVAS = "canvas"  # the plugin whose tables hold the canvases
 TOP = 30  # goals, signal keys and canvases a figure lists at most

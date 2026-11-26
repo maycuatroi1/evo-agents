@@ -642,7 +642,6 @@ def _include_member_routes(app: FastAPI) -> None:
         curator_threads,
         features,
         gateway_proxy,
-        intake,
         kg_shared_pool_api,
         market,
         market_install,
@@ -680,8 +679,6 @@ def _include_member_routes(app: FastAPI) -> None:
         secrets,
         seller,
         seller_api,
-        signal_keys,
-        signals,
         system_ops,
         task_dispatch,
         triage_actions,
@@ -689,8 +686,10 @@ def _include_member_routes(app: FastAPI) -> None:
         worker_autonomy,
     )
     from evo_agents.hub.server.goals import routes as goals
+    from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
     from evo_agents.hub.server.problems import routes as problems
+    from evo_agents.hub.server.signals import routes as signals
 
     for routes in (
         secrets.router,
@@ -782,7 +781,7 @@ def _include_member_routes(app: FastAPI) -> None:
         signals.push_router,  # a project's signals: an ingest key's batches, and the members' routes
         signals.router,
         context_answer_reuse.router,  # GET .../context-answers: the answers loaded by week
-        signal_keys.router,
+        signals.keys_router,
         autonomy_policies.router,
         goals.router,
         problems.router,

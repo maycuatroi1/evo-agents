@@ -35,7 +35,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
 from evo_agents.hub.server.core_plugin_api._writes import SIGNAL_DAYS, plugin_pusher
 from evo_agents.hub.server.loop import view
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.hub.server.signals import SignalIn
+from evo_agents.hub.server.signals.models import SignalIn
 
 PLUGIN_NOTICE = "plugin_notice"  # the hub's notice kind of what a plugin tells a project's admins
 ACTIVE = "active"
