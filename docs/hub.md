@@ -1136,7 +1136,11 @@ counts as a group chat: mentions, replies, bridges, summaries.
 
 An ask puts its question, as a message of the asking agent, in the thread of the agent asked when it has one in the
 work chat, so its session, worktree and branch go on; else on the main line, where it starts that thread. Asking the
-same agent again goes back to that thread: to the run's inbox while it runs, to its session once it ended. The hub's
+same agent again goes back to that thread: to the run's inbox while it runs, to its session once it ended. An ask whose
+brief names a plan step (`--ref plan:<id>/step:<step>`, or `--ref step:<step>` beside one `plan:<id>`) goes to the
+thread of the agent's latest run whose brief names that step, else starts a thread of its own: each step runs in a
+session of its own, so independent steps take the free slots of the agent's pool at once, and asks of the same step
+keep its session. The hub's
 lines about the ask (asked, answered, refused, gave no answer, withheld, escalated) go in the work chat, in the thread
 of the agent asked when there is one. The asking run parks and resumes with the answer as before; the hop limit, the
 budget, the edges, the reason, the brief and the forward are the same.
@@ -2365,7 +2369,9 @@ codex or any, at its claim and before its credentials are leased (`evo_agents/hu
   migration or security, the plan's last step when it merges or deploys, and a prescribed step (no `acceptance`) are
   hard. A step that changes documents alone, or exports, is easy, and any other step medium. A plan run is hard, an
   author run medium, a short question easy. A free prompt is rated by its words, then by the name of its agent; one
-  that says neither is left to the worker's scorer (`routing.scorer`), or is medium when the scorer is `off`.
+  that says neither is left to the worker's scorer (`routing.scorer`), or is medium when the scorer is `off`. A chat
+  run that works on plan steps is at least as hard as the hardest of them: the coordinator's session of a plan handed
+  to a system (`hub run plan --system`) covers the plan's open steps, and an ask whose brief names a step covers it.
 - A run of a step whose last run failed on easy or medium, or a retry of such a run, goes one level up.
 - `routing.strategy` takes the model: `surplus-first` (the default) runs the `ladder` while the subscription has more
   than `hard_reserve_pct` (10) of its week left and its five-hour window is under `five_hour_ceiling_pct` (90), and

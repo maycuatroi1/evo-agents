@@ -923,7 +923,7 @@ is optional, and an ask with none works as before:
 | `--output TEXT` | `output` | what its answer should hold |
 | `--bounds TEXT` | `bounds` | what it should not do or touch |
 | `--done-when TEXT` | `done_when` | when its work is finished |
-| `--ref REF` (repeat) | `refs` | where it starts from: repo:path, a run, a URL |
+| `--ref REF` (repeat) | `refs` | where it starts from: repo:path, a run, a URL; `plan:<id>/step:<step>` runs the ask in a session of that step |
 | `--reason TEXT` | `reason` | why an agent of a system asks off its `interacts` edges |
 | `--priority LEVEL` | `priority` | `urgent`, `high`, `medium` (the default) or `low`: the order a worker claims the run in |
 
