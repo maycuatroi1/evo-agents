@@ -20,6 +20,8 @@ default does not exist). The scratch repository is removed unless ``--keep`` is 
 (``<hub>/v1``, or a fake gateway's) with the token in EVO_SELFTEST_GATEWAY_TOKEN and ``--model`` as the gateway names
 it: the environment ``runtimes.gateway`` builds for the runtime's format from such a lease, and for Claude Code a
 config dir of its own in the scratch repository that holds no login.
+
+The command is ``evo_agents.worker.cli.selftest``; this module runs the test and reports it (``selftest``, ``report``).
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ from pathlib import Path
 from evo_agents.hub import runs
 from evo_agents.hub.credentials import Lease
 from evo_agents.hub.gateway_runs import GATEWAY, RUNTIME_FORMATS
-from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext, load_adapters
+from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext
 from evo_agents.worker.runtimes import claude_home, gateway
 from evo_agents.worker.runtimes.common import package_version
 
@@ -291,70 +293,3 @@ def report(cls, runtime, adapter, outcome: Outcome, counts, repo: Path, watch: B
         )
     print(f"Self-test of {runtime} passed: the turn completed and {RESULT_FILE} holds ok.")
     return 0
-
-
-def cmd_selftest(args) -> int:
-    cls = load_adapters().get(args.runtime)
-    if cls is None:
-        print(f"error: this worker has no adapter for {args.runtime}", file=sys.stderr)
-        return 1
-    if args.background and args.runtime not in BACKGROUND_RUNTIMES:
-        print(
-            f"error: --background checks the background commands of {', '.join(BACKGROUND_RUNTIMES)}; "
-            f"{args.runtime} runs none",
-            file=sys.stderr,
-        )
-        return 2
-    if args.gateway and not (args.model and os.environ.get(GATEWAY_TOKEN)):
-        print(f"error: --gateway needs --model and the route's token in {GATEWAY_TOKEN}", file=sys.stderr)
-        return 2
-    detection = cls.detect()
-    if not detection.available:
-        print(f"error: {args.runtime} is unavailable here: {detection.reason}", file=sys.stderr)
-        return 1
-    effort = args.effort if args.effort is not None else DEFAULT_EFFORT.get(args.runtime)
-    return asyncio.run(
-        selftest(
-            cls,
-            args.runtime,
-            model=args.model,
-            effort=effort or None,
-            timeout=args.timeout,
-            keep=args.keep,
-            background=args.background,
-            route=args.gateway,
-        )
-    )
-
-
-def add_parser(wsub) -> None:
-    parser = wsub.add_parser(
-        "selftest",
-        help="run a runtime's adapter on a tiny prompt in a scratch repository and print its events (spends quota)",
-    )
-    parser.add_argument("--runtime", required=True, choices=runs.RUNTIMES, help="the runtime to check")
-    parser.add_argument("--model", help="the model; opencode takes provider/model")
-    parser.add_argument(
-        "--effort", help="the reasoning effort (low for claude-code and codex unless given; an empty value: default)"
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=DEFAULT_TIMEOUT,
-        help=f"seconds before the agent is interrupted ({DEFAULT_TIMEOUT})",
-    )
-    parser.add_argument("--keep", action="store_true", help="keep the scratch repository")
-    parser.add_argument(
-        "--background",
-        action="store_true",
-        help=(
-            "check that the session waits for a command run in the background: the agent starts "
-            f"`{BACKGROUND_COMMAND}` that way, ends its turn, and writes the file once it ended (claude-code only)"
-        ),
-    )
-    parser.add_argument(
-        "--gateway",
-        metavar="URL",
-        help=f"run through the gateway route URL (<hub>/v1, or a fake gateway's), its token in {GATEWAY_TOKEN}",
-    )
-    parser.set_defaults(func=cmd_selftest)

@@ -21,7 +21,7 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.hub import runs
-from evo_agents.worker import cli as worker_cli
+from evo_agents.worker.cli.register import MAX_SLOTS, _slots
 from evo_agents.worker.daemon_state import settings_of
 from tests.worker.fake_hub import FakeHub
 from tests.worker.test_plan_runs import PLAN, machine, plan_body, wait_for, with_daemon  # noqa: F401 (machine)
@@ -213,8 +213,8 @@ def test_settings_as_the_hub_sends_them_are_read_and_unknown_keys_left():
 
 
 def test_register_slots_takes_1_to_16():
-    assert worker_cli.MAX_SLOTS == runs.MAX_SLOTS == 16
-    assert worker_cli._slots("1") == 1 and worker_cli._slots("16") == 16
+    assert MAX_SLOTS == runs.MAX_SLOTS == 16
+    assert _slots("1") == 1 and _slots("16") == 16
     for value in ("0", "17", "two"):
         with pytest.raises(argparse.ArgumentTypeError, match="from 1 to 16"):
-            worker_cli._slots(value)
+            _slots(value)
