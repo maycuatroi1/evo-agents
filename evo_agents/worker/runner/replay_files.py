@@ -13,7 +13,6 @@ as ``~/github``: ``localized`` writes each path of it into a repo of the project
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import os
 import re
@@ -21,6 +20,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from evo_agents.hub import replay
+from evo_agents.infra.git import NO_PROMPT, Git, GitError, GitFailed, GitUnavailable
 from evo_agents.worker import gitops
 
 GIT_TIMEOUT = 600.0  # a fetch of the whole history of a repository into the arm's
@@ -41,37 +41,30 @@ def localized(command: str, places: Mapping[str, Path]) -> str:
     return pattern.sub(lambda found: str(places[found.group(1)]), command)
 
 
-async def _git(cwd: Path, *args: str, env: Mapping[str, str], check: bool = True) -> tuple[int, bytes]:
-    """(exit code, stdout as bytes) of ``git -C cwd ARGS``; GitError on a failure when ``check``."""
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        "-C",
-        str(cwd),
-        *args,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env={**env, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"},
-        start_new_session=True,
-    )
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(), GIT_TIMEOUT)
-    except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
-        await proc.wait()
-        raise gitops.GitError(f"git {args[0]} gave no answer within {GIT_TIMEOUT:g}s") from None
-    if check and proc.returncode != 0:
-        said = " ".join(err.decode(errors="replace").split())[-500:]
-        raise gitops.GitError(f"git {args[0]} failed: {said}")
-    return proc.returncode, out
+class _ReplayGit(Git):
+    """``git -C cwd`` of a replay in ``env``, never prompting and in the C locale; bytes out. gitops.GitError when it
+    fails or gives no answer within GIT_TIMEOUT."""
+
+    def __init__(self, cwd: Path, env: Mapping[str, str]):
+        super().__init__(cwd, timeout=GIT_TIMEOUT, env={**env, **NO_PROMPT, "LC_ALL": "C"}, inherit=False)
+
+    def fail(self, error: GitError) -> BaseException:
+        if isinstance(error, GitFailed):
+            said = " ".join(error.stderr.decode(errors="replace").split())[-500:]
+            return gitops.GitError(f"git {error.command} failed: {said}")
+        if isinstance(error, GitUnavailable):
+            return error.cause
+        return gitops.GitError(f"git {error.command} gave no answer within {GIT_TIMEOUT:g}s")
+
+    async def raw(self, *args: str) -> bytes:
+        return await self.aout(*args, binary=True)
 
 
 async def commit_of(checkout: Path, name: str, env: Mapping[str, str]) -> str | None:
     """The full name of commit ``name`` in ``checkout``, or None when it has no such commit."""
-    code, out = await _git(checkout, "rev-parse", "--verify", "--quiet", f"{name}^{{commit}}", env=env, check=False)
-    found = out.decode().strip()
-    return found if code == 0 and replay.SHA.match(found) else None
+    named = await _ReplayGit(checkout, env).arun("rev-parse", "--verify", "--quiet", f"{name}^{{commit}}", check=False)
+    found = named.stdout.strip()
+    return found if named.ok and replay.SHA.match(found) else None
 
 
 async def base_commit(checkout: Path, commits: Iterable[str], env: Mapping[str, str]) -> str | None:
@@ -82,7 +75,7 @@ async def base_commit(checkout: Path, commits: Iterable[str], env: Mapping[str, 
         full = await commit_of(checkout, name, env)
         if full is None:
             continue
-        _, out = await _git(checkout, "log", "-1", "--format=%P%n%ct", full, env=env)
+        out = await _ReplayGit(checkout, env).raw("log", "-1", "--format=%P%n%ct", full)
         parents, _, time = out.decode().partition("\n")
         found.append((full, parents.split(), int(time.strip() or 0)))
     return replay.base_of(found)
@@ -91,15 +84,15 @@ async def base_commit(checkout: Path, commits: Iterable[str], env: Mapping[str, 
 async def harness_of(checkout: Path, default: str, head: str, env: Mapping[str, str]) -> list[str]:
     """The harness paths (``replay.harness_path``) the change at ``head`` touches since its merge base with
     ``default``."""
-    _, out = await _git(checkout, "merge-base", default, head, env=env)
+    out = await _ReplayGit(checkout, env).raw("merge-base", default, head)
     base = out.decode().strip()
-    _, out = await _git(checkout, "diff", "-z", "--name-only", "--no-renames", base, head, env=env)
+    out = await _ReplayGit(checkout, env).raw("diff", "-z", "--name-only", "--no-renames", base, head)
     return replay.harness_paths(path for path in out.decode(errors="surrogateescape").split("\0") if path)
 
 
 async def files_under(checkout: Path, ref: str, directory: str, env: Mapping[str, str]) -> list[str]:
     """The paths of the files under ``directory`` at commit ``ref``."""
-    _, out = await _git(checkout, "ls-tree", "-r", "-z", "--name-only", ref, "--", directory, env=env)
+    out = await _ReplayGit(checkout, env).raw("ls-tree", "-r", "-z", "--name-only", ref, "--", directory)
     return [path for path in out.decode(errors="surrogateescape").split("\0") if path]
 
 
@@ -122,7 +115,7 @@ async def write_at(checkout: Path, ref: str, pairs: Iterable[tuple[str, str]], r
         target = _target(root, dest)
         if target is None:
             continue
-        _, out = await _git(checkout, "ls-tree", "-z", ref, "--", source, env=env)
+        out = await _ReplayGit(checkout, env).raw("ls-tree", "-z", ref, "--", source)
         entry = out.decode(errors="surrogateescape").split("\0")[0]
         mode, _, rest = entry.partition(" ")
         kind, _, rest = rest.partition(" ")
@@ -133,7 +126,7 @@ async def write_at(checkout: Path, ref: str, pairs: Iterable[tuple[str, str]], r
             continue
         if kind != "blob" or mode == "120000":
             continue
-        _, data = await _git(checkout, "cat-file", "blob", sha, env=env)
+        data = await _ReplayGit(checkout, env).raw("cat-file", "blob", sha)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         os.chmod(target, 0o755 if mode == "100755" else 0o644)
@@ -164,18 +157,18 @@ def write_texts(texts: Mapping[str, str | None], root: Path, executable: str | N
 async def standalone(checkout: Path, base: str, path: Path, env: Mapping[str, str]) -> None:
     """A new repository at ``path`` with the history of ``checkout`` up to commit ``base``, checked out there."""
     path.mkdir(parents=True)
-    await _git(path, "init", "--quiet", env=env)
-    await _git(path, "fetch", "--quiet", "--no-tags", str(checkout.resolve()), base, env=env)
-    await _git(path, "checkout", "--quiet", "--detach", base, env=env)
+    git = _ReplayGit(path, env)
+    await git.arun("init", "--quiet")
+    await git.arun("fetch", "--quiet", "--no-tags", str(checkout.resolve()), base)
+    await git.arun("checkout", "--quiet", "--detach", base)
 
 
 async def commit_all(path: Path, message: str, env: Mapping[str, str]) -> str:
     """Commit what the work tree at ``path`` changed, when it changed anything; the commit HEAD is at then."""
-    await _git(path, "add", "--all", env=env)
-    code, _ = await _git(path, "diff", "--cached", "--quiet", env=env, check=False)
-    if code != 0:
-        await _git(path, *AUTHOR, "commit", "--quiet", "--no-verify", "-m", message, env=env)
-    _, out = await _git(path, "rev-parse", "HEAD", env=env)
+    await _ReplayGit(path, env).arun("add", "--all")
+    if not (await _ReplayGit(path, env).arun("diff", "--cached", "--quiet", check=False)).ok:
+        await _ReplayGit(path, env).arun(*AUTHOR, "commit", "--quiet", "--no-verify", "-m", message)
+    out = await _ReplayGit(path, env).raw("rev-parse", "HEAD")
     return out.decode().strip()
 
 
@@ -188,19 +181,21 @@ def _names(out: bytes) -> list[str]:
 
 async def changed_between(checkout: Path, old: str, new: str, env: Mapping[str, str]) -> list[str]:
     """Every path the commits from ``old`` to ``new`` of ``checkout`` touch."""
-    _, out = await _git(checkout, "diff", "-z", "--name-only", "--no-renames", old, new, env=env)
+    out = await _ReplayGit(checkout, env).raw("diff", "-z", "--name-only", "--no-renames", old, new)
     return _names(out)
 
 
 async def merge_base(checkout: Path, one: str, other: str, env: Mapping[str, str]) -> str | None:
-    code, out = await _git(checkout, "merge-base", one, other, env=env, check=False)
-    return out.decode().strip() or None if code == 0 else None
+    found = await _ReplayGit(checkout, env).arun("merge-base", one, other, check=False)
+    return found.stdout.strip() or None if found.ok else None
 
 
 async def first_parent_before(checkout: Path, ref: str, when: str, env: Mapping[str, str]) -> str | None:
     """The commit of ``ref``'s first-parent line that was its tip at ``when`` (ISO 8601): the newest one made before."""
-    code, out = await _git(checkout, "rev-list", "-1", "--first-parent", f"--before={when}", ref, env=env, check=False)
-    return out.decode().strip() or None if code == 0 else None
+    found = await _ReplayGit(checkout, env).arun(
+        "rev-list", "-1", "--first-parent", f"--before={when}", ref, check=False
+    )
+    return found.stdout.strip() or None if found.ok else None
 
 
 async def without_diff(
@@ -211,18 +206,18 @@ async def without_diff(
     no ref names the commit. GitError, with git's words, when the diff no longer comes off ``tip``."""
     scratch.mkdir(parents=True, exist_ok=True)
     patch, index = scratch / "change.diff", scratch / "index"
-    _, diff = await _git(
-        checkout, "diff", "--binary", "--no-renames", "--no-ext-diff", "--no-textconv", old, new, "--", *paths, env=env
+    diff = await _ReplayGit(checkout, env).raw(
+        "diff", "--binary", "--no-renames", "--no-ext-diff", "--no-textconv", old, new, "--", *paths
     )
     patch.write_bytes(diff)
-    own = {**env, "GIT_INDEX_FILE": str(index)}
-    await _git(checkout, "read-tree", tip, env=own)
+    own = _ReplayGit(checkout, {**env, "GIT_INDEX_FILE": str(index)})
+    await own.arun("read-tree", tip)
     if diff:
-        await _git(checkout, "apply", "--cached", "--reverse", "--binary", str(patch.resolve()), env=own)
-    _, out = await _git(checkout, "write-tree", env=own)
+        await own.arun("apply", "--cached", "--reverse", "--binary", str(patch.resolve()))
+    out = await own.raw("write-tree")
     tree = out.decode().strip()
     message = "The harness of the default branch's tip, the change's diff taken off"
-    _, out = await _git(checkout, *AUTHOR, "commit-tree", tree, "-p", tip, "-m", message, env=own)
+    out = await own.raw(*AUTHOR, "commit-tree", tree, "-p", tip, "-m", message)
     with contextlib.suppress(OSError):
         index.unlink()
     return out.decode().strip()
@@ -231,6 +226,6 @@ async def without_diff(
 async def changed_since(path: Path, start: str, env: Mapping[str, str]) -> list[str]:
     """The files of the repository at ``path`` its work tree changed since commit ``start``, committed or not, and
     those it added that no rule ignores; sorted."""
-    _, out = await _git(path, "diff", "-z", "--name-only", "--no-renames", start, env=env)
-    _, others = await _git(path, "ls-files", "-z", "--others", "--exclude-standard", env=env)
+    out = await _ReplayGit(path, env).raw("diff", "-z", "--name-only", "--no-renames", start)
+    others = await _ReplayGit(path, env).raw("ls-files", "-z", "--others", "--exclude-standard")
     return sorted({*_names(out), *_names(others)})

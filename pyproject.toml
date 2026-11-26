@@ -300,6 +300,33 @@ plugin, so it imports none of them and loads on a core install. Pass what it nee
 evo_agents.hub. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "infra-standalone"
+name = "evo_agents.infra, the git, files and retry every package shares, imports no other module of evo_agents"
+type = "forbidden"
+source_modules = ["evo_agents.infra"]
+forbidden_modules = [
+    "evo_agents.cli",
+    "evo_agents.clikit",
+    "evo_agents.core_plugins",
+    "evo_agents.filelock",
+    "evo_agents.guard_check",
+    "evo_agents.harness",
+    "evo_agents.hub",
+    "evo_agents.kg",
+    "evo_agents.plugins",
+    "evo_agents.private_names",
+    "evo_agents.schema",
+    "evo_agents.secret_patterns",
+    "evo_agents.sqlite_legacy",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+evo_agents.infra holds the plumbing every package of evo_agents uses alike (Git, write_atomic and JsonFile, \
+RetryPolicy), on the standard library alone, so it imports none of them. Pass what it needs from the caller (an \
+environment, an error to raise through Git.fail), or keep the code that needs a package in that package. See \
+docs/structure.md, section Shared infrastructure."""
+
+[[tool.importlinter.contracts]]
 id = "core-plugins-by-entry-point"
 name = "No package of evo_agents imports evo_agents.core_plugins: the hub reaches a core plugin through its manifest"
 type = "forbidden"

@@ -326,7 +326,7 @@ class EvolveRun(ReplayRun):
         if self.source is None:
             repository = root / "work"
             repository.mkdir(parents=True)
-            await gitops.git(repository, "init", "--quiet", env=self.env)
+            await gitops.RunGit(repository).arun("init", "--quiet", env=self.env)
             return repository
         base = await files.commit_of(self.source, task["base_sha"], self.env) if task.get("base_sha") else None
         repository = root / gitops.folder_name(self.inputs["repo"])

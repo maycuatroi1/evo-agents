@@ -30,6 +30,7 @@ from evo_agents import __version__
 from evo_agents.hub.client import HubError, check_url
 from evo_agents.hub.client import Unreachable as HubUnreachable
 from evo_agents.hub.runs import CLAIM_WAIT_SECONDS, PROTOCOL_HEADER, PROTOCOL_VERSION
+from evo_agents.infra import retry
 
 TIMEOUT = 30.0  # seconds for one call
 CLAIM_SLACK = 20.0  # seconds a claim may take beyond its wait
@@ -88,23 +89,11 @@ class Outdated(Refused):
     """426: this daemon speaks a worker protocol the hub no longer takes."""
 
 
-class Backoff:
+class Backoff(retry.Backoff):
     """Delays between tries of a failing call: FIRST_DELAY, doubling up to MOST_DELAY, each within 20% of that."""
 
     def __init__(self, first: float = FIRST_DELAY, most: float = MOST_DELAY, jitter: float = 0.2):
-        self.first = first
-        self.most = most
-        self.jitter = jitter
-        self.failures = 0
-
-    def next(self) -> float:
-        # the exponent stops at 32: 2**1024 does not fit a float, and seven hours of failed heartbeats reached it
-        delay = min(self.most, self.first * 2.0 ** min(self.failures, 32))
-        self.failures += 1
-        return max(0.0, delay * (1 + random.uniform(-self.jitter, self.jitter)))
-
-    def reset(self) -> None:
-        self.failures = 0
+        super().__init__(retry.Exponential(first, most, jitter, random.uniform))
 
 
 def _judge_key(key: str | None) -> dict:

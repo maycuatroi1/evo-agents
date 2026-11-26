@@ -47,10 +47,12 @@ async def leaked_commit(cwd: Path, source: str, remote: str, values: Collection[
     """The first commit ``source`` would send to ``remote`` that holds one of ``values``."""
     if not any(len(value) >= MIN_VALUE_CHARS for value in values):
         return None
-    from evo_agents.worker.gitops import git
+    from evo_agents.worker.gitops import RunGit
 
     args = ["log", "-p", "--no-color", "--no-ext-diff", f"--max-count={MAX_COMMITS}", f"--format={MARK_FORMAT}%H%n%B"]
-    code, out, _err = await git(cwd, *args, source, "--not", f"--remotes={remote}", timeout=LOG_TIMEOUT, check=False)
+    code, out, _err = await RunGit(cwd).arun(
+        *args, source, "--not", f"--remotes={remote}", timeout=LOG_TIMEOUT, check=False
+    )
     return leaked(out, values) if code == 0 else None
 
 

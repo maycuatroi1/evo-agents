@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
-import sys
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,6 +17,7 @@ from evo_agents.harness import (
     ontology_path,
     registered_harnesses,
 )
+from evo_agents.infra.files import JsonFile
 from evo_agents.kg.corpus import Corpus, kg_home
 from evo_agents.kg.policy import Policy
 from evo_agents.schema import errors
@@ -100,32 +98,16 @@ def _bindings_path(home: Path) -> Path:
     return home / "bound.json"
 
 
+def _file(path: Path) -> JsonFile:
+    return JsonFile(path, mode=0o644, durable=False, tries=REPLACE_TRIES, ensure_ascii=False, indent=2, sort_keys=True)
+
+
 def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return _file(path).read_object()
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")  # its own: two processes writing at once never share one
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    _replace(tmp, path)
-
-
-def _replace(tmp: Path, path: Path) -> None:
-    """os.replace, tried again while Windows refuses it (WinError 5) because another process has ``path`` open for a
-    moment, as a reader does; POSIX replaces an open file, so there a refusal is real and raises at once."""
-    for attempt in range(REPLACE_TRIES):
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            if sys.platform != "win32" or attempt == REPLACE_TRIES - 1:
-                raise
-            time.sleep(filelock.POLL)
+    _file(path).write(data)
 
 
 @contextlib.contextmanager

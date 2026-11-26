@@ -38,9 +38,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import re
-import subprocess
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -54,6 +52,8 @@ from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.kg_hub_sync import HubSync, UnreadRuns
 from evo_agents.hub.kg_push import worker_routes
 from evo_agents.hub.redact import redact
+from evo_agents.infra.files import JsonFile
+from evo_agents.infra.git import NO_PROMPT, Git, GitError, GitFailed, GitTimeout, GitUnavailable
 from evo_agents.kg.project import Project, ProjectError, load_project_at
 from evo_agents.kg.sync import SyncResult
 
@@ -95,37 +95,31 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-class GitProblem(RuntimeError):
+class GitProblem(GitError, RuntimeError):
     pass
 
 
-def git(repo: Path, *args: str, timeout: float = GIT_TIMEOUT) -> str:
-    """The output of ``git -C repo args``, never prompting; GitProblem with git's last line when it fails."""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    try:
-        done = subprocess.run(
-            ["git", "-C", str(repo), *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        raise GitProblem(f"git {args[0]} timed out after {timeout:g}s in {repo}") from None
-    except OSError as exc:
-        raise GitProblem(f"git cannot run: {exc}") from None
-    if done.returncode != 0:
-        lines = done.stderr.strip().splitlines()
-        raise GitProblem(f"git {args[0]} failed in {repo}: {lines[-1] if lines else 'exit ' + str(done.returncode)}")
-    return done.stdout
+class Checkout(Git):
+    """``git -C repo`` of a sync, never prompting, within GIT_TIMEOUT unless a call says otherwise; GitProblem with
+    git's last line when it fails."""
+
+    def __init__(self, repo: Path):
+        super().__init__(repo, timeout=GIT_TIMEOUT, env=NO_PROMPT)
+
+    def fail(self, error: GitError) -> BaseException:
+        if isinstance(error, GitTimeout):
+            return GitProblem(f"git {error.command} timed out after {error.timeout:g}s in {self.directory}")
+        if isinstance(error, GitUnavailable):
+            return GitProblem(f"git cannot run: {error.cause}")
+        lines = error.stderr.strip().splitlines() if isinstance(error, GitFailed) else []
+        code = error.returncode if isinstance(error, GitFailed) else "?"
+        return GitProblem(f"git {error.command} failed in {self.directory}: {lines[-1] if lines else f'exit {code}'}")
 
 
 def default_branch(repo: Path) -> str:
     """The default branch of origin as the clone recorded it, main when it recorded none."""
     with contextlib.suppress(GitProblem):
-        name = git(repo, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").strip()
+        name = Checkout(repo).out("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").strip()
         if name.startswith("origin/") and len(name) > len("origin/"):
             return name[len("origin/") :]
     return "main"
@@ -134,8 +128,7 @@ def default_branch(repo: Path) -> str:
 def clone(origin: str, dest: Path) -> None:
     """Clone ``origin`` to ``dest`` without a working tree nor blobs, which a sync reads from the ref as it needs them."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    git(
-        dest.parent,
+    Checkout(dest.parent).out(
         "clone",
         "--quiet",
         "--no-checkout",
@@ -150,12 +143,12 @@ def clone(origin: str, dest: Path) -> None:
 def fetch(repo: Path, branch: str) -> None:
     """Update origin/<branch> of the clone at ``repo`` from origin."""
     refspec = f"+refs/heads/{branch}:refs/remotes/origin/{branch}"
-    git(repo, "fetch", "--quiet", "--no-tags", "origin", refspec, timeout=FETCH_TIMEOUT)
+    Checkout(repo).out("fetch", "--quiet", "--no-tags", "origin", refspec, timeout=FETCH_TIMEOUT)
 
 
 def shown(repo: Path, ref: str, path: str) -> str:
     """The text of ``path`` at ``ref``."""
-    return git(repo, "show", f"{ref}:{path}")
+    return Checkout(repo).out("show", f"{ref}:{path}")
 
 
 def cut(text: str, secrets: tuple[str | None, ...] = ()) -> str:
@@ -182,7 +175,7 @@ class View:
 def shown_if_present(repo: Path, ref: str, path: str) -> str | None:
     """The text of ``path`` at ``ref``, or None when ``ref`` holds no file at ``path``."""
     try:
-        git(repo, "cat-file", "-e", f"{ref}:{path}")
+        Checkout(repo).out("cat-file", "-e", f"{ref}:{path}")
     except GitProblem:
         return None
     return shown(repo, ref, path)
@@ -449,12 +442,8 @@ class KgSync:
         self.reports = {name: state.report() for name, state in self.state.items()}
 
     def save(self) -> None:
-        directory = kg_dir(self.root)
-        directory.mkdir(parents=True, exist_ok=True)
-        tmp = directory / "state.json.tmp"
         data = {name: state.to_json() for name, state in sorted(self.state.items())}
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, directory / "state.json")
+        JsonFile(kg_dir(self.root) / "state.json", mode=0o644, durable=False, ensure_ascii=False, indent=2).write(data)
 
     def report(self, projects: list[str]) -> dict:
         """kg_sync of the heartbeat: what the last look at each of ``projects`` found, those looked at already."""

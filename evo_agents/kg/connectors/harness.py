@@ -126,7 +126,7 @@ def checkout_state(root: Path) -> tuple[set[str], dict[str, str], str]:
         head = gitcli.resolve(root, "HEAD")
         clean = gitcli.tracked_clean(root)
         times = gitcli.last_change_times(root, head)
-        return clean, times, gitcli.git(root, "remote", "get-url", "origin").strip()
+        return clean, times, gitcli.remote_url(root)
     except gitcli.GitError:
         return clean, times, ""
 

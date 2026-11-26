@@ -197,7 +197,7 @@ def shell_script(words: list[str]) -> str | None:
 
 def _of(name: str, words: list[str], worktree, own_repos: Collection[str], branches: set[str]) -> list[Hit]:
     if name == "git":
-        return _git(words, branches)
+        return _git_push(words, branches)
     if name == "rm":
         return _rm(words, worktree)
     if name in ("terraform", "tofu", "terragrunt"):
@@ -216,7 +216,7 @@ def _of(name: str, words: list[str], worktree, own_repos: Collection[str], branc
     return _buckets(name, words)
 
 
-def _git(words: list[str], branches: set[str]) -> list[Hit]:
+def _git_push(words: list[str], branches: set[str]) -> list[Hit]:
     """A push: forced or deleting (K9), to a default branch (K5), of a tag v* (K6)."""
     args = [word for word in words[1:]]
     while args and args[0] in ("-C", "-c"):  # git -C dir / -c key=value before the subcommand

@@ -38,7 +38,6 @@ import select
 import socket
 import ssl
 import sys
-import tempfile
 import threading
 import time
 import urllib.error
@@ -50,6 +49,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV
+from evo_agents.infra.files import write_atomic, write_private  # noqa: F401  (their callers import them from here)
 
 DEFAULT_GITHUB_URL = "https://github.com"
 GITHUB_URL_VARIABLE = "EVO_HUB_GITHUB_URL"
@@ -174,38 +174,6 @@ def _private_dir() -> Path:
     directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
     os.chmod(directory, DIR_MODE)  # mkdir's mode goes through the umask, and an older directory may be wider
     return directory
-
-
-def _fsync_dir(directory: Path) -> None:
-    with contextlib.suppress(OSError):  # not every platform can open a directory
-        fd = os.open(directory, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-
-
-def write_private(path: Path, data: bytes) -> None:
-    """Replace ``path`` with ``data`` atomically, mode 0600 from the first byte on."""
-    write_atomic(path, data, FILE_MODE)
-
-
-def write_atomic(path: Path, data: bytes, mode: int) -> None:
-    """Replace ``path`` with ``data`` atomically: a temporary file in the same directory, flushed to disk and
-    renamed over it, so a crash leaves the old file or the new one. ``mode`` exactly, whatever the umask."""
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")  # created 0600
-    try:
-        os.chmod(tmp, mode)
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
-    _fsync_dir(path.parent)
 
 
 def save_credentials(url: str, login: str, token: str) -> Path:

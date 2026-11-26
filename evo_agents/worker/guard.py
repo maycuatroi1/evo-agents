@@ -24,6 +24,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from evo_agents.guard_check import ENV, SHIM_ENV
+from evo_agents.infra.files import JsonFile
 from evo_agents.private_names import Policy
 
 log = logging.getLogger(__name__)
@@ -52,11 +53,7 @@ def held_digest(root: Path) -> str:
 def write(root: Path, data: dict) -> None:
     """Keep the policy the hub answered, after checking it reads; ValueError for one that does not."""
     Policy.from_json(data)
-    path = policy_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
-    os.replace(temp, path)
+    JsonFile(policy_path(root), mode=0o644, durable=False, separators=(",", ":")).write(data)
 
 
 def clear(root: Path) -> None:

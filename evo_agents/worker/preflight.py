@@ -98,7 +98,7 @@ async def can_reach(checkout: Path, run_id: int, *, push: bool, env: Mapping[str
         questions.append(("push", ("push", "--dry-run", "--no-verify", "--quiet", "origin", f"HEAD:{target}")))
     for what, question in questions:
         try:
-            code, out, err = await gitops.git(checkout, *question, env=env, check=False, timeout=PROBE_TIMEOUT)
+            code, out, err = await gitops.RunGit(checkout).arun(*question, env=env, check=False, timeout=PROBE_TIMEOUT)
         except gitops.GitError:  # no answer in time: the fetch will say what is wrong
             return None
         said = err or out

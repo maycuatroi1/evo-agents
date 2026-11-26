@@ -88,17 +88,19 @@ async def merge_in_worktree(checkout: Path, target: str, head: str, env: dict[st
     conflict, "")."""
     with tempfile.TemporaryDirectory(prefix="evo-judge-merge-") as scratch:
         path = Path(scratch) / "merge"
-        await gitops.git(checkout, "worktree", "add", "--detach", "--quiet", str(path), head, env=env)
+        await gitops.RunGit(checkout).arun("worktree", "add", "--detach", "--quiet", str(path), head, env=env)
         try:
-            merged = await gitops.git(
-                path, "merge", "--no-ff", "--no-commit", "--quiet", target, check=False, env={**env, **IDENTITY}
+            merged = await gitops.RunGit(path).arun(
+                "merge", "--no-ff", "--no-commit", "--quiet", target, check=False, env={**env, **IDENTITY}
             )
             if merged[0] == 0:
-                return 0, (await gitops.git(path, "write-tree", env=env))[1], ""
-            _, conflicted, _ = await gitops.git(path, "diff", "--name-only", "--diff-filter=U", check=False, env=env)
+                return 0, (await gitops.RunGit(path).arun("write-tree", env=env))[1], ""
+            _, conflicted, _ = await gitops.RunGit(path).arun(
+                "diff", "--name-only", "--diff-filter=U", check=False, env=env
+            )
             return (1, f"conflict\n{conflicted}", "") if conflicted.strip() else merged
         finally:
-            await gitops.git(checkout, "worktree", "remove", "--force", str(path), check=False, env=env)
+            await gitops.RunGit(checkout).arun("worktree", "remove", "--force", str(path), check=False, env=env)
 
 
 class JudgeRun:
@@ -309,7 +311,7 @@ class JudgeRun:
         the head needs a rebase. ``git merge-tree --write-tree`` merges without a work tree; exit 1 is a conflict. A
         git without it merges in a worktree of its own (``merge_in_worktree``)."""
         env = gitops.without_hooks(self.run.daemon.env)
-        code, out, err = await gitops.git(checkout, *WRITE_TREE, target, head, check=False, env=env)
+        code, out, err = await gitops.RunGit(checkout).arun(*WRITE_TREE, target, head, check=False, env=env)
         if code == USAGE and "usage: git merge-tree" in err + out:
             code, out, err = await merge_in_worktree(checkout, target, head, env)
         lines = [line for line in out.splitlines() if line.strip()]
@@ -319,8 +321,8 @@ class JudgeRun:
         if code != 0 or not lines:
             raise RunFailed(f"cannot merge origin's {base_branch} into {head[:12]}: {err.strip() or out.strip()}")
         message = f"The merge check's merge of origin/{base_branch} into {head[:12]}"
-        _, made, _ = await gitops.git(
-            checkout, "commit-tree", lines[0], "-p", head, "-p", target, "-m", message, env={**env, **IDENTITY}
+        _, made, _ = await gitops.RunGit(checkout).arun(
+            "commit-tree", lines[0], "-p", head, "-p", target, "-m", message, env={**env, **IDENTITY}
         )
         self.run.note(f"Merged origin's {base_branch} into {head[:12]} as {made.strip()[:12]}: the checks run there.")
         return made.strip(), None

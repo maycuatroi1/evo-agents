@@ -290,16 +290,17 @@ class BranchWork:
         run, path, local = self.run, workspace.worktree, workspace.local_branch
         where = head_branch or "a detached HEAD"
         apart = await _apart(path, local)
-        if apart.work and apart.carries:
+        head, tip = apart.head, apart.tip  # both named when it carries
+        if apart.work and apart.carries and head and tip:
             try:
                 message = f"run #{run.id}: the agent's commits on {where}"
-                await gitops.git(path, "update-ref", "-m", message, gitops.branch_ref(local), apart.head, apart.tip)
-                await gitops.git(path, "checkout", "--quiet", local)
+                await gitops.RunGit(path).arun("update-ref", "-m", message, gitops.branch_ref(local), head, tip)
+                await gitops.RunGit(path).arun("checkout", "--quiet", local)
             except gitops.GitError as exc:
                 raise RunFailed(f"{_mismatch(name, workspace, head_branch)}: {exc}", cause="branch_mismatch") from None
             run.note(
                 f"The agent left {name} on {where}, whose commits hold every commit of {local}: {local} moves on to "
-                f"{apart.head[:12]}, and the worker pushes it to {workspace.branch}.",
+                f"{head[:12]}, and the worker pushes it to {workspace.branch}.",
                 repo=name,
             )
             return True
@@ -313,7 +314,7 @@ class BranchWork:
             run.note(f"{name} is left on {where} with no commit origin lacks.")  # a review of a pull request
             return False
         try:
-            await gitops.git(path, "checkout", "--quiet", local)
+            await gitops.RunGit(path).arun("checkout", "--quiet", local)
         except gitops.GitError as exc:
             raise RunFailed(f"{_mismatch(name, workspace, head_branch)}: {exc}", cause="branch_mismatch") from None
         run.note(

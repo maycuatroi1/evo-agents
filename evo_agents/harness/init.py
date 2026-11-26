@@ -20,7 +20,6 @@ Nothing is overwritten: when harness.yaml or knowledge.yaml is there already, in
 from __future__ import annotations
 
 import re
-import subprocess
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +28,7 @@ from urllib.parse import urlsplit, urlunsplit
 import yaml
 
 from evo_agents.harness import DEFAULT_KNOWLEDGE, MANIFEST
+from evo_agents.infra.git import Git
 
 PROJECT_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # a hub project name (harness.schema.json, the hub's table)
 SOURCE_ID = re.compile(r"[^a-z0-9_.-]+")  # what knowledge.schema.json does not take in a source id
@@ -79,18 +79,6 @@ class Written:
     files: tuple[Path, ...]
 
 
-def _git(directory: Path, *args: str) -> str | None:
-    """What ``git -C directory <args>`` prints, stripped; None when git fails or prints nothing."""
-    try:
-        done = subprocess.run(
-            ["git", "-C", str(directory), *args], capture_output=True, text=True, timeout=GIT_TIMEOUT, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    text = done.stdout.strip()
-    return text if done.returncode == 0 and text else None
-
-
 def without_secret(origin: str) -> str:
     """``origin`` without the user and password an http(s) URL may carry; any other form as it is."""
     parts = urlsplit(origin)
@@ -101,13 +89,14 @@ def without_secret(origin: str) -> str:
 
 def read_repo(directory: Path) -> Repo:
     """The repo checked out at ``directory``: its origin and its default branch, as git has them."""
-    origin = _git(directory, "config", "--get", "remote.origin.url")
-    head = _git(directory, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+    git = Git(directory, timeout=GIT_TIMEOUT, encoding=None)
+    origin = git.value("config", "--get", "remote.origin.url")
+    head = git.value("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
     if origin and head and head.startswith("origin/"):
         branch, on_origin = head.removeprefix("origin/"), True
     else:
-        branch = _git(directory, "symbolic-ref", "--quiet", "--short", "HEAD")  # None on a detached HEAD
-        tracked = branch and _git(directory, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}")
+        branch = git.value("symbolic-ref", "--quiet", "--short", "HEAD")  # None on a detached HEAD
+        tracked = branch and git.value("rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}")
         on_origin = bool(origin and tracked)
     return Repo(directory.name, directory, without_secret(origin) if origin else None, branch, on_origin)
 

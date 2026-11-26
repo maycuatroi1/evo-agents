@@ -56,7 +56,6 @@ import json
 import logging
 import os
 import re
-import subprocess
 import tempfile
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -65,6 +64,7 @@ from pathlib import Path
 
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
 from evo_agents.hub.autonomy_levels import ASK, AUTO, CLASS_NAMES, DENY, NOTIFY
+from evo_agents.infra.git import Git
 from evo_agents.worker import pull_heads
 from evo_agents.worker.command_classes import SHELLS, Hit, classify, repo_slug, shell_script, simple_commands
 
@@ -107,16 +107,6 @@ def fresh_backup(path: Path, now: datetime | None = None) -> dict | None:
     return None if found is None else found[1]
 
 
-def _git(directory: Path, *args: str) -> str:
-    try:
-        done = subprocess.run(
-            ["git", "-C", str(directory), *args], capture_output=True, text=True, timeout=GIT_TIMEOUT, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return done.stdout.strip() if done.returncode == 0 else ""
-
-
 def repo_facts(worktree: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """The ``owner/name`` of the origin of each repo of the run's worktree (it, or the repos right under it), lower
     case, and the default branches their origins name."""
@@ -124,10 +114,11 @@ def repo_facts(worktree: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     branches: list[str] = []
     candidates = [worktree, *(child for child in sorted(worktree.iterdir()) if (child / ".git").exists())]
     for directory in candidates if worktree.is_dir() else []:
-        url = _git(directory, "remote", "get-url", "origin")
+        git = Git(directory, timeout=GIT_TIMEOUT, encoding=None)
+        url = git.value("remote", "get-url", "origin") or ""
         if url:
             slugs.append(repo_slug(url))
-        head = _git(directory, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+        head = git.value("symbolic-ref", "--short", "refs/remotes/origin/HEAD") or ""
         if head.startswith("origin/"):
             branches.append(head.removeprefix("origin/"))
     return tuple(dict.fromkeys(slugs)), tuple(dict.fromkeys(branches))

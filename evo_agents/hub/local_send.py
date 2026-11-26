@@ -48,6 +48,7 @@ from evo_agents.hub.client import (
     write_atomic,
 )
 from evo_agents.hub.local_outputs import Queue
+from evo_agents.infra.retry import Exponential, RetryPolicy
 
 LOG_FILE = "send.log"
 MAX_LOG_BYTES = 256 * 1024
@@ -56,6 +57,7 @@ PASSES = 20  # passes over the queues one run makes at most
 REQUEST_TIMEOUT = 30.0
 RECORD_TIMEOUT = 120.0  # the hub reads every upload back to hash it before it records
 PUT_ATTEMPTS = 3
+PUT_DELAYS = Exponential(1.0, float("inf"))  # a PUT the store refused for a moment, again after 1 s, then 2 s
 EDIT_WAIT = 10.0  # seconds the sender waits for a queue's lock
 CHUNK = 1 << 20
 CLI_LOCK_WAIT = 30.0  # seconds ``hub send FILE`` waits for a sender of the hooks
@@ -63,6 +65,10 @@ SEND_KEYS = ("project", "run_id", "session_id", "outputs", "queued")
 GONE = (403, 404)  # the hub does not know the session's run, or not as this member's
 NO_RUN, REFUSED, UNREGISTERED = "no hub project", "refused lately", "not registered yet"
 REGISTER_WAIT = 20.0  # seconds a run waits for a session to register, whose first hook queued outputs
+
+
+def _put_again(exc: BaseException) -> bool:
+    return isinstance(exc, HubError) and transient(exc)
 
 
 class Stopped(Exception):
@@ -298,14 +304,7 @@ class Sender:
         return {item["key"]: by_sha[item["sha256"]] for item in items if item["sha256"] in by_sha}
 
     def put(self, url: str, path: Path) -> None:
-        for attempt in range(PUT_ATTEMPTS):
-            try:
-                put_presigned(url, path)
-                return
-            except HubError as exc:
-                if attempt == PUT_ATTEMPTS - 1 or not transient(exc):
-                    raise
-                time.sleep(1.0 * 2**attempt)
+        RetryPolicy(PUT_DELAYS, PUT_ATTEMPTS, _put_again).call(lambda: put_presigned(url, path))
 
     def settle(self, queue: Queue, outcomes: dict[str, dict | str]) -> None:
         """Take the items of ``outcomes`` out of the queue, remembering what the hub recorded."""

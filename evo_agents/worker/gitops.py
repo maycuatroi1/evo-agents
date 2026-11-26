@@ -67,6 +67,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents.hub.runs import MAX_NOTICE_BODY_BYTES, MAX_NOTICE_COMMITS, RESULT_DIR, WORKER_MADE, clip, worker_made
+from evo_agents.infra.git import Git, GitFailed, GitTimeout, GitUnavailable
+from evo_agents.infra.git import GitError as InfraGitError
 from evo_agents.worker.workspace import Workspace, folder_name, plan_branches  # noqa: F401 (callers import them here)
 
 TIMEOUT = 120.0
@@ -113,7 +115,7 @@ AUTH_FAILURE = re.compile(
 _SHORTSTAT = re.compile(r"(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?")
 
 
-class GitError(Exception):
+class GitError(InfraGitError):
     pass
 
 
@@ -181,33 +183,25 @@ def tail(text: str, limit: int = MAX_MESSAGE) -> str:
     return text if len(text) <= limit else "..." + text[-limit:]
 
 
-async def git(
-    cwd: Path, *args: str, timeout: float = TIMEOUT, check: bool = True, env: Mapping[str, str] | None = None
-) -> tuple[int, str, str]:
-    """(exit code, stdout, stderr) of ``git -C cwd ARGS`` in ``env`` (this process's environment when None); GitError
-    on a failure when ``check``."""
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        "-C",
-        str(cwd),
-        *args,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=_env(env),
-        start_new_session=True,
-    )
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout)
-    except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
-        await proc.wait()
-        raise GitError(f"git {args[0]} gave no answer within {timeout:g}s") from None
-    stdout, stderr = out.decode(errors="replace"), err.decode(errors="replace")
-    if check and proc.returncode != 0:
-        raise _failure(args[0], proc.returncode, stdout, stderr)
-    return proc.returncode, stdout, stderr
+class RunGit(Git):
+    """``git -C cwd`` of a run, in ``env`` (this process's environment when None; a call's own ``env`` replaces it)
+    with no prompt, the C locale and no optional locks, within TIMEOUT unless a call says otherwise. ``arun`` returns
+    ``(exit code, stdout, stderr)``; GitError on a failure when ``check`` (GitAuthError when the remote refused the
+    credential), GitError when git gives no answer in time, the OSError itself when it cannot start."""
+
+    def __init__(self, cwd: Path | None, env: Mapping[str, str] | None = None, *, timeout: float = TIMEOUT):
+        super().__init__(cwd, timeout=timeout, env=env, inherit=False)
+
+    def environment(self, env: Mapping[str, str] | None = None) -> dict[str, str]:
+        return _env(env if env is not None else self.env)
+
+    def fail(self, error: InfraGitError) -> BaseException:
+        if isinstance(error, GitFailed):
+            return _failure(error.command, error.returncode, error.stdout, error.stderr)
+        if isinstance(error, GitUnavailable):
+            return error.cause
+        timeout = error.timeout if isinstance(error, GitTimeout) else self.timeout
+        return GitError(f"git {error.command} gave no answer within {timeout:g}s")
 
 
 def _failure(command: str, code: int, stdout: str, stderr: str) -> GitError:
@@ -218,17 +212,17 @@ def _failure(command: str, code: int, stdout: str, stderr: str) -> GitError:
 
 async def rev(cwd: Path, ref: str) -> str | None:
     """The commit ``ref`` names, or None."""
-    code, out, _ = await git(cwd, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False)
+    code, out, _ = await RunGit(cwd).arun("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False)
     return out.strip() if code == 0 and out.strip() else None
 
 
 async def has_remote(cwd: Path, name: str = "origin") -> bool:
-    code, out, _ = await git(cwd, "remote", check=False)
+    code, out, _ = await RunGit(cwd).arun("remote", check=False)
     return code == 0 and name in out.split()
 
 
 async def fetch(cwd: Path, remote: str = "origin", *, env: Mapping[str, str] | None = None) -> None:
-    await git(cwd, "fetch", "--prune", "--quiet", remote, timeout=NETWORK_TIMEOUT, env=env)
+    await RunGit(cwd).arun("fetch", "--prune", "--quiet", remote, timeout=NETWORK_TIMEOUT, env=env)
 
 
 async def clone(origin: str, path: Path, *, env: Mapping[str, str] | None = None) -> None:
@@ -237,7 +231,7 @@ async def clone(origin: str, path: Path, *, env: Mapping[str, str] | None = None
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.parent / f".{path.name}.clone-{os.getpid()}-{secrets.token_hex(4)}"
     try:
-        await git(path.parent, "clone", "--quiet", "--", origin, partial.name, timeout=CLONE_TIMEOUT, env=env)
+        await RunGit(path.parent).arun("clone", "--quiet", "--", origin, partial.name, timeout=CLONE_TIMEOUT, env=env)
         partial.rename(path)
     finally:
         if partial.exists():
@@ -249,40 +243,42 @@ async def remote_urls(cwd: Path, remote: str = "origin") -> list[str]:
     rewrites them; empty when it has none."""
     found: list[str] = []
     for key in ("url", "pushurl"):
-        _, out, _ = await git(cwd, "config", "--get-all", f"remote.{remote}.{key}", check=False)
+        _, out, _ = await RunGit(cwd).arun("config", "--get-all", f"remote.{remote}.{key}", check=False)
         found += [line.strip() for line in out.splitlines() if line.strip() and line.strip() not in found]
     return found
 
 
 async def remote_default_branch(cwd: Path, remote: str = "origin") -> str | None:
     """The branch the remote's HEAD points at, as the last clone or ``remote set-head`` saw it."""
-    code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD", check=False)
+    code, out, _ = await RunGit(cwd).arun(
+        "symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD", check=False
+    )
     name = out.strip()
     return name.removeprefix(f"{remote}/") if code == 0 and name.startswith(f"{remote}/") else None
 
 
 async def branches_in_worktrees(cwd: Path) -> set[str]:
     """The branches checked out in any worktree of the repository."""
-    _, out, _ = await git(cwd, "worktree", "list", "--porcelain")
+    _, out, _ = await RunGit(cwd).arun("worktree", "list", "--porcelain")
     return {
         line.removeprefix("branch refs/heads/") for line in out.splitlines() if line.startswith("branch refs/heads/")
     }
 
 
 async def is_ancestor(cwd: Path, older: str, newer: str) -> bool:
-    code, _, _ = await git(cwd, "merge-base", "--is-ancestor", older, newer, check=False)
+    code, _, _ = await RunGit(cwd).arun("merge-base", "--is-ancestor", older, newer, check=False)
     return code == 0
 
 
 async def check_branch_name(cwd: Path, branch: str) -> bool:
-    code, _, _ = await git(cwd, "check-ref-format", "--branch", branch, check=False)
+    code, _, _ = await RunGit(cwd).arun("check-ref-format", "--branch", branch, check=False)
     return code == 0 and not branch.startswith("-")
 
 
 async def add_worktree(cwd: Path, path: Path, branch: str, start: str, *, reset: bool) -> None:
     """A worktree at ``path`` on ``branch`` at ``start``; ``reset`` moves an existing branch there (-B). Its
     repository ignores what a run makes beside the work (``ignore_worker_files``)."""
-    await git(cwd, "worktree", "add", "--no-track", "-B" if reset else "-b", branch, str(path), start)
+    await RunGit(cwd).arun("worktree", "add", "--no-track", "-B" if reset else "-b", branch, str(path), start)
     await ignore_worker_files(cwd)
 
 
@@ -290,7 +286,7 @@ async def ignore_worker_files(cwd: Path) -> bool:
     """Add WORKER_MADE to the info/exclude of the repository of ``cwd`` (the common one, which its worktrees read),
     under EXCLUDE_MARK, once; whether it wrote. A repository whose exclude git cannot name or write is left as it is:
     the commit of a run leaves those paths out anyway (``commit_run``)."""
-    code, out, _ = await git(cwd, "rev-parse", "--git-common-dir", check=False)
+    code, out, _ = await RunGit(cwd).arun("rev-parse", "--git-common-dir", check=False)
     if code != 0 or not out.strip():
         return False
     exclude = (Path(cwd) / out.strip()).resolve() / "info" / "exclude"
@@ -308,7 +304,7 @@ async def ignore_worker_files(cwd: Path) -> bool:
 
 async def add_detached_worktree(cwd: Path, path: Path, start: str, *, env: Mapping[str, str] | None = None) -> None:
     """A worktree at ``path`` with HEAD detached at ``start``, on no branch: a review run's, which commits nothing."""
-    await git(cwd, "worktree", "add", "--detach", str(path), start, env=env)
+    await RunGit(cwd).arun("worktree", "add", "--detach", str(path), start, env=env)
 
 
 def without_hooks(base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -331,7 +327,7 @@ def without_hooks(base: Mapping[str, str] | None = None) -> dict[str, str]:
 async def git_dir(cwd: Path, *, env: Mapping[str, str] | None = None) -> str | None:
     """The absolute git directory of the work tree at ``cwd``, found there and never above it; None without one."""
     found = {**(env if env is not None else os.environ), "GIT_CEILING_DIRECTORIES": str(Path(cwd).parent)}
-    code, out, _ = await git(cwd, "rev-parse", "--absolute-git-dir", check=False, env=found)
+    code, out, _ = await RunGit(cwd).arun("rev-parse", "--absolute-git-dir", check=False, env=found)
     return out.strip() if code == 0 and out.strip() else None
 
 
@@ -346,8 +342,8 @@ async def restore(cwd: Path, head: str, *, expected_git_dir: str, env: Mapping[s
     found = await git_dir(cwd, env=local)
     if found is None or Path(found).resolve() != Path(expected_git_dir).resolve():
         raise GitError(f"{cwd} is no longer the worktree it was made as: its git directory is {found or 'gone'}")
-    await git(cwd, "checkout", "--quiet", "--force", "--detach", head, env=local)
-    await git(cwd, "clean", "-ffdxq", env=local)
+    await RunGit(cwd).arun("checkout", "--quiet", "--force", "--detach", head, env=local)
+    await RunGit(cwd).arun("clean", "-ffdxq", env=local)
 
 
 HEADS = "refs/heads/"
@@ -361,7 +357,7 @@ def branch_ref(name: str) -> str:
 async def current_ref(cwd: Path) -> str | None:
     """The full ref HEAD names at ``cwd`` (``refs/heads/<branch>``); None when HEAD is detached. ``--short`` would
     print ``heads/<branch>`` in a repo that has a tag of the same name, so nothing compares that."""
-    code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "HEAD", check=False)
+    code, out, _ = await RunGit(cwd).arun("symbolic-ref", "--quiet", "HEAD", check=False)
     return out.strip() if code == 0 and out.strip() else None
 
 
@@ -395,14 +391,14 @@ async def staged_paths(cwd: Path, *, added: bool = False) -> list[str]:
     """The paths whose index entry differs from HEAD, each side of a rename on its own; with ``added``, only those
     HEAD lacks."""
     only = ("--diff-filter=A",) if added else ()
-    _, out, _ = await git(cwd, "diff", "--cached", "--name-only", "--no-renames", *only, "-z")
+    _, out, _ = await RunGit(cwd).arun("diff", "--cached", "--name-only", "--no-renames", *only, "-z")
     return [path for path in out.split("\0") if path]
 
 
 async def _result_pathspec(cwd: Path) -> tuple[str, ...]:
     """The pathspec that keeps the result directory out of ``git add --all``: none when the work tree already ignores
     it, since git exits 1 on a pathspec naming an ignored path, an excluding one too ("paths are ignored")."""
-    code, _, _ = await git(cwd, "check-ignore", "--quiet", "--", RESULT_DIR, check=False)
+    code, _, _ = await RunGit(cwd).arun("check-ignore", "--quiet", "--", RESULT_DIR, check=False)
     return () if code == 0 else (EXCLUDE_RESULT,)
 
 
@@ -410,16 +406,16 @@ async def commit_run(cwd: Path, message: str, *, author: str | None = None) -> C
     """Stage every change of the work tree but the result directory, put the paths a run never commits back as HEAD
     has them (see the module's docstring), and commit what is left as ``message``, with ``author`` (``Name <email>``)
     as its author when given; the committer is this machine's git identity either way."""
-    await git(cwd, "add", "--all", "--", ".", *await _result_pathspec(cwd))
+    await RunGit(cwd).arun("add", "--all", "--", ".", *await _result_pathspec(cwd))
     staged = await staged_paths(cwd)
     added = frozenset(await staged_paths(cwd, added=True))
     left = sorted(await asyncio.to_thread(_left_out, cwd, staged, added))
     for start in range(0, len(left), PATHS_PER_CALL):
         chunk = left[start : start + PATHS_PER_CALL]
-        await git(cwd, "reset", "--quiet", "--", *(f":(literal){path}" for path in chunk))
+        await RunGit(cwd).arun("reset", "--quiet", "--", *(f":(literal){path}" for path in chunk))
     if len(left) == len(staged):
         return Committed(False, tuple(left))
-    await git(cwd, "commit", "--quiet", *(("--author", author) if author else ()), "-m", message)
+    await RunGit(cwd).arun("commit", "--quiet", *(("--author", author) if author else ()), "-m", message)
     return Committed(True, tuple(left))
 
 
@@ -429,7 +425,7 @@ async def commit_all(cwd: Path, message: str) -> bool:
 
 
 async def diffstat(cwd: Path, base: str, head: str = "HEAD") -> dict:
-    _, out, _ = await git(cwd, "diff", "--shortstat", base, head)
+    _, out, _ = await RunGit(cwd).arun("diff", "--shortstat", base, head)
     match = _SHORTSTAT.search(out)
     if not match:
         return {"files": 0, "insertions": 0, "deletions": 0}
@@ -561,7 +557,9 @@ async def remote_tip(
     cwd: Path, branch: str, remote: str = "origin", *, env: Mapping[str, str] | None = None
 ) -> str | None:
     """The commit ``branch`` points at on the remote now, or None when the remote has no such branch."""
-    _, out, _ = await git(cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env)
+    _, out, _ = await RunGit(cwd).arun(
+        "ls-remote", "--heads", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env
+    )
     for line in out.splitlines():
         sha, _, ref = line.partition("\t")
         if ref.strip() == f"refs/heads/{branch}" and sha.strip():
@@ -576,8 +574,8 @@ async def has_commit(
     first when this repository lacks it. False when git cannot tell."""
     if await rev(cwd, tip) is None:
         with contextlib.suppress(GitError):  # the push that follows says what went wrong
-            await git(
-                cwd, "fetch", "--quiet", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env, check=False
+            await RunGit(cwd).arun(
+                "fetch", "--quiet", remote, f"refs/heads/{branch}", timeout=NETWORK_TIMEOUT, env=env, check=False
             )
         if await rev(cwd, tip) is None:
             return False
@@ -588,13 +586,13 @@ async def new_commits(cwd: Path, before: str | None, remote: str = "origin", lim
     """The commits of HEAD that ``before`` lacks (or that no branch of the remote has, when ``before`` is None),
     newest first, at most ``limit``; empty when git cannot tell."""
     since = [f"^{before}"] if before else ["--not", f"--remotes={remote}"]
-    code, out, _ = await git(cwd, "rev-list", f"--max-count={limit}", "HEAD", *since, check=False)
+    code, out, _ = await RunGit(cwd).arun("rev-list", f"--max-count={limit}", "HEAD", *since, check=False)
     return out.split() if code == 0 else []
 
 
 async def unpushed(cwd: Path, remote: str = "origin", rev: str = "HEAD") -> bool:
     """Whether ``rev`` has a commit that no branch of the remote has; True when git cannot tell."""
-    code, out, _ = await git(cwd, "rev-list", "--max-count=1", rev, "--not", f"--remotes={remote}", check=False)
+    code, out, _ = await RunGit(cwd).arun("rev-list", "--max-count=1", rev, "--not", f"--remotes={remote}", check=False)
     return code != 0 or bool(out.strip())
 
 
@@ -621,8 +619,7 @@ async def send(
     await lease_leaks.check(cwd, source, remote)
     await asyncio.to_thread(guard.check_push, cwd, source, branch, remote, env)
     sent = [f"--push-option={option}" for option in options]
-    code, out, err = await git(
-        cwd,
+    code, out, err = await RunGit(cwd).arun(
         "push",
         "--quiet",
         "--porcelain",
@@ -733,8 +730,8 @@ async def changed_paths(cwd: Path, base: str) -> list[str]:
     """Every path the work tree at ``cwd`` changed since ``base``: committed, staged, changed and untracked, both
     sides of a rename, the result directory left out, and a path under RUN_COMMIT_EXCLUDES too unless a commit since
     ``base`` holds it (see the module's docstring); sorted."""
-    _, committed, _ = await git(cwd, "diff", "--name-only", "--no-renames", "-z", base, "HEAD", check=False)
-    _, status, _ = await git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+    _, committed, _ = await RunGit(cwd).arun("diff", "--name-only", "--no-renames", "-z", base, "HEAD", check=False)
+    _, status, _ = await RunGit(cwd).arun("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
     found = {path for path in committed.split("\0") if path}
     for entry in status.split("\0"):
         if len(entry) > 3 and not excluded(entry[3:]):
@@ -745,13 +742,13 @@ async def changed_paths(cwd: Path, base: str) -> list[str]:
 async def uncommitted(cwd: Path) -> bool:
     """Whether the work tree at ``cwd`` has a change a run's commit could take: a path staged, changed or untracked,
     those under RUN_COMMIT_EXCLUDES and the result directory aside."""
-    _, status, _ = await git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+    _, status, _ = await RunGit(cwd).arun("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
     paths = (entry[3:] for entry in status.split("\0") if len(entry) > 3)
     return any(not excluded(path) and not path.startswith(f"{RESULT_DIR}/") for path in paths)
 
 
 async def merge_base(cwd: Path, first: str, second: str) -> str | None:
-    code, out, _ = await git(cwd, "merge-base", first, second, check=False)
+    code, out, _ = await RunGit(cwd).arun("merge-base", first, second, check=False)
     return out.strip() if code == 0 and out.strip() else None
 
 
@@ -764,8 +761,7 @@ async def diff_text(
     """(the text diff from ``base`` to ``head`` as ``git diff`` writes it, binary files named and no textconv of the
     repository applied, at most ``limit`` characters; whether it was longer and so was cut)."""
     limit = DIFF_TEXT_LIMIT if limit is None else limit
-    _, out, _ = await git(
-        cwd,
+    _, out, _ = await RunGit(cwd).arun(
         "diff",
         "--no-color",
         "--no-ext-diff",
@@ -781,16 +777,16 @@ async def diff_text(
 
 async def detach(cwd: Path) -> None:
     """Leave the branch the worktree is on, so the owner can check it out elsewhere; the files stay."""
-    await git(cwd, "checkout", "--quiet", "--detach")
+    await RunGit(cwd).arun("checkout", "--quiet", "--detach")
 
 
 async def attach(cwd: Path, branch: str) -> None:
     """Check ``branch`` out again in a worktree ``detach`` left at its tip; what is not committed stays."""
-    await git(cwd, "checkout", "--quiet", branch, "--")
+    await RunGit(cwd).arun("checkout", "--quiet", branch, "--")
 
 
 async def remove_worktree(cwd: Path, path: Path) -> None:
-    await git(cwd, "worktree", "remove", "--force", str(path))
+    await RunGit(cwd).arun("worktree", "remove", "--force", str(path))
 
 
 @dataclass(frozen=True)
@@ -806,7 +802,7 @@ async def save_wip(worktree: Path, ref: str, message: str) -> Wip | None:
     """Commit what the work tree ``worktree`` has that HEAD lacks (tracked or not, ignored files aside) on top of HEAD,
     through an index of its own so the worktree's stays as it was, and point ``ref`` (under RECOVERY_REFS, shared by
     every worktree of the checkout) at that commit; None when nothing is uncommitted. HEAD and its branch do not move."""
-    _, status, _ = await git(worktree, "status", "--porcelain", "--untracked-files=all")
+    _, status, _ = await RunGit(worktree).arun("status", "--porcelain", "--untracked-files=all")
     if not status.strip():
         return None
     head = await rev(worktree, "HEAD")
@@ -816,18 +812,18 @@ async def save_wip(worktree: Path, ref: str, message: str) -> Wip | None:
             env.setdefault(f"GIT_{role}_NAME", WIP_IDENTITY["name"])
             env.setdefault(f"GIT_{role}_EMAIL", WIP_IDENTITY["email"])
         if head is not None:
-            await git(worktree, "read-tree", head, env=env)
-        await git(worktree, "add", "--all", "--", ".", env=env)
-        _, tree, _ = await git(worktree, "write-tree", env=env)
+            await RunGit(worktree).arun("read-tree", head, env=env)
+        await RunGit(worktree).arun("add", "--all", "--", ".", env=env)
+        _, tree, _ = await RunGit(worktree).arun("write-tree", env=env)
         parents = ("-p", head) if head is not None else ()
-        _, wip, _ = await git(worktree, "commit-tree", tree.strip(), *parents, "-m", message, env=env)
-    await git(worktree, "update-ref", ref, wip.strip())
+        _, wip, _ = await RunGit(worktree).arun("commit-tree", tree.strip(), *parents, "-m", message, env=env)
+    await RunGit(worktree).arun("update-ref", ref, wip.strip())
     return Wip(head, wip.strip(), ref)
 
 
 async def prune_worktrees(cwd: Path) -> None:
-    await git(cwd, "worktree", "prune", check=False)
+    await RunGit(cwd).arun("worktree", "prune", check=False)
 
 
 async def delete_branch(cwd: Path, branch: str) -> None:
-    await git(cwd, "branch", "--quiet", "-D", branch, check=False)
+    await RunGit(cwd).arun("branch", "--quiet", "-D", branch, check=False)

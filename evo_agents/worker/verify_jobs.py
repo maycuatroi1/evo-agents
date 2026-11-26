@@ -71,7 +71,7 @@ def key_of(repo: str, tree: str, commands: list[str]) -> str:
 async def tree_of(path: Path, scratch: Path) -> str:
     """The tree ``git add -A`` would stage in the worktree at ``path``, leaving out RUN_COMMIT_EXCLUDES, written with a
     copy of its index in ``scratch``, so its own index stays as it is."""
-    _, out, _ = await gitops.git(path, "rev-parse", "--git-path", "index")
+    _, out, _ = await gitops.RunGit(path).arun("rev-parse", "--git-path", "index")
     index = Path(out.strip())
     index = index if index.is_absolute() else path / index
     scratch.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
@@ -81,8 +81,8 @@ async def tree_of(path: Path, scratch: Path) -> str:
             await asyncio.to_thread(shutil.copyfile, index, copy)
         env = {**os.environ, "GIT_INDEX_FILE": str(copy)}
         left_out = [f":(exclude,glob)**/{prefix}**" for prefix in gitops.RUN_COMMIT_EXCLUDES]
-        await gitops.git(path, "add", "-A", "--", ".", *left_out, env=env)
-        _, out, _ = await gitops.git(path, "write-tree", env=env)
+        await gitops.RunGit(path).arun("add", "-A", "--", ".", *left_out, env=env)
+        _, out, _ = await gitops.RunGit(path).arun("write-tree", env=env)
         return out.strip()
     finally:
         copy.unlink(missing_ok=True)

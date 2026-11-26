@@ -114,8 +114,7 @@ class ReleaseRun:
             base = await gitops.rev(checkout, start)
             if base is None:
                 with run.credentials.ticketed(run.daemon.env) as env:
-                    await gitops.git(
-                        checkout,
+                    await gitops.RunGit(checkout).arun(
                         "fetch",
                         "--quiet",
                         "origin",

@@ -9,6 +9,7 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub.kg_remote import RemoteSession, open_session
+from evo_agents.infra import files
 from evo_agents.kg import project as project_module
 from evo_agents.kg import serve
 from evo_agents.kg.project import (
@@ -239,13 +240,13 @@ def test_replace_tries_again_while_windows_refuses_it_and_raises_at_once_elsewhe
             raise PermissionError(13, "Access is denied", str(dst))
         real(src, dst)
 
-    monkeypatch.setattr(project_module.os, "replace", busy)
-    monkeypatch.setattr(project_module.sys, "platform", "win32")
+    monkeypatch.setattr(files.os, "replace", busy)
+    monkeypatch.setattr(files.sys, "platform", "win32")
     project_module._write_json(tmp_path / "projects.json", {"a": 1})
     assert len(refused) == 2 and json.loads((tmp_path / "projects.json").read_text()) == {"a": 1}
 
     refused.clear()
-    monkeypatch.setattr(project_module.sys, "platform", "linux")
+    monkeypatch.setattr(files.sys, "platform", "linux")
     with pytest.raises(PermissionError):
         project_module._write_json(tmp_path / "projects.json", {"a": 2})
     assert len(refused) == 1

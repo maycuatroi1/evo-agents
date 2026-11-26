@@ -298,7 +298,7 @@ def test_kg_sync_clone_terminates_git_options_and_refuses_option_shaped_repo_nam
     from contextlib import nullcontext
 
     calls = []
-    monkeypatch.setattr(kg_sync, "git", lambda cwd, *args, **kw: calls.append((cwd, args, kw)) or "")
+    monkeypatch.setattr(kg_sync.Checkout, "out", lambda git, *args, **kw: calls.append((git.directory, args, kw)) or "")
     dest = tmp_path / "checkouts" / "demo" / "app"
     kg_sync.clone("https://github.com/acme/app.git", dest)
     assert calls and calls[0][1][-3:] == ("--", "https://github.com/acme/app.git", "app")

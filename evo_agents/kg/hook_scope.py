@@ -13,10 +13,11 @@ kept too, so an unbound checkout costs no YAML either. A cache that cannot be re
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from evo_agents.infra.files import JsonFile
 
 CACHE = "hook-scope.json"
 MAX_ENTRIES = 64  # directories kept; the oldest go first
@@ -82,20 +83,17 @@ def resolve(start: Path, home: Path) -> tuple[Scope | None, list[Path]]:
     return scope, [project.harness.root / MANIFEST, project.knowledge_path]
 
 
+def _file(path: Path) -> JsonFile:
+    return JsonFile(path, mode=0o644, durable=False, ensure_ascii=False)
+
+
 def _read(path: Path) -> dict:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return _file(path).read_object()
 
 
 def _write(path: Path, data: dict) -> None:
     with contextlib.suppress(OSError):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, path)
+        _file(path).write(data)
 
 
 def scope_for(env=None) -> Scope | None:

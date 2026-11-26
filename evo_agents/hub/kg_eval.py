@@ -14,46 +14,30 @@ Only reads: GET of the hub's plans, and ``git diff`` in the checkouts.
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
 from evo_agents.hub.handoff import commits_of
 from evo_agents.hub.mirror import plans_path
 from evo_agents.hub.plans import step_key
+from evo_agents.infra.git import Git
 from evo_agents.kg.evaluate import DEFAULT_MAX_FILES, PLAN_STEP_TYPE, PLAN_TEXTS
 
 GIT_TIMEOUT = 30.0
 
 
-def _git(checkout: Path, *args: str) -> str | None:
-    """The output of a read-only git command, or None when it fails (a commit the checkout lacks, an ambiguous hash).
-    Read as UTF-8, which git writes paths in, whatever the locale (cp1252 on Windows)."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(checkout), *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=GIT_TIMEOUT,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return result.stdout if result.returncode == 0 else None
-
-
 def changed_files(checkout: Path, sha: str) -> list[str] | None:
     """The paths a commit changed against its first parent (all of them for a root commit); None when the checkout
     does not have the commit."""
-    full = _git(checkout, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}")
+    git = Git(checkout, timeout=GIT_TIMEOUT)
+    full = git.read("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}")
     if full is None:
         return None
     full = full.strip()
-    if _git(checkout, "rev-parse", "--verify", "--quiet", f"{full}^1") is not None:
-        out = _git(checkout, "diff", "-z", "--name-only", "--no-renames", f"{full}^1", full)
+    if git.read("rev-parse", "--verify", "--quiet", f"{full}^1") is not None:
+        out = git.read("diff", "-z", "--name-only", "--no-renames", f"{full}^1", full)
     else:
-        out = _git(checkout, "diff-tree", "-z", "--root", "-r", "--name-only", "--no-commit-id", "--no-renames", full)
+        out = git.read("diff-tree", "-z", "--root", "-r", "--name-only", "--no-commit-id", "--no-renames", full)
     return None if out is None else [path for path in out.split("\0") if path]  # -z: paths verbatim, not quoted
 
 
