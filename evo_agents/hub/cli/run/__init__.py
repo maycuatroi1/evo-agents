@@ -37,7 +37,7 @@ The commands are classes of ``evo_agents.clikit`` (docs/structure.md, section Co
 modules of this package named in parentheses above holding theirs: ``resources`` holds the gateways to the routes
 (:class:`Runs`, :class:`PlanRuns`, :class:`AuthorRuns`, :class:`SystemDispatch`), ``options`` the arguments and the
 value object :class:`RunOptions` that turns them into the body of a dispatch, a plan run, an author run or a rerun,
-and ``describe`` what ``show`` says of a run. :data:`RUN` is the group, attached by ``evo_agents.hub.cli.session``.
+and ``describe`` what ``show`` says of a run. :data:`RUN` is the group, attached by ``evo_agents.hub.cli``.
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-registered by ``cli.session``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
+attached by ``cli.session`` and the class modules beside it, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
 ``cli.plugin``, ``srs`` by ``cli_srs``, ``docs`` by ``cli_docs``, ``task`` by ``cli_tasks``, ``canvas`` by ``cli_canvas``,
 ``signal`` by ``cli_signals``, ``sessions`` by ``cli_sessions``, ``email`` by ``cli.email``, ``release`` by
 ``cli.curator.release``, ``policy`` by ``cli.policy``, ``goal`` by the classes of ``evo_agents.hub.cli.goal``, ``problem`` by ``cli_problems``, ``opportunity`` by ``cli_opportunities``, ``intake`` by ``cli_intake``, ``merge`` by
@@ -329,7 +329,7 @@ def _register_client_commands(hsub) -> None:
 
 
 def _register_workspace_commands(hsub) -> None:
-    """The client's groups from hub login to hub emails."""
+    """The client's groups from hub login to hub kg."""
     from evo_agents.hub.cli.session import SESSION
 
     SESSION.attach(hsub)  # login, logout, whoami, token, admin, project, registry
@@ -371,7 +371,11 @@ def _register_workspace_commands(hsub) -> None:
     from evo_agents.hub.cli.kg import KG
 
     KG.attach(hsub)
+    _register_team_commands(hsub)
 
+
+def _register_team_commands(hsub) -> None:
+    """The client's groups from hub mcp to hub emails."""
     from evo_agents.hub.mcp_proxy import register_mcp
 
     register_mcp(hsub)
