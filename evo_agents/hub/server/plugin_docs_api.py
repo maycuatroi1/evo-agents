@@ -25,10 +25,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.docs import images, store
-from evo_agents.hub.server.docs.models import DocsSave, DocsSaved, DocsUploadedImage, summary_model
-from evo_agents.hub.server.docs.server import IMAGE_BODY
-from evo_agents.hub.server.docs.store import DocsError
+from evo_agents.hub.server.docs import images, service
+from evo_agents.hub.server.docs.models import (
+    IMAGE_BODY,
+    DocsError,
+    DocsSave,
+    DocsSaved,
+    DocsUploadedImage,
+    summary_model,
+)
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plugin_api_access import Acting, acting, feature_on, granted
 from evo_agents.hub.server.task_dispatch import plugin_of_request
@@ -51,7 +56,7 @@ async def _acting(request: Request, conn: AsyncConnection, project: str) -> Acti
     enabled = await granted(conn, plugin_id, project, PERMISSION)
     await feature_on(conn, FEATURE, enabled)
     who = await acting(conn, enabled)
-    store.writer(who.access, f"plugin {who.plugin} writing a document")
+    service.writer(who.access, f"plugin {who.plugin} writing a document")
     return who
 
 
@@ -96,7 +101,7 @@ async def save_document(request: Request, project: ProjectName, slug: Slug, body
             raise DocsError(422, "a document a plugin saves carries the project's label: leave label out")
         content = {"title": body.title, "body": body.body, "summary": body.summary.strip()}
         shown = {image.name: image.sha256 for image in body.images}
-        saved = await store.save(
+        saved = await service.save(
             conn, who.access, who.user_id, slug, content, shown, base_version=body.base_version, sink=None
         )
         log.info("plugin document saved", extra={"project": project, "plugin": who.plugin, "version": saved.version})

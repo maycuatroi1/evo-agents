@@ -57,7 +57,7 @@ def test_put_takes_a_pages_title_from_its_title_element():
 )
 def test_a_page_loads_from_the_cdns_only_in_a_project_that_is_not_restricted(level, location, allowed):
     pytest.importorskip("sqlalchemy", reason="the hub's store needs the hub-server extra, evo-ak[hub-server]")
-    from evo_agents.hub.server.docs.store import cdn_allowed
+    from evo_agents.hub.server.docs.service import cdn_allowed
 
     sink = SimpleNamespace(level=LADDER.levels.index(level), location=LADDER.locations.index(location))
     rules = SimpleNamespace(levels=LADDER.levels, locations=LADDER.locations, hub_sink=sink)

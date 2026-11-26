@@ -8,7 +8,7 @@ import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
 /**
- * The reads and writes of the hub's feature docs (evo_agents.hub.server.docs.server, under /v1/x/docs/{project}/), as
+ * The reads and writes of the hub's feature docs (evo_agents.hub.server.docs.routes, under /v1/x/docs/{project}/), as
  * TanStack Query options the server (prefetch) and the browser share, and the writes the browser makes with the
  * session's X-Evo-CSRF header. Every key sits under the project's plugin keys, so one invalidation of a document
  * reloads every version of it.

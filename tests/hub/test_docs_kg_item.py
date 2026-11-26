@@ -11,7 +11,7 @@ pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server ext
 
 from evo_agents.hub.kg_sources import checked
 from evo_agents.hub.server.docs.kg import document_item
-from evo_agents.hub.server.docs.store import KgDocument
+from evo_agents.hub.server.docs.models import KgDocument
 
 SOURCE = "plugin.docs"
 KNOWLEDGE = {"policy": {"levels": ["public", "internal", "secret"]}}

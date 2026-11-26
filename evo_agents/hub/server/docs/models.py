@@ -1,20 +1,21 @@
-"""The API of the feature docs as Pydantic models: what its routes take and answer. Every model is named ``Docs...`` in
-the hub's OpenAPI document."""
+"""The models layer of the feature docs: its error, the rows the repository reads and writes, and the API as Pydantic
+models, what its routes take and answer. Every Pydantic model is named ``Docs...`` in the hub's OpenAPI document."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from evo_agents.hub.server.docs.store import DocumentRow, ImageRef, VersionRow
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.tables_docs import (
     IMAGE_NAME,
     IMAGE_TYPES,
     MAX_BODY_CHARS,
+    MAX_IMAGE_BYTES,
     MAX_IMAGE_NAME_CHARS,
     MAX_IMAGES,
     MAX_SUMMARY_CHARS,
@@ -23,6 +24,110 @@ from evo_agents.hub.tables_docs import (
 
 SHA256 = r"^[0-9a-f]{64}$"
 Format = Literal["markdown", "html"]  # tables_docs.FORMATS
+SINK_HEADER = "X-Evo-Sink"  # evo_agents.hub.server.plans.SINK_HEADER
+RACE = "another save of the document took the same version number at the same moment: nothing was written; try again"
+IMAGE_BODY = {
+    "requestBody": {
+        "required": True,
+        "description": f"the image's bytes, a PNG, JPEG, WebP or GIF image of at most {MAX_IMAGE_BYTES} bytes",
+        "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+    }
+}
+
+
+class DocsError(Exception):
+    """Why the hub refuses a request about a document, with the HTTP status a route answers; nothing was written."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+@dataclass(frozen=True)
+class DocumentRow:
+    """A document with its latest version's number, author and time."""
+
+    id: int
+    slug: str
+    title: str
+    label: dict
+    latest_version: int
+    created_by: str
+    created_at: datetime
+    updated_by: str
+    updated_at: datetime
+    format: str = "markdown"  # its latest version's
+
+
+@dataclass(frozen=True)
+class ImageRef:
+    """An image a version shows: the name its Markdown gives it, and the image."""
+
+    name: str
+    sha256: str
+    media_type: str
+    size: int
+
+
+@dataclass(frozen=True)
+class VersionRow:
+    """A version of a document; ``body`` and ``images`` only when it was read whole (``version``)."""
+
+    id: int
+    number: int
+    title: str
+    summary: str
+    author: str
+    created_at: datetime
+    format: str = "markdown"
+    body: str | None = None
+    images: list[ImageRef] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class KgDocument:
+    """A document as the project's knowledge graph reads it: its latest version whole, with its author."""
+
+    slug: str
+    title: str
+    label: dict
+    version: int
+    author: str
+    body: str
+    updated_at: datetime
+    format: str = "markdown"
+
+
+@dataclass(frozen=True)
+class Draft:
+    """The next version of a document a save writes: ``content`` ({title, body, format, summary}) showing ``images``
+    ({name: sha256}), by ``author_id``; a new document's stored ``label``, and the latest version whole of one that
+    exists (``latest``), which the save compares it with."""
+
+    content: dict[str, Any]
+    images: dict[str, str]
+    author_id: int
+    label: dict | None = None
+    latest: VersionRow | None = None
+
+    @property
+    def same_as_latest(self) -> bool:
+        """Whether the title, body, format and images are those of the latest version."""
+        if self.latest is None:
+            return False
+        latest, content = self.latest, self.content
+        shown = {image.name: image.sha256 for image in latest.images}
+        same = (latest.title, latest.body, latest.format) == (content["title"], content["body"], content["format"])
+        return same and shown == self.images
+
+
+@dataclass(frozen=True)
+class Saved:
+    document: DocumentRow
+    version: int
+    created: bool
+    changed: bool
 
 
 class DocsDocumentSummary(BaseModel):

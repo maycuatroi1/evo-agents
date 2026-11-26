@@ -8122,24 +8122,6 @@
                     "endColumn": 111,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 34,
-                    "endColumn": 39,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/docs/server.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 94,
-                    "endColumn": 99,
-                    "lineCount": 1
-                }
             }
         ],
         "./evo_agents/hub/server/earlier.py": [
