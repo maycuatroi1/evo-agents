@@ -29,8 +29,15 @@ MASK = "***"  # what the daemon writes for a lease value
 
 async def mask_values(conn: AsyncConnection, sealer: Sealer | None, profile_id: int, text: str) -> str:
     """``text`` with the value of each live account of profile ``profile_id`` replaced by MASK."""
+    for value in await profile_values(conn, sealer, profile_id):
+        text = text.replace(value, MASK)
+    return text
+
+
+async def profile_values(conn: AsyncConnection, sealer: Sealer | None, profile_id: int) -> list[str]:
+    """The value of each live account of profile ``profile_id`` the hub can open, longest first."""
     if sealer is None:
-        return text
+        return []
     s = tables.secrets
     rows = await conn.execute(
         select(s.c.name, s.c.sealed, s.c.nonce, s.c.key_id).where(
@@ -45,9 +52,7 @@ async def mask_values(conn: AsyncConnection, sealer: Sealer | None, profile_id: 
             )
         except Unsealable:
             continue
-    for value in sorted(filter(None, values), key=len, reverse=True):
-        text = text.replace(value, MASK)
-    return text
+    return sorted(filter(None, values), key=len, reverse=True)
 
 
 def _open(sealer: Sealer, row) -> str | None:

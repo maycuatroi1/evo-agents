@@ -374,7 +374,8 @@ ceilings, the quota of their accounts, and the rules only a web session passes, 
 dispatched from the web (`docs/workers.md`). It lasts as a web session does and ends with `POST /v1/auth/logout`. Each
 sign-in writes the audit row `auth.login` with the target `app:lumen-studio`; registering and revoking an app write
 `auth_app.create` and `auth_app.revoke`. The routes of core plugins that check the Origin of a web write
-(`docs/plugins.md`) still refuse an app session's writes.
+(`docs/plugins.md`) take an app session's writes without it: the session arrives only as `Authorization: Bearer`, which
+a browser never adds to another site's request, while a write of the session cookie still needs the hub's Origin.
 
 ### Invite links
 
@@ -1280,6 +1281,11 @@ One turn goes like this:
    come after it.
 3. The model calls tools for at most 8 rounds and 180 seconds. A message that reaches the inbox meanwhile joins
    before the next round.
+   Each round writes to the run's events what a worker's run writes, of the same kinds (`docs/workers.md`, Event
+   kinds), so `GET .../runs/{id}/stream` shows the turn as it goes: the answer's text as `agent_message_chunk` events
+   of at most 16 KiB of text each, cut at a paragraph where one is near, a `tool_call` for each call and a
+   `tool_call_update` with its result, and one `usage_update` with the round's tokens. A few events a round, masked
+   as the reply is (`evo_agents/hub/server/hub_run_events.py`).
 4. The model's last answer without a tool call is the agent's reply in the thread, masked as a worker's reply is
    (`mask_values`, then the run's leased values).
 5. The turn's tokens and the key's cost, as the gateway counts it, go to `run_spend`, to `runs.usage` (under
