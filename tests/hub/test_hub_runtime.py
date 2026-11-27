@@ -90,10 +90,14 @@ def client(hub_db, tmp_path, github, gateway, s3):
         yield client
 
 
-def hub_agent(client, db, headers, handle: str = "helper", project: str = PROJECT, account_name: str = "or") -> dict:
+def hub_agent(
+    client, db, headers, handle: str = "helper", project: str = PROJECT, account_name: str = "or", skills=None
+) -> dict:
     """Agent ``handle`` of ``project`` that runs on the hub on MODEL, with the provider account ``account_name`` in its
-    account pool, and no worker pool."""
+    account pool, and no worker pool; with ``skills``, its skill axis allows those alone."""
     permissions = {"model": {"mode": "allowlist", "allow": [MODEL]}}
+    if skills is not None:
+        permissions["skill"] = {"mode": "allowlist", "allow": skills}
     body = {"handle": handle, "name": handle.title(), "runs_on": "hub", "permissions": permissions}
     response = client.post(
         f"/v1/projects/{project}/agents", json={**body, "instructions": "Be brief."}, headers=headers
@@ -499,3 +503,76 @@ def test_a_task_run_of_a_hub_agent_fails_when_it_takes_no_turn_runs_out_of_round
     assert turn(client, gateway, raising)["state"] == "failed"
     assert task_view(client, hub["owner"], raising)["error"] == "the hub runtime failed: RuntimeError"
     assert sql(hub_db, select(tables.chat_messages.c.id)) == []
+
+
+# Skills
+
+
+def test_a_hub_agent_lists_and_reads_the_skills_its_skill_axis_allows_in_chat_and_task_runs(
+    client, hub, hub_db, gateway, helper, tmp_path
+):
+    """Plan creative-flow-skills-enterprise, step 1 (a1): the system prompt names the skills the profile's skill axis
+    allows, skill_read hands back a SKILL.md and one file of it, recorded as the turn's tool events, and refuses a skill
+    outside the axis or a file over MAX_SKILL_FILE; an agent with no such skill keeps its prompt and its tools."""
+    from evo_agents.hub.skills import pack
+    from tests.hub.test_skills_api import publish, write_skill
+
+    chat = created(client, hub["owner"], agents=["helper"])
+    sent(client, hub["owner"], chat["id"], "@helper any skill?")
+    (plain,) = chat_runs_of(hub_db)
+    assert turn(client, gateway, plain)["state"] == "done"
+    tools = {tool["function"]["name"] for tool in gateway.asked[-1]["tools"]}
+    assert hub_tools.SKILL_READ not in tools and "# Skills" not in gateway.asked[-1]["messages"][0]["content"]
+
+    copy = write_skill(tmp_path / "copy", "launch-copy", "Write the launch line first.")
+    (copy / "references").mkdir()
+    (copy / "references" / "tone.md").write_text("Warm, short, no exclamation marks.\n", encoding="utf-8")
+    (copy / "references" / "big.md").write_text("x" * (hub_tools.MAX_SKILL_FILE + 1), encoding="utf-8")
+    who = {"owner": hub["owner"]}
+    publish(client, who, "owner", pack(copy).data, "launch-copy", PROJECT)
+    publish(
+        client,
+        who,
+        "owner",
+        pack(write_skill(tmp_path / "legal", "legal-review", "Ask legal.")).data,
+        "legal-review",
+        PROJECT,
+    )
+    hub_agent(client, hub_db, hub["owner"], "writer", skills=["Launch-Copy"])
+
+    reads = [
+        tool_call(hub_tools.SKILL_READ, {"skill": "launch-copy"}, "call-1"),
+        tool_call(hub_tools.SKILL_READ, {"skill": "launch-copy", "file": "references/tone.md"}, "call-2"),
+        tool_call(hub_tools.SKILL_READ, {"skill": "legal-review"}, "call-3"),
+        tool_call(hub_tools.SKILL_READ, {"skill": "launch-copy", "file": "references/big.md"}, "call-4"),
+    ]
+    chat = created(client, hub["owner"], agents=["writer"])
+    sent(client, hub["owner"], chat["id"], "@writer a launch line for the export feature")
+    run_id = chat_runs_of(hub_db)[-1]
+    gateway.script = [{"content": None, "tool_calls": reads}, {"content": "Export, signed and sent."}]
+    assert turn(client, gateway, run_id)["state"] == "done"
+    first = gateway.asked[-2]
+    assert hub_tools.SKILL_READ in {tool["function"]["name"] for tool in first["tools"]}
+    system = first["messages"][0]["content"]
+    assert "# Skills" in system and "- launch-copy: Use when testing launch-copy" in system
+    assert "legal-review" not in system
+    results = [m["content"] for m in gateway.asked[-1]["messages"] if m["role"] == "tool"]
+    assert "Write the launch line first." in results[0] and "references/tone.md" in results[0]
+    assert results[1] == "Warm, short, no exclamation marks.\n"
+    assert results[2].startswith("refused: no skill legal-review")
+    assert results[3].startswith("refused: references/big.md of skill launch-copy is")
+    response = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/events", headers=hub["owner"])
+    events = response.json()["events"]
+    called = [e["body"]["rawInput"] for e in events if e["kind"] == "tool_call"]
+    assert called[:2] == [{"skill": "launch-copy"}, {"skill": "launch-copy", "file": "references/tone.md"}]
+    ended = [e["body"]["status"] for e in events if e["kind"] == "tool_call_update"]
+    assert ended == ["completed", "completed", "failed", "failed"]
+
+    task_id = hand_task(client, hub["owner"], profile="@writer")["task_id"]
+    gateway.script = [{"content": None, "tool_calls": reads[:1]}, {"content": ANSWER}]
+    assert turn(client, gateway, task_id)["state"] == "done"
+    first = gateway.asked[-2]
+    assert {tool["function"]["name"] for tool in first["tools"]} == {*hub_tools.TASK_NAMES, hub_tools.SKILL_READ}
+    assert "- launch-copy: " in first["messages"][0]["content"]
+    (result,) = [m["content"] for m in gateway.asked[-1]["messages"] if m["role"] == "tool"]
+    assert "Write the launch line first." in result

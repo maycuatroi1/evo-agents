@@ -1313,9 +1313,23 @@ The tools do what the worker's commands do, through the same code:
 | `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
 | `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority`, `plan_dispatch`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding`, `priority`, `plan-dispatch` |
 | `memory_write` | a memory of the project, under the rules of `memory_write` |
+| `skill_read` (`skill`, `file`), when the turn lists a skill | `hub skills sync`, then the runtime's Skill tool |
 
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
 shell commands are not on the hub, so the agent says what it cannot do.
+
+Skills of a hub agent: the turn lists the skills the run's owner reads on the hub (the global ones of an audience
+the owner is in, and those of the run's project) that the skill axis of the agent's profile allows, ignoring case. A
+project skill hides a global one of the same name. The list goes after the "On the hub" section as a section
+`# Skills`: the name and description of each skill's latest version, at most 100 skills and 500 characters of
+description each. The turn then gets the tool `skill_read`. Without `file` it answers the skill's `SKILL.md`, followed
+by the paths of its other files. With `file` (a path inside the skill, such as `references/tone.md`) it answers that
+file. The hub reads the bundle from the blob store and checks it as `hub skills publish` does. A file over 64 KiB, or
+not UTF-8 text, is refused, and so is a skill the turn did not list: one outside the axis is never named to the
+model and never read. Each call is a `tool_call` and a `tool_call_update` in the run's events, with `skill` and `file`
+in its `rawInput`, as every tool's. An agent with no such skill (its skill axis an empty allowlist, or no skill on
+the hub it may read) gets neither the section nor the tool, so its prompt and its tools stay as they were. Skills
+only instruct: a skill's scripts never run on the hub.
 
 A member's task run of such an agent (`POST .../task-runs` with `profile` naming it, Member task runs) queues with
 runtime `hub` too, and the same job takes it as one turn, with no chat:
@@ -1325,8 +1339,8 @@ runtime `hub` too, and the same job takes it as one turn, with no chat:
   provider, so they alone count and block.
 - The prompt is the profile's instructions and a short "On the hub" section for a task, then the task with its input
   and the asset URIs. No inbox joins, and the turn has no way to read an asset.
-- The tools are `kg_search` and `memory_write`, the ones that need no thread; a call of another is answered as a tool
-  the turn does not have.
+- The tools are `kg_search` and `memory_write`, the ones that need no thread, and `skill_read` with the section
+  `# Skills` as a chat turn gets them; a call of another is answered as a tool the turn does not have.
 - The model's last answer, masked as a reply is, becomes the run's evidence, after a line naming the run on the hub,
   which `GET .../task-runs/{task}` gives as `output`. Nothing is posted in a chat.
 - A task run that takes no turn (no gateway, the daily limit of its system, no provider account), whose rounds run
@@ -4120,6 +4134,14 @@ the skill's page on the web, a card only hub admins see; the lists and the page 
 Each change adds one audit row, action `skill.audience`, target `skill:global/<name> audience=<was>-><is>`. Upgrading
 to the hub version that adds it leaves every skill that exists `everyone`'s, so nobody loses one; a skill made `admins`
 later is removed, after a backup, by the next `hub skills sync` of a member who no longer sees it.
+
+Publishing a project skill needs the writer role on the project and a hub sink that clears its default label,
+whatever the credential: a machine token (`evh_...`), a web session, or the app session (`eva_...`) of a member a
+first-party app signed in. An app publishes the skills of its project with the session of a member who holds the
+writer role, or with the machine token of the member that operates its workspace, through the same four calls
+(`POST /v1/blobs/uploads` with kind `skill-bundle`, the PUT, `POST /v1/blobs/commit`, then `POST
+/v1/skills/projects/{project}/{name}/versions`). A reader's session gets 403 at the upload and at the publish. An
+agent that runs on the hub reads the skills its skill axis allows (section Hub runtime).
 
 **Knowledge graphs.** A project's graph is built on the hub from the run logs machines push. `evo-agents hub kg push
 --project demo` sends the connector runs of a local corpus the hub lacks (`kg sync` pushes each run itself); a run whose label the hub sink
