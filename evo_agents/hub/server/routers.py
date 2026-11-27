@@ -393,8 +393,6 @@ def store() -> Routers:
         features,
         kg_shared_pool_api,
         model_catalog,
-        opportunity_evidence,
-        problem_evidence,
         project_admin,
         project_archive,
         runnable_models,
@@ -411,12 +409,14 @@ def store() -> Routers:
     from evo_agents.hub.server.merge.routes import judge as merge_judge
     from evo_agents.hub.server.merge.routes import view as merge_view
     from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.opportunity_evidence import routes as opportunity_evidence
     from evo_agents.hub.server.plugins.routes import commands as plugin_command_list
     from evo_agents.hub.server.plugins.routes import host as plugin_host
     from evo_agents.hub.server.plugins.routes import projects as project_plugins
     from evo_agents.hub.server.plugins.routes import publishers as plugin_publishers
     from evo_agents.hub.server.plugins.routes import store as plugins
     from evo_agents.hub.server.plugins.routes import ui as plugin_ui
+    from evo_agents.hub.server.problem_evidence import routes as problem_evidence
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.seller.routes import api as seller_api
     from evo_agents.hub.server.seller.routes import seller
