@@ -57,7 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import api_surface, knowledge_diff, replay, tiers
 from evo_agents.hub.kg_graph import GraphUnavailable, Handles, answer
 from evo_agents.hub.server.changes.repository import tiers as store
-from evo_agents.hub.server.github import GitHubRefused
+from evo_agents.hub.server.forge.models.github import GitHubRefused
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 

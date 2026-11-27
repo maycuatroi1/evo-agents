@@ -14,11 +14,11 @@ A token that writes, of the workers' App, asks ``GITHUB_WORKFLOW_PERMISSIONS`` a
 ``GITHUB_PULL_REQUEST_PERMISSIONS`` the same way unless the ask says ``pull_requests=False`` (a release run's,
 ``credentials.github_pull_requests``), so the agent opens its branch's pull request with the run's token. A token is revoked with itself (DELETE /installation/token).
 
-The calls go through ``GitHubClient`` of ``evo_agents.hub.server.github``: a timeout each, no redirect followed, one log
-line with the method, the path and the status, GitHub failing or not answering as ``GitHubUnavailable``. GitHub
-refusing a token of an installation is ``GitHubRefused``; GitHub refusing the App's JWT means the hub's configuration is
-wrong, and is ``GitHubUnavailable``, as a refused client secret is. Neither a JWT nor a token goes into a URL, a log
-line or an error, and ``InstallationToken`` leaves its token out of its repr.
+The calls go through ``GitHubClient`` of ``evo_agents.hub.server.forge.client.github``: a timeout each, no redirect
+followed, one log line with the method, the path and the status, GitHub failing or not answering as
+``GitHubUnavailable``. GitHub refusing a token of an installation is ``GitHubRefused``; GitHub refusing the App's JWT
+means the hub's configuration is wrong, and is ``GitHubUnavailable``, as a refused client secret is. Neither a JWT nor
+a token goes into a URL, a log line or an error, and ``InstallationToken`` leaves its token out of its repr.
 
 ``GitHubApp.tokens`` is what the lease route asks: a token per installation, and for each repo left without one the
 reason, such as "the GitHub App is not installed on owner/repo". A repo the App is not installed on is not cached, so
@@ -58,7 +58,8 @@ from evo_agents.hub.credentials import (
     GITHUB_PULL_REQUEST_PERMISSIONS,
     GITHUB_WORKFLOW_PERMISSIONS,
 )
-from evo_agents.hub.server.github import API_HEADERS, GitHubClient, GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.client.github import GitHubClient
+from evo_agents.hub.server.forge.models.github import API_HEADERS, GitHubRefused, GitHubUnavailable
 
 JWT_BACKDATE_SECONDS = 60  # iat this far back, for a hub clock ahead of GitHub's
 JWT_LIFETIME_SECONDS = 9 * 60  # exp this far ahead; GitHub refuses a JWT ending more than 10 minutes from its now

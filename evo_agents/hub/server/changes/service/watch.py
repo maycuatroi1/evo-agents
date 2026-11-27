@@ -16,12 +16,9 @@ from evo_agents.hub.server.changes.repository import watch as store
 from evo_agents.hub.server.changes.repository.views import change_of_plan
 from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.changes.service.shift import unready_steps
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.protection import (
-    Target,
-    github_target,
-)
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, Target
 
 log = logging.getLogger(__name__)
 

@@ -26,7 +26,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable, GitHubUser
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, GitHubUser
 from evo_agents.hub.server.security import (
     LOGIN_HINT,
     MACHINE,

@@ -35,10 +35,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import review, tables, tiers
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 STATUSES = ("open", "proposed", "rejected", "merged", "kept", "reverted")

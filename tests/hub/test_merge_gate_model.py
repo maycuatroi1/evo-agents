@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate
-from evo_agents.hub.server.gitlab import FileDiff, LabelEvent
+from evo_agents.hub.server.forge.models.gitlab import FileDiff, LabelEvent
 
 HEAD = "a" * 40
 OTHER = "b" * 40

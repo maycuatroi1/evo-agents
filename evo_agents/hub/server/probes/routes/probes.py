@@ -31,6 +31,7 @@ from fastapi import APIRouter, Header, Query, Request
 from evo_agents.hub import probes as probe_shape
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.probes.models import probe as probes
 from evo_agents.hub.server.probes.models import runs as probe_runs
@@ -38,7 +39,6 @@ from evo_agents.hub.server.probes.service import probes as service
 from evo_agents.hub.server.probes.service import writes
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.proposals.models import ItemId
-from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.runs.models import MAX_ID, RunId
 from evo_agents.hub.server.security import CurrentUser
 

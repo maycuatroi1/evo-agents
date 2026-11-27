@@ -32,7 +32,7 @@ from evo_agents.hub import merge_gate, post_merge, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import post_merge as after_merge
-from evo_agents.hub.server.gitlab import GitLabRefused
+from evo_agents.hub.server.forge.models.gitlab import GitLabRefused
 
 log = logging.getLogger(__name__)
 

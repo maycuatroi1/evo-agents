@@ -22,6 +22,7 @@ from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.evolve.models import ReportIn, reason_text
 from evo_agents.hub.server.evolve.repository import candidates, evolutions, tasks
 from evo_agents.hub.server.evolve.repository.evolutions import set_row
+from evo_agents.hub.server.forge.models.forges import built_state_of
 from evo_agents.hub.server.projects import access_of
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.systems.service import curation as system_curation
@@ -43,7 +44,7 @@ async def _attach(conn: AsyncConnection, row, run_id: int, body: ReportIn) -> tu
         return None, f"{pushed} waits: change #{change.id} of proposal #{row.proposal_id} is {change.state}"
     if change.repo != row.repo or change.branch != body.branch:
         return None, f"{pushed} waits: change #{change.id} takes branch {change.branch} of {change.repo}"
-    state = "pr_pending" if change.forge == "github" else "judge_pending"
+    state = built_state_of(change.forge)
     await set_change(conn, change.id, state=state, builder_run_id=run_id, head_sha=body.head_sha, reason=None)
     what = (
         "the hub opens its pull request" if state == "pr_pending" else "its merge request is open; its Judge comes next"

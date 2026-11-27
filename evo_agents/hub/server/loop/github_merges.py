@@ -50,13 +50,13 @@ from evo_agents.hub.plans import PlanProblem
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.credentials.models.sealing import Sealer
-from evo_agents.hub.server.forge import forge_token
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.gitlab import GitLabRefused, GitLabUnavailable, MergeRequest, project_of
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.forges import forge_of, github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, Target
+from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, GitLabUnavailable, MergeRequest, project_of
+from evo_agents.hub.server.forge.service.secrets import forge_token
 from evo_agents.hub.server.loop.model import DELIVER, FINISHED
 from evo_agents.hub.server.loop.view import RELEASED, run_chains
-from evo_agents.hub.server.protection import Target, github_target
 from evo_agents.hub.server.repo_origins import repo_origins
 
 log = logging.getLogger(__name__)
@@ -124,7 +124,8 @@ def _released(body) -> set[str]:
 
 def _looked_up(repo: str, origin: str, by_hand: frozenset[str]) -> bool:
     """Whether the Loop reads what ``repo`` at ``origin`` merged: on GitHub, or on GitLab in a mode a person merges."""
-    return github_target(origin) is not None or (project_of(origin) is not None and repo in by_hand)
+    forge = forge_of(origin)
+    return forge is not None and forge.loop_reads(origin, repo, by_hand)
 
 
 async def wanted(conn: AsyncConnection, project_id: int) -> list[Wanted]:

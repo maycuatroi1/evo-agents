@@ -5,8 +5,9 @@ Every call has a timeout (EVO_HUB_GITHUB_TIMEOUT) and never follows a redirect. 
 5xx or rate limiting raises ``GitHubUnavailable``, which the API turns into a 502 naming GitHub; GitHub turning
 down a token or a code raises ``GitHubRefused``. Tokens, codes and the client secret travel only in headers and
 form bodies, never in a URL, and the one log line per call carries the method, the path and the status.
-``GitHubClient`` holds those rules; ``GitHub`` here and the GitHub App of ``evo_agents.hub.server.github_app``
-build on it.
+``GitHubClient`` holds those rules; ``GitHub`` here and the GitHub App of
+``evo_agents.hub.server.forge.client.github_app`` build on it. The errors and shapes are in
+``evo_agents.hub.server.forge.models.github``.
 """
 
 from __future__ import annotations
@@ -14,37 +15,23 @@ from __future__ import annotations
 import logging
 import re
 import time
-from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
 
 import httpx
 
 from evo_agents import __version__
 from evo_agents.hub.config import LOGIN, HubConfig
+from evo_agents.hub.server.forge.models.github import (
+    API_HEADERS,
+    CONFIG_ERRORS,
+    GitHubRefused,
+    GitHubUnavailable,
+    GitHubUser,
+)
 
 log = logging.getLogger(__name__)
 
-API_HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 _ERROR_CODE = re.compile(r"[a-z_]{1,64}")  # an OAuth error code, safe to repeat in a message
-# Code exchange errors that mean the hub's own configuration is wrong, not the person's sign-in.
-CONFIG_ERRORS = {
-    "incorrect_client_credentials": "GitHub refused the hub's client id or secret",
-    "redirect_uri_mismatch": "the app on GitHub does not list EVO_HUB_PUBLIC_URL/v1/auth/web/callback as a callback",
-}
-
-
-class GitHubRefused(Exception):
-    """GitHub turned down a token or a code; the message is safe to show."""
-
-
-class GitHubUnavailable(Exception):
-    """GitHub did not answer in time, failed, or answered in a way the hub cannot use; safe to show."""
-
-
-@dataclass(frozen=True)
-class GitHubUser:
-    login: str
-    id: int
 
 
 def _error_code(value) -> str:

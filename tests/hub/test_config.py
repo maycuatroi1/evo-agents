@@ -701,7 +701,7 @@ def test_load_dsn_prefers_the_flag():
 
 def test_protection_the_curators_app_needs_both_its_variables_apart_from_the_workers_app():
     from evo_agents.hub.log import scrub as scrubbed
-    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.forge.client.github_app import GitHubApp
 
     pem = rsa_pem()
     base = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}

@@ -50,10 +50,11 @@ from evo_agents.hub import curator, replay, runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.forge.models.forges import forge_named
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.night_cost import kind_cost
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.replays import repository as store
 from evo_agents.hub.server.replays.models import (
     HARNESS_KINDS,
@@ -290,7 +291,8 @@ async def _won_again(conn: AsyncConnection, change_id: int, run_id: int) -> None
     """A change left open after the Judge passed it goes back to ``judged`` once its replays win, so the job reads its
     pull request again and merges it as tier 0 when everything else still holds."""
     change = await store.lock_change(conn, change_id)
-    if change.state != "open" or change.passed is not True or change.forge != "github":
+    forge = forge_named(change.forge)
+    if change.state != "open" or change.passed is not True or forge is None or not forge.advanced_by_app:
         return
     found = await change_tiers.replay_verdict(conn, change.id, change.head_sha)
     if not found["won"]:

@@ -45,7 +45,7 @@ from evo_agents.hub import releases, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chats.service.runs import hub_reply
-from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.release_cycles import DISPATCH, queue_run
 from evo_agents.hub.server.release_github import ReadFailed, Reading, read_release
 from evo_agents.hub.server.release_land import land_releases, owner_is_admin

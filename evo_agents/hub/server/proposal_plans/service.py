@@ -20,6 +20,9 @@ from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.changes.repository.repos import record_repos
 from evo_agents.hub.server.changes.repository.views import change_view
 from evo_agents.hub.server.changes.service import repos as change_repos
+from evo_agents.hub.server.forge.models.forges import GITHUB
+from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.forge.repository.protection import repo_origins
 from evo_agents.hub.server.plans.models import PLAN_CREATE, PlanError
 from evo_agents.hub.server.plans.service import schema_checked, store
 from evo_agents.hub.server.probes.service import probes
@@ -27,7 +30,6 @@ from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.proposal_plans.repository import STORE
 from evo_agents.hub.server.proposals.service.reads import readable_proposal
 from evo_agents.hub.server.proposals.service.record import planned_tiers_of
-from evo_agents.hub.server.protection import reason_line, repo_origins
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
@@ -81,7 +83,7 @@ def _named_repos(draft: dict, proposal, origins: dict) -> list[str]:
 
 def _not_plannable(named: list[str], origins: dict) -> str | None:
     """Why a plan cannot work in the several repos ``named``: each must be a repo of the project on GitHub."""
-    away = [repo for repo in named if repo not in origins or judge.forge_of(origins[repo]) != "github"]
+    away = [repo for repo in named if repo not in origins or judge.forge_of(origins[repo]) != GITHUB.name]
     if not away:
         return None
     return (

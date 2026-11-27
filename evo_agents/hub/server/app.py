@@ -17,7 +17,7 @@ which check their own credential. ``app.state.sealer`` seals the members' secret
 that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugins.service.store``). The routes of
 plugins are included when the app is made (``evo_agents.hub.server.plugins.service.extension``): the core plugins' own, Telegram's
 among them, then the proxy to isolated plugins' backends under /v1/x. ``app.state.github_app`` is the hub's GitHub App
-(``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan opens it, None
+(``evo_agents.hub.server.forge.client.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan opens it, None
 without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start. ``app.state.curator_app`` is the
 Curator's own App, evo-agents-curator, the same way with EVO_HUB_CURATOR_APP_*: the runs of the Curator get their tokens
 from it alone, and the hub checks rulesets with it.
@@ -63,9 +63,9 @@ from evo_agents.hub.server import (
 from evo_agents.hub.server.cron.service.fire import (
     cron_pass as cron_pass,  # handed down to the hub worker, as those below
 )
+from evo_agents.hub.server.forge.client.github import GitHub
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.gateway.service import sync as gateway_sync
-from evo_agents.hub.server.github import GitHub
-from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
 from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.kg_entity_key import find as entity_key  # noqa: F401
@@ -548,7 +548,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         ledger,
         merged_work,
         org,
-        protection,
         transcripts,
     )
     from evo_agents.hub.server.autonomy.routes import levels as autonomy_routes
@@ -557,6 +556,7 @@ def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.changes import routes as change_routes
     from evo_agents.hub.server.digests import routes as digests
     from evo_agents.hub.server.evolve import routes as evolve
+    from evo_agents.hub.server.forge.routes import protection
     from evo_agents.hub.server.history import routes as history_routes
     from evo_agents.hub.server.playbook import routes as playbook_routes
     from evo_agents.hub.server.probes.routes import probes as probe_routes

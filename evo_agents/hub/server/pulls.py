@@ -57,8 +57,8 @@ from typing import TypeVar
 from urllib.parse import quote
 
 from evo_agents.hub.judge import JUDGE_CHECK_NAME, RULE_REQUIRED_CHECKS, RULE_UPDATE, required_checks
-from evo_agents.hub.server.github import API_HEADERS, GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp, not_installed
+from evo_agents.hub.server.forge.client.github_app import GitHubApp, not_installed
+from evo_agents.hub.server.forge.models.github import API_HEADERS, GitHubRefused, GitHubUnavailable
 
 log = logging.getLogger(__name__)
 

@@ -243,7 +243,7 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.context_answer_reuse",
     "evo_agents.hub.worker -> evo_agents.hub.server.curator.service.shift",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests.service.sessions",
-    "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.forge.client.github_app",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
     "evo_agents.hub.worker -> evo_agents.hub.server.market.service.install",
@@ -1123,6 +1123,26 @@ format never changes) import none of them. Move the code that reaches up into th
 message into the service, a query into the repository, a shape or a constant into the models. Other modules import \
 the service, the repository and the models, never the routes but put_secret, which the Claude sign-in calls. A new \
 module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-forge-layers"
+name = "The forges go from their routes to their service to their repository or their clients to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.forge"]
+layers = ["routes", "service", "repository | client", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.forge the route handlers of the Curator's ruleset checks (protection) keep their auth and \
+pass the request's parts to the service (protection, the checks of rulesets, why a Builder waits and the job's own \
+checks; secrets, the forge secrets the hub opens for GitLab), which checks the caller and decides; the repository \
+holds the SQL of the ruleset checks and of the forge secrets; the client, next to the repository, holds the HTTP \
+clients to GitHub (github, the OAuth App, and github_app, the GitHub Apps) and to GitLab (gitlab), and imports neither \
+the repository nor the service; the models (the errors and shapes of GitHub and GitLab, the shapes and texts of the \
+ruleset checks, and forges, the Forge interface with GitHub and GitLab, which does no I/O) import none of them. Move \
+the code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
+repository, a call to GitHub or GitLab into the client, a shape, an error or a constant into the models. Other modules \
+import the service, the client, the repository and the models, never the routes. A new module of the package goes \
+into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

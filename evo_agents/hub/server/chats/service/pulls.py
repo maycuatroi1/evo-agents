@@ -33,7 +33,7 @@ from evo_agents.hub.server.chats.repository import agents as store
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, post_agent
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.runs.models import RunRepo
 from evo_agents.hub.server.runs.service.claims import worker_of

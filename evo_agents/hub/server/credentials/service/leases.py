@@ -130,10 +130,10 @@ from evo_agents.hub.server.credentials.models.sealing import (
 )
 from evo_agents.hub.server.credentials.repository import leases as repository
 from evo_agents.hub.server.credentials.service.survey import LeaseRun, LeaseSecret, Survey, origins_text, survey_run
+from evo_agents.hub.server.forge.client.github_app import GitHubApp, InstallationToken, Pusher
+from evo_agents.hub.server.forge.models.github import GitHubUnavailable
 from evo_agents.hub.server.gateway.service import leases as gateway_leases
 from evo_agents.hub.server.gateway.service import sync as gateway_sync
-from evo_agents.hub.server.github import GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
 from evo_agents.hub.server.lease_ending import end_leases, revoke_tokens, revoker
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.security import Principal
