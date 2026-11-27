@@ -24,10 +24,11 @@ sending a message are audited (chat.create, chat.message), never with a title or
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.messages import ChatCreate, ChatMessageIn, ChatReactionIn, ChatRead, ChatReadIn
 from evo_agents.hub.server.chats.models.views import Chat, ChatPage, GroupMessage, person_author
 from evo_agents.hub.server.chats.repository import messages as store
@@ -71,86 +72,93 @@ async def _starting(conn: AsyncConnection, user: Principal, body: ChatCreate):
     return agents, people
 
 
-async def create_chat(conn: AsyncConnection, user: Principal, body: ChatCreate) -> tuple[Chat, int, int, int]:
+async def create_chat(engine: AsyncEngine, user: Principal, body: ChatCreate) -> tuple[Chat, int, int, int]:
     """Create a chat with ``user`` in it, and the people and agents given: (the chat, its id, how many people and
     agents it starts with)."""
-    agents, people = await _starting(conn, user, body)
-    chat_id = await insert_chat(conn, body.title, user.user_id)
-    await add_member(conn, chat_id, user_id=user.user_id, added_by=user.user_id)
-    await member_event(conn, chat_id, "member_added", person_author(user.login), user.login)
-    chat = await chat_access(conn, user, chat_id)
-    for agent in agents:
-        await put_agent(conn, user, chat, agent, share=True)
-        chat = await label_now(conn, chat)
-    for user_id, login in people.items():
-        await put_person(conn, user, chat, user_id, login, share=True)
-    await audit.record(
-        conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_CREATE, target=f"chat:{chat_id}"
-    )
-    return await chat_view(conn, chat), chat_id, len(people) + 1, len(agents)
+    async with UnitOfWork(engine) as conn:
+        agents, people = await _starting(conn, user, body)
+        chat_id = await insert_chat(conn, body.title, user.user_id)
+        await add_member(conn, chat_id, user_id=user.user_id, added_by=user.user_id)
+        await member_event(conn, chat_id, "member_added", person_author(user.login), user.login)
+        chat = await chat_access(conn, user, chat_id)
+        for agent in agents:
+            await put_agent(conn, user, chat, agent, share=True)
+            chat = await label_now(conn, chat)
+        for user_id, login in people.items():
+            await put_person(conn, user, chat, user_id, login, share=True)
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_CREATE, target=f"chat:{chat_id}"
+        )
+        return await chat_view(conn, chat), chat_id, len(people) + 1, len(agents)
 
 
-async def show_chat(conn: AsyncConnection, user: Principal, chat_id: int) -> Chat:
+async def show_chat(engine: AsyncEngine, user: Principal, chat_id: int) -> Chat:
     """The chat with its people and agents."""
-    return await chat_view(conn, await chat_access(conn, user, chat_id))
+    async with UnitOfWork(engine) as conn:
+        return await chat_view(conn, await chat_access(conn, user, chat_id))
 
 
 # Messages
 
 
 async def list_messages(
-    conn: AsyncConnection, user: Principal, chat_id: int, before: int | None, thread: int | None, limit: int
+    engine: AsyncEngine, user: Principal, chat_id: int, before: int | None, thread: int | None, limit: int
 ) -> ChatPage:
     """The chat and the latest ``limit`` messages before ``before``, or of one thread, oldest first."""
-    chat = await chat_access(conn, user, chat_id)
-    rows = await store.page_rows(conn, chat_id, before, thread, limit)
-    page = list(reversed(rows[:limit]))
-    reader = await label_reader(conn, user.user_id, [row.label for row in page])
-    progress = by_message(await chat_progress(conn, user, chat_id)) if page else None
-    messages = await messages_view(conn, page, reader, progress)
-    view = await chat_view(conn, chat)
-    return ChatPage(chat=view, messages=messages, more=len(rows) > limit)
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id)
+        rows = await store.page_rows(conn, chat_id, before, thread, limit)
+        page = list(reversed(rows[:limit]))
+        reader = await label_reader(conn, user.user_id, [row.label for row in page])
+        progress = by_message(await chat_progress(conn, user, chat_id)) if page else None
+        messages = await messages_view(conn, page, reader, progress)
+        view = await chat_view(conn, chat)
+        return ChatPage(chat=view, messages=messages, more=len(rows) > limit)
 
 
-async def send_message(conn: AsyncConnection, user: Principal, chat_id: int, body: ChatMessageIn) -> GroupMessage:
+async def send_message(engine: AsyncEngine, user: Principal, chat_id: int, body: ChatMessageIn) -> GroupMessage:
     """Send a message to the chat, in the thread of ``reply_to`` when given."""
-    chat = await chat_access(conn, user, chat_id)
-    message_id = await deliver_message(conn, chat, user, body)
-    return await message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0], user)
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id)
+        message_id = await deliver_message(conn, chat, user, body)
+        return await message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0], user)
 
 
 # Reactions
 
 
 async def react(
-    conn: AsyncConnection, user: Principal, chat_id: int, message_id: int, body: ChatReactionIn
+    engine: AsyncEngine, user: Principal, chat_id: int, message_id: int, body: ChatReactionIn
 ) -> GroupMessage:
     """Put an emoji on a message; nothing changes when ``user`` put it already."""
-    chat = await chat_access(conn, user, chat_id)
-    row = await visible_message(conn, chat, message_id)
-    kinds = await emoji_kinds(conn, message_id)
-    if body.emoji not in kinds and len(kinds) >= chats.MAX_EMOJI_KINDS:
-        raise HTTPException(
-            409,
-            f"message {message_id} carries {len(kinds)} different emoji, the most one holds: add to one of them",
-        )
-    await put_reaction(conn, chat_id, message_id, body.emoji, person_author(user.login), user_id=user.user_id)
-    return await message_view(conn, chat, row, user)
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id)
+        row = await visible_message(conn, chat, message_id)
+        kinds = await emoji_kinds(conn, message_id)
+        if body.emoji not in kinds and len(kinds) >= chats.MAX_EMOJI_KINDS:
+            raise HTTPException(
+                409,
+                f"message {message_id} carries {len(kinds)} different emoji, the most one holds: add to one of them",
+            )
+        await put_reaction(conn, chat_id, message_id, body.emoji, person_author(user.login), user_id=user.user_id)
+        return await message_view(conn, chat, row, user)
 
 
-async def unreact(conn: AsyncConnection, user: Principal, chat_id: int, message_id: int, emoji: str) -> GroupMessage:
+async def unreact(engine: AsyncEngine, user: Principal, chat_id: int, message_id: int, emoji: str) -> GroupMessage:
     """Take ``user``'s emoji off a message; nothing changes when it is not there."""
-    chat = await chat_access(conn, user, chat_id)
-    row = await visible_message(conn, chat, message_id)
-    await take_reaction(conn, chat_id, message_id, emoji, person_author(user.login), user_id=user.user_id)
-    return await message_view(conn, chat, row, user)
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id)
+        row = await visible_message(conn, chat, message_id)
+        await take_reaction(conn, chat_id, message_id, emoji, person_author(user.login), user_id=user.user_id)
+        return await message_view(conn, chat, row, user)
 
 
 # Reading
 
 
-async def read_chat(conn: AsyncConnection, user: Principal, chat_id: int, body: ChatReadIn) -> ChatRead:
+async def read_chat(engine: AsyncEngine, user: Principal, chat_id: int, body: ChatReadIn) -> ChatRead:
     """Say how far ``user`` read: the seq of the last event they saw, at most the chat's last."""
-    chat = await chat_access(conn, user, chat_id)
-    last = await mark_read(conn, chat.member_id, min(body.seq, chat.event_seq))
-    return ChatRead(last_read_seq=last, unread=await store.unread(conn, chat_id, last, user.user_id))
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id)
+        last = await mark_read(conn, chat.member_id, min(body.seq, chat.event_seq))
+        return ChatRead(last_read_seq=last, unread=await store.unread(conn, chat_id, last, user.user_id))

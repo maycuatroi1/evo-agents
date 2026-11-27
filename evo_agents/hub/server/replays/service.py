@@ -44,11 +44,12 @@ import logging
 import secrets
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, replay, runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.forge.models.forges import forge_named
 from evo_agents.hub.server.forge.service.protection import need_reader
@@ -63,6 +64,7 @@ from evo_agents.hub.server.replays.models import (
     Replay,
     ReplayReport,
     ReplayTask,
+    ReplayTaskList,
 )
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD
@@ -304,15 +306,16 @@ async def _won_again(conn: AsyncConnection, change_id: int, run_id: int) -> None
     log.info("curator change judged again by its replays", extra={"change_id": change.id, "run_id": run_id})
 
 
-async def report(conn: AsyncConnection, user: Principal, run_id: int, body: ReplayReport, key: str | None):
-    """One arm's result of the replay run the worker of ``user`` holds, or why it cannot replay its task: the replay,
-    and its id."""
-    row = await _held_replay(conn, user, run_id, key)
-    if body.refused is not None:
-        await _refused(conn, row, body, run_id)
-    else:
-        await _arm(conn, row, body, run_id)
-    (found,) = await replays(conn, [row.id])
+async def report(engine: AsyncEngine, user: Principal, run_id: int, body: ReplayReport, key: str | None):
+    """One arm's result of the replay run the worker of ``user`` holds, or why it cannot replay its task, in a
+    transaction of its own: the replay, and its id."""
+    async with UnitOfWork(engine) as conn:
+        row = await _held_replay(conn, user, run_id, key)
+        if body.refused is not None:
+            await _refused(conn, row, body, run_id)
+        else:
+            await _arm(conn, row, body, run_id)
+        (found,) = await replays(conn, [row.id])
     return found, row.id
 
 
@@ -397,3 +400,22 @@ async def change_replay(conn: AsyncConnection, access: ProjectAccess, change_id:
     rows = [{"split": item.split, "state": item.state, "result_a": item.a, "result_b": item.b} for item in shown]
     found = replay.verdict(rows, change.head_sha)
     return ChangeReplay(project=access.name, change_id=change_id, tasks=wanted, replays=shown, arms=arms, verdict=found)
+
+
+async def suite(
+    engine: AsyncEngine, user: Principal, project: str, *, split: str | None, limit: int, sink: str | None
+) -> ReplayTaskList:
+    """The project's suite of replay tasks for a reader (``tasks_of``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        access = await reader_access(conn, user, project)
+        tasks, counts, total = await tasks_of(conn, access, split=split, limit=limit, sink=sink)
+    return ReplayTaskList(project=access.name, split=split, tasks=tasks, total=total, counts=counts)
+
+
+async def replays_of_change(
+    engine: AsyncEngine, user: Principal, project: str, change_id: int, sink: str | None
+) -> ChangeReplay:
+    """A change's replays for a reader (``change_replay``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        access = await reader_access(conn, user, project)
+        return await change_replay(conn, access, change_id, sink)

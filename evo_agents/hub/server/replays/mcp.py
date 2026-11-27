@@ -48,15 +48,11 @@ async def mcp_answer(request: Request, project: str, user: Principal, arguments:
             raise Forbidden("the agent of a run lists the select split of the replay suite alone")
         split = "select"
     if "change_id" in arguments:
-        async with request.app.state.engine.begin() as conn:
-            access = await service.reader_access(conn, user, project)
-            found = await service.change_replay(conn, access, arguments["change_id"], sink)
+        found = await service.replays_of_change(request.app.state.engine, user, project, arguments["change_id"], sink)
         return _change_answer(project, found)
-    async with request.app.state.engine.begin() as conn:
-        access = await service.reader_access(conn, user, project)
-        tasks, counts, total = await service.tasks_of(
-            conn, access, split=split, limit=arguments.get("limit", 20), sink=sink
-        )
+    engine = request.app.state.engine
+    listed = await service.suite(engine, user, project, split=split, limit=arguments.get("limit", 20), sink=sink)
+    tasks, counts, total = listed.tasks, listed.counts, listed.total
     lines = [f"The replay suite of project {project}: {counts['select']} select, {counts['holdout']} holdout."]
     lines += [
         f"#{task.id} {task.split} {task.plan_id}#{task.step_key} in {task.repo}: {task.title or ''}" for task in tasks

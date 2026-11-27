@@ -5,11 +5,12 @@ from __future__ import annotations
 
 from collections import Counter
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.curator.models.charter import (
     NIGHT_SHIFT,
     PAUSE,
@@ -119,8 +120,9 @@ async def status_of(conn: AsyncConnection, access: ProjectAccess) -> CuratorStat
     )
 
 
-async def status(conn: AsyncConnection, user: Principal, project: str) -> CuratorStatus:
-    return await status_of(conn, await read_access(conn, user, project))
+async def status(engine: AsyncEngine, user: Principal, project: str) -> CuratorStatus:
+    async with UnitOfWork(engine) as conn:
+        return await status_of(conn, await read_access(conn, user, project))
 
 
 async def last_brief(conn: AsyncConnection, project_id: int) -> BriefSummary | None:
@@ -172,28 +174,29 @@ def _night_summary(night, row, cost, review_row, counted: bool) -> NightSummary:
     )
 
 
-async def nights(conn: AsyncConnection, user: Principal, project: str, limit: int) -> NightList:
+async def nights(engine: AsyncEngine, user: Principal, project: str, limit: int) -> NightList:
     """The latest nights of the project's night shift, each with its runs, their cost and its review run."""
-    access = await read_access(conn, user, project)
-    charter = await charters.charter_row(conn, access.project_id)
-    which = await store.latest_nights(conn, access.project_id, limit)
-    counts, costs, reviews, counted = {}, {}, {}, set()
-    if which:
-        counts = await store.night_runs(conn, access.project_id, which)
-        costs = await store.night_costs(conn, access.project_id, which)
-        for row in await store.night_reviews(conn, access.project_id, which):
-            reviews.setdefault(row.night, row)
-        counted = await store.nights_counted(conn, access.project_id, which)
-    listed = [
-        _night_summary(night, counts.get(night), costs.get(night), reviews.get(night), night in counted)
-        for night in which
-    ]
-    return NightList(
-        project=access.name,
-        nights=listed,
-        budget_usd=None if charter is None else curator.period_budget(charter.body),
-        max_runs=None if charter is None else charter.body["max_runs_per_night"],
-    )
+    async with UnitOfWork(engine) as conn:
+        access = await read_access(conn, user, project)
+        charter = await charters.charter_row(conn, access.project_id)
+        which = await store.latest_nights(conn, access.project_id, limit)
+        counts, costs, reviews, counted = {}, {}, {}, set()
+        if which:
+            counts = await store.night_runs(conn, access.project_id, which)
+            costs = await store.night_costs(conn, access.project_id, which)
+            for row in await store.night_reviews(conn, access.project_id, which):
+                reviews.setdefault(row.night, row)
+            counted = await store.nights_counted(conn, access.project_id, which)
+        listed = [
+            _night_summary(night, counts.get(night), costs.get(night), reviews.get(night), night in counted)
+            for night in which
+        ]
+        return NightList(
+            project=access.name,
+            nights=listed,
+            budget_usd=None if charter is None else curator.period_budget(charter.body),
+            max_runs=None if charter is None else charter.body["max_runs_per_night"],
+        )
 
 
 # Pausing
@@ -213,19 +216,21 @@ async def _pausable(conn: AsyncConnection, user: Principal, project: str, doing:
     return access, [row.id for row in rows]
 
 
-async def pause(conn: AsyncConnection, user: Principal, project: str) -> tuple[CuratorStatus, list[int]]:
+async def pause(engine: AsyncEngine, user: Principal, project: str) -> tuple[CuratorStatus, list[int]]:
     """Pause every schedule of the project, and cancel the runs they queued that are still queued: where the night
     shift stands then, and the ids of the runs cancelled."""
-    access, ids = await _pausable(conn, user, project, "pause")
-    await store.pause(conn, ids, user.user_id)
-    cancelled = await cancel_queued(conn, ids, f"the night shift of {access.name} was paused by {user.login}")
-    await Auditor.of(conn, user, access).record(PAUSE, access.name)
-    return await status_of(conn, access), cancelled
+    async with UnitOfWork(engine) as conn:
+        access, ids = await _pausable(conn, user, project, "pause")
+        await store.pause(conn, ids, user.user_id)
+        cancelled = await cancel_queued(conn, ids, f"the night shift of {access.name} was paused by {user.login}")
+        await Auditor.of(conn, user, access).record(PAUSE, access.name)
+        return await status_of(conn, access), cancelled
 
 
-async def resume(conn: AsyncConnection, user: Principal, project: str) -> CuratorStatus:
+async def resume(engine: AsyncEngine, user: Principal, project: str) -> CuratorStatus:
     """Let every schedule of the project run again."""
-    access, ids = await _pausable(conn, user, project, "resume")
-    await store.resume(conn, ids)
-    await Auditor.of(conn, user, access).record(RESUME, access.name)
-    return await status_of(conn, access)
+    async with UnitOfWork(engine) as conn:
+        access, ids = await _pausable(conn, user, project, "resume")
+        await store.resume(conn, ids)
+        await Auditor.of(conn, user, access).record(RESUME, access.name)
+        return await status_of(conn, access)

@@ -1167,7 +1167,7 @@ every work chat a group chat and drops the three columns.
 ### The work card
 
 When a trace's work chat opens, the hub posts one message of its own in the root thread, the thread of the trace's
-first message, in the chat that opened it (`evo_agents/hub/server/work_cards.py`, `work_status.py`, migration 0235).
+first message, in the chat that opened it (`evo_agents/hub/server/work_cards/`, `work_status.py`, migration 0235).
 Its text is "Work card: " and the title; every read of it in the chat API carries the card as its `work` part
 (`GroupMessage.work`, null on every other message). `system_traces.card_message_id` names that message. The card is
 derived from the trace's runs, decisions and Orchestrator threads, with no model call:

@@ -1,17 +1,20 @@
 """The probes of a project as their readers read them, and what other modules call: ``store`` (a proposal's probe, a
 review run's, an admin's or a core plugin's rule's), ``attach`` (the probes of a proposal take the change accepting it
-made), ``of_proposal`` and ``verify_shown`` (who reads the verify, the answer key)."""
+made), ``of_proposal`` and ``verify_shown`` (who reads the verify, the answer key). The reads of the routes
+(``listed``, ``one``) take the app's engine and open the request's transaction (``UnitOfWork``)."""
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.server.base.errors import NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probes.models.probe import Probe, ProbeIn, ProbeList, view
 from evo_agents.hub.server.probes.repository import probes as repository
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, holds
 
 
@@ -92,9 +95,9 @@ async def shown(conn: AsyncConnection, access: ProjectAccess, user: Principal, p
 
 
 async def listed(
-    conn: AsyncConnection,
-    access: ProjectAccess,
+    engine: AsyncEngine,
     user: Principal,
+    project: str,
     *,
     change: int | None,
     proposal: int | None,
@@ -102,14 +105,22 @@ async def listed(
     limit: int,
     sink: str | None,
 ) -> ProbeList:
-    """The project's probes ``user`` may read, newest first, at most ``limit``, and how many there are."""
-    rows = await repository.listed(conn, access.project_id, change=change, proposal=proposal, state=state)
-    found = [row for row in rows if await readable(conn, access, user, row, sink)]
+    """The project's probes ``user`` may read, newest first, at most ``limit``, and how many there are; 403 without a
+    grant on the project."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        need_reader(access)
+        rows = await repository.listed(conn, access.project_id, change=change, proposal=proposal, state=state)
+        found = [row for row in rows if await readable(conn, access, user, row, sink)]
     seen = verify_shown(access, user)
     return ProbeList(probes=[view(access.name, row, shown=seen) for row in found[:limit]], total=len(found))
 
 
-async def one(conn: AsyncConnection, access: ProjectAccess, user: Principal, probe_id: int, sink: str | None) -> Probe:
-    """Probe ``probe_id`` of the project as ``user`` reads it; 404 when its label does not reach them."""
-    row = await held_row(conn, access, user, probe_id, sink)
+async def one(engine: AsyncEngine, user: Principal, project: str, probe_id: int, sink: str | None) -> Probe:
+    """Probe ``probe_id`` of the project as ``user`` reads it; 403 without a grant on the project, 404 when its label
+    does not reach them."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        need_reader(access)
+        row = await held_row(conn, access, user, probe_id, sink)
     return view(access.name, row, shown=verify_shown(access, user))

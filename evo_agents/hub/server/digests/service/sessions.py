@@ -1,5 +1,7 @@
 """Session digests: who may push the digest of a session (``put``), list the project's (``listed``) and read one
-(``shown``), and their retention (``prune_digests``); the package's docstring says the rules."""
+(``shown``), and their retention (``prune_digests``); the package's docstring says the rules. The routes call
+``put``, ``list_digests`` and ``show_digest`` with the app's engine, and each opens the request's transaction
+(``UnitOfWork``); /mcp calls ``listed`` and ``shown`` in its own."""
 
 from __future__ import annotations
 
@@ -9,6 +11,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.digests.models.sessions import (
     DIGEST_DAYS,
     DigestList,
@@ -27,16 +30,17 @@ log = logging.getLogger(__name__)
 
 
 async def put(
-    conn: AsyncConnection, user: Principal, project: str, session_id: str, body: SessionDigest
+    engine: AsyncEngine, user: Principal, project: str, session_id: str, body: SessionDigest
 ) -> DigestSummary:
     """Write the digest of session ``session_id``, replacing the one this member pushed before; 403 when another
     member pushed the session first."""
-    access = await project_access(conn, user, project)
-    label = access.push_label()
-    written = await repository.written(conn, access.project_id, user.user_id, session_id, label, body)
-    if written is None:
-        raise Forbidden(not_theirs(project, session_id))
-    return await repository.summary(conn, written)
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        label = access.push_label()
+        written = await repository.written(conn, access.project_id, user.user_id, session_id, label, body)
+        if written is None:
+            raise Forbidden(not_theirs(project, session_id))
+        return await repository.summary(conn, written)
 
 
 async def listed(
@@ -70,6 +74,30 @@ async def shown(
     found = dict(row._mapping)
     body = SessionDigest.model_validate(found.pop("body"))
     return DigestRecord(**found, digest=body)
+
+
+async def list_digests(
+    engine: AsyncEngine,
+    user: Principal,
+    project: str,
+    *,
+    since: datetime | None,
+    login: str | None,
+    limit: int,
+    offset: int,
+    sink: str | None,
+) -> DigestList:
+    """``listed``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await listed(conn, user, project, since=since, login=login, limit=limit, offset=offset, sink=sink)
+
+
+async def show_digest(
+    engine: AsyncEngine, user: Principal, project: str, session_id: str, sink: str | None
+) -> DigestRecord:
+    """``shown``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await shown(conn, user, project, session_id, sink)
 
 
 # Retention

@@ -39,11 +39,12 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats
 from evo_agents.hub.server.attachments import repository as attachment_store
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.read import (
     CHAT_RUN,
     DATA_LINE,
@@ -277,10 +278,11 @@ async def session_label(conn: AsyncConnection, project: str | None, kept: frozen
     }
 
 
-async def agent_read(conn: AsyncConnection, user: Principal, run_id: int, ref: str, thread: bool) -> ChatReading:
+async def agent_read(engine: AsyncEngine, user: Principal, run_id: int, ref: str, thread: bool) -> ChatReading:
     """The message ``ref`` names, or its thread, as the agent of run ``run_id``, which the worker of ``user`` holds,
     may read it (``read``, with no sink), noted as what the run was shown."""
-    readers = await run_readers(conn, user, run_id)
-    reading, kept = await read(conn, readers, ref, thread, None)
-    await note(conn, run_id, kept)
-    return reading
+    async with UnitOfWork(engine) as conn:
+        readers = await run_readers(conn, user, run_id)
+        reading, kept = await read(conn, readers, ref, thread, None)
+        await note(conn, run_id, kept)
+        return reading

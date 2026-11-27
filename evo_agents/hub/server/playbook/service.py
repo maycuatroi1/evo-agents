@@ -29,10 +29,11 @@ import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import playbook, review
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.playbook import repository as store
@@ -125,23 +126,25 @@ async def _change(conn, request, run, access, body: PlaybookDelta) -> tuple[int,
     return entry_id, evidence
 
 
-async def record_delta(conn: AsyncConnection, request, user: Principal, run_id: int, body: PlaybookDelta):
-    """One delta of the playbook from the agent of the review run this worker holds: the entry, and its id."""
-    run = await held_review_run(conn, user, run_id)
-    access = await writer_of(conn, run)
-    if await store.run_deltas(conn, run_id) >= playbook.MAX_DELTAS:
-        raise Conflict(f"run {run_id} wrote {playbook.MAX_DELTAS} deltas of the playbook, the most a run may")
-    if body.op == "add":
-        entry_id, evidence = await _add(conn, request, run, access, body)
-    else:
-        entry_id, evidence = await _change(conn, request, run, access, body)
-    delta = {"project_id": run.project_id, "entry_id": entry_id, "run_id": run_id, "op": body.op}
-    await store.insert_delta(conn, {**delta, "evidence": evidence, "note": body.note})
-    row = await store.entry(conn, entry_id)
-    what = {"add": "added", "helpful": "counted helpful", "harmful": "counted harmful", "retire": "retired"}
-    text = f"playbook entry {playbook.ref(entry_id)} {what[body.op]}: {row.text}"
-    await write_event(conn, run_id, {"text": text, "playbook": entry_id, "op": body.op})
-    return _entry(row), entry_id
+async def record_delta(engine: AsyncEngine, request, user: Principal, run_id: int, body: PlaybookDelta):
+    """One delta of the playbook from the agent of the review run this worker holds, in a transaction of its own: the
+    entry, and its id."""
+    async with UnitOfWork(engine) as conn:
+        run = await held_review_run(conn, user, run_id)
+        access = await writer_of(conn, run)
+        if await store.run_deltas(conn, run_id) >= playbook.MAX_DELTAS:
+            raise Conflict(f"run {run_id} wrote {playbook.MAX_DELTAS} deltas of the playbook, the most a run may")
+        if body.op == "add":
+            entry_id, evidence = await _add(conn, request, run, access, body)
+        else:
+            entry_id, evidence = await _change(conn, request, run, access, body)
+        delta = {"project_id": run.project_id, "entry_id": entry_id, "run_id": run_id, "op": body.op}
+        await store.insert_delta(conn, {**delta, "evidence": evidence, "note": body.note})
+        row = await store.entry(conn, entry_id)
+        what = {"add": "added", "helpful": "counted helpful", "harmful": "counted harmful", "retire": "retired"}
+        text = f"playbook entry {playbook.ref(entry_id)} {what[body.op]}: {row.text}"
+        await write_event(conn, run_id, {"text": text, "playbook": entry_id, "op": body.op})
+        return _entry(row), entry_id
 
 
 # Reading
@@ -170,6 +173,14 @@ async def playbook_view(
     shown = [_entry(by_id[item["id"]]) for item in _ordered(rows, retired, lens)]
     live = sum(1 for row in rows if row.retired_at is None)
     return PlaybookView(project=access.name, entries=shown, live=live, retired=len(rows) - live)
+
+
+async def read_playbook(
+    engine: AsyncEngine, user: Principal, project: str, sink: str | None, *, lens: str | None, retired: bool
+) -> PlaybookView:
+    """``playbook_view``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await playbook_view(conn, user, project, sink, lens=lens, retired=retired)
 
 
 async def for_prompt(

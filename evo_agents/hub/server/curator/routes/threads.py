@@ -39,8 +39,7 @@ async def answer(request: Request, run_id: RunId, body: CuratorAnswerIn, user: C
     """Accept, reject or defer the proposal of this thread for the chat run's dispatcher, an admin of the project, as
     their answer on the web does; 403 for another proposal or a dispatcher who is no admin, 409 for a proposal neither
     open nor deferred or a charter that has its admins answer."""
-    async with request.app.state.engine.begin() as conn:
-        proposal, message_id, proposal_id = await threads.answer(conn, user, run_id, body)
+    proposal, message_id, proposal_id = await threads.answer(request.app.state.engine, user, run_id, body)
     log.info(
         "proposal answered by the agent",
         extra={"proposal_id": proposal_id, "action": body.action, "agent_run_id": run_id},

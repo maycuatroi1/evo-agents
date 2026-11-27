@@ -1,15 +1,19 @@
 """The writes of a project's probes: an admin adds, edits, retires and requeues one (each audited as curator.probe),
 and the agent of a review run adds one to a merged change that has none, or in place of the change's probe the weekly
-report found not reproduced, or stale, two weeks in a row (``service.fixes.replace_assignment``)."""
+report found not reproduced, or stale, two weeks in a row (``service.fixes.replace_assignment``). Each write the routes
+call takes the app's engine, opens the request's transaction (``UnitOfWork``) and logs what it wrote once that commits."""
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import func
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import probes as probe_shape
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.curator.repository.charter import charter_row
 from evo_agents.hub.server.probes.models.fixes import Assignment
 from evo_agents.hub.server.probes.models.probe import PROBE, Probe, ProbeAdd, ProbeEdit, ProbeRetire, ReviewProbe, view
@@ -18,11 +22,13 @@ from evo_agents.hub.server.probes.repository import probes as repository
 from evo_agents.hub.server.probes.service import fixes, runs
 from evo_agents.hub.server.probes.service.probes import held_row, shown, store
 from evo_agents.hub.server.probes.service.report import local_today
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposals.repository.record import project_repos
 from evo_agents.hub.server.proposals.service.record import held_review_run, writer_of
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.security import Principal, holds
+
+log = logging.getLogger(__name__)
 
 NOT_REPLACEABLE = (
     "probe {probe} is not an active probe of change {change} that was not reproduced, or stale, on one model in the two "
@@ -66,7 +72,7 @@ async def _target(conn: AsyncConnection, access: ProjectAccess, body: ProbeAdd) 
     return {"proposal_id": proposal.id, "change_id": change_id}, proposal.label, f"add proposal:{proposal.id}"
 
 
-async def add(conn: AsyncConnection, access: ProjectAccess, user: Principal, body: ProbeAdd) -> Probe:
+async def _add(conn: AsyncConnection, access: ProjectAccess, user: Principal, body: ProbeAdd) -> Probe:
     """Add a probe to a change or a proposal of the project; its admins alone may."""
     need_admin(access, "adding a probe")
     if body.repo not in await project_repos(conn, access.project_id):
@@ -79,7 +85,7 @@ async def add(conn: AsyncConnection, access: ProjectAccess, user: Principal, bod
     return await shown(conn, access, user, probe_id)
 
 
-async def edit(conn: AsyncConnection, access: ProjectAccess, user: Principal, probe_id: int, body: ProbeEdit) -> Probe:
+async def _edit(conn: AsyncConnection, access: ProjectAccess, user: Principal, probe_id: int, body: ProbeEdit) -> Probe:
     """Change the repo, commit, task or verify of an active probe; the project's admins alone may."""
     need_admin(access, "editing a probe")
     row = await held_row(conn, access, user, probe_id, None, lock=True)
@@ -93,7 +99,7 @@ async def edit(conn: AsyncConnection, access: ProjectAccess, user: Principal, pr
     return await shown(conn, access, user, probe_id)
 
 
-async def retire(
+async def _retire(
     conn: AsyncConnection, access: ProjectAccess, user: Principal, probe_id: int, body: ProbeRetire
 ) -> Probe:
     """Retire a probe: no probe run takes it from then on; the project's admins alone may."""
@@ -107,7 +113,7 @@ async def retire(
     return await shown(conn, access, user, probe_id)
 
 
-async def requeue(conn: AsyncConnection, access: ProjectAccess, user: Principal, probe_id: int) -> ProbeRequeue:
+async def _requeue(conn: AsyncConnection, access: ProjectAccess, user: Principal, probe_id: int) -> ProbeRequeue:
     """Measure an active probe again this ISO week (``service.runs.requeue``); the project's admins alone may."""
     need_admin(access, "requeueing a probe")
     row = await held_row(conn, access, user, probe_id, None, lock=True)
@@ -117,6 +123,42 @@ async def requeue(conn: AsyncConnection, access: ProjectAccess, user: Principal,
     today = await local_today(conn, dict(charter.body) if charter is not None else {})
     found = await runs.requeue(conn, probe_id, probe_shape.week_of(today))
     await _audited(conn, access, user, probe_id, f"requeue week:{found.week.isoformat()} rows:{len(found.requeued)}")
+    return found
+
+
+async def add_probe(engine: AsyncEngine, user: Principal, project: str, body: ProbeAdd) -> Probe:
+    """Add a probe to a change or a proposal of the project (``_add``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        found = await _add(conn, access, user, body)
+    log.info("probe added", extra={"project": access.name, "probe_id": found.id, "login": user.login})
+    return found
+
+
+async def edit_probe(engine: AsyncEngine, user: Principal, project: str, probe_id: int, body: ProbeEdit) -> Probe:
+    """Change the repo, commit, task or verify of an active probe (``_edit``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        found = await _edit(conn, access, user, probe_id, body)
+    log.info("probe edited", extra={"project": access.name, "probe_id": probe_id, "login": user.login})
+    return found
+
+
+async def retire_probe(engine: AsyncEngine, user: Principal, project: str, probe_id: int, body: ProbeRetire) -> Probe:
+    """Retire a probe (``_retire``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        found = await _retire(conn, access, user, probe_id, body)
+    log.info("probe retired", extra={"project": access.name, "probe_id": probe_id, "login": user.login})
+    return found
+
+
+async def requeue_probe(engine: AsyncEngine, user: Principal, project: str, probe_id: int) -> ProbeRequeue:
+    """Measure an active probe again this ISO week (``_requeue``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        found = await _requeue(conn, access, user, probe_id)
+    log.info("probe requeued", extra={"project": access.name, "probe_id": probe_id, "rows": len(found.requeued)})
     return found
 
 
@@ -133,7 +175,7 @@ async def _replaceable(conn: AsyncConnection, run, access: ProjectAccess, change
     return found
 
 
-async def record(conn: AsyncConnection, user: Principal, run_id: int, body: ReviewProbe) -> Probe:
+async def _record(conn: AsyncConnection, user: Principal, run_id: int, body: ReviewProbe) -> Probe:
     """A probe from the agent of the review run this worker holds, for a merged change that has none."""
     run = await held_review_run(conn, user, run_id)
     access = await writer_of(conn, run)
@@ -169,3 +211,11 @@ async def record(conn: AsyncConnection, user: Principal, run_id: int, body: Revi
     what += f", in place of probe #{body.replaces}" if body.replaces is not None else ""
     await write_event(conn, run_id, {"text": what, "probe": probe_id})
     return view(access.name, await repository.by_id(conn, probe_id), shown=False)
+
+
+async def record_probe(engine: AsyncEngine, user: Principal, run_id: int, body: ReviewProbe) -> Probe:
+    """A review run's probe of a merged change (``_record``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        found = await _record(conn, user, run_id, body)
+    log.info("probe recorded", extra={"run_id": run_id, "probe_id": found.id, "change_id": body.change_id})
+    return found

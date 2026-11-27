@@ -1,5 +1,5 @@
 """The route of the weekly report of the Curator's probes: GET /v1/projects/{p}/curator/probe-report (reader), for
-``weeks`` weeks, the newest first, the week of ``week`` and those before it (``service.report.build``)."""
+``weeks`` weeks, the newest first, the week of ``week`` and those before it (``service.report.weekly``)."""
 
 from __future__ import annotations
 
@@ -11,11 +11,9 @@ from fastapi import APIRouter, Header, Query, Request
 from evo_agents.hub import probes
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.probes.models.report import DEFAULT_WEEKS, ProbeWeekly
-from evo_agents.hub.server.probes.service.report import build
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.probes.service.report import weekly
 from evo_agents.hub.server.security import CurrentUser
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
@@ -38,7 +36,4 @@ async def probe_report(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ProbeWeekly:
     """The weekly report of the project's probes."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        need_reader(access)
-        return await build(conn, access, user, weeks=weeks, newest=week, sink=sink)
+    return await weekly(request.app.state.engine, user, project, weeks=weeks, newest=week, sink=sink)

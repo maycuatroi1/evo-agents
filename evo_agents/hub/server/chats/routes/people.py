@@ -29,7 +29,6 @@ async def list_candidates(
 ) -> list[ChatCandidate]:
     """The people the caller may add to a chat, by login, each with why they could not be in it with ``agents``."""
     handles = [handle for handle in agents if profiles.HANDLE.fullmatch(handle)]
-    async with request.app.state.engine.begin() as conn:
-        found = await candidates(conn, user, handles)
+    found = await candidates(request.app.state.engine, user, handles)
     log.info("chat candidates read", extra={"people": len(found), "agents": len(handles)})
     return found

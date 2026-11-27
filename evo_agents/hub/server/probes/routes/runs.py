@@ -4,7 +4,6 @@ the probe run the worker holds, or why the probe is stale, with the run's own ke
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, Request
@@ -15,8 +14,6 @@ from evo_agents.hub.server.probes.models.runs import ProbeReport, ProbeRun
 from evo_agents.hub.server.probes.service import runs as service
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.security import CurrentUser
-
-log = logging.getLogger(__name__)
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409)}
@@ -36,7 +33,4 @@ async def report_probe(
     request: Request, run_id: RunId, body: ProbeReport, user: CurrentUser, probe_key: ProbeKey = None
 ) -> ProbeRun:
     """One session's result of the probe run this worker holds, or why the probe is stale; with the run's key."""
-    async with request.app.state.engine.begin() as conn:
-        found = await service.report(conn, user, run_id, body, probe_key)
-    log.info("probe reported", extra={"run_id": run_id, "probe_run_id": found.id, "state": found.state})
-    return found
+    return await service.report(request.app.state.engine, user, run_id, body, probe_key)

@@ -7,10 +7,11 @@ from __future__ import annotations
 import hmac
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, evolve, runs
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.changes.repository.views import charter_of
 from evo_agents.hub.server.evolve.models import (
     ArmIn,
@@ -19,13 +20,14 @@ from evo_agents.hub.server.evolve.models import (
     CandidateIn,
     CandidateOut,
     EvolveInputs,
+    EvolveView,
     FrontItem,
     ReportIn,
     TaskInput,
     key_digest,
 )
 from evo_agents.hub.server.evolve.repository import candidates, evolutions, tasks
-from evo_agents.hub.server.evolve.service import report
+from evo_agents.hub.server.evolve.service import report, views
 from evo_agents.hub.server.evolve.service.runs import cached_arms, settings_of, task_inputs
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import NOT_HELD
@@ -169,3 +171,37 @@ async def reported(conn: AsyncConnection, user: Principal, row, run_id: int, bod
     await write_event(conn, run_id, {"text": text, "evolve_id": row.id})
     row = await evolutions.one(conn, row.id)
     return await evolutions.project_name(conn, row.project_id), row
+
+
+# The routes of the worker, each in a transaction of its own
+
+
+async def inputs(engine: AsyncEngine, user: Principal, run_id: int, key: str | None) -> EvolveInputs:
+    """What the held evolve run ``run_id`` evolves (``inputs_of``)."""
+    async with UnitOfWork(engine) as conn:
+        row = await held_evolve(conn, user, run_id, key)
+        return await inputs_of(conn, row)
+
+
+async def arm(engine: AsyncEngine, user: Principal, run_id: int, key: str | None, body: ArmIn) -> ArmOut:
+    """Keep the result of a baseline arm of the held evolve run ``run_id`` (``kept_arm``)."""
+    async with UnitOfWork(engine) as conn:
+        row = await held_evolve(conn, user, run_id, key)
+        return await kept_arm(conn, row, run_id, body)
+
+
+async def candidate(
+    engine: AsyncEngine, user: Principal, run_id: int, key: str | None, body: CandidateIn
+) -> CandidateOut:
+    """Keep a candidate of the held evolve run ``run_id`` (``kept_candidate``)."""
+    async with UnitOfWork(engine) as conn:
+        row = await held_evolve(conn, user, run_id, key)
+        return await kept_candidate(conn, row, body)
+
+
+async def end(engine: AsyncEngine, user: Principal, run_id: int, key: str | None, body: ReportIn) -> EvolveView:
+    """End the evolution of the held evolve run ``run_id`` as it reports (``reported``): the evolution then."""
+    async with UnitOfWork(engine) as conn:
+        row = await held_evolve(conn, user, run_id, key)
+        project, row = await reported(conn, user, row, run_id, body)
+    return views.view_of(project, row)

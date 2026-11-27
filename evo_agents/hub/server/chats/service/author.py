@@ -33,10 +33,11 @@ end (409). It is audited (run.finish), once per run.
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import author, runs
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.author import WAITING_TITLE, ChatMessage, RunChat, chat_link
 from evo_agents.hub.server.chats.repository import author as store
 from evo_agents.hub.server.run_state import move_run, write_event
@@ -50,17 +51,19 @@ from evo_agents.hub.server.security import Principal
 # The worker's side
 
 
-async def post_chat(conn: AsyncConnection, user: Principal, run_id: int, text: str) -> int:
+async def post_chat(engine: AsyncEngine, user: Principal, run_id: int, text: str) -> int:
     """Keep ``text``, the last message of a turn of the agent of run ``run_id`` the worker ``user`` holds, as a message
     of its chat (of a chat run, its reply in its thread); its event's seq."""
-    _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
-    if row.kind == "chat":  # its reply in the thread of its group chat
-        from evo_agents.hub.server.chats.service.runs import agent_reply  # it reads runs through this module's package
+    async with UnitOfWork(engine) as conn:
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
+        if row.kind == "chat":  # its reply in the thread of its group chat
+            # it reads runs through this module's package
+            from evo_agents.hub.server.chats.service.runs import agent_reply
 
-        return await agent_reply(conn, run_id, text)
-    if row.kind != "author":
-        raise HTTPException(404, f"run {run_id} is not an author run: only an author run has a chat")
-    return await write_event(conn, run_id, {"text": text, "chat": author.CHAT_AGENT})
+            return await agent_reply(conn, run_id, text)
+        if row.kind != "author":
+            raise HTTPException(404, f"run {run_id} is not an author run: only an author run has a chat")
+        return await write_event(conn, run_id, {"text": text, "chat": author.CHAT_AGENT})
 
 
 async def notify_waiting(conn: AsyncConnection, run_id: int) -> int | None:
@@ -94,53 +97,55 @@ async def notify_waiting(conn: AsyncConnection, run_id: int) -> int | None:
 # The owner's side
 
 
-async def read_chat(conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None) -> RunChat:
+async def read_chat(engine: AsyncEngine, user: Principal, project: str, run_id: int, sink: str | None) -> RunChat:
     """The chat of author run ``run_id`` of ``project`` as ``user`` reads it through ``sink``."""
-    await readable_run(conn, user, project, run_id, sink)
-    kind = await store.kind_of(conn, run_id)
-    if kind != "author":
-        raise HTTPException(404, f"run {run_id} is a {kind} run: only an author run has a chat")
-    rows = await store.messages(conn, run_id, author.MAX_CHAT_MESSAGES + 1)
-    latest = await store.latest(conn, run_id)
-    more = len(rows) > author.MAX_CHAT_MESSAGES
-    shown = [
-        ChatMessage(**{**row._mapping, "attachments": row.attachments or []})
-        for row in reversed(rows[: author.MAX_CHAT_MESSAGES])
-    ]
-    return RunChat(
-        run_id=latest.id,
-        state=latest.state,
-        status=author.chat_status(latest.state),
-        owner=latest.login,
-        plan_id=latest.plan_id,
-        plan_revision=latest.plan_revision,
-        messages=shown,
-        more=more,
-    )
+    async with UnitOfWork(engine) as conn:
+        await readable_run(conn, user, project, run_id, sink)
+        kind = await store.kind_of(conn, run_id)
+        if kind != "author":
+            raise HTTPException(404, f"run {run_id} is a {kind} run: only an author run has a chat")
+        rows = await store.messages(conn, run_id, author.MAX_CHAT_MESSAGES + 1)
+        latest = await store.latest(conn, run_id)
+        more = len(rows) > author.MAX_CHAT_MESSAGES
+        shown = [
+            ChatMessage(**{**row._mapping, "attachments": row.attachments or []})
+            for row in reversed(rows[: author.MAX_CHAT_MESSAGES])
+        ]
+        return RunChat(
+            run_id=latest.id,
+            state=latest.state,
+            status=author.chat_status(latest.state),
+            owner=latest.login,
+            plan_id=latest.plan_id,
+            plan_revision=latest.plan_revision,
+            messages=shown,
+            more=more,
+        )
 
 
-async def finish(conn: AsyncConnection, user: Principal, project: str, run_id: int) -> tuple[Run, bool]:
+async def finish(engine: AsyncEngine, user: Principal, project: str, run_id: int) -> tuple[Run, bool]:
     """End the chat of author run ``run_id`` of ``project`` that ``user`` dispatched: the run as it reads now, and
     whether this asked it (False when it was asked already: nothing changed, nothing is audited)."""
-    access, row = await owned_run(conn, user, project, run_id, "end the chat of")
-    state, kind = row[2], row[11]
-    if kind not in ("author", "browser"):
-        article = "an" if kind[:1] in "aeiou" else "a"
-        raise HTTPException(
-            409,
-            f"run {run_id} is {article} {kind} run: only an author run has a chat to end, and a login session "
-            "its Save; cancel it instead",
-        )
-    if state in runs.TERMINAL_STATES:
-        raise HTTPException(409, f"run {run_id} is {state}: its chat is over")
-    if state == "queued":
-        raise HTTPException(
-            409, f"run {run_id} is queued: its agent has not started, so it has no chat to end; cancel it instead"
-        )
-    if state == "parked":
-        reason = f"{user.login} ended the chat"
-        await move_run(conn, run_id, "parked", "done", "owner", reason=reason, token_id=user.token_id)
-    elif not await store.ask_finish(conn, run_id):
-        return await run_view(conn, run_id), False
-    await audit_run(conn, user, access, audit.RUN_FINISH, f"{project}/author run:{run_id}")
-    return await run_view(conn, run_id), True
+    async with UnitOfWork(engine) as conn:
+        access, row = await owned_run(conn, user, project, run_id, "end the chat of")
+        state, kind = row[2], row[11]
+        if kind not in ("author", "browser"):
+            article = "an" if kind[:1] in "aeiou" else "a"
+            raise HTTPException(
+                409,
+                f"run {run_id} is {article} {kind} run: only an author run has a chat to end, and a login session "
+                "its Save; cancel it instead",
+            )
+        if state in runs.TERMINAL_STATES:
+            raise HTTPException(409, f"run {run_id} is {state}: its chat is over")
+        if state == "queued":
+            raise HTTPException(
+                409, f"run {run_id} is queued: its agent has not started, so it has no chat to end; cancel it instead"
+            )
+        if state == "parked":
+            reason = f"{user.login} ended the chat"
+            await move_run(conn, run_id, "parked", "done", "owner", reason=reason, token_id=user.token_id)
+        elif not await store.ask_finish(conn, run_id):
+            return await run_view(conn, run_id), False
+        await audit_run(conn, user, access, audit.RUN_FINISH, f"{project}/author run:{run_id}")
+        return await run_view(conn, run_id), True

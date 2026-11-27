@@ -15,5 +15,4 @@ router = APIRouter(prefix="/v1/me", tags=["chats"], responses={401: {"model": Er
 @router.get("/chat-agents", response_model=list[ChatHomeAgent])
 async def list_chat_agents(request: Request, user: CurrentUser) -> list[ChatHomeAgent]:
     """The agents you may chat with on any project you hold a grant on, the ones you wrote to last first."""
-    async with request.app.state.engine.begin() as conn:
-        return await chat_agents(conn, user)
+    return await chat_agents(request.app.state.engine, user)

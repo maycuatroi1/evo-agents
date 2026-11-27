@@ -6,14 +6,16 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, evolve
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.changes.repository.views import charter_of
-from evo_agents.hub.server.evolve.models import EVOLVE_START, EvolveStart, reason_text
+from evo_agents.hub.server.evolve.models import EVOLVE_START, EvolveStart, EvolveView, reason_text
 from evo_agents.hub.server.evolve.repository import evolutions
+from evo_agents.hub.server.evolve.service import views
 from evo_agents.hub.server.evolve.service.runs import pick_tasks, queue_run, settings_of
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, check_seat
@@ -96,3 +98,10 @@ async def start(conn: AsyncConnection, user: Principal, project: str, body: Evol
         await queue_run(conn, due, gate, row, asked_by=user.login)
     log.info("evolution started", extra={"project": access.name, "evolve_id": evolve_id, "target": body.target})
     return evolve_id
+
+
+async def start_evolution(engine: AsyncEngine, user: Principal, project: str, body: EvolveStart) -> EvolveView:
+    """Start an evolution (``start``) in a transaction of its own: the evolution as it was just started."""
+    async with UnitOfWork(engine) as conn:
+        evolve_id = await start(conn, user, project, body)
+        return await views.started(conn, project, evolve_id)
