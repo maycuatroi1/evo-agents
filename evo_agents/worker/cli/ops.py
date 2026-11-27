@@ -1,6 +1,6 @@
 """``evo-agents worker ops rerun|redeliver|answer-wait|curator-resume|read|finding|priority|plan-dispatch``: what the Orchestrator of a
 project's default system does in an ops thread the hub opened to it for a batch of the ops queue
-(``evo_agents.hub.server.ops_actions``; ``evo_agents.hub.server.ops_threads`` opens the threads).
+(``evo_agents.hub.server.ops.service.actions``; ``evo_agents.hub.server.ops.service.threads`` opens the threads).
 
 - ``rerun RUN --reason TEXT``: hand the work of a chat or task run of the batch that failed or was lost again, for a
   new session, to any worker that fits.

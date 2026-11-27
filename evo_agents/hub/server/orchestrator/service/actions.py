@@ -1,5 +1,5 @@
 """What the Orchestrator of an agent system does in a thread the hub opened to it (``orchestrator``), beyond the frame of
-``triage_actions``, and the route an agent escalates by (``docs/workers.md``, Escalation; ``docs/hub.md``, The
+``triage.service.actions``, and the route an agent escalates by (``docs/workers.md``, Escalation; ``docs/hub.md``, The
 Orchestrator).
 
 The routes (``routes``) take the worker token of the worker that holds the chat run; the hub runtime's tools call the same code

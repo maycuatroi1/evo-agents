@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_spec
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, ops_threads, ops_views
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.ops.models import views as ops_views
+from evo_agents.hub.server.ops.repository import threads as ops_threads
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.systems.models.ops import DefaultSystem, OpsBatch, OpsSettings, SystemOps

@@ -1,4 +1,4 @@
-"""Which triage chat a failed run opens its thread in (``evo_agents.hub.server.triage._chat``): the one chat of its
+"""Which triage chat a failed run opens its thread in (``evo_agents.hub.server.triage.service.chats.chat_of``): the one chat of its
 project, "Triage: <project>", for the runs of every plan and the runs with no plan; the chat of its plan for a plan
 whose label is above the project's default label, so that nobody reads a failure of a plan they could not read; the
 chat of its plan too when the project's chat cannot take the owner; the triage chats plans had before left as they

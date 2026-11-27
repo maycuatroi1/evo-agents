@@ -471,7 +471,7 @@ NOTICE_KINDS = (
     "srs_review",  # a version of an SRS document waits for its reviewers, after @ba's review (``server.srs.service.notices``)
     "srs_reviewed",  # a reviewer asked for changes on a version, or approved it, told to its author (same)
     "srs_comment",  # a comment reached a thread of an SRS document the member is in (``server.srs.service.threads``)
-    "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops_threads``)
+    "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops.service.threads``)
     "ops_paused",  # two ops runs in a row failed of their agent, which paused the system's ops (same)
     "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
     "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron_fire``)

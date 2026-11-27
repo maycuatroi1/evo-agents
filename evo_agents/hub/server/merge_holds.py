@@ -39,11 +39,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, findings, merge_infra, runs, tables
-from evo_agents.hub.server import triage
 from evo_agents.hub.server.chats.service import agents as chat_agents
 from evo_agents.hub.server.chats.service.agents import AgentRun
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.triage.models.threads import Thread
+from evo_agents.hub.server.triage.service import threads as triage
 
 log = logging.getLogger(__name__)
 
@@ -87,13 +88,13 @@ def failed_by(row) -> list[str]:
     return [cause for cause in causes if isinstance(cause, str)] if isinstance(causes, list) else []
 
 
-def thread_of(row) -> triage.Thread | None:
+def thread_of(row) -> Thread | None:
     """The thread of the check's triage, when it had one."""
     state = state_of(row.verdict)
     chat_id, root_id = state.get("chat_id"), state.get("root_id")
     if not isinstance(chat_id, int) or not isinstance(root_id, int):
         return None
-    return triage.Thread(chat_id, root_id, chats.chat_link(chat_id, root_id))
+    return Thread(chat_id, root_id, chats.chat_link(chat_id, root_id))
 
 
 def at_new_head(verdict) -> dict | None:

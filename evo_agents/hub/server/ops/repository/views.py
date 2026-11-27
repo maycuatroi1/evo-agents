@@ -1,4 +1,4 @@
-"""What the Inbox shows of the ops queue (plan hub-steward, criterion a12; ``docs/hub.md``, Agent systems): which of a
+"""What the Inbox reads of the ops queue (plan hub-steward, criterion a12; ``docs/hub.md``, Agent systems): which of a
 member's notifications the Orchestrator of the project's default system holds, in a batch of the queue
 (``evo_agents.hub.ops_queue``) that is gathering (``open``), waiting for its thread (``ready``), or in its thread
 (``running``), and the path of that thread. A notification no such batch holds waits on a person.
@@ -8,29 +8,11 @@ A decision is held when an item of such a batch names it and is still pending; a
 
 from __future__ import annotations
 
-from typing import Literal
-
-from pydantic import BaseModel, Field
 from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-
-HELD_STATES = ("open", "ready", "running")  # ops_queue.BATCH_STATES of a batch the Orchestrator still has to settle
-HANDLERS = ("ops", "person")  # the Inbox's filter: held by a batch, or by none
-
-
-class OpsHolding(BaseModel):
-    batch_id: int
-    state: Literal[HELD_STATES] = Field(description="open while it gathers, ready until its thread opens, running then")
-    thread: str | None = Field(description="the hub web's path of the batch's ops thread; null before it opened")
-
-
-def thread_path(chat_id: int | None, root_message_id: int | None) -> str | None:
-    """The web's path of a chat thread, as ``web/src/lib/work.ts`` threadHref writes it; None without one."""
-    if chat_id is None or root_message_id is None:
-        return None
-    return f"/chats/{chat_id}?thread={root_message_id}"
+from evo_agents.hub.server.ops.models.views import HELD_STATES, OpsHolding, thread_path
 
 
 def _matches(stored):

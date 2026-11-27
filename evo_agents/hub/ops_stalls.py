@@ -1,5 +1,5 @@
 """Stalled plans and chat runs queued too long (plan orchestrator-keeps-plans-moving): what the pass of the ops queue
-(``server.ops_queue.ops_pass``, in the reaper's pass every minute) writes as operations events, for a project whose
+(``server.ops.service.queue.ops_pass``, in the reaper's pass every minute) writes as operations events, for a project whose
 default system turns ops on, in that project's transaction, after the queue read its events. It calls no model.
 
 ``plan.stalled``: an active plan a system ran (a trace names it, ``system_traces.plan_id``) that has a ready step

@@ -9,7 +9,7 @@ triage thread opens. So the run's ``max_attempts`` bounds how many workers are t
 
 The run fails as it always did, and its triage thread opens, when a person pinned it to that worker (the first attempt
 says so: the pins of the later ones are the hub's), on its last attempt, or when no fit worker is left. The agent of that
-thread then installs the program on a worker the run was tried on (``triage._install_worker``) and runs it again.
+thread then installs the program on a worker the run was tried on (``triage.service.facts.install_worker``) and runs it again.
 """
 
 from __future__ import annotations

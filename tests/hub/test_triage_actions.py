@@ -1,4 +1,4 @@
-"""What the agent of a triage thread does on its own (``evo_agents.hub.server.triage_actions``), as criteria a5 and a7 of
+"""What the agent of a triage thread does on its own (``evo_agents.hub.server.triage.service.actions``), as criteria a5 and a7 of
 the plan run-failure-triage name them: it reruns the failed step (on the pool of its agent: nobody picks the machine)
 and edits the plan of the failed run inside the frame the hub enforces, each act leaves a ``Decision:`` line in the
 thread and an audit row, and what is outside the frame is refused: a step that is done, a clause of the verify dropped,

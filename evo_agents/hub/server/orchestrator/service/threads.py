@@ -27,7 +27,7 @@ which hands it the work at the hop of the work it is about: an escalation adds n
 is about, so the Orchestrator's run joins that run's trace under its span. ``orchestrator_threads`` keeps the thread;
 its ``key`` makes a rule open one thread (one a failed run, a turn out of rounds, an idle or over-budget trace, an agent
 in a loop of a trace), and an escalation opens one each time. A thread of a run of ``triage.KINDS`` is a triage thread
-too (``run_triage``), so the Orchestrator has the frame of ``triage_actions`` there, and three actions beyond it
+too (``run_triage``), so the Orchestrator has the frame of ``triage.service.actions`` there, and three actions beyond it
 (``orchestrator_actions``): answer, reassign, ask the owner.
 
 An agent no Orchestrator orchestrates keeps the triage it had, and an agent of no system the same. Each check runs in a
@@ -148,7 +148,7 @@ async def ops_chat(
 ) -> ChatAccess:
     """The ops chat of ``system`` as ``person`` sees it: made the first time, the system's creator its creator (else
     ``person``); the Orchestrator ``lead`` and ``person`` put in it, as the group chat's rules let them."""
-    from evo_agents.hub.server.triage import as_member  # triage opens these threads through this module
+    from evo_agents.hub.server.triage.service.chats import as_member  # triage opens these threads through this module
 
     row = await rows.ops_row(conn, system.id)
     chat_id = row.ops_chat_id
@@ -363,9 +363,9 @@ async def on_draft(conn: AsyncConnection, run_id: int, lines: list[str], key: st
 
 async def on_run(conn: AsyncConnection, found: RunStep, lines: list[str], *, stale: bool) -> Opened | None:
     """The thread of run ``found`` of ``triage.KINDS``, failed or ``stale``, of an agent an Orchestrator orchestrates,
-    with ``lines`` (what the triage thread says of it) and its ``run_triage`` row, so the frame of ``triage_actions``
+    with ``lines`` (what the triage thread says of it) and its ``run_triage`` row, so the frame of ``triage.service.actions``
     holds in it; None for any other run, whose triage opens its thread as before."""
-    from evo_agents.hub.server.triage import STALE_CAUSE  # triage calls this module
+    from evo_agents.hub.server.triage.models.threads import STALE_CAUSE  # triage calls this module
 
     rule = triage_rules.STALE if stale else triage_rules.FAILED
 

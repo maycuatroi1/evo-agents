@@ -46,7 +46,7 @@ from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
-from evo_agents.hub.server import kg, ops_actions, work_cards, work_status_models
+from evo_agents.hub.server import kg, work_cards, work_status_models
 from evo_agents.hub.server.agents.models.asks import AgentAskIn
 from evo_agents.hub.server.agents.service import asks as agent_asks
 from evo_agents.hub.server.blobs import put_bytes
@@ -56,6 +56,8 @@ from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.models import Written
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
+from evo_agents.hub.server.ops.models import actions as ops_models
+from evo_agents.hub.server.ops.service import actions as ops_actions
 from evo_agents.hub.server.orchestrator import models as orchestrator_models
 from evo_agents.hub.server.orchestrator.service import actions as orchestrator_actions
 from evo_agents.hub.server.orchestrator.service import threads as orchestrator
@@ -92,14 +94,14 @@ _BRIEF = {
     "refs": {"type": "array", "items": _TEXT, "description": "refs it starts from: repo:path, a run, a URL"},
 }
 OPS_ACTIONS = {  # ops_action's actions: (the body, the action of ops_actions)
-    "rerun": (ops_actions.OpsRunIn, ops_actions.rerun),
-    "redeliver": (ops_actions.OpsRunIn, partial(ops_actions.rerun, redeliver=True)),
-    "answer_wait": (ops_actions.OpsWaitIn, ops_actions.answer_wait),
-    "curator_resume": (ops_actions.OpsReasonIn, ops_actions.curator_resume),
-    "read": (ops_actions.OpsReadIn, ops_actions.read),
-    "finding": (ops_actions.OpsFindingIn, ops_actions.finding),
-    "priority": (ops_actions.OpsPriorityIn, ops_actions.priority),
-    "plan_dispatch": (ops_actions.OpsPlanIn, ops_actions.plan_dispatch),
+    "rerun": (ops_models.OpsRunIn, ops_actions.rerun),
+    "redeliver": (ops_models.OpsRunIn, partial(ops_actions.rerun, redeliver=True)),
+    "answer_wait": (ops_models.OpsWaitIn, ops_actions.answer_wait),
+    "curator_resume": (ops_models.OpsReasonIn, ops_actions.curator_resume),
+    "read": (ops_models.OpsReadIn, ops_actions.read),
+    "finding": (ops_models.OpsFindingIn, ops_actions.finding),
+    "priority": (ops_models.OpsPriorityIn, ops_actions.priority),
+    "plan_dispatch": (ops_models.OpsPlanIn, ops_actions.plan_dispatch),
 }
 TOOLS = [
     _function(

@@ -1,11 +1,11 @@
 """The pass of the queue of operations events (``evo_agents.hub.ops_queue`` describes the model), in the reaper's pass
 every minute: it queues the operations events of each project whose default system turns ops on
 (``ops_queue.take``, one transaction a project, a project another pass holds skipped), runs the rules of tier 0 on
-what it queued (``ops_rules.tier0``: a run that failed because of its machine handed again, notices whose work is
+what it queued (``ops.service.rules.tier0``: a run that failed because of its machine handed again, notices whose work is
 done marked read), writes the events of stalled plans and of chat runs queued too long that the next pass queues
 (``ops_stalls.check``), and closes the batches whose time came (``ops_queue.close_due``). It calls no model. Then it opens
 the thread of each ready batch to the Orchestrator of the project's default system and settles the batches whose
-thread ended (``ops_threads.threads_pass``).
+thread ended (``ops.service.threads.threads_pass``).
 """
 
 from __future__ import annotations
@@ -13,31 +13,24 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import ops_queue, ops_stalls, tables
-from evo_agents.hub.server import ops_rules, ops_threads
+from evo_agents.hub import ops_queue, ops_stalls
+from evo_agents.hub.server.ops.repository import queue as store
+from evo_agents.hub.server.ops.service import rules as ops_rules
+from evo_agents.hub.server.ops.service import threads as ops_threads
 
 log = logging.getLogger(__name__)
 
 TIER0: tuple[ops_queue.Rule, ...] = ()  # rules of tier 0 that keep an event out of the queue; ops_rules works on items
 
 
-def _candidates():
-    """The projects a pass looks at: those whose default system's spec turns ops on, and those whose queue has a
-    cursor (to drop it once ops is off)."""
-    s, c = tables.agent_systems, tables.ops_cursors
-    on = select(s.c.project_id).where(s.c.is_default, s.c.spec["ops"]["enabled"].as_boolean().is_(True))
-    return union(on, select(c.c.project_id))
-
-
 async def ops_pass(engine: AsyncEngine, rules: tuple[ops_queue.Rule, ...] | None = None) -> dict[str, int]:
-    """Queue the operations events of each project whose ops is on and run tier 0 on its items (``ops_rules.tier0``),
+    """Queue the operations events of each project whose ops is on and run tier 0 on its items (``ops.service.rules.tier0``),
     then close the batches whose time came. How many items it queued, what tier 0 did, and how many batches became
     ready and empty."""
     async with engine.connect() as conn:
-        projects = sorted((await conn.execute(_candidates())).scalars().all())
+        projects = await store.candidates(conn)
     queued, tier0, stalls = 0, Counter[str](), Counter[str]()
     for project_id in projects:
         async with engine.begin() as conn:

@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, Request
 
 from evo_agents.hub import runs
-from evo_agents.hub.server import ops_views, route_autonomy
+from evo_agents.hub.server import route_autonomy
 from evo_agents.hub.server.admin import MISSING, PROJECT_NAME, Login
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications.models import (
@@ -32,6 +32,7 @@ from evo_agents.hub.server.notifications.models import (
     ReadResult,
 )
 from evo_agents.hub.server.notifications.service import admin_channels, notices, reads
+from evo_agents.hub.server.ops.models import views as ops_views
 from evo_agents.hub.server.runs.models import MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.security import AdminUser, CurrentUser, admin
 
