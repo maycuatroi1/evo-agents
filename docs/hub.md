@@ -1317,6 +1317,21 @@ The tools do what the worker's commands do, through the same code:
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
 shell commands are not on the hub, so the agent says what it cannot do.
 
+A member's task run of such an agent (`POST .../task-runs` with `profile` naming it, Member task runs) queues with
+runtime `hub` too, and the same job takes it as one turn, with no chat:
+
+- The model, the provider accounts, the turn's gateway key, the bounds of the tool loop, the run's events, the spend
+  and the data loss prevention policy are a chat turn's. The task, its input and its assets are all new to the
+  provider, so they alone count and block.
+- The prompt is the profile's instructions and a short "On the hub" section for a task, then the task with its input
+  and the asset URIs. No inbox joins, and the turn has no way to read an asset.
+- The tools are `kg_search` and `memory_write`, the ones that need no thread; a call of another is answered as a tool
+  the turn does not have.
+- The model's last answer, masked as a reply is, becomes the run's evidence, after a line naming the run on the hub,
+  which `GET .../task-runs/{task}` gives as `output`. Nothing is posted in a chat.
+- A task run that takes no turn (no gateway, the daily limit of its system, no provider account), whose rounds run
+  out without a final answer, or whose turn raises fails, with why as its error, since its output would be no result.
+
 `limits.daily_usd` of a system (5 USD by default) caps what its hub agents spend in a day (UTC). The hub sums
 `run_spend` of the runs of runtime `hub` queued today with a span in the system's traces. Once the sum reaches the
 limit, the system's hub agents take no turn: each one replies why and its run ends. The owner of the system (who
@@ -2609,6 +2624,9 @@ The answer, and `GET /v1/projects/{p}/task-runs/{task}` after it, give the task 
 assets, and `output`, the summary its agent wrote once the run is done. A run its worker lost goes on in the next
 attempt with the same input. The worker builds no worktree: the agent reads the task, its input and the asset URIs in
 its prompt. When the run ends, the project's webhooks that take `task.result` get it (Outbound webhooks below).
+
+An agent whose profile runs on the hub (`runs_on: hub`) has no worker: its task run queues with runtime `hub`, and the
+hub runtime takes it as one turn whose last answer is the `output` (Agent systems, Hub runtime).
 
 ## Outputs of runs
 

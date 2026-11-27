@@ -115,7 +115,15 @@ from tests.hub.live import sql  # noqa: E402
 from tests.hub.test_chat_runs import created, sent  # noqa: E402
 from tests.hub.test_credentials_api import leased  # noqa: E402
 from tests.hub.test_gateway_runs import gateway_lease, gateway_run, new_daemon, provider_account  # noqa: E402
-from tests.hub.test_hub_runtime import chat_runs_of, client, gateway, helper, run_row, turn  # noqa: E402,F401
+from tests.hub.test_hub_runtime import (  # noqa: E402,F401
+    chat_runs_of,
+    client,
+    gateway,
+    hand_task,
+    helper,
+    run_row,
+    turn,
+)
 from tests.hub.test_provider_accounts import PROJECT  # noqa: E402
 from tests.hub.test_provider_accounts import hub as hub  # noqa: E402,F401  the fixture
 from tests.hub.test_runs import audit_rows  # noqa: E402
@@ -238,3 +246,13 @@ def test_the_hub_runtime_sends_a_turn_redacted_or_fails_it_when_blocked(client, 
     assert "which service signs the export links" in asked and "[REDACTED:cif]" in asked
     assert not any(value in asked for value in VALUES)
     assert len(counts(hub_db)) == 3 and ("cif", "hub_runtime", "blocked", 1) in counts(hub_db)
+
+
+def test_the_hub_runtime_fails_a_task_run_whose_task_the_policy_blocks(client, hub, hub_db, gateway, helper):  # noqa: F811
+    policy(client, hub["owner"], "block")
+    task_id = hand_task(client, hub["owner"], task=f"Is {SECRET_CIF} the holder of the export key?")["task_id"]
+    assert turn(client, gateway, task_id)["state"] == "failed"
+    assert gateway.asked == []
+    ((error,),) = sql(hub_db, select(tables.runs.c.error).where(tables.runs.c.id == task_id))
+    assert error == "the hub runtime failed: the project's DLP policy blocked this call: it holds 1 cif"
+    assert counts(hub_db) == [("cif", "hub_runtime", "blocked", 1)]
