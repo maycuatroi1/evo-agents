@@ -7,10 +7,14 @@ A branch is a row of kg_branches (its name, the build of main it was opened at, 
 kg_branch_ops, in order. It keeps no copy of main's rows: its graph is main's as the tables hold it now with its
 operations applied. Each operation records the rows of main it reads (``before``) when it is applied.
 
+An apply, a diff, a check and a merge read only the rows of main the branch's operations reach
+(``kg_branch_scope``), not the whole graph: the rest is the same on main and on the branch.
+
 A merge runs in one transaction under the project's advisory lock (``lock``, which a build that writes main's
 graph takes as well, ``kg_build.keep_graph``): it is refused with 409 when a row an operation read on main is no
 longer what it read (main moved under it), or when the branch adds a violation of a hard rule (``HARD``) main does
-not have. Otherwise main's tables take the branch's rows, a reader is notified as after a build, and the branch's
+not have. Otherwise main's tables take the rows the branch changed (``kg_graph_rows.write_changes``), a reader is
+notified as after a build and reads only those, and the branch's
 operations stay as a layer of main: each later build applies the operations of the merged branches, in the order
 they merged, to what it built (``overlay``), so a merge outlives the next build. Dropping a branch deletes it and its
 operations; a merged branch cannot be dropped."""
@@ -26,8 +30,8 @@ from dataclasses import dataclass
 from sqlalchemy import BigInteger, delete, func, insert, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
-from evo_agents.hub.kg_graph_rows import MAIN, read_graph, write_graph
+from evo_agents.hub import kg_branch_scope, tables
+from evo_agents.hub.kg_graph_rows import MAIN, write_changes
 from evo_agents.kg import branch_ops, ontology_rules
 from evo_agents.kg.snapshot import Snapshot, StoreRows
 
@@ -172,13 +176,6 @@ async def _open(conn: AsyncConnection, project_id: int, name: str) -> Branch:
     return branch
 
 
-async def _main_rows(conn: AsyncConnection, project_id: int) -> StoreRows:
-    rows = await read_graph(conn, project_id)
-    if rows is None:
-        raise BranchError(409, "the project has no graph on the hub yet")
-    return rows
-
-
 def _applied(rows: StoreRows, ops: list[dict]) -> StoreRows:
     try:
         return branch_ops.apply(rows, [_plain(op) for op in ops])
@@ -201,8 +198,8 @@ async def apply(
         fresh = [branch_ops.normalize(op) for op in ops]
     except branch_ops.OpError as exc:
         raise BranchError(422, str(exc)) from None
-    main = await _main_rows(conn, project_id)
     kept = await _ops(conn, branch.id)
+    main = (await _reach(conn, project_id, [*kept, *fresh])).rows
     before = _applied(main, kept)
     branch_rows = _applied(before, fresh)
     touched = {key for op in fresh for ids in branch_ops.touched(op) for key in ids}
@@ -216,22 +213,41 @@ async def apply(
         before = _json_rows(branch_ops.rows_of(main, node_ids, edge_ids))
         values.append({"branch_id": branch.id, "op": op["op"], "payload": {**op, "before": before}, "by_user": user_id})
     await conn.execute(insert(tables.kg_branch_ops), values)
+    nodes, edges = await kg_branch_scope.totals(conn, project_id)
     return {
         "branch": name,
         "applied": len(fresh),
         "ops": len(kept) + len(fresh),
-        "nodes": len(branch_rows.nodes),
-        "edges": len(branch_rows.edges),
+        "nodes": nodes + len(branch_rows.nodes) - len(main.nodes),
+        "edges": edges + len(branch_rows.edges) - len(main.edges),
     }
 
 
-async def graph(conn: AsyncConnection, project_id: int, name: str) -> tuple[Branch, StoreRows, StoreRows]:
-    """(the branch, main's rows now, the branch's rows): main with the branch's operations applied."""
+async def _reach(
+    conn: AsyncConnection, project_id: int, ops: list[dict], rules: ontology_rules.Rules | None = None
+) -> kg_branch_scope.Reach:
+    found = await kg_branch_scope.reach(conn, project_id, ops, rules)
+    if found is None:
+        raise BranchError(409, "the project has no graph on the hub yet")
+    return found
+
+
+async def _scoped(
+    conn: AsyncConnection, project_id: int, name: str, rules: ontology_rules.Rules | None = None
+) -> tuple[Branch, StoreRows, StoreRows, list[dict]]:
+    """(the branch, main's rows within its reach, the branch's rows there, its operations); a branch no longer open
+    reaches nothing."""
     branch = await get(conn, project_id, name)
-    main = await _main_rows(conn, project_id)
-    if branch.status != "open":
-        return branch, main, main
-    return branch, main, _applied(main, await _ops(conn, branch.id))
+    ops = await _ops(conn, branch.id) if branch.status == "open" else []
+    main = (await _reach(conn, project_id, ops, rules)).rows
+    return branch, main, _applied(main, ops) if ops else main, ops
+
+
+async def changes(conn: AsyncConnection, project_id: int, name: str) -> tuple[StoreRows, StoreRows]:
+    """(main's rows within branch ``name``'s reach, the branch's rows there): what a snapshot of the branch changes of
+    main's (``kg_branch_scope.delta``); the same rows twice for a branch no longer open. Raises BranchError 404."""
+    _, main, rows, _ = await _scoped(conn, project_id, name)
+    return main, rows
 
 
 def _seen(main: StoreRows, rows: StoreRows, reader: Reader | None) -> set[str] | None:
@@ -247,7 +263,7 @@ def _seen(main: StoreRows, rows: StoreRows, reader: Reader | None) -> set[str] |
 
 async def diff(conn: AsyncConnection, project_id: int, name: str, reader: Reader | None = None) -> dict:
     """The structural diff of branch ``name`` from main (``branch_ops.diff``), of what ``reader`` reads."""
-    branch, main, rows = await graph(conn, project_id, name)
+    branch, main, rows, _ = await _scoped(conn, project_id, name)
     found = branch_ops.diff(main, rows)
     seen = _seen(main, rows, reader)
     return {"branch": branch.as_dict(), **(found if seen is None else branch_ops.shown_diff(found, seen))}
@@ -261,7 +277,8 @@ async def _rules(conn: AsyncConnection, project_id: int) -> ontology_rules.Rules
 
 def violations(main: StoreRows, rows: StoreRows, rules: ontology_rules.Rules) -> dict:
     """The ontology rule violations of ``rows`` (``ontology_rules.check``): all of them, those ``main`` does not have
-    (by rule and key), and of those the ones of a HARD rule. Blocking: it builds two snapshots."""
+    (by rule and key), and of those the ones of a HARD rule. Blocking: it builds two snapshots, of a branch's reach
+    (``kg_branch_scope``), within which the violations are listed."""
     if not rules:
         return {"rules": False, "violations": [], "new": [], "hard": []}
     on_branch = ontology_rules.check(Snapshot.from_stored(rows), rules)
@@ -274,9 +291,10 @@ def violations(main: StoreRows, rows: StoreRows, rules: ontology_rules.Rules) ->
 async def check(conn: AsyncConnection, project_id: int, name: str, reader: Reader | None = None) -> dict:
     """The ontology rule violations of branch ``name`` (``violations``) and whether it would merge now; the
     violations and conflicts listed are those of what ``reader`` reads, whether it merges counts them all."""
-    branch, main, rows = await graph(conn, project_id, name)
-    found = await asyncio.to_thread(violations, main, rows, await _rules(conn, project_id))
-    conflicts = _conflicts(main, await _ops(conn, branch.id)) if branch.status == "open" else []
+    rules = await _rules(conn, project_id)
+    branch, main, rows, ops = await _scoped(conn, project_id, name, rules)
+    found = await asyncio.to_thread(violations, main, rows, rules)
+    conflicts = _conflicts(main, ops) if branch.status == "open" else []
     mergeable = not found["hard"] and not conflicts and branch.status == "open"
     seen = _seen(main, rows, reader)
     if seen is not None:
@@ -304,8 +322,10 @@ async def merge(conn: AsyncConnection, project_id: int, name: str, user_id: int 
     BranchError 409 on a conflict with main or a new violation of a hard rule."""
     await lock(conn, project_id)
     branch = await _open(conn, project_id, name)
-    main = await _main_rows(conn, project_id)
     ops = await _ops(conn, branch.id)
+    rules = await _rules(conn, project_id)
+    reach = await _reach(conn, project_id, ops, rules)
+    main = reach.rows
     conflicts = _conflicts(main, ops)
     if conflicts:
         raise BranchError(
@@ -314,11 +334,11 @@ async def merge(conn: AsyncConnection, project_id: int, name: str, user_id: int 
             {"conflicts": conflicts},
         )
     rows = _applied(main, ops)
-    found = await asyncio.to_thread(violations, main, rows, await _rules(conn, project_id))
+    found = await asyncio.to_thread(violations, main, rows, rules)
     if found["hard"]:
         raise BranchError(409, f"graph branch {name!r} breaks a hard ontology rule", {"hard": found["hard"]})
     build_id = await _main_build(conn, project_id)
-    changed = await write_graph(conn, project_id, build_id, rows)
+    changed = await write_changes(conn, project_id, build_id, main, rows, reach.text)
     b = tables.kg_branches
     await conn.execute(update(b).where(b.c.id == branch.id).values(status="merged"))
     marker = {"branch_id": branch.id, "op": MERGED_OP, "payload": {"build_id": build_id}, "by_user": user_id}

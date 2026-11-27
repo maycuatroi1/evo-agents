@@ -29,12 +29,13 @@ import zlib
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import Text, cast, delete, func, select
+from sqlalchemy import Text, cast, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables, wake
 from evo_agents.kg.pacing import paced
+from evo_agents.kg.search import PASSAGE_MARK
 from evo_agents.kg.snapshot import StoreRows, asked_order, cluster_order
 
 CHANNEL = "kg_graph"
@@ -309,6 +310,53 @@ async def write_graph(
     stmt = pg_insert(heads).values(project_id=project_id, branch_id=branch_id, **head)
     await conn.execute(stmt.on_conflict_do_update(index_elements=[heads.c.project_id, heads.c.branch_id], set_=head))
     await notify(conn, project_id, branch_id, build_id, change_note(base, rows.content_hash, keys))
+    return changed
+
+
+BRANCH_TABLES = ("kg_nodes", "kg_edges", "kg_text_rows")  # the tables a draft branch's operations change
+
+
+async def read_text_of(conn: AsyncConnection, project_id: int, node_ids, branch_id: int = MAIN) -> dict[str, tuple]:
+    """The full-text rows (a passage's too, keyed ``search.passage_key``) and code rows of these nodes of a branch, by
+    the table's row key, as ``_read`` reads them."""
+    table = tables.kg_text_rows
+    owner = func.split_part(table.c.node_id, PASSAGE_MARK, 1)  # a passage's key starts with its node's id
+    wanted = sorted(set(node_ids))
+    found: dict[str, tuple] = {}
+    for i in range(0, len(wanted), BATCH):
+        query = select(table).where(
+            table.c.project_id == project_id, table.c.branch_id == branch_id, owner.in_(wanted[i : i + BATCH])
+        )
+        found.update(
+            (row._mapping["row_key"], _stored("kg_text_rows", row._mapping)) for row in await conn.execute(query)
+        )
+    return dict(sorted(found.items()))
+
+
+async def write_changes(
+    conn: AsyncConnection, project_id: int, build_id: int | None, before: StoreRows, after: StoreRows, text: dict
+) -> dict[str, dict]:
+    """Write to main what ``after`` changes of ``before``, its rows within a draft branch's reach
+    (``kg_branch_scope.reach``), and ``text`` the full-text and code rows of that reach as the table keeps them: the
+    node, edge and full-text rows that differ (``BRANCH_TABLES``; a branch changes no other), then the head's build and
+    content hash, and a notice of what changed (``change_note``). Within the caller's transaction; what each table
+    changed (``Changes.counts``)."""
+    heads = tables.kg_graph_heads
+    scope = (heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+    base = await conn.scalar(select(heads.c.content_hash).where(*scope))
+    changed: dict[str, dict] = {}
+    keys: dict[str, object] = {}
+    for name in BRANCH_TABLES:
+        old = text if name == "kg_text_rows" else table_rows(before, name)
+        fresh = table_rows(after, name)
+        changes = diff(old, fresh)
+        await _apply(conn, name, project_id, MAIN, fresh, changes)
+        changed[name] = changes.counts()
+        keys[name] = touched(name, old, fresh, changes)
+    await conn.execute(
+        update(heads).where(*scope).values(build_id=build_id, content_hash=after.content_hash, updated_at=func.now())
+    )
+    await notify(conn, project_id, MAIN, build_id, change_note(base, after.content_hash, keys))
     return changed
 
 
