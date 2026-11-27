@@ -497,6 +497,23 @@ class SnapshotCoordinator:
         task.add_done_callback(self._done)
         return None
 
+    def claimed(self, project_id: int) -> asyncio.Task | None:
+        """A worker claimed a run of the project: start its snapshot load in the background (``held``) so the run's
+        first kg call finds it held. Nothing when the project is held already, when the api is under memory pressure
+        (``_over``) or past WARM_MEMORY of its limit, or without a running loop; None then."""
+        if project_id in self._held or self.engine is None:
+            return None
+        limit = memory_limit()
+        if _over() or (limit is not None and resident() > limit * WARM_MEMORY):
+            return None
+        try:
+            task = asyncio.get_running_loop().create_task(self.held(project_id, 0), name=f"kg-claim-{project_id}")
+        except RuntimeError:
+            return None
+        self._tasks.add(task)
+        task.add_done_callback(self._done)
+        return task
+
     async def branch(self, project_id: int, name: str) -> Held:
         """The snapshot of draft branch ``name``: main's rows with its operations applied (``kg_branches.graph``),
         made again once it or main changed. Reads on connections of its own, given back before the snapshot is made,
