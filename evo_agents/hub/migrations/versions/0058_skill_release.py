@@ -4,7 +4,7 @@ Revision ID: 0058
 Revises: 0057
 Create Date: 2026-10-20
 
-``evo_agents.hub.tiers.replay_tier``, ``evo_agents.hub.replay.verdict`` and ``evo_agents.hub.server.skill_release``
+``evo_agents.hub.tiers.replay_tier``, ``evo_agents.hub.replay.verdict`` and ``evo_agents.hub.server.releases.service.skill_release``
 describe the design; the list below is a copy of ``ledger.ACTIONS`` as of this revision, never an import, so a later
 change to it takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions.
 

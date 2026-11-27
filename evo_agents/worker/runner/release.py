@@ -12,7 +12,7 @@ bump, looks for the faults its prompt names, commits, and writes the version and
 ``.evo-run/result.json``. When it ends, the daemon commits what the agent left and pushes HEAD to ``release/<version>``
 on origin, never a default branch, never a tag and never forced (``gitops.check_push``, kind ``release``), tells the hub
 (POST /v1/worker/runs/{id}/release/branch), and reports ``done``; the hub opens the pull request, merges it and tags the
-merge commit (``evo_agents.hub.server.release_land``). No version X.Y.Z in the result file, no commit of the agent, or a
+merge commit (``evo_agents.hub.server.releases.service.land``). No version X.Y.Z in the result file, no commit of the agent, or a
 hub that does not take the push fails the run, and its cycle stops.
 """
 

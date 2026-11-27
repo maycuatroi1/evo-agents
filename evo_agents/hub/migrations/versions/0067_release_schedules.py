@@ -4,7 +4,7 @@ Revision ID: 0067
 Revises: 0066
 Create Date: 2026-10-21
 
-``evo_agents.hub.releases`` describes the design and ``evo_agents.hub.server.releases`` the routes; the values below
+``evo_agents.hub.releases`` describes the design and ``evo_agents.hub.server.releases.routes.releases`` the routes; the values below
 are copies of their constants and of ``evo_agents.hub.runs`` as of this revision, never imports, so a later change to
 them takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions, as
 ``evo_agents.hub.tables_release`` describes the tables.

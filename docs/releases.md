@@ -14,12 +14,12 @@ a member's worker runs the agent, and the hub's GitHub App, never the agent, mer
 
 | Part | Where |
 | --- | --- |
-| the schedule, the check, the cycle | `evo_agents/hub/releases.py`, `evo_agents/hub/server/release_check.py`, `evo_agents/hub/server/release_github.py` |
-| the range, the version rule, the prompts, the refusals | `evo_agents/hub/release_runs.py`, `evo_agents/hub/server/release_claims.py` |
-| landing: pull request, merge, tag; the branches a refused landing left | `evo_agents/hub/server/release_land.py`, `evo_agents/hub/server/release_settle.py` |
-| following the CI, failures, infrastructure, stop causes | `evo_agents/hub/release_ci.py`, `evo_agents/hub/server/release_watch.py`, `evo_agents/hub/server/release_actions.py` |
-| stopping, the owner's decision and its answer | `evo_agents/hub/server/release_cycles.py`, `evo_agents/hub/server/release_answer.py` |
-| the routes and the command line | `evo_agents/hub/server/releases.py`, `evo_agents/hub/cli/curator/release.py` |
+| the schedule, the check, the cycle | `evo_agents/hub/releases.py`, `evo_agents/hub/server/releases/service/check.py`, `evo_agents/hub/server/releases/service/github.py` |
+| the range, the version rule, the prompts, the refusals | `evo_agents/hub/release_runs.py`, `evo_agents/hub/server/releases/service/claims.py` |
+| landing: pull request, merge, tag; the branches a refused landing left | `evo_agents/hub/server/releases/service/land.py`, `evo_agents/hub/server/releases/service/settle.py` |
+| following the CI, failures, infrastructure, stop causes | `evo_agents/hub/release_ci.py`, `evo_agents/hub/server/releases/service/watch.py`, `evo_agents/hub/server/releases/service/actions.py` |
+| stopping, the owner's decision and its answer | `evo_agents/hub/server/releases/service/cycles.py`, `evo_agents/hub/server/releases/service/answer.py` |
+| the routes and the command line | `evo_agents/hub/server/releases/` (its routes, service, repository and models), `evo_agents/hub/cli/curator/release.py` |
 | the run on the machine | `evo_agents/worker/runner/release.py`, `evo_agents/worker/gitops.py` (`check_push`) |
 | the web's Releases page | `web/src/components/releases/`, `web/DESIGN.md` |
 | the tables (schema 0067) | `evo_agents/hub/tables_release.py`: `release_schedules`, `release_cycles`, `release_runs`, `release_tags`, `release_checks` |
@@ -174,7 +174,7 @@ passes in a row mark the run failed and stop the cycle (cause `github`). A refus
 A refused landing leaves `release/<version>` on origin, and a fix run of the same red tag picks the same version, so its
 push of that branch would be refused as no fast-forward (the run would fail `push_conflict`). Before the checks, each
 pass settles the runs the hub refused or failed to land, that made no tag, and whose cycle is open or stopped
-(`release_settle.settle_releases`), once a pass per run:
+(`releases.service.settle.settle_releases`), once a pass per run:
 
 - **A person merged its pull request** into the default branch, whose head is the commit the run pushed: the hub adopts
   it. It tags the merge commit `v<version>` (or finds the tag there already), keeps the run as tagged with that merge
@@ -186,11 +186,11 @@ pass settles the runs the hub refused or failed to land, that made no tag, and w
   own `release/<version>`. A stopped cycle keeps the branch and its pull request for a person to read, and a branch
   that moved is never touched.
 
-The owner's `continue` queues no run while such a branch holds the cycle (`release_cycles.held_by`): a person may merge
+The owner's `continue` queues no run while such a branch holds the cycle (`releases.service.cycles.held_by`): a person may merge
 the refused pull request as they answer, and a fix run queued at that moment pushed the same `release/0.73.4` again
 and failed `push_conflict` (cycle #41, run #12580). The next pass settles the branch first: a merge by hand is tagged
 and its CI followed; a branch cleared, or found gone, lets the hub make the cycle's next move then
-(`release_cycles.go_on`); a branch a person moved stops the cycle again (cause `refused`), saying to merge its pull
+(`releases.service.cycles.go_on`); a branch a person moved stops the cycle again (cause `refused`), saying to merge its pull
 request or delete it.
 
 A fix run leaves `.github/workflows/` alone: the hub's App may not push a workflow (run #11468 failed `push_declined`),
