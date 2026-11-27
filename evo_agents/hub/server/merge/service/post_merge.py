@@ -173,7 +173,7 @@ async def revert_gated(found, row_id: int, mr: MergeRequest, files: list) -> Non
 
 async def follow(found) -> None:
     """Move what follows each merge of the target branch of ``found``, a pass over one repo, as far as it goes. Once
-    the checks are settled the repo's breaker may trip (``merge_breaker.watch``), and PROD then starts no deploy; what
+    the checks are settled the repo's breaker may trip (``breaker.watch``), and PROD then starts no deploy; what
     PROD and the reverts met may trip it again before the turn."""
     after = After(found)
     await after.uat()
