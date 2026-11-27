@@ -8,6 +8,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
+pytest.importorskip("sqlalchemy")  # macOS and Windows install no hub-server extra
+
 from sqlalchemy import insert
 
 from evo_agents.hub import kg_snapshots, tables
