@@ -262,9 +262,9 @@ def test_a_view_is_counted_once_per_reader_and_never_shared_across_readers(hub, 
     counted: list[int] = []
     real = kg_map.view
 
-    def counting(store, b, visible):
-        counted.append(b)
-        return real(store, b, visible)
+    def counting(store, visibility):
+        counted.append(store.build)
+        return real(store, visibility)
 
     kg_map.VIEWS.clear()
     monkeypatch.setattr(kg_map, "view", counting)
