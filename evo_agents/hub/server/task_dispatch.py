@@ -65,7 +65,7 @@ from evo_agents.hub.server.runs.service.task_dispatch import (  # noqa: F401 (th
     type_refusal,
 )
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.plugins.runtimes import CONTRIBUTION
+from evo_agents.plugins.names import CONTRIBUTION
 
 TypeName = Annotated[str, Path(pattern=f"^{CONTRIBUTION}$", description="the agent type, as the manifest names it")]
 TaskId = Annotated[int, Path(ge=1, le=MAX_ID, description="the id the task's dispatch answered")]

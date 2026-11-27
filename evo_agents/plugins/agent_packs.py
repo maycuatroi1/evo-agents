@@ -28,7 +28,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 
-from evo_agents.plugins.runtimes import PLUGIN_RUNTIME, SEPARATOR
+from evo_agents.plugins.names import PluginName
 
 PACKS_DIR = "packs"  # the directory of a bundle that holds its packs, one directory each
 SKILLS_DIR = "skills"
@@ -60,20 +60,20 @@ class PackError(ValueError):
 
 def pack_name(plugin: str, name: str) -> str:
     """The name the hub registers pack ``name`` of plugin ``plugin`` under: ``sandbox/reviewer``."""
-    return f"{plugin}{SEPARATOR}{name}"
+    return PluginName.of(plugin, name)
 
 
 def is_pack_name(name: object) -> bool:
     """Whether ``name`` reads as ``<plugin>/<pack>``."""
-    return isinstance(name, str) and PLUGIN_RUNTIME.fullmatch(name) is not None
+    return PluginName.matches(name)
 
 
 def split_pack(name: str) -> tuple[str, str]:
     """The plugin and the pack of ``<plugin>/<pack>``; ValueError for anything else."""
-    if not is_pack_name(name):
+    found = PluginName.parse(name)
+    if found is None:
         raise ValueError(f"{name!r} is not <plugin>/<pack>")
-    plugin, _, pack = name.partition(SEPARATOR)
-    return plugin, pack
+    return found.plugin, found.name
 
 
 def directory(name: str) -> str:

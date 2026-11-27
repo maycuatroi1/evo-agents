@@ -67,13 +67,6 @@ MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
-CORE_ONLY_POINTS = (
-    "tables",
-    "kg_sources",
-    "loop_rules",
-    "notice_kinds",
-    "rankers",
-)  # what only a core plugin contributes
 # what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
 PROJECT_POINTS = (
     "mcp_tools",
@@ -138,13 +131,6 @@ PERMISSION_TEXT = {
 }
 
 
-CORE_ONLY_TEXT = {
-    "tables": "only a core plugin owns tables, which the hub's migrations create",
-    "kg_sources": "only a core plugin contributes a source of the knowledge graph, which the hub reads in its process",
-    "loop_rules": "only a core plugin adds rules to the Loop, which the hub calls in its process",
-    "notice_kinds": "only a core plugin adds kinds of notification, which it sends through the core plugin API",
-    "rankers": "only a core plugin ranks search hits, in the hub's process, with the hits its egress sink may read",
-}
 CORE_ONLY_KEYS = {
     "schema": "only a core plugin carries tables and a chain of migrations of its own",
     "ui": "only a core plugin names a directory of its package for its pages; an isolated plugin's are in its bundle",
@@ -240,7 +226,7 @@ def is_per_project(data: dict) -> bool:
     members and routes of its own) runs hub-wide wherever it is installed: the hub's store lists it, installed with
     the image, and no project enables it. ``data`` is a manifest that was read once (the store keeps it so), not
     checked again here."""
-    contributes = data.get("contributes") or {}
+    contributes: dict = data.get("contributes") or {}
     if (
         data.get("tier", "isolated") == "isolated"
         or data.get("permissions")
@@ -256,16 +242,17 @@ def is_per_project(data: dict) -> bool:
 
 
 def _semantics(data: dict) -> list[str]:
-    """What the schema cannot check: unique names per point, Python in core plugins only, a range that reads, and a
-    config whose required properties exist."""
+    """What the schema cannot check: unique names per point and what each point's validator finds (``VALIDATORS``),
+    root keys of core plugins only, a range that reads, and a config whose required properties exist."""
     found = []
     core = data.get("tier", "isolated") == "core"
     for point, items in (data.get("contributes") or {}).items():
         names = [item["name"] for item in items]
         for name in sorted({name for name in names if names.count(name) > 1}):
             found.append(f"contributes.{point}: {name!r} is contributed twice")
+        validator = validator_of(point)
         for index, item in enumerate(items):
-            found.extend(_contribution_problems(data["id"], point, index, item, core))
+            found.extend(validator.problems(Contribution(data["id"], point, index, item, core)))
     found.extend(_backend_problems(data, core))
     for key, text in CORE_ONLY_KEYS.items():
         if key in data and not core:
@@ -273,14 +260,8 @@ def _semantics(data: dict) -> list[str]:
     sinks = [item["id"] for item in data.get("egress") or ()]
     for sink in sorted({sink for sink in sinks if sinks.count(sink) > 1}):
         found.append(f"egress: sink {sink!r} is listed twice")
-    found.extend(_ranker_problems(data, sinks))
-    for index, item in enumerate((data.get("contributes") or {}).get("pages") or ()):
-        if core and "entry" in item and "ui" not in data:
-            found.append(
-                f"contributes.pages[{index}].entry: a core plugin's page is native, a page of the hub's web, unless "
-                "the plugin names ui, the directory of its package that holds pages/, for a framed page"
-            )
-    found.extend(_agent_type_problems(data.get("contributes") or {}))
+    for validator in VALIDATORS.values():
+        found.extend(validator.across(data, core))
     try:
         parse_spec(data["engines"]["evo-agents"])
     except SpecError as exc:
@@ -296,208 +277,351 @@ def _semantics(data: dict) -> list[str]:
     return found
 
 
-def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, core: bool) -> list[str]:
-    """What is wrong with contribution ``item`` to ``point`` of a core (``core``) or an isolated plugin."""
-    where = f"contributes.{point}[{index}]"
-    if "python" in item and not core:
-        return [
-            f"{where}.python: only a core plugin runs Python in the hub's or the worker's process; an isolated "
-            "plugin implements it in its own process"
-        ]
-    if point in CORE_ONLY_POINTS and not core:
-        return [f"{where}: {CORE_ONLY_TEXT[point]}"]
-    if point == "kg_sources" and index > 0:
-        return [f"{where}: a plugin contributes at most one source of the knowledge graph, plugin.<its id>"]
-    if "prefix" in item and not (core and point == "routes"):
-        return [f"{where}.prefix: only a core plugin's route names the path its router is included under"]
-    if point == "tables" and not item["name"].startswith(table_prefix(plugin_id)):
-        return [f"{where}: table {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
-    if (
-        core
-        and point == "channels"
-        and (not re.fullmatch(CHANNEL_KIND, item["name"]) or item["name"] in NOT_CHANNEL_KINDS)
-    ):
-        refused = " or ".join(NOT_CHANNEL_KINDS)
-        return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not {refused}"]
-    if point == "loop_rules":
-        return _loop_rule_problems(where, item)
-    if point == "pages":
-        return _page_problems(where, item, core)
-    if point == "notice_kinds" and not item["name"].startswith(table_prefix(plugin_id)):
-        return [f"{where}: notice kind {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
-    if point == "rankers" and "python" not in item:
-        return [f"{where}.python: a ranker names the handler the hub calls, module:attribute"]
-    if point == "cli":
-        return _command_problems(where, item)
-    if point == "runtimes":
-        return _runtime_problems(where, item)
-    if point == "environments":
-        return _environment_problems(where, item)
-    return []
+# The validators of the extension points
 
 
-def _ranker_problems(data: dict, sinks: list[str]) -> list[str]:
-    """What is wrong with the rankers of a manifest: a ranker sends hits out, so the plugin declares ``egress``, and the
-    ranker names which of its sinks it sends them through (``sink``) unless it declares one."""
-    found = []
-    for index, item in enumerate((data.get("contributes") or {}).get("rankers") or ()):
-        where = f"contributes.rankers[{index}]"
-        if not sinks:
-            found.append(f"{where}: a ranker sends hits out, so the plugin declares the sink in egress")
-        elif "sink" in item and item["sink"] not in sinks:
-            found.append(f"{where}.sink: {item['sink']!r} is not a sink the plugin declares in egress")
-        elif "sink" not in item and len(sinks) > 1:
-            found.append(f"{where}.sink: the plugin declares several sinks in egress; name the one it ranks through")
-    return found
+@dataclass(frozen=True)
+class Contribution:
+    """Contribution ``item``, the ``index``-th to extension point ``point`` of plugin ``plugin_id``, core (``core``)
+    or isolated."""
+
+    plugin_id: str
+    point: str
+    index: int
+    item: dict
+    core: bool
+
+    @property
+    def where(self) -> str:
+        return f"contributes.{self.point}[{self.index}]"
 
 
-def _loop_rule_problems(where: str, item: dict) -> list[str]:
-    """What is wrong with Loop rule ``item``: it names a handler, reads an event or the clock, and each kind of work
-    item it makes once, a task with the agent type that takes it."""
-    found = []
-    if "python" not in item:
-        found.append(f"{where}.python: a Loop rule names the handler the hub calls, module:attribute")
-    if not item.get("on") and not item.get("schedule"):
-        found.append(f"{where}: a Loop rule reads at least one event (on) or the clock (schedule)")
-    for key, bound in MAX_LOOP_RULE_LISTS.items():
-        if len(item.get(key) or ()) > bound:
-            found.append(f"{where}.{key}: at most {bound} items")
-    kinds = [entry["kind"] for entry in item.get("kinds") or ()]
-    found += [f"{where}.kinds: {kind!r} is listed twice" for kind in sorted({k for k in kinds if kinds.count(k) > 1})]
-    for index, entry in enumerate(item.get("kinds") or ()):
-        if entry["run"] == "task" and "agent_type" not in entry:
-            found.append(f"{where}.kinds[{index}]: run task names the agent_type that takes the task")
-        if entry["run"] == "job" and "agent_type" in entry:
-            found.append(f"{where}.kinds[{index}]: run job has no agent_type")
-    return found
+class PointValidator:
+    """What the schema cannot check of the contributions to one extension point, as a Template Method: ``problems``
+    gives the first of the checks every point shares (Python in a core plugin only, a point of core plugins only,
+    ``counted``, a ``prefix`` of a core plugin's route only) that finds something, else what the point's own check
+    (``own``) finds. ``across`` checks the point's contributions against the rest of the manifest."""
 
+    core_only: str | None = None  # why only a core plugin contributes to the point; None when any plugin may
+    prefixed = False  # a core plugin's contribution names the path its router is included under (``prefix``)
 
-def _agent_type_problems(contributes: dict) -> list[str]:
-    """What is wrong with the agent types of ``contributes``: each names packs, jobs, events, pages and an environment
-    of the plugin's own, each once, and no two share a handle."""
-    found, handles = [], []
-    for index, item in enumerate(contributes.get("agent_types") or ()):
-        where = f"contributes.agent_types[{index}]"
-        handles.append(item["profile"]["handle"])
-        for key, point in AGENT_TYPE_POINTS.items():
-            own = {entry["name"] for entry in contributes.get(point) or ()}
-            named = item.get(key) or []
-            alien = [name for name in dict.fromkeys(named) if name not in own]
-            found += [f"{where}.{key}: {name!r} is not one of the plugin's {point}" for name in alien]
-            twice = sorted({name for name in named if named.count(name) > 1})
-            found += [f"{where}.{key}: {name!r} is named twice" for name in twice]
-        environment = item.get("environment")
-        if environment is not None and environment not in {e["name"] for e in contributes.get("environments") or ()}:
-            found.append(f"{where}.environment: {environment!r} is not one of the plugin's environments")
-    for handle in sorted({handle for handle in handles if handles.count(handle) > 1}):
-        found.append(f"contributes.agent_types: two agent types have the handle {handle!r}")
-    return found
+    def problems(self, c: Contribution) -> list[str]:
+        if "python" in c.item and not c.core:
+            return [
+                f"{c.where}.python: only a core plugin runs Python in the hub's or the worker's process; an isolated "
+                "plugin implements it in its own process"
+            ]
+        if self.core_only is not None and not c.core:
+            return [f"{c.where}: {self.core_only}"]
+        counted = self.counted(c)
+        if counted:
+            return counted
+        if "prefix" in c.item and not (c.core and self.prefixed):
+            return [f"{c.where}.prefix: only a core plugin's route names the path its router is included under"]
+        return self.own(c)
 
-
-def _runtime_problems(where: str, item: dict) -> list[str]:
-    """What is wrong with runtime ``item``: it names one of acp and python, within the bounds, each model and secret
-    once."""
-    if ("acp" in item) == ("python" in item):
-        return [f"{where}: a runtime names one of acp (an ACP agent's command) and python (a core plugin's adapter)"]
-    found = []
-    if len(item.get("acp", {}).get("command", ())) > MAX_COMMAND_ITEMS:
-        found.append(f"{where}.acp.command: at most {MAX_COMMAND_ITEMS} items")
-    for key, bound in (("models", MAX_RUNTIME_MODELS), ("secrets", MAX_RUNTIME_SECRETS)):
-        values = item.get(key) or []
-        if len(values) > bound:
-            found.append(f"{where}.{key}: at most {bound} items")
-        found += [
-            f"{where}.{key}: {value!r} is listed twice" for value in sorted(set(values)) if values.count(value) > 1
-        ]
-    return found
-
-
-def _environment_problems(where: str, item: dict) -> list[str]:
-    """What is wrong with environment ``item``: at most MAX_ENVIRONMENT_MOUNTS mounts, each target once, normalized and
-    clear of FORBIDDEN_TARGETS; a volume with a name and no size, a tmpfs without a name."""
-    mounts = item.get("mounts") or []
-    found = [f"{where}.mounts: at most {MAX_ENVIRONMENT_MOUNTS} items"] if len(mounts) > MAX_ENVIRONMENT_MOUNTS else []
-    targets = [mount["target"] for mount in mounts]
-    found += [
-        f"{where}.mounts: target {target!r} is listed twice"
-        for target in sorted(set(targets))
-        if targets.count(target) > 1
-    ]
-    for index, mount in enumerate(mounts):
-        found += _mount_problems(f"{where}.mounts[{index}]", mount)
-    return found
-
-
-def _mount_problems(where: str, mount: dict) -> list[str]:
-    target = mount["target"]
-    found = []
-    if posixpath.normpath(target) != target or target.startswith("//"):
-        found.append(f"{where}.target: {target!r} is not a normalized absolute path")
-    if target == "/" or any(target == top or target.startswith(top + "/") for top in FORBIDDEN_TARGETS):
-        found.append(f"{where}.target: {target!r} is /, or one of {', '.join(FORBIDDEN_TARGETS)} or under it")
-    if mount["type"] == "volume":
-        if "name" not in mount:
-            found.append(f"{where}: a volume names itself (name)")
-        if "size_mb" in mount:
-            found.append(f"{where}.size_mb: only a tmpfs has a size")
-    elif "name" in mount:
-        found.append(f"{where}.name: only a volume has a name")
-    return found
-
-
-def _command_problems(where: str, item: dict) -> list[str]:
-    """What is wrong with command ``item``: an argument named twice, a positional with a flag or a flag twice, a path
-    argument no route's path has, a ``{name}`` of a path no argument fills, a ``when`` or ``confirm`` that names no
-    argument or a flag taken, or ``values`` and ``group`` on a positional."""
-    found = []
-    args = item.get("args") or ()
-    names = [arg["name"] for arg in args]
-    flags = [arg["flag"] for arg in args if "flag" in arg]
-    confirm = (item.get("confirm") or {}).get("flag")
-    for name in sorted({name for name in names if names.count(name) > 1}):
-        found.append(f"{where}.args: {name!r} is named twice")
-    for flag in sorted({flag for flag in flags if flags.count(flag) > 1}):
-        found.append(f"{where}.args: {flag} is given twice")
-    if confirm is not None and confirm in {arg.get("flag") or "--" + arg["name"].replace("_", "-") for arg in args}:
-        found.append(f"{where}.confirm.flag: {confirm} is the flag of an argument")
-    routes = [("http.path", item["http"]["path"])]
-    routes += [(f"when[{i}].http.path", entry["http"]["path"]) for i, entry in enumerate(item.get("when") or ())]
-    holes = {key: set(re.findall(r"{([a-z][a-z0-9_]*)}", path)) for key, path in routes}
-    every_hole = set().union(*holes.values())
-    paths = " or ".join(repr(path) for _, path in routes)
-    for index, arg in enumerate(args):
-        if arg.get("positional") and "flag" in arg:
-            found.append(f"{where}.args[{index}]: a positional argument has no flag")
-        if arg.get("positional") and ("values" in arg or "group" in arg):
-            found.append(f"{where}.args[{index}]: values and group are for a flag, not a positional argument")
-        if "values" in arg and (arg["in"] != "body" or arg.get("repeatable") or arg["type"] != "string"):
-            found.append(f"{where}.args[{index}]: an argument with values is one string per name, sent in the body")
-        if arg["in"] == "path" and arg["name"] not in every_hole:
-            found.append(f"{where}.args[{index}]: path argument {arg['name']!r} is not {{{arg['name']}}} of {paths}")
-        if arg["in"] == "path" and (arg.get("repeatable") or arg["type"] in ("boolean", "file")):
-            found.append(f"{where}.args[{index}]: a path argument is one string or number")
-    filled = {arg["name"] for arg in args if arg["in"] == "path"}
-    for key, _ in routes:
-        for hole in sorted(holes[key] - filled):
-            found.append(f"{where}.{key}: {{{hole}}} is filled by no path argument")
-    for index, entry in enumerate(item.get("when") or ()):
-        if entry["arg"] not in names:
-            found.append(f"{where}.when[{index}].arg: {entry['arg']!r} is not one of the command's arguments")
-    return found
-
-
-def _page_problems(where: str, item: dict, core: bool) -> list[str]:
-    """What is wrong with page ``item``: a core plugin's page is native and names no entry unless the plugin has
-    ``ui`` (checked with the manifest's root, ``_semantics``); a page that names one, of either tier, names an HTML
-    file inside pages/."""
-    entry = item.get("entry")
-    if core and entry is None:
+    def counted(self, c: Contribution) -> list[str]:
+        """What is wrong with the number of contributions to the point, at the ``index``-th."""
         return []
-    if entry is None:
-        return [f"{where}: an isolated plugin's page names its entry, an HTML file of its bundle under pages/"]
-    if any(part in ("", ".", "..") for part in entry.split("/")):
-        return [f"{where}.entry: {entry!r} must be a path inside the bundle's pages/, without empty, . or .. parts"]
-    return []
+
+    def own(self, c: Contribution) -> list[str]:
+        """What is wrong with contribution ``c`` itself."""
+        return []
+
+    def across(self, data: dict, core: bool) -> list[str]:
+        """What is wrong with the point's contributions against the rest of manifest ``data``."""
+        return []
+
+
+class RouteValidator(PointValidator):
+    prefixed = True
+
+
+class ChannelValidator(PointValidator):
+    """A channel of a core plugin is a kind of members' channel, named as the hub names those (``CHANNEL_KIND``)."""
+
+    def own(self, c: Contribution) -> list[str]:
+        name = c.item["name"]
+        if c.core and (not re.fullmatch(CHANNEL_KIND, name) or name in NOT_CHANNEL_KINDS):
+            refused = " or ".join(NOT_CHANNEL_KINDS)
+            return [f"{c.where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not {refused}"]
+        return []
+
+
+class PrefixedValidator(PointValidator):
+    """A contribution of a core plugin whose name starts with the plugin's table prefix (``table_prefix``)."""
+
+    def __init__(self, what: str, core_only: str):
+        self.what = what  # table: what a contribution is, as its message names it
+        self.core_only = core_only
+
+    def own(self, c: Contribution) -> list[str]:
+        prefix = table_prefix(c.plugin_id)
+        if c.item["name"].startswith(prefix):
+            return []
+        return [f"{c.where}: {self.what} {c.item['name']!r} must start with {prefix}, the plugin's prefix"]
+
+
+class KgSourceValidator(PointValidator):
+    core_only = "only a core plugin contributes a source of the knowledge graph, which the hub reads in its process"
+
+    def counted(self, c: Contribution) -> list[str]:
+        if c.index > 0:
+            return [f"{c.where}: a plugin contributes at most one source of the knowledge graph, plugin.<its id>"]
+        return []
+
+
+class LoopRuleValidator(PointValidator):
+    """A Loop rule names a handler, reads an event or the clock, and each kind of work item it makes once, a task with
+    the agent type that takes it."""
+
+    core_only = "only a core plugin adds rules to the Loop, which the hub calls in its process"
+
+    def own(self, c: Contribution) -> list[str]:
+        where, item = c.where, c.item
+        found = []
+        if "python" not in item:
+            found.append(f"{where}.python: a Loop rule names the handler the hub calls, module:attribute")
+        if not item.get("on") and not item.get("schedule"):
+            found.append(f"{where}: a Loop rule reads at least one event (on) or the clock (schedule)")
+        for key, bound in MAX_LOOP_RULE_LISTS.items():
+            if len(item.get(key) or ()) > bound:
+                found.append(f"{where}.{key}: at most {bound} items")
+        kinds = [entry["kind"] for entry in item.get("kinds") or ()]
+        found += [
+            f"{where}.kinds: {kind!r} is listed twice" for kind in sorted({k for k in kinds if kinds.count(k) > 1})
+        ]
+        for index, entry in enumerate(item.get("kinds") or ()):
+            if entry["run"] == "task" and "agent_type" not in entry:
+                found.append(f"{where}.kinds[{index}]: run task names the agent_type that takes the task")
+            if entry["run"] == "job" and "agent_type" in entry:
+                found.append(f"{where}.kinds[{index}]: run job has no agent_type")
+        return found
+
+
+class PageValidator(PointValidator):
+    """A core plugin's page is native and names no entry unless the plugin has ``ui``; a page that names one, of
+    either tier, names an HTML file inside pages/."""
+
+    def own(self, c: Contribution) -> list[str]:
+        entry = c.item.get("entry")
+        if c.core and entry is None:
+            return []
+        if entry is None:
+            return [f"{c.where}: an isolated plugin's page names its entry, an HTML file of its bundle under pages/"]
+        if any(part in ("", ".", "..") for part in entry.split("/")):
+            return [
+                f"{c.where}.entry: {entry!r} must be a path inside the bundle's pages/, without empty, . or .. parts"
+            ]
+        return []
+
+    def across(self, data: dict, core: bool) -> list[str]:
+        return [
+            f"contributes.pages[{index}].entry: a core plugin's page is native, a page of the hub's web, unless "
+            "the plugin names ui, the directory of its package that holds pages/, for a framed page"
+            for index, item in enumerate((data.get("contributes") or {}).get("pages") or ())
+            if core and "entry" in item and "ui" not in data
+        ]
+
+
+class RankerValidator(PointValidator):
+    """A ranker names its handler, and sends hits out: the plugin declares ``egress``, and the ranker names which of
+    its sinks it sends them through (``sink``) unless it declares one."""
+
+    core_only = "only a core plugin ranks search hits, in the hub's process, with the hits its egress sink may read"
+
+    def own(self, c: Contribution) -> list[str]:
+        if "python" not in c.item:
+            return [f"{c.where}.python: a ranker names the handler the hub calls, module:attribute"]
+        return []
+
+    def across(self, data: dict, core: bool) -> list[str]:
+        sinks = [item["id"] for item in data.get("egress") or ()]
+        found = []
+        for index, item in enumerate((data.get("contributes") or {}).get("rankers") or ()):
+            where = f"contributes.rankers[{index}]"
+            if not sinks:
+                found.append(f"{where}: a ranker sends hits out, so the plugin declares the sink in egress")
+            elif "sink" in item and item["sink"] not in sinks:
+                found.append(f"{where}.sink: {item['sink']!r} is not a sink the plugin declares in egress")
+            elif "sink" not in item and len(sinks) > 1:
+                found.append(
+                    f"{where}.sink: the plugin declares several sinks in egress; name the one it ranks through"
+                )
+        return found
+
+
+class AgentTypeValidator(PointValidator):
+    """An agent type names packs, jobs, events, pages and an environment of the plugin's own, each once; no two types
+    of a plugin share a handle."""
+
+    def across(self, data: dict, core: bool) -> list[str]:
+        contributes: dict = data.get("contributes") or {}
+        found, handles = [], []
+        for index, item in enumerate(contributes.get("agent_types") or ()):
+            where = f"contributes.agent_types[{index}]"
+            handles.append(item["profile"]["handle"])
+            for key, point in AGENT_TYPE_POINTS.items():
+                own = {entry["name"] for entry in contributes.get(point) or ()}
+                named = item.get(key) or []
+                alien = [name for name in dict.fromkeys(named) if name not in own]
+                found += [f"{where}.{key}: {name!r} is not one of the plugin's {point}" for name in alien]
+                twice = sorted({name for name in named if named.count(name) > 1})
+                found += [f"{where}.{key}: {name!r} is named twice" for name in twice]
+            environment = item.get("environment")
+            if environment is not None and environment not in {
+                e["name"] for e in contributes.get("environments") or ()
+            }:
+                found.append(f"{where}.environment: {environment!r} is not one of the plugin's environments")
+        for handle in sorted({handle for handle in handles if handles.count(handle) > 1}):
+            found.append(f"contributes.agent_types: two agent types have the handle {handle!r}")
+        return found
+
+
+class CommandValidator(PointValidator):
+    """A command (``cli``) of ``evo-agents hub <id> <name>``."""
+
+    def own(self, c: Contribution) -> list[str]:
+        return self.check(c.where, c.item)
+
+    @staticmethod
+    def check(where: str, item: dict) -> list[str]:
+        """What is wrong with command ``item``: an argument named twice, a positional with a flag or a flag twice, a
+        path argument no route's path has, a ``{name}`` of a path no argument fills, a ``when`` or ``confirm`` that
+        names no argument or a flag taken, or ``values`` and ``group`` on a positional."""
+        found = []
+        args = item.get("args") or ()
+        names = [arg["name"] for arg in args]
+        flags = [arg["flag"] for arg in args if "flag" in arg]
+        confirm = (item.get("confirm") or {}).get("flag")
+        for name in sorted({name for name in names if names.count(name) > 1}):
+            found.append(f"{where}.args: {name!r} is named twice")
+        for flag in sorted({flag for flag in flags if flags.count(flag) > 1}):
+            found.append(f"{where}.args: {flag} is given twice")
+        if confirm is not None and confirm in {arg.get("flag") or "--" + arg["name"].replace("_", "-") for arg in args}:
+            found.append(f"{where}.confirm.flag: {confirm} is the flag of an argument")
+        routes = [("http.path", item["http"]["path"])]
+        routes += [(f"when[{i}].http.path", entry["http"]["path"]) for i, entry in enumerate(item.get("when") or ())]
+        holes = {key: set(re.findall(r"{([a-z][a-z0-9_]*)}", path)) for key, path in routes}
+        every_hole = set().union(*holes.values())
+        paths = " or ".join(repr(path) for _, path in routes)
+        for index, arg in enumerate(args):
+            if arg.get("positional") and "flag" in arg:
+                found.append(f"{where}.args[{index}]: a positional argument has no flag")
+            if arg.get("positional") and ("values" in arg or "group" in arg):
+                found.append(f"{where}.args[{index}]: values and group are for a flag, not a positional argument")
+            if "values" in arg and (arg["in"] != "body" or arg.get("repeatable") or arg["type"] != "string"):
+                found.append(f"{where}.args[{index}]: an argument with values is one string per name, sent in the body")
+            if arg["in"] == "path" and arg["name"] not in every_hole:
+                found.append(
+                    f"{where}.args[{index}]: path argument {arg['name']!r} is not {{{arg['name']}}} of {paths}"
+                )
+            if arg["in"] == "path" and (arg.get("repeatable") or arg["type"] in ("boolean", "file")):
+                found.append(f"{where}.args[{index}]: a path argument is one string or number")
+        filled = {arg["name"] for arg in args if arg["in"] == "path"}
+        for key, _ in routes:
+            for hole in sorted(holes[key] - filled):
+                found.append(f"{where}.{key}: {{{hole}}} is filled by no path argument")
+        for index, entry in enumerate(item.get("when") or ()):
+            if entry["arg"] not in names:
+                found.append(f"{where}.when[{index}].arg: {entry['arg']!r} is not one of the command's arguments")
+        return found
+
+
+class RuntimeValidator(PointValidator):
+    """A runtime (``runtimes``)."""
+
+    def own(self, c: Contribution) -> list[str]:
+        return self.check(c.where, c.item)
+
+    @staticmethod
+    def check(where: str, item: dict) -> list[str]:
+        """What is wrong with runtime ``item``: it names one of acp and python, within the bounds, each model and
+        secret once."""
+        if ("acp" in item) == ("python" in item):
+            return [
+                f"{where}: a runtime names one of acp (an ACP agent's command) and python (a core plugin's adapter)"
+            ]
+        found = []
+        if len(item.get("acp", {}).get("command", ())) > MAX_COMMAND_ITEMS:
+            found.append(f"{where}.acp.command: at most {MAX_COMMAND_ITEMS} items")
+        for key, bound in (("models", MAX_RUNTIME_MODELS), ("secrets", MAX_RUNTIME_SECRETS)):
+            values = item.get(key) or []
+            if len(values) > bound:
+                found.append(f"{where}.{key}: at most {bound} items")
+            found += [
+                f"{where}.{key}: {value!r} is listed twice" for value in sorted(set(values)) if values.count(value) > 1
+            ]
+        return found
+
+
+class EnvironmentValidator(PointValidator):
+    """An environment (``environments``) and its mounts."""
+
+    def own(self, c: Contribution) -> list[str]:
+        return self.check(c.where, c.item)
+
+    @staticmethod
+    def check(where: str, item: dict) -> list[str]:
+        """What is wrong with environment ``item``: at most MAX_ENVIRONMENT_MOUNTS mounts, each target once,
+        normalized and clear of FORBIDDEN_TARGETS; a volume with a name and no size, a tmpfs without a name."""
+        mounts = item.get("mounts") or []
+        found = (
+            [f"{where}.mounts: at most {MAX_ENVIRONMENT_MOUNTS} items"] if len(mounts) > MAX_ENVIRONMENT_MOUNTS else []
+        )
+        targets = [mount["target"] for mount in mounts]
+        found += [
+            f"{where}.mounts: target {target!r} is listed twice"
+            for target in sorted(set(targets))
+            if targets.count(target) > 1
+        ]
+        for index, mount in enumerate(mounts):
+            found += EnvironmentValidator.mount(f"{where}.mounts[{index}]", mount)
+        return found
+
+    @staticmethod
+    def mount(where: str, mount: dict) -> list[str]:
+        target = mount["target"]
+        found = []
+        if posixpath.normpath(target) != target or target.startswith("//"):
+            found.append(f"{where}.target: {target!r} is not a normalized absolute path")
+        if target == "/" or any(target == top or target.startswith(top + "/") for top in FORBIDDEN_TARGETS):
+            found.append(f"{where}.target: {target!r} is /, or one of {', '.join(FORBIDDEN_TARGETS)} or under it")
+        if mount["type"] == "volume":
+            if "name" not in mount:
+                found.append(f"{where}: a volume names itself (name)")
+            if "size_mb" in mount:
+                found.append(f"{where}.size_mb: only a tmpfs has a size")
+        elif "name" in mount:
+            found.append(f"{where}.name: only a volume has a name")
+        return found
+
+
+# extension point -> its validator, in the order ``across`` reports in; a point not here has the checks every point
+# shares alone
+VALIDATORS: dict[str, PointValidator] = {
+    "rankers": RankerValidator(),
+    "pages": PageValidator(),
+    "agent_types": AgentTypeValidator(),
+    "channels": ChannelValidator(),
+    "routes": RouteValidator(),
+    "runtimes": RuntimeValidator(),
+    "environments": EnvironmentValidator(),
+    "kg_sources": KgSourceValidator(),
+    "tables": PrefixedValidator("table", "only a core plugin owns tables, which the hub's migrations create"),
+    "loop_rules": LoopRuleValidator(),
+    "cli": CommandValidator(),
+    "notice_kinds": PrefixedValidator(
+        "notice kind", "only a core plugin adds kinds of notification, which it sends through the core plugin API"
+    ),
+}
+SHARED = PointValidator()  # the validator of a point without checks of its own
+CORE_ONLY_POINTS = tuple(point for point, validator in VALIDATORS.items() if validator.core_only)
+
+
+def validator_of(point: str) -> PointValidator:
+    """The validator of the contributions to extension point ``point``."""
+    return VALIDATORS.get(point, SHARED)
 
 
 def _backend_problems(data: dict, core: bool) -> list[str]:

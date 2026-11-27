@@ -14,7 +14,7 @@ import pytest
 
 from evo_agents.hub.cli import base
 from evo_agents.hub.cli import extensions as cpc
-from evo_agents.plugins.manifest import _command_problems
+from evo_agents.plugins.manifest import CommandValidator
 
 DENYLIST = {
     "name": "denylist",
@@ -104,11 +104,11 @@ def test_plugin_cli_core_plugins_ship_their_commands_and_win_over_the_list_kept(
 
 
 def test_plugin_cli_manifest_checks_the_routes_of_when_and_the_flag_of_confirm():
-    assert _command_problems("c", DENYLIST) == []
-    assert _command_problems("c", DELETE) == []
+    assert CommandValidator.check("c", DENYLIST) == []
+    assert CommandValidator.check("c", DELETE) == []
     wrong = {**DENYLIST, "when": [{"arg": "nobody", "http": {"method": "DELETE", "path": "denylist/{gone}"}}]}
-    found = _command_problems("c", wrong)
+    found = CommandValidator.check("c", wrong)
     assert any("{gone}" in line for line in found) and any("'nobody'" in line for line in found)
     assert any("'remove' is not {remove}" in line for line in found)
     clash = {**DELETE, "args": [*DELETE["args"], {"name": "yes", "type": "boolean", "in": "query"}]}
-    assert any("confirm.flag" in line for line in _command_problems("c", clash))
+    assert any("confirm.flag" in line for line in CommandValidator.check("c", clash))
