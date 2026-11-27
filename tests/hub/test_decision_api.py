@@ -1,4 +1,4 @@
-"""The decision API of core plugins (API 1.7, ``evo_agents.hub.server.core_plugin_api._decision``), with the sample
+"""The decision API of core plugins (API 1.7, ``evo_agents.hub.server.core_plugin_api.service.decision``), with the sample
 plugin northwind-scribe (tests/fixtures/core_plugins/northwind_scribe), which declares an egress sink in its manifest.
 
 - egress: a text read returns only what the project's policy lets the plugin's sink read, under the rule the judges
@@ -30,8 +30,8 @@ from evo_agents.hub.access import ProjectRules
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import core_plugin_api as hub_api
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.core_plugin_api import _decision as decision
-from evo_agents.hub.server.core_plugin_api._types import issue_plugin
+from evo_agents.hub.server.core_plugin_api.service import decision
+from evo_agents.hub.server.core_plugin_api.service.handles import issue_plugin
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live

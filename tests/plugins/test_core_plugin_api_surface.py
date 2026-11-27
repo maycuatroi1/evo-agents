@@ -20,7 +20,7 @@ pytest.importorskip("fastapi")
 pytest.importorskip("sqlalchemy")
 
 from evo_agents.hub.server import core_plugin_api as hub
-from evo_agents.hub.server.core_plugin_api._surface import changes, required_version, surface
+from evo_agents.hub.server.core_plugin_api.service.surface import changes, required_version, surface
 
 GOLDEN = Path(__file__).parent / "golden" / "core-plugin-api.json"
 REGENERATE = "python -m evo_agents.hub.server.core_plugin_api surface > tests/plugins/golden/core-plugin-api.json"

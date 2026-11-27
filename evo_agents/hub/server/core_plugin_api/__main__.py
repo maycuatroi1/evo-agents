@@ -8,7 +8,7 @@ import json
 import sys
 
 from evo_agents.hub.server.core_plugin_api import API_VERSION
-from evo_agents.hub.server.core_plugin_api._surface import surface
+from evo_agents.hub.server.core_plugin_api.service.surface import surface
 
 USAGE = "usage: python -m evo_agents.hub.server.core_plugin_api {surface,version}"
 

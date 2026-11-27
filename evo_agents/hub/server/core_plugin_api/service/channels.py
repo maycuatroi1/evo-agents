@@ -9,11 +9,9 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any, Literal
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
-from evo_agents.hub.server.core_plugin_api._types import (
+from evo_agents.hub.server.core_plugin_api.models.types import (
     Clearance,
     LinkCode,
     LinkedChannel,
@@ -23,6 +21,9 @@ from evo_agents.hub.server.core_plugin_api._types import (
     Refused,
     Session,
     Unlinked,
+)
+from evo_agents.hub.server.core_plugin_api.repository.channels import direct_user
+from evo_agents.hub.server.core_plugin_api.service.handles import (
     admin_session,
     issue_member,
     issue_session,
@@ -187,9 +188,7 @@ async def direct_chat_member(conn: AsyncConnection, plugin: Plugin, kind: str, c
     """The member of direct chat ``chat_id`` when their channel of ``kind`` is linked and live (its web session lives,
     or a hub admin linked it); None for a group chat, or a member without one."""
     own_kind(own_plugin(plugin), kind)
-    c = tables.chats
-    query = select(c.c.direct_user_id).where(c.c.id == chat_id, c.c.kind == chats.DIRECT)
-    user_id = (await conn.execute(query)).scalar_one_or_none()
+    user_id = await direct_user(conn, chat_id)
     found = None if user_id is None else await channel_rows.member_channel(conn, kind, user_id)
     return None if found is None else _member(plugin, kind, found)
 

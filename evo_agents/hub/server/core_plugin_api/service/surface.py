@@ -109,7 +109,7 @@ def describe(value) -> dict:
             }
             for item in dataclasses.fields(value)
         ]
-        return {"kind": "dataclass", "frozen": value.__dataclass_params__.frozen, "fields": fields}
+        return {"kind": "dataclass", "frozen": value.__dataclass_params__.frozen, "fields": fields}  # pyright: ignore[reportAttributeAccessIssue]
     if isinstance(value, type):
         return {"kind": "class", "bases": [base.__name__ for base in value.__bases__], **_class(value)}
     if inspect.iscoroutinefunction(value):
@@ -145,7 +145,7 @@ def _literal_values(node) -> list | None:
     items = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
     if not all(isinstance(item, ast.Constant) for item in items):
         return None
-    return [item.value for item in items]
+    return [item.value for item in items]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _wider(old, new) -> bool:

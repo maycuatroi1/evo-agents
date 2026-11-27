@@ -1,4 +1,4 @@
-"""An app session at a core plugin's write route (``core_plugin_api._base._from_this_hub``), as step 1 of plan
+"""An app session at a core plugin's write route (``core_plugin_api.routes.callers._from_this_hub``), as step 1 of plan
 creative-agentic-workspace names it: a write of an app session (``Principal.app_session``, Bearer) passes without the
 Origin of the hub's public URL, since a browser never adds that header to another site's request; a write of the
 session cookie still needs that Origin, and a machine token still gets 403 at a route of web sessions.

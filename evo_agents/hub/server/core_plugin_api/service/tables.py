@@ -14,7 +14,8 @@ from evo_agents.hub.plugin_schema import (
     own_names,
     plugin_metadata,
 )
-from evo_agents.hub.server.core_plugin_api._types import Plugin, own_plugin
+from evo_agents.hub.server.core_plugin_api.models.types import Plugin
+from evo_agents.hub.server.core_plugin_api.service.handles import own_plugin
 
 
 def own_tables(plugin: Plugin) -> tuple[str, ...]:

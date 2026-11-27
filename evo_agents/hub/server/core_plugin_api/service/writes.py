@@ -6,28 +6,28 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import hub_events, signals, tables
+from evo_agents.hub import hub_events, signals
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import enabled_in, manifest_of
 from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server.admin import project_ladder
-from evo_agents.hub.server.core_plugin_api._access import ROLES
-from evo_agents.hub.server.core_plugin_api._reads import enabled_project
-from evo_agents.hub.server.core_plugin_api._types import (
-    Invite,
-    Plugin,
-    Refused,
-    SignalPushed,
-    own_plugin,
-    refusing,
+from evo_agents.hub.server.core_plugin_api.models.types import Invite, Plugin, Refused, SignalPushed
+from evo_agents.hub.server.core_plugin_api.repository.writes import (
+    add_ingest_key,
+    add_join_invite,
+    first_admin,
+    granted_users,
+    ingest_keys,
 )
+from evo_agents.hub.server.core_plugin_api.service.access import ROLES
+from evo_agents.hub.server.core_plugin_api.service.handles import own_plugin, refusing
+from evo_agents.hub.server.core_plugin_api.service.reads import enabled_project
 from evo_agents.hub.server.invites import DEFAULT_DAYS, JOIN, PAGE, PREFIX, TOKEN_BYTES
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.security import hash_token
@@ -59,35 +59,18 @@ async def emit_event(conn: AsyncConnection, plugin: Plugin, project: str, name: 
 async def plugin_pusher(conn: AsyncConnection, plugin: Plugin, project: str, project_id: int) -> signals.Pusher:
     """The pusher of the ingest key named after the plugin, made on first use with a token nobody reads, owned by the
     project's first admin."""
-    k, g = tables.signal_ingest_keys, tables.grants
     rules = await signals.project_rules(conn, project_id)
-    found = (
-        await conn.execute(
-            select(k.c.id, k.c.max_level, k.c.revoked_at).where(k.c.project_id == project_id, k.c.name == plugin.id)
-        )
-    ).all()
+    found = await ingest_keys(conn, project_id, plugin.id)
     live = next((row for row in found if row.revoked_at is None), None)
     if live is None and found:
         raise Refused(409, KEY_REVOKED.format(project=project, key=plugin.id))
     if live is None:
-        owner = await conn.scalar(
-            select(g.c.user_id).where(g.c.project_id == project_id, g.c.role == "admin").order_by(g.c.user_id).limit(1)
-        )
+        owner = await first_admin(conn, project_id)
         if owner is None:
             raise Refused(409, NO_ADMIN.format(project=project, key=plugin.id))
         token = signals.new_ingest_token()  # nobody reads it: the plugin writes in this process
-        made = await conn.execute(
-            insert(k)
-            .values(
-                project_id=project_id,
-                name=plugin.id,
-                max_level=rules.default_label.get("level"),
-                token_hash=signals.hash_token(token),
-                created_by=owner,
-            )
-            .returning(k.c.id, k.c.max_level, k.c.revoked_at)
-        )
-        live = made.one()
+        level = rules.default_label.get("level")
+        live = await add_ingest_key(conn, project_id, plugin.id, level, signals.hash_token(token), owner)
     return signals.Pusher(project_id, rules, "ingest", live.id, plugin.id, live.max_level)
 
 
@@ -152,23 +135,17 @@ async def create_invite(
     with refusing():
         _, ladder = await project_ladder(conn, project)
     token = PREFIX + secrets.token_urlsafe(TOKEN_BYTES)
-    i = tables.invites
-    made = (
-        await conn.execute(
-            insert(i)
-            .values(
-                kind=JOIN,
-                project_id=project_id,
-                role=role,
-                max_level=ladder[0],
-                for_login=for_login,
-                token_hash=hash_token(token),
-                created_by=created_by,
-                expires_at=func.now() + timedelta(days=days),
-            )
-            .returning(i.c.id, i.c.expires_at)
-        )
-    ).one()
+    made = await add_join_invite(
+        conn,
+        kind=JOIN,
+        project_id=project_id,
+        role=role,
+        max_level=ladder[0],
+        for_login=for_login,
+        token_hash=hash_token(token),
+        created_by=created_by,
+        days=days,
+    )
     target = f"invite:{made.id} kind={JOIN} project={project} role={role} max_level={ladder[0]}"
     if for_login:
         target += f" for={for_login}"
@@ -220,10 +197,7 @@ async def notify(
         raise ValueError("a notice's link is a path of the hub's web, such as /p/<project>/runs")
     if details is not None and not isinstance(details, Mapping):
         raise ValueError("a notice's details are a mapping")
-    g = tables.grants
-    held = set(
-        (await conn.execute(select(g.c.user_id).where(g.c.project_id == project_id, g.c.user_id.in_(wanted)))).scalars()
-    )
+    held = await granted_users(conn, project_id, wanted)
     found = []
     for user_id in wanted:
         if user_id in held:
