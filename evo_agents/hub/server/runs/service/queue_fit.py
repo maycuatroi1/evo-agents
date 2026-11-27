@@ -24,7 +24,7 @@ from sqlalchemy import and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_events, runs, tables
-from evo_agents.hub.server import kg_shared_pool, worker_placement
+from evo_agents.hub.server import kg_shared_pool
 from evo_agents.hub.server.agents.models.placement import Home
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.browser.models.install import UNFINISHED_AFTER
@@ -34,6 +34,7 @@ from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
 from evo_agents.hub.server.runs.service.candidates import PoolCandidate, RerunCandidates, WorkerCandidate
 from evo_agents.hub.server.runs.service.worker_fit import OFFLINE, worker_problems
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 
 @dataclass

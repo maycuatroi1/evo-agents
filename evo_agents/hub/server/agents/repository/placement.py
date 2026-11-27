@@ -7,8 +7,9 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import kg_shared_pool, worker_placement
+from evo_agents.hub.server import kg_shared_pool
 from evo_agents.hub.server.agents.models.placement import Home
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 
 async def home_of(conn: AsyncConnection, profile_id: int) -> Home | None:

@@ -2,7 +2,7 @@
 
 POST /v1/workers/{id}/browser-install asks the worker's daemon to install Chromium; POST
 /v1/workers/{id}/browser-install/cancel withdraws the request. Both take the rights and the refusals of drain
-(``evo_agents.hub.server.workers``): the owner or a hub admin, 404 for anyone else, 409 for a revoked worker; and the
+(``evo_agents.hub.server.workers.routes.workers``): the owner or a hub admin, 404 for anyone else, 409 for a revoked worker; and the
 hub refuses a request with 409 and why when the worker's daemon does not say browser_install in its features, or when
 its heartbeat lists the feature browser already. Asking again while a request is open, or cancelling when none is,
 changes nothing and is not audited; every other request and cancel is.

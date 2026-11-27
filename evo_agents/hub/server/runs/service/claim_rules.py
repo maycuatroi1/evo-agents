@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_events, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
+from evo_agents.hub.server import gateway_accounts, kg_shared_pool, pool_accounts
 from evo_agents.hub.server.agents.repository import placement as agent_placement
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
@@ -24,6 +24,7 @@ from evo_agents.hub.server.runs.service.priority import claim_order
 from evo_agents.hub.server.runs.service.profiles import claim_clause, run_packs, runtime_rule
 from evo_agents.hub.server.runs.service.views import lost_here, steady
 from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 Condition = tuple[str, Any]  # a key that says which rule it is, and its SQL clause on tables.runs
 WRITER_ROLES = [role for role in ("reader", "writer", "admin") if has_role(role, "writer")]

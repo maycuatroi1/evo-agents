@@ -1,5 +1,5 @@
 """The routes under /v1/org that ``evo-agents hub org`` asks (``evo_agents.hub.server.org`` and
-``evo_agents.hub.server.worker_shares``), behind one gateway: :class:`OrgChart`.
+``evo_agents.hub.server.workers.service.shares``), behind one gateway: :class:`OrgChart`.
 
 They belong to the hub and not to a project, so the gateway is not a ``ProjectResource``. Standard library only, like
 the rest of the client.

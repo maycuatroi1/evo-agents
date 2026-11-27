@@ -1,7 +1,7 @@
 """What a dispatch says of where its run goes (plan worker-pools, criterion a3): the labels it asks of the worker that
 claims it (``labels``, and ``pool``, which asks pool=<name>) and the taints it tolerates. A claim takes the run only on
 a worker whose labels hold every label it asks and each of whose taints it tolerates; a run pinned to a worker by name
-goes there whatever its taints (``evo_agents.hub.server.worker_placement``). The run keeps them as ``selector`` and
+goes there whatever its taints (``evo_agents.hub.server.workers.repository.placement``). The run keeps them as ``selector`` and
 ``tolerations`` (schema 0149), lowercased, each once."""
 
 from __future__ import annotations

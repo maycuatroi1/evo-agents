@@ -14740,139 +14740,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/worker_join.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 23,
-                    "endColumn": 32,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 54,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 98,
-                    "endColumn": 100,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 47,
-                    "endColumn": 55,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 71,
-                    "endColumn": 73,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 54,
-                    "endColumn": 64,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/worker_models.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 27,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 27,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 32,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 32,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/worker_pool_models.py": [
+        "./evo_agents/hub/server/workers/models/pools.py": [
             {
                 "code": "reportIncompatibleVariableOverride",
                 "range": {
@@ -14954,78 +14822,84 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/worker_shares.py": [
+        "./evo_agents/hub/server/workers/models/workers.py": [
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 80,
-                    "endColumn": 88,
+                    "startColumn": 21,
+                    "endColumn": 45,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 83,
-                    "endColumn": 91,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/workers.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 68,
-                    "endColumn": 76,
+                    "startColumn": 21,
+                    "endColumn": 45,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 70,
-                    "endColumn": 78,
+                    "startColumn": 21,
+                    "endColumn": 50,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 73,
-                    "endColumn": 81,
+                    "startColumn": 21,
+                    "endColumn": 50,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 80,
-                    "endColumn": 88,
+                    "startColumn": 20,
+                    "endColumn": 40,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 78,
-                    "endColumn": 86,
+                    "startColumn": 20,
+                    "endColumn": 40,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 85,
-                    "endColumn": 93,
+                    "startColumn": 27,
+                    "endColumn": 40,
                     "lineCount": 1
                 }
             },
             {
-                "code": "reportArgumentType",
+                "code": "reportInvalidTypeForm",
                 "range": {
-                    "startColumn": 69,
-                    "endColumn": 77,
+                    "startColumn": 27,
+                    "endColumn": 40,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportInvalidTypeForm",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 32,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportInvalidTypeForm",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 32,
                     "lineCount": 1
                 }
             }

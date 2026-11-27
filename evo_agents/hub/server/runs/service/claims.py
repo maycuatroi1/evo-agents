@@ -28,7 +28,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import worker_placement
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.listen import Listener
@@ -47,6 +46,7 @@ from evo_agents.hub.server.runs.service.run_specs import (
     skill_refusal,
 )
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 

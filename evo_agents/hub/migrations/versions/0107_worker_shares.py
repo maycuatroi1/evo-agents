@@ -11,7 +11,7 @@ worker_shares holds the units of the org chart a shared worker is narrowed to (p
 a5): the worker, the unit, who added the row and when. A shared worker with no row takes the runs of every member
 holding writer on a project it serves, as before; one with rows takes, besides its owner's, only those of a member
 whose live primary seat is in one of those units or below one (``evo_agents.hub.server.runs.service.worker_fit``).
-Who may write is the service's (``evo_agents.hub.server.worker_shares``).
+Who may write is the service's (``evo_agents.hub.server.workers.service.shares``).
 
 Going back turns ``shared`` off on every worker that has a row, so no worker narrowed to a unit is shared with every
 writer once the rows are gone, then drops the table.

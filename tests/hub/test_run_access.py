@@ -57,7 +57,6 @@ from evo_agents.hub.server import (
     run_access_rules,
     run_events,
     task_dispatch,
-    worker_shares,
 )
 from evo_agents.hub.server import org as org_routes
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
@@ -77,6 +76,7 @@ from evo_agents.hub.server.runs.service import dispatch
 from evo_agents.hub.server.security import RUN, Principal
 from evo_agents.hub.server.srs.models import doc as srs_doc
 from evo_agents.hub.server.srs.service import reviews as srs_reviews
+from evo_agents.hub.server.workers.service import shares as worker_shares
 from evo_agents.worker.credentials import run_access_env
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.account_pool_setup import give_account_pool
@@ -623,7 +623,7 @@ RAISING = (
     ("org chart", lambda user, access: org_routes.actor(user)),
     ("autonomy preference", lambda user, access: autonomy_store.write_pref(None, user, None)),
     ("autonomy stop", lambda user, access: autonomy_stops.subject(None, None, user)),
-    ("worker shares", lambda user, access: worker_shares._writer(user)),
+    ("worker shares", lambda user, access: worker_shares.writer(user)),
 )
 
 

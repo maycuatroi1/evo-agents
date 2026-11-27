@@ -19,7 +19,7 @@ from evo_agents.hub.server.agent_accounts.models.accounts import MAX_ENV_VAR_CHA
 from evo_agents.hub.server.agent_accounts.models.provider_accounts import Models
 from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.provider_store import ModelsFrom
-from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 Workers = list[Annotated[str, Field(pattern=WORKER_NAME)]]
 

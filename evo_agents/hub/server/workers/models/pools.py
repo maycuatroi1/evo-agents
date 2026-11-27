@@ -1,5 +1,6 @@
-"""The models of the pool API of ``evo_agents.hub.server.worker_pools``: what creating and changing a pool take, what a
-pool and its nodes show, and the join tokens of a pool, with the bounds schema 0148 holds them to."""
+"""The models of the pool API (``evo_agents.hub.server.workers.service.pools``): what creating and changing a pool
+take, what a pool and its nodes show, and the join tokens of a pool, with the bounds schema 0148 holds them to, and
+the texts of the refusals more than one module gives."""
 
 from __future__ import annotations
 
@@ -9,8 +10,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from evo_agents.hub import runs
-from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.worker_doctor import CODE_PATTERN
+from evo_agents.hub.server.workers.models.doctor import CODE_PATTERN
+from evo_agents.hub.server.workers.models.workers import PROJECT_NAME
 
 POOL_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
 # The name in a path: an agent's pool is ``agent-<handle>``, up to 106 characters (0189).
@@ -26,6 +27,16 @@ TOKEN_HOURS = (1, 30 * 24)
 DEFAULT_TOKEN_HOURS = 24
 MAX_USES = (1, 100)
 TOKEN_STATES = ("live", "expired", "revoked", "used")
+TOKEN_PREFIX = "evj_"
+SETTINGS = ("projects", "slots", "labels", "taints", "accepted_findings", "reap_after_days")
+REFUSED_TOKEN = (
+    "the join token is wrong, expired, revoked or used up: create a new one (`evo-agents worker pool token create`)"
+)
+
+
+def no_pool(name: str) -> str:
+    return f"you have no pool named {name} on this hub: see GET /v1/worker-pools"
+
 
 Label = Annotated[str, Field(pattern=POOL_LABEL)]
 Project = Annotated[str, Field(pattern=PROJECT_NAME)]

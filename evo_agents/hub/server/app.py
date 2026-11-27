@@ -448,7 +448,10 @@ def _include_kg_routes(app: FastAPI) -> None:
 
 
 def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
-    from evo_agents.hub.server import worker_join, worker_pools, workers
+    from evo_agents.hub.server.workers.routes import join as worker_join
+    from evo_agents.hub.server.workers.routes import pools as worker_pools
+    from evo_agents.hub.server.workers.routes import workers
+    from evo_agents.hub.server.workers.service.codes import RefusalLimit
 
     app.include_router(workers.router)
     app.include_router(worker_pools.router)
@@ -479,7 +482,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.state.kg_snapshots = kg_snapshots.SnapshotCoordinator(listener=app.state.listener)
     # the cache, on Redis with EVO_HUB_REDIS_URL, else this process's; dropped by the listener's wake-ups
     app.state.cache = cache.Cache(config.redis_url, listener=app.state.listener)
-    app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
+    app.state.join_refusals = RefusalLimit()  # refused pairing codes per client address, this process only
     app.state.join_limit = cache.Window(app.state.cache, "join", app.state.join_refusals)  # ...or shared on Redis
 
     from evo_agents.hub.server import (
@@ -547,8 +550,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         org,
         protection,
         transcripts,
-        worker_doctor,
-        worker_shares,
     )
     from evo_agents.hub.server.autonomy.routes import levels as autonomy_routes
     from evo_agents.hub.server.autonomy.routes import page as autonomy_page
@@ -563,6 +564,8 @@ def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.probes.routes import runs as probe_runs
     from evo_agents.hub.server.proposal_plans import routes as proposal_plans
     from evo_agents.hub.server.replays import routes as replay_routes
+    from evo_agents.hub.server.workers.routes import doctor as worker_doctor
+    from evo_agents.hub.server.workers.routes import shares as worker_shares
 
     for routes in (
         change_routes.router,

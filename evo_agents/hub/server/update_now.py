@@ -3,7 +3,7 @@
 POST /v1/workers/{id}/update-now asks the worker's daemon to update itself to nightly now rather than once idle: it
 claims no new run, lets the runs it holds end (none is stopped), updates, and claims again. POST
 /v1/workers/{id}/update-now/cancel withdraws the request. Both take the rights and the refusals of drain
-(``evo_agents.hub.server.workers``): the owner or a hub admin, 404 for anyone else, 409 for a revoked worker; and the
+(``evo_agents.hub.server.workers.routes.workers``): the owner or a hub admin, 404 for anyone else, 409 for a revoked worker; and the
 hub refuses a request with 409 and why when the worker's version is locked, when its daemon does not say update_now
 in its features, or when it runs the commit of nightly the hub read already. Asking again while a request is open, or
 cancelling when none is, changes nothing and is not audited; every other request and cancel is.

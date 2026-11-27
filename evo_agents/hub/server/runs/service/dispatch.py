@@ -26,7 +26,6 @@ from evo_agents.hub.server import (
     project_archive,
     run_access,
     run_access_rules,
-    worker_placement,
 )
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
@@ -56,6 +55,7 @@ from evo_agents.hub.server.runs.service.views import (
 )
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 from evo_agents.plugins.runtimes import is_plugin_runtime
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split

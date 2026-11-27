@@ -1,6 +1,7 @@
-"""The models of the worker API of ``evo_agents.hub.server.workers``: what a pairing, a join and a registration take,
-what a worker shows (GET /v1/workers, GET /v1/workers/{id}) and what PATCH /v1/workers/{id} changes, with the bounds
-of names, labels and one-line texts that other modules of the hub check the same way."""
+"""The models of the worker API (``evo_agents.hub.server.workers.routes.workers``): what a pairing, a join and a
+registration take, what a worker shows (GET /v1/workers, GET /v1/workers/{id}) and what PATCH /v1/workers/{id}
+changes, with the bounds of names, labels and one-line texts that other modules of the hub check the same way, and the
+texts of the refusals more than one module gives."""
 
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import runs
 from evo_agents.hub.credentials import DISPATCH_FROM
-from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.runs.models import KgSyncReport, NightlyRead, SelfUpdateReport
 from evo_agents.hub.server.runs.models.browser import WORKER_HELP, BrowserReport
 from evo_agents.hub.server.runs.models.placement import PLACEMENT_LABEL, normalized
@@ -20,8 +20,23 @@ from evo_agents.plugins.manifest import PLUGIN_ID
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
 LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
 TAINT = PLACEMENT_LABEL  # a word or key=value, as a run tolerates it
+PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as evo_agents.hub.server.admin.PROJECT_NAME
 LINE = r"^[^\x00-\x1f\x7f]+$"  # one line, without control characters
 MAX_LABELS = 16
+MAX_ID = 2**63 - 1  # bigint
+NO_WORKER = "you have no worker {id} on this hub: see GET /v1/workers"
+DISPATCH_FROM_SESSION = (
+    "who may dispatch to a worker is set from a web session only, so a token that leaked cannot open the worker "
+    "again: sign in on the web"
+)
+
+
+def name_taken(name: str) -> str:
+    return f"there is a worker named {name} already: revoke it first, or choose another name"
+
+
+def revoked(worker_id: int, revoked_at: datetime) -> str:
+    return f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs"
 
 
 class WorkerScope(BaseModel):

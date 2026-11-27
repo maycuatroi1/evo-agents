@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import browser_login, profiles
 from evo_agents.hub.server.browser.models.identities import MAX_DOMAINS, OWNERS, Domain, IdentityName
-from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 
 class BrowserIdentityCreate(BaseModel):

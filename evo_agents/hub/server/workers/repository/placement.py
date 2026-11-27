@@ -25,14 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.models.placement import POOL_KEY, normalized
+from evo_agents.hub.server.workers.repository.doctor import doctor_fresh
 
 POOL_LABEL_KEY = POOL_KEY
-
-
-def _fresh(doctor_at):
-    """``worker_doctor.doctor_fresh``, which this module cannot import (worker_doctor imports notifications, which
-    import the claim that imports this): a report no older than ``runs.DOCTOR_FRESH_SECONDS``."""
-    return doctor_at >= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, runs.DOCTOR_FRESH_SECONDS)
 
 
 # The labels of a node
@@ -99,7 +94,7 @@ def columns(w=None) -> list:
         w.c.runtimes.label("place_runtimes"),
         w.c.features.label("place_features"),
         w.c.doctor_at.label("place_doctor_at"),
-        _fresh(w.c.doctor_at).label("place_doctor_fresh"),
+        doctor_fresh(w.c.doctor_at).label("place_doctor_fresh"),
         w.c.doctor_findings.label("place_findings"),
     ]
 

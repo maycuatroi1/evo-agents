@@ -25,11 +25,12 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server import kg_shared_pool, worker_placement
+from evo_agents.hub.server import kg_shared_pool
 from evo_agents.hub.server.agents.models.placement import EMPTY_NOTICE, Home
 from evo_agents.hub.server.agents.repository import placement as repository
 from evo_agents.hub.server.profile_store import POOL_PREFIX
 from evo_agents.hub.server.runs.models.placement import POOL_KEY, normalized
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 
 async def home_of(conn: AsyncConnection, profile_id: int | None) -> Home | None:

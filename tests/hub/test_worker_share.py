@@ -1,4 +1,4 @@
-"""Shared workers narrowed to units of the org chart (``evo_agents.hub.server.worker_shares``), as criterion a5 of plan
+"""Shared workers narrowed to units of the org chart (``evo_agents.hub.server.workers.service.shares``), as criterion a5 of plan
 credential-sharing names them: schema 0107 and going back; the owner and a hub admin narrow a worker to a unit and
 take it back, each change audited worker.share or worker.unshare; a narrowed worker takes the runs of its owner and of
 a member whose live primary seat is in one of its units or below one, and no other member's, at claim, in the worker

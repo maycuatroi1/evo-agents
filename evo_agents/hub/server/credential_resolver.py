@@ -38,7 +38,7 @@ from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.autonomy.service.ledger import ALLOWED
 from evo_agents.hub.server.secrets import audit_target
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.worker_placement import bound_on
+from evo_agents.hub.server.workers.repository.placement import bound_on
 
 log = logging.getLogger(__name__)
 
