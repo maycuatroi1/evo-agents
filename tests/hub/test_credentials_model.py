@@ -120,7 +120,7 @@ def test_constants():
     assert credentials.PROVIDERS == ("secret", "github-app")
     assert credentials.GITHUB_PERMISSIONS == {"contents": "write", "metadata": "read"}
     assert credentials.MAX_SECRET_BYTES == 16384
-    assert credentials.MAX_SECRETS_PER_OWNER == 200
+    assert credentials.MAX_SECRETS_PER_OWNER == 1000
 
 
 def test_who_may_dispatch_to_a_worker_and_the_credential_a_dispatch_is_recorded_with():
