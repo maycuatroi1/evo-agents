@@ -33,7 +33,6 @@ import platform
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping
@@ -43,6 +42,7 @@ from xml.sax.saxutils import escape
 
 from evo_agents.hub.client import write_atomic
 from evo_agents.hub.runs import MAX_BROWSERS
+from evo_agents.worker import platform as platforms
 from evo_agents.worker import preflight
 from evo_agents.worker.browser import chromium
 from evo_agents.worker.home import DIR_MODE, FILE_MODE, WorkerHome, WorkerStateError
@@ -182,9 +182,7 @@ def cache_root(env: Mapping[str, str]) -> Path:
     named = env.get(CACHE_VARIABLE)
     if named and named != "0":
         return Path(named).expanduser()
-    if sys.platform == "darwin":
-        return Path("~/Library/Caches/ms-playwright").expanduser()
-    return Path(env.get("XDG_CACHE_HOME") or "~/.cache").expanduser() / "ms-playwright"
+    return platforms.of().playwright_cache(env)
 
 
 def locate(env: Mapping[str, str]) -> Path | None:
@@ -251,7 +249,7 @@ def linux_libraries(
 ) -> str | None:
     """The directory of the libraries unpacked for Chromium on Linux, fetching them when ``ldd`` finds some missing;
     None when it needs none (and on macOS)."""
-    if not sys.platform.startswith("linux"):
+    if not platforms.of().linux:
         return None
     root = directory(home) / LIBRARIES
     unpacked = root / "usr" / "lib" / f"{platform.machine()}-linux-gnu"
@@ -327,7 +325,7 @@ def available_memory() -> int | None:
     """The bytes of memory available for new processes: MemAvailable on Linux, free, inactive and speculative pages on
     macOS; None when unknown."""
     with contextlib.suppress(OSError, ValueError, subprocess.SubprocessError):
-        if sys.platform == "darwin":
+        if platforms.of().macos:
             out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=10, check=False).stdout
             size = int(re.search(r"page size of (\d+) bytes", out).group(1))
             pages = {name: int(value) for name, value in re.findall(r"^Pages (\w+):\s+(\d+)\.", out, re.MULTILINE)}

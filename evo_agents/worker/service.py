@@ -53,7 +53,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
@@ -605,16 +604,10 @@ class Systemd(Manager):
 def manager(platform: str | None = None, run=None, sleep=None, agent: str | None = None) -> Manager:
     """The service manager of this machine, for the node of ``agent`` (default: ``$EVO_WORKER_AGENT``, else the one
     node of the machine)."""
-    platform = sys.platform if platform is None else platform
+    from evo_agents.worker import platform as platforms
+
     agent = agent_handle(agent if agent is not None else os.environ.get(AGENT_VARIABLE))
-    if platform == "darwin":
-        return Launchd(run, sleep, agent)
-    if platform.startswith("linux"):
-        return Systemd(run, sleep, agent)
-    raise ServiceError(
-        f"evo-agents worker service needs launchd (macOS) or systemd (Linux), not {platform}; run "
-        "`evo-agents worker run` under a supervisor of your own instead"
-    )
+    return platforms.of(platform).manager(run, sleep, agent)
 
 
 # What the commands of ``evo_agents.worker.cli.service`` call

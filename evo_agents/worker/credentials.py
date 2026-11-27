@@ -345,7 +345,7 @@ class RunCredentials:
         env: dict[str, str] = {}
         route = self.gateway
         for lease in self.leases:
-            if lease.kind != "env" or not lease.env_var:
+            if not lease.is_env or not lease.env_var:
                 continue
             refusal = env_name_refusal(lease.env_var)
             if refusal is None and gateway.drops(route, lease.env_var):
@@ -551,7 +551,7 @@ class RunCredentials:
         if lease is not None or path:
             return lease
         # Without the path (a git that did not send it) only a lease alone on the host can be meant.
-        same = [item for item in self.leases if item.kind == "git" and _host_of(item.url_prefix) == host.lower()]
+        same = [item for item in self.leases if item.is_git and _host_of(item.url_prefix) == host.lower()]
         return same[0] if len(same) == 1 else None
 
     async def refresh(self) -> None:

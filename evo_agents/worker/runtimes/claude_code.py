@@ -171,7 +171,6 @@ import logging
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 import uuid
@@ -180,6 +179,7 @@ from pathlib import Path
 
 from evo_agents.hub import author, curator, runs
 from evo_agents.worker import packs, run_kinds
+from evo_agents.worker import platform as platforms
 from evo_agents.worker.adapter import (
     Outcome,
     ProfileRefused,
@@ -313,7 +313,7 @@ def curator_run(context: RunContext) -> bool:
 
 def _keychain_item() -> bool:
     """Whether macOS keeps Claude Code's login in the keychain: the item's attributes only, never its secret."""
-    if sys.platform != "darwin":
+    if not platforms.of().keychain:
         return False
     try:
         done = subprocess.run(
@@ -408,6 +408,8 @@ class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
     min_version = MIN_VERSION
+    compacts_window = True
+    subscription_curator = True  # plan decision 14
     packages = (SDK,)
     finished_words = "has finished its turn and takes no more messages"
     interactive = True

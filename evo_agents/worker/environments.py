@@ -404,7 +404,9 @@ class Container(Environment):
             problems.append(
                 f"{where} runs the agent in a container, and a person drives a run in a terminal of the host"
             )
-        if d.network == "none" and runtime == "opencode":
+        from evo_agents.worker.adapter import runtime_can  # the adapter imports this module
+
+        if d.network == "none" and runtime_can(runtime, "serves_over_port"):
             problems.append(f"{where} has network none, and the daemon reaches opencode's server over a port")
         problems += self._clear_of(core_paths)
         if problems:

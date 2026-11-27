@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import platform
 import subprocess
+import sys
 
 import pytest
 
@@ -87,7 +88,7 @@ def test_a_machine_without_fontconfig_gets_it_a_font_and_a_fontconfig_file_chrom
             return subprocess.CompletedProcess(command, 100 if command[2].endswith("t64") else 0)  # an Ubuntu 22.04
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(install.sys, "platform", "linux")
+    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(install.shutil, "which", lambda name, **options: f"/usr/bin/{name}")
     monkeypatch.setattr(install, "missing_libraries", lambda *args: next(looks))
     monkeypatch.setattr(install, "_run", fake_run)

@@ -96,32 +96,33 @@ class BackgroundWatch:
     def see(self, event: AgentEvent) -> str | None:
         """Follow ``event``; a line to print when it says something of the command."""
         body = event.body
-        if event.kind == "tool_call" and self.call_id is None:
-            given = body.get("rawInput")
-            if (
-                isinstance(given, dict)
-                and given.get("run_in_background") in (True, "true")
-                and BACKGROUND_COMMAND in str(given.get("command") or "")
-            ):
-                self.call_id = str(body.get("toolCallId") or "")
-                self.started_at = time.time()
-                return f"The agent started `{BACKGROUND_COMMAND}` in the background."
-        elif self.call_id is None or self.ended_at is not None:
-            return None
-        elif event.kind == "usage_update" and not self.turn_ended:
-            self.turn_ended = True
-            return "The agent's turn ended while the command runs: the session waits for it."
-        elif event.kind == "output":
-            found = body.get("raw")
-            if (
-                isinstance(found, dict)
-                and found.get("subtype") == "task_notification"
-                and found.get("tool_use_id") == self.call_id
-            ):
-                self.ended_at = time.time()
-                self.status = str(found.get("status") or "")
-                took = self.ended_at - (self.started_at or self.ended_at)
-                return f"The background command ended ({self.status}) {took:.0f}s after it started."
+        match event.kind:
+            case "tool_call" if self.call_id is None:
+                given = body.get("rawInput")
+                if (
+                    isinstance(given, dict)
+                    and given.get("run_in_background") in (True, "true")
+                    and BACKGROUND_COMMAND in str(given.get("command") or "")
+                ):
+                    self.call_id = str(body.get("toolCallId") or "")
+                    self.started_at = time.time()
+                    return f"The agent started `{BACKGROUND_COMMAND}` in the background."
+            case _ if self.call_id is None or self.ended_at is not None:
+                return None
+            case "usage_update" if not self.turn_ended:
+                self.turn_ended = True
+                return "The agent's turn ended while the command runs: the session waits for it."
+            case "output":
+                found = body.get("raw")
+                if (
+                    isinstance(found, dict)
+                    and found.get("subtype") == "task_notification"
+                    and found.get("tool_use_id") == self.call_id
+                ):
+                    self.ended_at = time.time()
+                    self.status = str(found.get("status") or "")
+                    took = self.ended_at - (self.started_at or self.ended_at)
+                    return f"The background command ended ({self.status}) {took:.0f}s after it started."
         return None
 
     def problems(self, repo: Path) -> list[str]:
@@ -169,19 +170,20 @@ def gateway_env(runtime: str, url: str, model: str, token: str, env: dict, repo:
 def describe(event: AgentEvent) -> str:
     """One event in a line: its kind and what it says."""
     body = event.body
-    if event.kind in ("agent_message_chunk", "agent_thought_chunk"):
-        text = (body.get("content") or {}).get("text") or ""
-    elif event.kind == "tool_call":
-        text = f"{body.get('title')} ({body.get('status')})"
-    elif event.kind == "tool_call_update":
-        text = f"{body.get('toolCallId')} {body.get('status')}"
-    elif event.kind == "usage_update":
-        text = json.dumps({"usage": body.get("usage"), "cost": body.get("cost")}, ensure_ascii=False)
-    elif event.kind == "plan":
-        text = f"{len(body.get('entries') or [])} entries"
-    else:
-        found = body.get("raw") if isinstance(body.get("raw"), dict) else body
-        text = " ".join(str(found.get(key)) for key in ("type", "subtype", "method") if found.get(key)) or "event"
+    match event.kind:
+        case "agent_message_chunk" | "agent_thought_chunk":
+            text = (body.get("content") or {}).get("text") or ""
+        case "tool_call":
+            text = f"{body.get('title')} ({body.get('status')})"
+        case "tool_call_update":
+            text = f"{body.get('toolCallId')} {body.get('status')}"
+        case "usage_update":
+            text = json.dumps({"usage": body.get("usage"), "cost": body.get("cost")}, ensure_ascii=False)
+        case "plan":
+            text = f"{len(body.get('entries') or [])} entries"
+        case _:
+            found = body.get("raw") if isinstance(body.get("raw"), dict) else body
+            text = " ".join(str(found.get(key)) for key in ("type", "subtype", "method") if found.get(key)) or "event"
     text = " ".join(str(text).split())
     if len(text) > LINE_CHARS:
         text = text[: LINE_CHARS - 3] + "..."

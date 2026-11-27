@@ -10,10 +10,10 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from evo_agents.worker import platform as platforms
 from evo_agents.worker.runtimes import common
 
 SESSION_NAME = "evo-run-{id}"
@@ -211,7 +211,7 @@ def _locale(env: Mapping[str, str]) -> dict[str, str]:
     """A UTF-8 locale for the UI when the agent's environment names none (a service starts with almost nothing)."""
     if any(env.get(name) for name in ("LC_ALL", "LC_CTYPE", "LANG")):
         return {}
-    return {"LANG": "en_US.UTF-8" if sys.platform == "darwin" else "C.UTF-8"}
+    return {"LANG": platforms.of().locale}
 
 
 def write_script(

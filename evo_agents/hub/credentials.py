@@ -228,8 +228,18 @@ class Lease:
     model: str | None = None
     api_format: str | None = None
 
+    @property
+    def is_env(self) -> bool:
+        """Whether it is an env var for the agent."""
+        return self.kind == "env"
+
+    @property
+    def is_git(self) -> bool:
+        """Whether git answers it for the origins under ``url_prefix``."""
+        return self.kind == "git"
+
     def __repr__(self) -> str:
-        target = self.env_var if self.kind == "env" else self.url_prefix
+        target = self.env_var if self.is_env else self.url_prefix
         return (
             f"Lease(id={self.id}, kind={self.kind!r}, provider={self.provider!r}, name={self.name!r}, "
             f"target={target!r}, expires_at={self.expires_at.isoformat() if self.expires_at else None})"

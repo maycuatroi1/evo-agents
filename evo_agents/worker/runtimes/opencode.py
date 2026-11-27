@@ -321,6 +321,7 @@ class OpencodeAdapter(QueueAdapter):
     runtime = "opencode"
     binary = "opencode"
     min_version = MIN_VERSION
+    serves_over_port = True
     packages = (AIOHTTP,)
     finished_words = "has gone idle and takes no more messages"
     interactive = True

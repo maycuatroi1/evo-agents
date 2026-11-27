@@ -80,8 +80,8 @@ def rate_limit_of(event: AgentEvent) -> dict | None:
     """The report of a ``rate_limit_event`` the agent's CLI wrote, as ``WorkerHub.rate_limit`` sends it without the
     lease: status, rate_limit_type, resets_at, utilization and windows; None for any other event. A rejected limit
     the CLI goes on past with overage counts as allowed_warning."""
-    raw = event.body.get("raw") if event.kind == "output" and isinstance(event.body, dict) else None
-    if not isinstance(raw, dict) or raw.get("type") != "rate_limit_event":
+    raw = event.raw
+    if raw is None or raw.get("type") != "rate_limit_event":
         return None
     info = raw.get("rate_limit_info")
     info = info if isinstance(info, dict) else {}
@@ -118,7 +118,7 @@ class Limits:
     def lease_id(self) -> int | None:
         """The id of the run's lease of CLAUDE_CODE_OAUTH_TOKEN, the account the hub may move; None for none."""
         for lease in self.run.credentials.leases:
-            if lease.kind == "env" and lease.provider == "secret" and lease.env_var == OAUTH_TOKEN:
+            if lease.is_env and lease.provider == "secret" and lease.env_var == OAUTH_TOKEN:
                 return lease.id
         return None
 

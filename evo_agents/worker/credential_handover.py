@@ -95,7 +95,7 @@ def _rewritten(origin: str) -> bool:
 
 def covering(leases: Iterable[Lease], url: str) -> Lease | None:
     """The git lease whose url_prefix covers ``url``, the longest one; None when none does."""
-    found = [lease for lease in leases if lease.kind == "git" and lease.url_prefix and matches(lease.url_prefix, url)]
+    found = [lease for lease in leases if lease.is_git and lease.url_prefix and matches(lease.url_prefix, url)]
     return max(found, key=lambda lease: len(normalize_origin(lease.url_prefix or "")), default=None)
 
 
