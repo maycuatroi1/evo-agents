@@ -326,7 +326,7 @@ MARKET_ORDER_PAID = "market.order.paid"  # a hub admin marked an order paid, wit
 MARKET_ORDER_CANCEL = "market.order.cancel"  # a hub admin cancelled an open order
 MARKET_LICENSE_ISSUE = "market.license.issue"  # the seller signed the licence of a paid order
 MARKET_PAYOUT = "market.payout"  # a hub admin marked a publisher's share of a month paid out
-# Buying them (evo_agents.hub.server.market_licenses): "market:<source id>/<plugin> order:<number>" for an order a hub
+# Buying them (evo_agents.hub.server.market.service.licenses): "market:<source id>/<plugin> order:<number>" for an order a hub
 # admin placed with a seller; "license:<id> plugin=<plugin> until=<date>" for a licence the hub received and checked,
 # and for one that lapsed, which turned the plugin off.
 MARKET_ORDER_PLACE = "market.order.place"

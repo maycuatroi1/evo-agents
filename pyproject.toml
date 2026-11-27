@@ -246,14 +246,14 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
-    "evo_agents.hub.worker -> evo_agents.hub.server.market_install",
-    "evo_agents.hub.worker -> evo_agents.hub.server.market_licenses",
+    "evo_agents.hub.worker -> evo_agents.hub.server.market.service.install",
+    "evo_agents.hub.worker -> evo_agents.hub.server.market.service.licenses",
     "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
     "evo_agents.hub.worker -> evo_agents.hub.server.notifications.service.deliveries",
     "evo_agents.hub.worker -> evo_agents.hub.server.outcomes",
     "evo_agents.hub.worker -> evo_agents.hub.server.run_reaper",
     "evo_agents.hub.worker -> evo_agents.hub.server.sealing",
-    "evo_agents.hub.worker -> evo_agents.hub.server.seller",
+    "evo_agents.hub.worker -> evo_agents.hub.server.seller.service.signals",
     "evo_agents.hub.worker -> evo_agents.hub.server.webhooks.service.delivery",
 ]
 broken_contract_guidance = """\
@@ -975,6 +975,41 @@ codes, the refusal texts more than one layer gives) import none of them. Move th
 that needs it: a check or a message into the service, a query into the repository, a shape or a constant into the \
 models. Other modules import the service, the repository's placement and queries, and the models, never the routes. \
 A new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-market-layers"
+name = "The plugin markets go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.market"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.market a route handler opens a transaction at most and passes the request's parts to a \
+public function of the service (market reads the markets and their sources, install installs a plugin from a market \
+or a GitHub release, licenses buys a paid plugin and checks its licences), which checks the caller, the publisher \
+and the licence and decides; the repository holds the SQL of the sources, the installs, the install requests and the \
+purchases; the models (the API's shapes and their constants) import none of them, nor a module of the hub that \
+reaches the service. Move the code that reaches up into the layer that needs it: a check or a message into the \
+service, a query into the repository, a shape into the models. Other modules import the service and the models, \
+never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, section \
+Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-seller-layers"
+name = "The seller goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.seller"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.seller a route handler opens a transaction at most and passes the request's parts to a \
+public function of the service (keys, listings, orders, revenue, signals, and api, the seller's API for buying \
+hubs), which checks the caller, the bundle and the order, signs the licence and decides; the repository holds the SQL \
+of the listings, bundles, orders, payouts and signals; the models (the API's shapes and their constants) import none \
+of them, nor a module of the hub that reaches the service. Move the code that reaches up into the layer that needs \
+it: a check or a message into the service, a query into the repository, a shape into the models. Other modules \
+import the service and the models, never the routes. A new module of the package goes into one of the four layers. \
+See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

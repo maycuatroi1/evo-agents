@@ -25,31 +25,34 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import re
 from dataclasses import dataclass
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.market_refresh import GitHubMarket, MarketUnavailable
 from evo_agents.hub.self_managed import ProjectScope
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.blobs import blob_store, put_bytes
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row
+from evo_agents.hub.server.market.models.install import (
+    BUNDLE_ASSET,
+    NOTHING_INSTALLED,
+    NOTICE,
+    GitHubInstallIn,
+    MarketInstalled,
+    MarketInstallIn,
+    MarketRequest,
+    MarketRequestIn,
+)
+from evo_agents.hub.server.market.repository import install as repository
+from evo_agents.hub.server.market.service.market import entry_of, source_row
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugin_grants import check_admin
-from evo_agents.hub.server.plugin_publishers import SIGNER, check_may_trust, trust
+from evo_agents.hub.server.plugin_publishers import check_may_trust, trust
 from evo_agents.hub.server.plugin_store import (
-    Plugin,
     PluginPublishIn,
     check_bundle,
     check_placeable,
@@ -64,11 +67,10 @@ from evo_agents.hub.server.plugin_store import (
     plugin as stored_plugin,
 )
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import AdminUser, CurrentUser, admin
+from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.bundle import BundleError, read_bundle
 from evo_agents.plugins.compat import plugin_version_key
 from evo_agents.plugins.market import (
-    REPO,
     CheckedRelease,
     ReleaseError,
     check_release,
@@ -81,71 +83,17 @@ from evo_agents.plugins.signing import SignatureError, SignatureUnavailable
 
 log = logging.getLogger(__name__)
 
-NOTICE = "market_install_request"  # evo_agents.hub.runs.NOTICE_KINDS
-NOTHING_INSTALLED = "nothing was installed"
-VERSION = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"
-TAG = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
-BUNDLE_ASSET = re.compile(r"([a-z][a-z0-9-]{0,62})-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]{1,40})?)\.tar\.gz")
-REFUSALS = {code: {"model": ErrorBody} for code in (404, 409, 422, 502, 503)}
-
-router = APIRouter(prefix="/v1/market", tags=["market"], responses={401: {"model": ErrorBody}})
-github_router = APIRouter(
-    prefix="/v1/plugins",
-    tags=["plugins"],
-    dependencies=[Depends(admin)],
-    responses={401: {"model": ErrorBody}, 403: {"model": ErrorBody}},
-)
-
-
-class MarketInstallIn(BaseModel):
-    version: Annotated[str | None, Field(pattern=VERSION)] = Field(
-        None, description="the version to install; the latest release when left out"
-    )
-    trust_publisher: bool = Field(
-        False, description="trust the signer for the publisher from now on, when the hub does not yet"
-    )
-
-
-class GitHubInstallIn(BaseModel):
-    repo: Annotated[str, Field(pattern=f"^{REPO.pattern}$", description="OWNER/REPO")]
-    tag: Annotated[str | None, Field(pattern=TAG)] = Field(
-        None, description="the release's tag; the latest if left out"
-    )
-    signer: Annotated[str | None, Field(pattern=SIGNER)] = Field(
-        None, description="what signs the releases; sigstore:OWNER/REPO/.github/workflows/ci.yml when left out"
-    )
-    trust_publisher: bool = False
-
-
-class MarketInstalled(BaseModel):
-    plugin: Plugin
-    trusted_publisher: bool = Field(description="whether this install made the hub trust the publisher's signer")
-    upgraded: bool
-
-
-class MarketRequestIn(BaseModel):
-    project: Annotated[str, Field(pattern=PROJECT_NAME)]
-
-
-class MarketRequest(BaseModel):
-    id: int
-    project: str
-    plugin: str
-    state: str
-    created: bool = Field(description="False when the project had asked already and the request is still open")
-
-
 # Downloading
 
 
 def _refused(exc: Exception) -> HTTPException:
     if isinstance(exc, SignatureError):
-        return HTTPException(422, f"refused ({exc.reason}): {exc}; {NOTHING_INSTALLED}")
+        return Unprocessable(f"refused ({exc.reason}): {exc}; {NOTHING_INSTALLED}")
     if isinstance(exc, SignatureUnavailable):
         return HTTPException(503, f"the signature cannot be checked on this hub now: {exc}; {NOTHING_INSTALLED}")
     if isinstance(exc, MarketUnavailable):
         return HTTPException(502, f"{exc}; {NOTHING_INSTALLED}")
-    return HTTPException(422, f"refused: {exc}; {NOTHING_INSTALLED}")
+    return Unprocessable(f"refused: {exc}; {NOTHING_INSTALLED}")
 
 
 def _release(reader: GitHubMarket, repo: str, version: str | None) -> dict:
@@ -219,8 +167,7 @@ async def check_trust(
     if for_one:
         return merge_publishers(trusted, [(publisher, signer)]), False
     if not confirmed:
-        raise HTTPException(
-            409,
+        raise Conflict(
             f"untrusted publisher: this hub does not trust {signer} to sign the plugins of {publisher}; confirm it "
             f"(trust_publisher, --trust) to trust it from now on; {NOTHING_INSTALLED}",
         )
@@ -230,12 +177,12 @@ async def check_trust(
 async def _place(conn: AsyncConnection, user, name: str, version: str, project_id: int | None = None) -> bool:
     """Install or upgrade plugin ``name`` to ``version``; whether it was an upgrade. 409 for an older version."""
     row = await find(conn, name, lock=True)
-    target = next(v for v in await version_rows(conn, row.id) if v.version == version)
+    target = next(v for v in await version_rows(conn, row.id) if v.version == version)  # pyright: ignore[reportOptionalMemberAccess]
     check_placeable(row, target)
-    installed = row.installed_version
-    if installed is not None and row.disabled_reason is None:
+    installed = row.installed_version  # pyright: ignore[reportOptionalMemberAccess]
+    if installed is not None and row.disabled_reason is None:  # pyright: ignore[reportOptionalMemberAccess]
         if plugin_version_key(version) < plugin_version_key(installed):
-            raise HTTPException(409, f"plugin {name} is installed at {installed}, above {version}; {NOTHING_INSTALLED}")
+            raise Conflict(f"plugin {name} is installed at {installed}, above {version}; {NOTHING_INSTALLED}")
         if version == installed:
             return False
         await set_installed(conn, user, row, version, upgrade=True, project_id=project_id)
@@ -244,19 +191,11 @@ async def _place(conn: AsyncConnection, user, name: str, version: str, project_i
     return False
 
 
-async def _close_requests(conn: AsyncConnection, user, name: str) -> None:
-    r = tables.market_install_requests
-    await conn.execute(
-        update(r)
-        .where(r.c.plugin == name, r.c.state == "open")
-        .values(state="installed", decided_by=user.user_id, decided_at=func.now())
-    )
-
-
 @dataclass(frozen=True)
 class Installing:
     """What installing a checked release needs, without a request: the hub's engine, config, signature checker,
-    version and blob store (``evo_agents.hub.server.market_licenses`` installs a paid plugin from the worker)."""
+    version and blob store (``evo_agents.hub.server.market.service.licenses`` installs a paid plugin from the
+    worker)."""
 
     engine: AsyncEngine
     config: HubConfig
@@ -277,8 +216,8 @@ async def _scope_plugin(conn: AsyncConnection, name: str, scope: ProjectScope) -
         return True
     if row.project_id != scope.project_id:
         whose = "the hub's" if row.project_id is None else "another project's"
-        raise HTTPException(
-            409, f"plugin {name} is {whose} already: a self-managed project installs only its own; {NOTHING_INSTALLED}"
+        raise Conflict(
+            f"plugin {name} is {whose} already: a self-managed project installs only its own; {NOTHING_INSTALLED}"
         )
     return False
 
@@ -296,8 +235,8 @@ async def install_checked(
     release only."""
     manifest = checked.manifest
     if manifest.tier != "isolated":
-        raise HTTPException(
-            422, f"{manifest.id} is a core plugin, which ships in the hub's image and is never installed from a market"
+        raise Unprocessable(
+            f"{manifest.id} is a core plugin, which ships in the hub's image and is never installed from a market"
         )
     publisher, signer = item["publisher"]["id"], item["publisher"]["signer"]
     publishers, new = await check_trust(hub.engine, hub.config, publisher, signer, confirmed, for_one=scope is not None)
@@ -318,19 +257,13 @@ async def install_checked(
     async with hub.engine.begin() as conn:
         if new:
             await trust(conn, user, hub.config, publisher, signer, f"installing {manifest.id} {manifest.version}")
-        blobs = tables.blobs
-        await conn.execute(
-            pg_insert(blobs)
-            .values(project_id=None, sha256=sha256, size=len(data), kind="plugin-bundle", created_by=user.user_id)
-            .on_conflict_do_nothing()
-        )
+        await repository.add_bundle_blob(conn, sha256, len(data), user.user_id)
         fresh = scope is not None and await _scope_plugin(conn, manifest.id, scope)
         await record_version(conn, user, body, stored)
         if fresh:
-            plugins = tables.plugins
-            await conn.execute(update(plugins).where(plugins.c.name == manifest.id).values(project_id=scope.project_id))
+            await repository.set_plugin_project(conn, manifest.id, scope.project_id)  # pyright: ignore[reportOptionalMemberAccess]
         upgraded = await _place(conn, user, manifest.id, manifest.version, scope.project_id if scope else None)
-        await _close_requests(conn, user, manifest.id)
+        await repository.close_requests(conn, user.user_id, manifest.id)
         result = await stored_plugin(conn, manifest.id, hub.hub_version)
     log.info("plugin installed from a release", extra={"plugin": manifest.id, "version": manifest.version})
     return MarketInstalled(plugin=result, trusted_publisher=new, upgraded=upgraded)
@@ -351,24 +284,22 @@ async def install_release(request: Request, user, item: dict, checked: CheckedRe
     return await install_checked(Installing.of(request), user, item, checked, confirmed)
 
 
-@router.post("/{source}/{plugin}/install", response_model=MarketInstalled, responses=REFUSALS)
 async def install_from_market(
-    request: Request, source: SourceId, plugin: PluginId, body: MarketInstallIn, user: AdminUser
+    request: Request, source: int, plugin: str, body: MarketInstallIn, user: Principal
 ) -> MarketInstalled:
-    """Install a free plugin of a market, or upgrade it, from its GitHub release."""
+    """Install free isolated plugin ``plugin`` of market ``source``, or upgrade it, from its GitHub release."""
     async with request.app.state.engine.begin() as conn:
         item = entry_of(await source_row(conn, source), plugin)
     if item["tier"] != "isolated":
-        raise HTTPException(409, f"{plugin} is a core plugin: it ships in the hub's image, which the operator upgrades")
+        raise Conflict(f"{plugin} is a core plugin: it ships in the hub's image, which the operator upgrades")
     if item["price"]["kind"] != "free":
-        raise HTTPException(409, f"{plugin} is sold by subscription: it needs a licence of its seller first")
+        raise Conflict(f"{plugin} is sold by subscription: it needs a licence of its seller first")
     checked = await _download(request, download_market, item, body.version)
     return await install_release(request, user, item, checked, body.trust_publisher)
 
 
-@github_router.post("/install-github", response_model=MarketInstalled, responses=REFUSALS)
-async def install_from_github(request: Request, body: GitHubInstallIn, user: AdminUser) -> MarketInstalled:
-    """Install a plugin from the release of a GitHub repo, signed by the signer named (or the repo's ci.yml)."""
+async def install_from_github(request: Request, body: GitHubInstallIn, user: Principal) -> MarketInstalled:
+    """Install the release of the GitHub repo ``body`` names, with what the request's app holds."""
     item, checked = await _download(request, download_github, body)
     return await install_release(request, user, item, checked, body.trust_publisher)
 
@@ -376,51 +307,39 @@ async def install_from_github(request: Request, body: GitHubInstallIn, user: Adm
 # Asking
 
 
-@router.post("/{source}/{plugin}/request", response_model=MarketRequest, responses=REFUSALS)
 async def request_install(
-    request: Request, source: SourceId, plugin: PluginId, body: MarketRequestIn, user: CurrentUser
+    conn: AsyncConnection, config: HubConfig, source: int, plugin: str, body: MarketRequestIn, user: Principal
 ) -> MarketRequest:
-    """Ask the hub admins to install a plugin of a market for project ``project``, of which the caller is an admin."""
-    config = request.app.state.config
-    r = tables.market_install_requests
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, body.project)
-        check_admin(access, "asking for a plugin")
-        row = await source_row(conn, source)
-        item = entry_of(row, plugin)
-        added = await conn.execute(
-            pg_insert(r)
-            .values(project_id=access.project_id, source_id=source, plugin=plugin, requested_by=user.user_id)
-            .on_conflict_do_nothing()
-            .returning(r.c.id, r.c.state)
-        )
-        found = added.first()
-        if found is None:
-            held = select(r.c.id, r.c.state).where(
-                r.c.project_id == access.project_id, r.c.source_id == source, r.c.plugin == plugin, r.c.state == "open"
-            )
-            open_one = (await conn.execute(held)).first()
-            return MarketRequest(id=open_one.id, project=body.project, plugin=plugin, state="open", created=False)
-        target = f"{body.project}/market:{source}/{plugin}"
-        await audit.record(
+    """Ask the hub admins to install plugin ``plugin`` of market ``source`` for project ``body.project``, of which
+    ``user`` is an admin; each hub admin gets a notice, once per open request."""
+    access = await project_access(conn, user, body.project)
+    check_admin(access, "asking for a plugin")
+    row = await source_row(conn, source)
+    item = entry_of(row, plugin)
+    found = await repository.add_request(conn, access.project_id, source, plugin, user.user_id)
+    if found is None:
+        open_one = await repository.open_request(conn, access.project_id, source, plugin)
+        return MarketRequest(id=open_one.id, project=body.project, plugin=plugin, state="open", created=False)  # pyright: ignore[reportOptionalMemberAccess]
+    target = f"{body.project}/market:{source}/{plugin}"
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=audit.MARKET_REQUEST,
+        target=target,
+        project_id=access.project_id,
+    )
+    for admin_id in await hub_admin_ids(conn, config.admins):
+        await NOTIFIER.notify(
             conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=audit.MARKET_REQUEST,
-            target=target,
-            project_id=access.project_id,
+            user_id=admin_id,
+            kind="notice",
+            title=f"{user.login} asks for {item['name']} in {body.project}",
+            body=f"{item['name']} ({plugin}) of market {row.repo}, by {item['publisher']['id']}",
+            notice_kind=NOTICE,
+            # Of no project: a hub admin need hold no grant on it to read it (the Inbox shows a project's notices
+            # to its members only); the project is in the title and the details.
+            details={"source": source, "plugin": plugin, "project": body.project},
+            link=f"/market/{source}/{plugin}",
         )
-        for admin_id in await hub_admin_ids(conn, config.admins):
-            await NOTIFIER.notify(
-                conn,
-                user_id=admin_id,
-                kind="notice",
-                title=f"{user.login} asks for {item['name']} in {body.project}",
-                body=f"{item['name']} ({plugin}) of market {row.repo}, by {item['publisher']['id']}",
-                notice_kind=NOTICE,
-                # Of no project: a hub admin need hold no grant on it to read it (the Inbox shows a project's notices
-                # to its members only); the project is in the title and the details.
-                details={"source": source, "plugin": plugin, "project": body.project},
-                link=f"/market/{source}/{plugin}",
-            )
     return MarketRequest(id=found.id, project=body.project, plugin=plugin, state=found.state, created=True)

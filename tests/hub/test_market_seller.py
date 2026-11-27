@@ -137,7 +137,7 @@ def test_a_hub_buys_a_paid_plugin_installs_it_with_its_licence_and_it_lapses_and
     from sqlalchemy import func, insert, select, update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server import market_licenses
+    from evo_agents.hub.server.market.service import licenses as market_licenses
     from evo_agents.plugins.license import add_months
 
     project_id = live.add_project(hubs.seller.db, "demo")
@@ -341,7 +341,8 @@ def test_seller_order_expiry_and_the_open_orders_counted_by_address_not_hub_id(h
     from sqlalchemy import update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server import seller, seller_api
+    from evo_agents.hub.server.seller.models import api as seller_api
+    from evo_agents.hub.server.seller.models import seller
 
     list_for_sale(hubs)
 

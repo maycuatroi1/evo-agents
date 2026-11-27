@@ -615,9 +615,6 @@ def _include_member_routes(app: FastAPI) -> None:
         features,
         gateway_proxy,
         kg_shared_pool_api,
-        market,
-        market_install,
-        market_licenses,
         merge_check,
         merge_judge,
         merge_view,
@@ -645,8 +642,6 @@ def _include_member_routes(app: FastAPI) -> None:
         run_waits,
         runnable_models,
         secrets,
-        seller,
-        seller_api,
         task_dispatch,
         work_cards,
     )
@@ -680,12 +675,17 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
+    from evo_agents.hub.server.market.routes import install as market_install
+    from evo_agents.hub.server.market.routes import licenses as market_licenses
+    from evo_agents.hub.server.market.routes import market
     from evo_agents.hub.server.opportunities import routes as opportunities
     from evo_agents.hub.server.ops import routes as ops_routes
     from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
+    from evo_agents.hub.server.seller.routes import api as seller_api
+    from evo_agents.hub.server.seller.routes import seller
     from evo_agents.hub.server.signals import routes as signals
     from evo_agents.hub.server.systems.routes import ops as system_ops
     from evo_agents.hub.server.systems.routes import systems as agent_systems

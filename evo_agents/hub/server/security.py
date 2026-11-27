@@ -18,7 +18,7 @@ third, HOOKS_PREFIX, holds the webhooks of core plugins, each under ``/v1/hooks/
 (``evo_agents.hub.server.plugin_routes``): a service outside the hub calls them with a secret of the plugin's, which
 the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. The
 fourth, SELLER_PREFIX, is the API a seller's hub serves the hubs that buy its plugins
-(``evo_agents.hub.server.seller_api``): an order's secret or a licence the seller signed is the credential, which the
+(``evo_agents.hub.server.seller.service.api``): an order's secret or a licence the seller signed is the credential, which the
 route checks itself, as it checks that the feature seller is on. A machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET

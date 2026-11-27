@@ -44,14 +44,8 @@ from evo_agents.hub.server.admin import LOGIN_NAME, MISSING, Grant, GrantRequest
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.invites import InviteCreated, InviteRequest
-from evo_agents.hub.server.market_install import (
-    NOTHING_INSTALLED,
-    TAG,
-    GitHubInstallIn,
-    Installing,
-    MarketInstalled,
-    install_github,
-)
+from evo_agents.hub.server.market.models.install import NOTHING_INSTALLED, TAG, GitHubInstallIn, MarketInstalled
+from evo_agents.hub.server.market.service.install import Installing, install_github
 from evo_agents.hub.server.plugin_grants import check_admin
 from evo_agents.hub.server.plugin_publishers import SIGNER
 from evo_agents.hub.server.plugin_store import Plugin, find, from_image, plugin, set_removed, version_rows
