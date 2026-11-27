@@ -34,6 +34,7 @@ from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import kg_health
 from evo_agents.hub.server.collect import collect
+from evo_agents.hub.server.kg.service import health as health_service
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.review import RULES
 from evo_agents.kg.sync import sync_project
@@ -296,7 +297,7 @@ def test_a_measure_that_fails_is_kept_with_its_error_and_tried_again_within_the_
     async def broken(*args, **kwargs):
         raise RuntimeError("the forge fell over")
 
-    monkeypatch.setattr(kg_health, "measure_project", broken)
+    monkeypatch.setattr(health_service, "measure_project", broken)
     assert measured(world) == {"failed": 1}
     ((_, build_id, body, error),) = health_rows(world.db)
     assert build_id is None and body == {} and error == "RuntimeError: the forge fell over"
@@ -497,7 +498,7 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
         asked.append((project, sink, [graph.build_id for graph in graphs], [plan_id for plan_id, _ in plans]))
         raise RuntimeError("sqlite went away")
 
-    monkeypatch.setattr(kg_health, "_evaluate", broken)
+    monkeypatch.setattr(health_service, "evaluate", broken)
     state = world.app.state
     found = partial(
         kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED
@@ -598,7 +599,7 @@ def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_sig
         asked.append((sink, found_set[0].version, len(found_set[0].questions), found_set[1]))
         return {"questions": 9, "methods": score, "build_id": graphs[0].build_id, "sink": sink}
 
-    monkeypatch.setattr(kg_health, "_evaluate", scored)
+    monkeypatch.setattr(health_service, "evaluate", scored)
     state = world.app.state
     found = partial(
         kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED
@@ -682,7 +683,7 @@ def test_a_measure_loads_the_snapshot_of_the_graph_once_and_gives_its_memory_bac
         return await load(engine, project_id)
 
     monkeypatch.setattr(kg_snapshots, "load", counted)
-    monkeypatch.setattr(kg_health, "give_back", lambda: given.append(len(loads)))
+    monkeypatch.setattr(health_service, "give_back", lambda: given.append(len(loads)))
     assert measured(world, tmp_path=tmp_path) == {"measured": 1}
     assert loads == [project_id(world.db)] and given == [1]
     ((_, _, body, _),) = health_rows(world.db)
@@ -704,7 +705,7 @@ def test_no_snapshot_is_loaded_for_an_owner_who_may_not_read_the_graph(world, tm
         return None
 
     monkeypatch.setattr(kg_snapshots, "load", counted)
-    monkeypatch.setattr(kg_health, "owner_access", no_grant)
+    monkeypatch.setattr(health_service, "owner_access", no_grant)
     assert measured(world, tmp_path=tmp_path) == {"measured": 1}
     assert loads == []
     ((_, _, body, _),) = health_rows(world.db)

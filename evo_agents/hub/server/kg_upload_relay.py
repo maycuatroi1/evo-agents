@@ -15,7 +15,6 @@ joins the parts as for the CLI. The log carries counts and ids, never a path or 
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import tempfile
 from pathlib import Path as FilePath
@@ -23,16 +22,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import Path as PathParam
-from pydantic import BaseModel
-from sqlalchemy import func, select, update
 
-from evo_agents.hub import tables
-from evo_agents.hub.blobs import MAX_PARTS, BlobStoreUnavailable
+from evo_agents.hub.blobs import MAX_PARTS
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg_uploads import REFUSALS, UploadId, part_sizes
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.kg.models.uploads import KgPartSent as KgPartSent
+from evo_agents.hub.server.kg.service import upload_relay as service
+from evo_agents.hub.server.kg_uploads import REFUSALS, UploadId
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -47,11 +44,6 @@ BODY = {
 }
 
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}})
-
-
-class KgPartSent(BaseModel):
-    number: int
-    size: int
 
 
 async def _receive(request: Request, path: FilePath, size: int) -> None:
@@ -81,30 +73,11 @@ async def send_part(
 ) -> KgPartSent:
     """Relay part ``number`` of an upload in flight to the blob store, for a client that cannot reach the store."""
     store = blob_store(request)
-    u = tables.kg_uploads
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        row = (
-            await conn.execute(select(u).where(u.c.id == upload_id, u.c.project_id == access.project_id))
-        ).one_or_none()
-        if row is None or row.created_by != user.user_id:
-            raise HTTPException(404, f"no upload {upload_id} of yours in project {access.name}")
-        if row.state != "uploading" or row.multipart_id is None:
-            raise HTTPException(409, f"upload {upload_id} is {row.state}, not uploading: start it again")
-        sizes = part_sizes(row.size, row.part_size)
-        if number not in sizes:
-            raise HTTPException(422, f"upload {upload_id} has parts 1 to {len(sizes)}, not {number}")
-        await conn.execute(update(u).where(u.c.id == row.id).values(updated_at=func.now()))
-    size = sizes[number]
+    row, size = await service.claim(request.app.state.engine, user, project, upload_id, number)
     with tempfile.TemporaryDirectory() as directory:
         path = FilePath(directory) / "part"
         await _receive(request, path, size)
         with path.open("rb") as body:
-            try:
-                sent = await asyncio.to_thread(store.upload_part, row.object_key, row.multipart_id, number, body, size)
-            except BlobStoreUnavailable:
-                raise HTTPException(503, "the blob store did not answer (UploadPart); send the part again") from None
-    if not sent:
-        raise HTTPException(409, f"upload {upload_id} lost its parts in the store: start it again")
+            await service.relay(store, row, number, body, size)
     log.info("kg upload part relayed", extra={"project": project, "upload": upload_id, "part": number, "bytes": size})
     return KgPartSent(number=number, size=size)

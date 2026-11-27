@@ -17,26 +17,15 @@ from evo_agents.hub.server.kg.models.entities_setup import (
     NO_CONFIG,
     SetupOut,
 )
-from evo_agents.hub.server.kg.repository import entities_setup as repository
 from evo_agents.hub.server.kg.repository.graph import find_builds, knowledge
 from evo_agents.hub.server.kg.service.graph import queue
+from evo_agents.hub.server.kg.service.settings import may_change
 from evo_agents.hub.server.kg.service.web import require_reader
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import holds
 from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.entities import sink_problem
 from evo_agents.kg.policy import Policy
-
-
-async def may_change(conn: AsyncConnection, user, access) -> None:
-    """The writer role, and for a run's token a run of this project, as for changing the KG settings
-    (``evo_agents.hub.server.kg_settings.may_change``)."""
-    require_reader(access)
-    if not holds(access.role, "writer"):
-        raise HTTPException(403, f"changing the KG settings of project {access.name} needs the writer role on it")
-    run = user.acts_for_run
-    if run is not None and await repository.run_project(conn, run) != access.project_id:
-        raise HTTPException(403, f"run {run} is not a run of project {access.name}")
 
 
 def _mapping(tuning, step_on: bool) -> dict:
