@@ -12,7 +12,7 @@ reach is neither listed nor counted. It answers:
 - ``items``: at most MAX_ITEMS things that changed in the window, the first ones in the order they happened, each with
   its kind (ITEM_KINDS), a title, a body, its moment, its project and a link:
 
-  - ``release``: a release cycle of a project that was published (``release_watch``);
+  - ``release``: a release cycle of a project that was published (``releases.service.watch``);
   - ``step_done``: a step of a visible plan that is done now and was not in the revision the hub held at the start of
     the window (for a plan first written in the window, in its first revision), at the first revision since that has
     it done; a step's ``done_at`` is a date, too coarse for a mark that moves within a day;
@@ -74,7 +74,7 @@ from evo_agents.hub.server.overview import (
 )
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.release_cycles import releases_link
+from evo_agents.hub.server.releases.models.cycles import releases_link
 from evo_agents.hub.server.review_inbox import proposal_link
 from evo_agents.hub.server.security import CurrentUser
 

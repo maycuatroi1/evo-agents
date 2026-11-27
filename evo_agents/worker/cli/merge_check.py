@@ -1,6 +1,6 @@
 """``evo-agents worker merge-check REPO [--pr N]``: the agent of a plan run has the hub judge the run's pull request on
 github.com at its head before it merges it, in a repo whose policy has ``merge_check`` on
-(``evo_agents.hub.server.merge_check``).
+(``evo_agents.hub.server.merge.service.check``).
 
 It reads the run from EVO_RUN_ID and EVO_WORKER_HOME, as ``worker wait`` does, refuses outside a plan run of this
 worker, and calls the hub with the worker's token (POST /v1/worker/runs/{id}/merge-check) with the branch the run

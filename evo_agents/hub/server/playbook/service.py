@@ -33,13 +33,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import playbook, review
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.playbook import repository as store
 from evo_agents.hub.server.playbook.models import PlaybookEntry, PlaybookView
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposals.models import EvidenceIn
 from evo_agents.hub.server.proposals.service.record import held_review_run, resolve, writer_of
-from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import Principal

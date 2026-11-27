@@ -35,7 +35,7 @@ SIGN_IN_ENDED = (
 KINDS = ("decision", "proposal", *runs.NOTICE_KINDS)  # the kinds of notification a member sets a tier for
 # The kinds whose default tier is interrupt, for the notifications ``default_tier`` names: the rest default to brief.
 DEFAULT_INTERRUPTS = ("decision", "run_failed", "release", "merge_paused")
-RELEASED = "published"  # the event of a release notice of a release that went out (``release_watch``)
+RELEASED = "published"  # the event of a release notice of a release that went out (``releases.service.watch``)
 FALLBACK_ZONE = "UTC"  # the time zone of quiet hours whose own Postgres no longer knows (logged)
 PREFERENCES = ("tiers", "quiet_start", "quiet_end", "time_zone", "digest_at")  # the columns ``set_preferences`` sets
 

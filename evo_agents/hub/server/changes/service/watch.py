@@ -16,12 +16,9 @@ from evo_agents.hub.server.changes.repository import watch as store
 from evo_agents.hub.server.changes.repository.views import change_of_plan
 from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.changes.service.shift import unready_steps
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.protection import (
-    Target,
-    github_target,
-)
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, Target
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +42,7 @@ def _github_time(text) -> datetime | None:
 async def _watch(engine: AsyncEngine, app: GitHubApp, change) -> str:
     """Read a pull request left open for its owner: merged by hand, the change is merged (and its figures will be
     counted again); closed, it is closed; else it is read again after WATCH_EVERY."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
     try:
@@ -115,7 +112,7 @@ async def settle_by_branch(engine: AsyncEngine, app: GitHubApp, change, target: 
     has no step left: one merged, else the newest when it is closed, settles the change as ``_settle`` does (its branch
     merged, or its pull request closed, by hand). The outcome, or None when no pull request settles it or GitHub
     refuses."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     if target is None or not change.branch:
         return None

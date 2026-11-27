@@ -1,4 +1,4 @@
-"""The turn of the hub's merge queue on GitLab (``evo_agents.hub.server.merge_turn``; plan gitlab-merge-queue, criterion
+"""The turn of the hub's merge queue on GitLab (``evo_agents.hub.server.merge.service.turn``; plan gitlab-merge-queue, criterion
 a5), against Postgres and the fake GitLab of ``tests.hub.fake_gitlab``: the real GitLab is never called.
 
 The checks step 5 names: each target branch has one queue and one merge request of it has the turn at a time; its turn
@@ -28,7 +28,7 @@ from psycopg import errors
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import merge_gate, tables
-from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server.merge.service import gate as queue
 from tests.hub.fake_gitlab import sha_of
 from tests.hub.live import sql
 from tests.hub.test_merge_gate import (  # noqa: F401 (world: a fixture)

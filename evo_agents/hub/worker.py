@@ -80,9 +80,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.release_schedules``, every minute, one pass at a time: each project's release schedule whose local time came
   within the hour gets the check of that day, once: without any model, the newest release tag and the commit of the
   target ref are compared on the packaging paths, and a change opens a cycle and queues its cut run, with the workers'
-  App reading GitHub (``evo_agents.hub.server.release_check``, ``evo_agents.hub.releases``); then each release run
+  App reading GitHub (``evo_agents.hub.server.releases.service.check``, ``evo_agents.hub.releases``); then each release run
   that is done with its branch is landed: its pull request opened and merged, and its merge commit tagged, with the
-  same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
+  same App (``evo_agents.hub.server.releases.service.land``). The pass is the server's: the ``hub worker`` command hands it
   down (``HubContext.release_pass``), since this module imports no server module beyond its job list
   (docs/structure.md, section Package boundaries).
 - ``hub.cron_jobs``, every minute, one pass at a time: each cron job of a project not archived that is due fires once
@@ -133,7 +133,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.merge_queue``, every minute, one pass at a time: the merge queue on GitLab of each project whose autonomy
   policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
   until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
-  (``evo_agents.hub.server.merge_gate``, ``.merge_judge``).
+  (``evo_agents.hub.server.merge.service.gate``, ``evo_agents.hub.server.merge.service.judge``).
 - ``hub.extract_uploads``, every minute, one pass at a time: each archive uploaded with ``hub kg upload`` read into the
   items of its source, the uploads of the source it replaces released, and a build queued
   (``evo_agents.hub.kg_upload_extract``).
@@ -181,7 +181,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from evo_agents.hub.server.credentials.models.sealing import Sealer
-    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.forge.client.github_app import GitHubApp
 
 log = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ class HubContext:
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
     engine: AsyncEngine | None = None  # on ``pool``; made on it when not given
     curator_app: GitHubApp | None = None  # None without EVO_HUB_CURATOR_APP_*: no ruleset checked
-    # the server's release pass (evo_agents.hub.server.release_check), which the hub worker command hands down;
+    # the server's release pass (evo_agents.hub.server.releases.service.check), which the hub worker command hands down;
     # None checks and lands no release
     release_pass: Callable[[AsyncEngine, GitHubApp | None], Awaitable[dict]] | None = None
     # the server's tick of a project's Loop (evo_agents.hub.server.loop.tick), handed down the same way and called
@@ -457,13 +457,13 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.MERGE_QUEUE, pass_context=True, lock=jobs.MERGE_QUEUE, queueing_lock=jobs.MERGE_QUEUE)
 async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server import (
-        merge_ancestry,
-        merge_check,
-    )  # a run's pull request on github.com, judged at its head
     from evo_agents.hub.server.changes.service.job import (
         merge_gate,  # the queue's job, through the module of the Curator's changes
     )
+    from evo_agents.hub.server.merge.service import (  # a run's pull request on github.com, judged at its head
+        ancestry as merge_ancestry,
+    )
+    from evo_agents.hub.server.merge.service import check as merge_check
 
     found = hub(context)
     outcomes = await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)
@@ -855,7 +855,7 @@ async def run(
     ``HubContext.memory_upkeep``, ``HubContext.entity_key``, ``HubContext.hub_turn``), and so is ``cron_pass``
     (``HubContext.cron_pass``)."""
     from evo_agents.hub.server.credentials.models.sealing import Sealer
-    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.forge.client.github_app import GitHubApp
 
     github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
     try:

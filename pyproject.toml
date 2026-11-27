@@ -243,9 +243,9 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.context_answer_reuse",
     "evo_agents.hub.worker -> evo_agents.hub.server.curator.service.shift",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests.service.sessions",
-    "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
-    "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
-    "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
+    "evo_agents.hub.worker -> evo_agents.hub.server.forge.client.github_app",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge.service.ancestry",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge.service.check",
     "evo_agents.hub.worker -> evo_agents.hub.server.market.service.install",
     "evo_agents.hub.worker -> evo_agents.hub.server.market.service.licenses",
     "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
@@ -1123,6 +1123,66 @@ format never changes) import none of them. Move the code that reaches up into th
 message into the service, a query into the repository, a shape or a constant into the models. Other modules import \
 the service, the repository and the models, never the routes but put_secret, which the Claude sign-in calls. A new \
 module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-forge-layers"
+name = "The forges go from their routes to their service to their repository or their clients to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.forge"]
+layers = ["routes", "service", "repository | client", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.forge the route handlers of the Curator's ruleset checks (protection) keep their auth and \
+pass the request's parts to the service (protection, the checks of rulesets, why a Builder waits and the job's own \
+checks; secrets, the forge secrets the hub opens for GitLab), which checks the caller and decides; the repository \
+holds the SQL of the ruleset checks and of the forge secrets; the client, next to the repository, holds the HTTP \
+clients to GitHub (github, the OAuth App, and github_app, the GitHub Apps) and to GitLab (gitlab), and imports neither \
+the repository nor the service; the models (the errors and shapes of GitHub and GitLab, the shapes and texts of the \
+ruleset checks, and forges, the Forge interface with GitHub and GitLab, which does no I/O) import none of them. Move \
+the code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
+repository, a call to GitHub or GitLab into the client, a shape, an error or a constant into the models. Other modules \
+import the service, the client, the repository and the models, never the routes. A new module of the package goes \
+into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-releases-layers"
+name = "The releases go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.releases"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.releases a route handler (releases, a project's daily release under /v1/projects, and \
+claims, the worker protocol's push of a release run's branch) checks the caller's token and passes the engine and \
+the request's parts to the service, which checks access, opens the transaction and decides: the daily check, the \
+cycles and their stops, the landing, the watch of a tag's CI, the settling, the answer to a stop, the claim of a \
+release run and the release of a global skill; the repository holds the SQL of the schedules, checks, cycles, tags, \
+release runs and skill versions; the models (the API's shapes, the job names, the texts and limits more than one \
+layer gives) import none of them. Move the code that reaches up into the layer that needs it: a check or a message \
+into the service, a query into the repository, a shape or a constant into the models. Other modules import the \
+service and the models, never the routes but the app, which includes them. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-merge-layers"
+name = "The merge check, the pulls and the merge queue go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.merge"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.merge a route handler (check, judge, merged_work: the worker protocol's merge check, merge \
+gate and triage, a judge run's inputs and verdict, and the merged runs a worker keeps; view, the merge queue's routes) \
+keeps its auth and passes the request's parts to the service, which opens the transaction, checks and decides \
+(check, judge, judging, ancestry, comments, merged_work, draft_pulls, trailers, and pulls, the hub's own calls to \
+GitHub; gate, gate_pass, turn, breaker, holds, passes, post_merge, access and view, the merge queue on GitLab); the \
+repository holds the SQL of the merge checks, the judge runs, the drafts kept on runs, the merged runs, the trailers \
+and the queue's rows, holds, passes, breakers and merges; the models (the API's \
+shapes, the check's states and texts, the errors and findings of pulls, the drafts' dataclasses and limits) import \
+none of them. Move the code that reaches up into the layer that needs it: a check or a message into the service, a \
+query into the repository, a shape or a constant into the models. Other modules import the service, the repository \
+and the models, never the routes. A new module of the package goes into one of the four layers. See \
+docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

@@ -37,8 +37,10 @@ from evo_agents.hub.server.changes.repository.repos import repos_of
 from evo_agents.hub.server.changes.repository.views import change_of_plan, charter_of, plan_body, raise_tier
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.changes.service.moves import set_change
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.protection import github_target, reason_line, ruleset_wait
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.forge.service.protection import ruleset_wait
 
 log = logging.getLogger(__name__)
 
@@ -167,8 +169,8 @@ async def open_pulls(engine: AsyncEngine, app, change, reader: change_tiers.Grap
 
 async def _open_repo(engine: AsyncEngine, app, change, row, inputs: PullInputs, reader) -> str:
     """Open ``row``'s pull request (``job.opener``), read its files for signs and the tier, and keep it."""
-    from evo_agents.hub.server import pulls
     from evo_agents.hub.server.changes.service import job
+    from evo_agents.hub.server.merge.service import pulls
 
     target, view = github_target(row.origin), overlay(change, row)
     if target is None:

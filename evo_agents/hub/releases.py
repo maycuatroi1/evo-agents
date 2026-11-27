@@ -1,8 +1,8 @@
 """The daily release of a project as the hub models it: its schedule, the check the hub makes at the schedule's local
 time, and the cycle a check opens. Pure functions over JSON values and datetimes, standard library only, so the api,
-the hub's worker and the command line share them. ``evo_agents.hub.server.releases`` holds the routes,
-``evo_agents.hub.server.release_check`` the check and the job ``hub.release_schedules`` built on them, and
-``evo_agents.hub.server.release_github`` what the check reads of GitHub.
+the hub's worker and the command line share them. ``evo_agents.hub.server.releases.routes.releases`` holds the routes,
+``evo_agents.hub.server.releases.service.check`` the check and the job ``hub.release_schedules`` built on them, and
+``evo_agents.hub.server.releases.service.github`` what the check reads of GitHub.
 
 A project has at most one release schedule, apart from the schedules and the charter of the night shift: the Curator's
 pause, resume and circuit breaker never touch it, and pausing it never touches the night shift. An admin of the project

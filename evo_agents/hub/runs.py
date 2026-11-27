@@ -213,7 +213,7 @@ LAZY_CHAT_REPOS = "lazy_chat_repos"
 # request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
 UPDATE_NOW = "update_now"
 # a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
-# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
+# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge.service.judge): the hub pins such a run to no other
 MERGE_JUDGE = "merge_judge"
 # a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
@@ -383,7 +383,7 @@ LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that 
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
 ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
-# what the hub alone asks the owner of a release cycle that stopped, on its last run (``server.release_cycles``)
+# what the hub alone asks the owner of a release cycle that stopped, on its last run (``releases.service.cycles``)
 RELEASE_DECISION_CATEGORY = "release"
 # what the hub alone asks the person a work item of the Loop stands for after its third failure, on its last run
 # (``server.loop.stall``)
@@ -423,9 +423,9 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
-# merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
+# merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge.service.breaker``)
 # pm_daily: the digest of a project's morning, pm_escalation: a blocker pm escalates (core plugin pm)
-# release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
+# release: a release cycle published its version, or the hub cannot read its CI (``releases.service.watch``)
 # loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
 # goal_review: the first day of a month, the admins and goal owners of a project whose Loop is on review its goals;
 # loop_brief: the Loop's part of the morning brief, for a project whose Curator sends none (``server.loop.notices``)
@@ -481,7 +481,7 @@ NOTICE_KINDS = (
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and
 # counted in Today's summary (``server.today``) rather than the unread count. A notice of these kinds whose details carry
-# an ``ask`` (the merge queue's audit sample, revert or release, ``server.post_merge``) waits for an answer: it is not one.
+# an ``ask`` (the merge queue's audit sample, revert or release, ``server.merge.service.post_merge``) waits for an answer: it is not one.
 REPORT_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", OUTPUT_NOTICE)
 REPORT_ASK = "ask"  # the key of a notice's details that makes a notice of REPORT_NOTICE_KINDS ask something
 
@@ -555,7 +555,7 @@ SURROGATE_STAND_IN = "\ufffd"  # what a lone surrogate of an event body is store
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 # What a run makes beside the work to run it, at any depth: a virtualenv, or a link to one in a cache of the machine.
 # The worker leaves a new one out of a run's commit (``worker.gitops.commit_run``); the hub opens no draft pull request
-# of a branch that changes nothing else (``hub.server.draft_pulls``).
+# of a branch that changes nothing else (``hub.server.merge.service.draft_pulls``).
 WORKER_MADE = (".venv",)
 
 

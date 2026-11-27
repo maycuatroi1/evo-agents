@@ -1,8 +1,8 @@
 """The gate before merge of the hub's merge queue on GitLab (plan gitlab-merge-queue, criterion a4): which merge
 requests the queue takes, the gates each one passes before it waits for its turn, in order, the cheap ones first, and
 what the Judge of a merge request is asked and answers. Pure functions over plain values, standard library only, so
-the api, the hub's job worker, the worker daemon and the tests share them; ``evo_agents.hub.server.merge_gate`` runs
-the job, ``evo_agents.hub.server.merge_judge`` the judge runs.
+the api, the hub's job worker, the worker daemon and the tests share them; ``evo_agents.hub.server.merge.service.gate`` runs
+the job, ``evo_agents.hub.server.merge.service.judge`` the judge runs.
 
 **Scope** (``scope``). A merge request is in the queue's scope when its project's autonomy policy has its repo in mode
 ``auto``, a forge secret of the project covers the repo's origin, it targets the repo's target branch from a branch
@@ -51,7 +51,7 @@ There is no gate on the size of a diff: no merge request waits for its number of
 4 of 2026-10-21). A verdict holds for a patch, not a commit (``patch_fingerprint``: the lines each file adds and
 removes, without their numbers or context), so a rebase that keeps the patch keeps it.
 
-**The queue** (criterion a5; ``evo_agents.hub.server.merge_turn`` runs it). A merge request ``ready`` waits for its
+**The queue** (criterion a5; ``evo_agents.hub.server.merge.service.turn`` runs it). A merge request ``ready`` waits for its
 turn on its target branch; one of a branch has the turn at a time (TURN_STATES), and a merge request merged before it
 holds the next turn back until it reaches the policy's ``merge.hold_until`` (``holds_turn``). A turn sent back because
 the target branch moved keeps its place, MAX_REBASES times in a row at most. A revert goes first, and passes gate 1 and
@@ -474,7 +474,7 @@ def risk_of(
 
 def judges_merge_request(curator: Mapping | None) -> bool:
     """Whether the claim of a judge run (its ``curator``) names a merge request of the queue, not a Curator's change:
-    a judge run of the queue names no change (``evo_agents.hub.server.merge_judge.merge_claim``)."""
+    a judge run of the queue names no change (``evo_agents.hub.server.merge.service.judge.merge_claim``)."""
     return isinstance(curator, Mapping) and curator.get("role") == "judge" and curator.get("change_id") is None
 
 
@@ -609,7 +609,7 @@ def build_prompt(
     forge: str = "gitlab",
 ) -> str:
     """The prompt of a judge run of the queue, or of the merge check of a pull request on github.com when ``forge`` is
-    github (``evo_agents.hub.server.merge_check``, whose checks ran on the head merged with the base): the rules, the dimensions, the merge request (``mr``: iid, title,
+    github (``evo_agents.hub.server.merge.service.check``, whose checks ran on the head merged with the base): the rules, the dimensions, the merge request (``mr``: iid, title,
     description, web_url, source_branch, target_branch), the plan's goal and each of its steps in the repo (what,
     verify, the criteria of the plan it names with the locators of their proofs; never their evidence or the reason
     of a proof, which the Builder wrote) or the task, for the second Judge why the risk is high, and the findings of

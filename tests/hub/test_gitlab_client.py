@@ -1,4 +1,4 @@
-"""The hub's GitLab client (``evo_agents.hub.server.gitlab``) against the fake GitLab of ``tests.hub.fake_gitlab``.
+"""The hub's GitLab client (``evo_agents.hub.server.forge.client.gitlab``) against the fake GitLab of ``tests.hub.fake_gitlab``.
 
 The checks step 3 of plan gitlab-merge-queue names: the client reads a merge request, its diff and the pipelines of a
 commit, rebases a merge request, merges it with the sha the hub checked, plays a manual job, and makes revert commits
@@ -20,9 +20,9 @@ pytest.importorskip("httpx")
 
 import httpx
 
-from evo_agents.hub.server import gitlab
-from evo_agents.hub.server.gitlab import (
-    GitLab,
+from evo_agents.hub.server.forge.client import gitlab
+from evo_agents.hub.server.forge.client.gitlab import GitLab
+from evo_agents.hub.server.forge.models.gitlab import (
     GitLabProject,
     GitLabRefused,
     GitLabUnavailable,

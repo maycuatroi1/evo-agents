@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
+from evo_agents.hub.server.forge.models.forges import GITHUB
 
 
 async def left_open(conn: AsyncConnection, every: timedelta, limit: int) -> list:
@@ -21,7 +22,7 @@ async def left_open(conn: AsyncConnection, every: timedelta, limit: int) -> list
         .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
         .where(
             c.c.state == "open",
-            c.c.forge == "github",
+            c.c.forge == GITHUB.name,
             c.c.pr_number.is_not(None),
             c.c.updated_at < func.now() - every,
         )
@@ -48,7 +49,7 @@ async def planned_on_github(conn: AsyncConnection, every: timedelta) -> list:
         .join(pl, (pl.c.project_id == c.c.project_id) & (pl.c.plan_id == c.c.plan_id))
         .where(
             c.c.state == "planned",
-            c.c.forge == "github",
+            c.c.forge == GITHUB.name,
             c.c.branch.is_not(None),
             c.c.updated_at < func.now() - every,
         )

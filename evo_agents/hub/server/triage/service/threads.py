@@ -38,7 +38,7 @@ the attempt. The agent of a stale run's thread may ask its worker to stop it (``
 not clear, a full chat, a database error) rolls back to it and leaves the run failed with the notice it always had.
 
 ``project_thread`` is the hub's thread of something that is no failed run, a release cycle that stopped
-(``release_cycles``): the hub writes it in the project's triage chat, with its owner put in it, and mentions no agent,
+(``releases.service.cycles``): the hub writes it in the project's triage chat, with its owner put in it, and mentions no agent,
 since the owner decides. ``asking_thread`` is the same thread with the project's default agent mentioned, and
 ``tell_thread`` adds the hub's message to the thread a failed run opened: the triage of a work item of the Loop that
 failed twice (``loop.stall``). ``asking_reply`` adds the hub's message to a thread ``asking_thread`` opened and mentions

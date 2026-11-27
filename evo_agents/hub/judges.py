@@ -1,6 +1,6 @@
 """Who judges a change: the runtime and model of the Curator's Judge (``judge_runtime``) and of the Judges of the hub's
 merge queue on GitLab (``merge_judge_model``). Pure functions, standard library only; ``evo_agents.hub.judge`` names
-the Curator's two as it did before they moved here, and ``evo_agents.hub.server.merge_judge`` queues the queue's.
+the Curator's two as it did before they moved here, and ``evo_agents.hub.server.merge.service.judge`` queues the queue's.
 
 The Curator's Judge runs on Codex when the project's policy declares a sink for Codex (an id ``codex@...``) whose
 clearance covers the project's label and the worker on duty has it, else on Claude Code with a model other than the

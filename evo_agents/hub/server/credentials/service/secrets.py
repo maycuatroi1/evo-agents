@@ -7,7 +7,7 @@ names the variable of the agent's environment it sets (``env_var``, never one of
 answers for (``url_prefix``, kept in the form of ``credentials.normalize_origin``) and the user git sends with it
 (``username``, DEFAULT_GIT_USERNAME when left out); kind ``forge`` names the https prefix of the GitLab projects whose
 merge requests the hub drives with it (``url_prefix``, as for git, and no username: GitLab takes the token in a
-header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to projects the caller
+header), and is never leased to a run (``evo_agents.hub.server.forge.service.secrets``). ``projects`` binds it to projects the caller
 holds the writer role on, the admin role for kind forge; left out or empty, the secret is personal: kept for its owner
 alone and leased to no run until it is bound to a project, by a PUT naming its projects or when a run of its owner asks
 for its variable (``evo_agents.hub.server.credentials.service.resolver``). A forge secret needs a project, and a personal secret

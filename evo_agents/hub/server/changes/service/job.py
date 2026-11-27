@@ -1,7 +1,7 @@
 """The Curator's changes on the hub: an accepted proposal's plan, its Builder, its pull request, its Judge and its
 merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the model,
 ``evo_agents.hub.server.proposal_plans`` how an accepted proposal becomes the Curator's plan and its change, and
-``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch. This module
+``evo_agents.hub.server.forge.service.protection`` the repos whose ruleset keeps the Curator off their default branch. This module
 holds the job, its pull requests and merges; in the package ``evo_agents.hub.server.changes``, ``models`` holds the
 models, ``repository`` the reading and writing of a change, ``service.policy`` the refusals and what a run of the
 Curator gets, ``service.shift`` the night shift's side, ``routes`` and ``service.judge`` the routes and
@@ -61,7 +61,7 @@ closed or an agent merged while the pass read GitHub is left as it is (MOVED).
 CI must be green, or, when the charter has ``merge_without_ci``, may be none at all or, with a ruleset that requires no
 check, what ran: a check that ran and failed still leaves the change open, and one still running makes it wait. A
 change of a harness alone whose replays won merges as tier 0 (``service.tiers.merge_tier``), and the merge of one
-releases its global skill (``evo_agents.hub.server.skill_release``, part of each pass).
+releases its global skill (``evo_agents.hub.server.releases.service.skill_release``, part of each pass).
 A change left open for its owner is told in its proposal's thread when the charter has the agent answer, and the agent
 may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head`` and ``record_merge``, which the
 hub's own merge uses too). While the project's night shift is paused the hub merges nothing: a judged change waits for
@@ -98,7 +98,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import approval_heads, diff_signs, guard, judge, tiers
-from evo_agents.hub.server import audit, merge_gate, skill_release
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.changes.repository import job as store
 from evo_agents.hub.server.changes.repository.job import night_paused, unchanged
@@ -106,15 +106,13 @@ from evo_agents.hub.server.changes.repository.views import change_of_plan, chart
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.changes.service.watch import settle_by_branch, watch_pass
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.protection import (
-    Target,
-    check_rulesets,
-    github_target,
-    reason_line,
-    store_check,
-)
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.forges import forge_named, github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, Target
+from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.forge.service.protection import check_rulesets, store_check
+from evo_agents.hub.server.merge.service import gate as merge_gate
+from evo_agents.hub.server.releases.service import skill_release
 from evo_agents.hub.server.run_state import write_event
 
 log = logging.getLogger(__name__)
@@ -164,12 +162,12 @@ def signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[d
 async def pull_inputs(engine: AsyncEngine, change) -> tuple[str, str, dict, str, dict]:
     """(its proposal's title, the project, the charter, the trailers the Builder's run signs it with, the plan's body)
     of a change whose pull request the hub opens."""
-    from evo_agents.hub.server import pull_trailers
+    from evo_agents.hub.server.merge.service import trailers
 
     async with engine.begin() as conn:
         title, project = await store.title_and_project(conn, change.proposal_id)
         charter = await charter_of(conn, change.project_id)
-        signed = await pull_trailers.block(conn, change.builder_run_id)
+        signed = await trailers.block(conn, change.builder_run_id)
         body = await plan_body(conn, change.project_id, change.plan_id)
     return title, project, charter, signed, body
 
@@ -215,7 +213,7 @@ def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: s
     """What opens the pull request of ``change``'s branch on ``target`` with a token: {"pull": the pull request as
     GitHub answers it, "base": the default branch, "ahead_by": the commits of its own}, the pull request None for a
     branch that changes no file, with commits of its own or none."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     async def opened(token: str) -> dict:
         async with engine.connect() as conn:  # the names of the guard leave the title and body on a published repo
@@ -248,7 +246,7 @@ def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: s
 
 
 async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
     if target is None:
@@ -325,7 +323,7 @@ async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str,
 async def files_of(app: GitHubApp, token: str, target: Target, number: int, expected) -> tuple[list[dict], str | None]:
     """(the files of pull request ``number`` as GitHub lists them, why that list is not the whole of them or None):
     a list GitHub cuts short, or that holds fewer files than the pull request says it changes, is not read in part."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     try:
         files = await pulls.pull_files(app, token, target.owner, target.name, number)
@@ -361,7 +359,7 @@ async def reopen(engine: AsyncEngine, change, why: str | None, kept: str | None 
 
 async def check_run(app: GitHubApp, target: Target, sha: str, passed: bool, verdict: dict, external_id: str) -> int:
     """Write the Judge's verdict as its check run on commit ``sha`` of ``target`` with the workers' App; its id."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     conclusion, title, summary = judge.check_run_output(
         passed,
@@ -401,7 +399,8 @@ async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
 async def _ruleset_now(engine: AsyncEngine, curator_app: GitHubApp | None, change, target: Target):
     """Check the repo's ruleset again now, with the Curator's App, and keep what it found; the ``RulesetCheck``, None
     without the Curator's App."""
-    from evo_agents.hub.server.pulls import RulesetCheck, check_ruleset
+    from evo_agents.hub.server.merge.models.pulls import RulesetCheck
+    from evo_agents.hub.server.merge.service.pulls import check_ruleset
 
     if curator_app is None:
         return None
@@ -419,7 +418,7 @@ async def _ruleset_now(engine: AsyncEngine, curator_app: GitHubApp | None, chang
 async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dict:
     """What the hub reads of a judged change's pull request before it merges it: the pull request, its files and
     whether GitHub cut them, the check runs and statuses of its head, its head commit's message, and the repo."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     found = await pulls.pull(app, token, target.owner, target.name, change.pr_number)
     files, cut = await files_of(app, token, target, change.pr_number, found.get("changed_files"))
@@ -498,7 +497,7 @@ async def merge_read(
     """Read judged ``change``'s pull request again from GitHub, and its repo's ruleset with the Curator's App, and
     gather the facts of its merge: the signs of its files now, its tier again from them with ``reader`` (the change's
     own without one), and its CI as ``charter`` reads it. GitHubUnavailable and GitHubRefused go to the caller."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
     without_ci = charter.get("merge_without_ci") is True
@@ -550,7 +549,7 @@ def merge_act(change, read: MergeRead) -> dict:
 async def merge_at_head(app: GitHubApp, change, tier: int) -> str:
     """Merge ``change``'s pull request with the workers' App at the head the Judge passed; the merge commit.
     GitHubRefused when GitHub refuses it (the head moved, a conflict)."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
 
@@ -697,7 +696,8 @@ async def _move_on(
     outcomes: Counter,
 ) -> None:
     """Move one due change on, counting its outcome in ``outcomes``."""
-    if change.forge != "github":
+    forge = forge_named(change.forge)
+    if forge is None or not forge.advanced_by_app:
         if change.state == "judged":
             outcomes[await _judged_elsewhere(engine, change)] += 1
         return

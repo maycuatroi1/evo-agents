@@ -39,9 +39,10 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, ledger, ops_events, review, tables, tiers
-from evo_agents.hub.server import audit, skill_release
+from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.releases.service import skill_release
 from evo_agents.hub.server.shift_hours import cancel_queued
 
 log = logging.getLogger(__name__)

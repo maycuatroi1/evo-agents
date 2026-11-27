@@ -374,7 +374,7 @@ class WorkerHub:
 
     async def release_branch(self, run_id: int, body: dict) -> dict:
         """Tell the hub release run ``run_id`` pushed ``body``: its repo, branch release/<version>, head, version and
-        the agent's Decision line (``evo_agents.hub.server.release_claims``)."""
+        the agent's Decision line (``evo_agents.hub.server.releases.service.claims``)."""
         return await self.call("POST", self.run(run_id, "release", "branch"), body)
 
     async def step(self, run_id: int, key: str, body: dict) -> dict:
@@ -388,7 +388,7 @@ class WorkerHub:
         return await self.call("POST", self.run(run_id, "waits"), body)
 
     async def merge_check(self, run_id: int, body: dict) -> dict:
-        """Have the hub judge plan run ``run_id``'s pull request at its head (``evo_agents.hub.server.merge_check``)."""
+        """Have the hub judge plan run ``run_id``'s pull request at its head (``evo_agents.hub.server.merge.service.check``)."""
         return await self.call("POST", self.run(run_id, "merge-check"), body)
 
     async def notice(self, run_id: int, body: dict) -> dict:

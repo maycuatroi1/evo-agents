@@ -24,7 +24,7 @@ hidden checks). The agent's verdict is the JSON object that ends its last messag
 which reaches the worker from the agent's own output: no file the code under test could write.
 
 A sign fails the change unjudged, except for a merge check, and for a merge request of the queue whose claim says an
-admin passed gate 3 at the head judged (``signs_passed``, ``evo_agents.hub.server.merge_pass.covers``): there the
+admin passed gate 3 at the head judged (``signs_passed``, ``evo_agents.hub.server.merge.service.passes.covers``): there the
 Judge's agent starts and weighs each sign against the plan (``judge.WEIGH_SIGNS``), and the verdict says so
 (``signs_weighed``).
 
@@ -123,7 +123,7 @@ class JudgeRun:
         self.merge_base: str | None = None
         self.evolvable: list[str] = []  # the charter's evolve.evolvable_paths: no protected_path sign for these
         self.merge_result = bool(change.get("merge_result"))  # a merge check's: the checks run on head and base merged
-        # A merge request of the queue whose gate 3 an admin passed at the head judged (``merge_pass.covers``).
+        # A merge request of the queue whose gate 3 an admin passed at the head judged (``merge.service.passes.covers``).
         self.signs_passed = self.merge and bool(change.get("signs_passed"))
         # A merge check's Judge weighs the signs against the plan rather than the signs failing the change unjudged:
         # run #1673 failed pull request #462 on the golden contract additions its plan's criterion a7 asked for. So does

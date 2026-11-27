@@ -5,7 +5,7 @@ Revises: 0186
 Create Date: 2026-10-30
 
 merge_checks is new (plan super-board-parity-2): one row for each pull request on github.com whose run asked the hub to
-judge it before it merges (``evo_agents.hub.server.merge_check``), in a repo whose policy has ``merge_check`` on. It
+judge it before it merges (``evo_agents.hub.server.merge.service.check``), in a repo whose policy has ``merge_check`` on. It
 names the project, the repo and the pull request's number (one row each, ``merge_checks_project_id_repo_number_key``),
 the run that asked with its plan and model, the pull request as the hub last read it, the head its verdict holds for
 and the base the judge run merged into it, where the check stands (judging, passed or failed) and why, the Judges'

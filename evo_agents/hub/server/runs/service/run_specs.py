@@ -237,7 +237,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         return await question_prompt(conn, view)
     if view.kind == "judge":  # the merge queue's on no plan, else the Curator's
         from evo_agents.hub.server.changes.service.policy import judge_prompt
-        from evo_agents.hub.server.merge_judge import merge_prompt
+        from evo_agents.hub.server.merge.service.judge import merge_prompt
 
         return await merge_prompt(conn, view) or await judge_prompt(conn, view)
     if view.kind == "history":
@@ -253,7 +253,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 
         return await evolve_prompt(conn, view)
     if view.kind == "release":
-        from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
+        from evo_agents.hub.server.releases.service.claims import release_prompt  # it reads runs through this package
 
         return await release_prompt(conn, view)
     from evo_agents.hub.server.replays.service import run_prompt
@@ -397,10 +397,10 @@ async def _opening_files(conn: AsyncConnection, view: Run) -> list:
 
 
 async def _release_spec(conn: AsyncConnection, view: Run):
-    """A release run's cycle, mode and start commit (``release_claims.release_claim``); None for any other run."""
+    """A release run's cycle, mode and start commit (``releases.service.claims.release_claim``); None for any other run."""
     if view.kind != "release":
         return None
-    from evo_agents.hub.server.release_claims import release_claim  # it reads runs through this package
+    from evo_agents.hub.server.releases.service.claims import release_claim  # it reads runs through this package
 
     return await release_claim(conn, view.id)
 
@@ -411,7 +411,7 @@ async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> Cu
 
     found = await run_curator(conn, project_id, view)
     if found is None and view.kind == "judge":  # a judge run of the merge queue is guarded as the Curator's are
-        from evo_agents.hub.server.merge_judge import merge_claim
+        from evo_agents.hub.server.merge.service.judge import merge_claim
 
         found = await merge_claim(conn, view)
     if found is not None and view.kind == "history":

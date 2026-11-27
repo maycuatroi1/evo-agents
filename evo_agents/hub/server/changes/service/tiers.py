@@ -57,7 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import api_surface, knowledge_diff, replay, tiers
 from evo_agents.hub.kg_graph import GraphUnavailable, Handles, answer
 from evo_agents.hub.server.changes.repository import tiers as store
-from evo_agents.hub.server.github import GitHubRefused
+from evo_agents.hub.server.forge.models.github import GitHubRefused
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
@@ -269,7 +269,7 @@ async def _graph_facts(
 async def read_knowledge(app, target, repo: str, named: list[tuple[str, str]], *, base: str | None, head: str) -> dict:
     """{``repo:path``: what the pull request does to it, or None when it cannot be read} of each knowledge.yaml at a
     root of ``named``, read at the merge base of ``base`` (the pull request's base commit) and ``head``."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     wanted = [path for name, path in named if name == repo and path in tiers.KNOWLEDGE_PATHS]
     if not wanted:
@@ -332,7 +332,7 @@ async def read_api(
     """{(repo, path): the names the diff breaks there, or None when they cannot be read} of each of ``reached``, the
     protected Python files the diff of ``paths`` (``repo``'s) reaches: such a file read at ``head``, and each Python
     file of the diff it uses read at the merge base of ``base`` and ``head`` and at ``head``."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     found: dict = dict.fromkeys(reached)
     here = [path for name, path in reached if name == repo]

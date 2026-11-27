@@ -1,6 +1,6 @@
 """Whether a merge check failed for a reason of the hub's own machinery (``evo_agents.hub.merge_infra``), as a verdict
 of the Judge reads (``merge_judge.Judged.infra_causes``), and what the hold of such a check keeps in its verdict
-(``evo_agents.hub.server.merge_holds``), with no database.
+(``evo_agents.hub.server.merge.service.holds``), with no database.
 
 On 2026-11-05 eight plan runs of one pull request were woken with failures of the hub one after the other (a judge's
 git, the scanner of the diff's signs, a flaky test of the base, the judge watchdog), and one asked its owner whether to
@@ -18,8 +18,9 @@ pytest.importorskip("fastapi", reason="the merge holds need the hub-server extra
 pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import judge, merge_gate, merge_infra
-from evo_agents.hub.server import merge_holds
-from evo_agents.hub.server.merge_judge import Judged, MergeVerdictIn
+from evo_agents.hub.server.merge.models.judge import MergeVerdictIn
+from evo_agents.hub.server.merge.service import holds as merge_holds
+from evo_agents.hub.server.merge.service.judging import Judged
 
 HEAD = "a1" * 20
 VERIFY = "python -m pytest -q"

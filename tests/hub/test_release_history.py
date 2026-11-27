@@ -1,5 +1,5 @@
 """The release cycles of a project that ended, as the web's Releases page lists them under the cycle open now
-(``GET /v1/projects/{p}/releases/cycles``, ``evo_agents.hub.server.releases``).
+(``GET /v1/projects/{p}/releases/cycles``, ``evo_agents.hub.server.releases.routes.releases``).
 
 Step 4 of the daily-release plan: the page shows the schedule, the cycle open now and the cycles before it. A cycle
 that ended, published or closed, is listed newest first with its runs (their mode, state, cost and landing) and the

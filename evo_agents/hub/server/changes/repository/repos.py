@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.kg_graph_rows import MAIN
+from evo_agents.hub.server.forge.models.forges import GITHUB
 
 
 async def seam_edges(conn: AsyncConnection, project_id: int) -> list:
@@ -39,7 +40,8 @@ async def record_repos(conn: AsyncConnection, project_id: int, change_id: int, r
     pull request."""
     cr = tables.curator_change_repos
     values = [
-        {"project_id": project_id, "change_id": change_id, "branch": branch, "forge": "github", **row} for row in rows
+        {"project_id": project_id, "change_id": change_id, "branch": branch, "forge": GITHUB.name, **row}
+        for row in rows
     ]
     await conn.execute(insert(cr), values)
 

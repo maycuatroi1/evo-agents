@@ -1,7 +1,7 @@
 """What follows a merge of the hub's merge queue on GitLab (plan gitlab-merge-queue, criterion a6): the checks of the
 target branch after it, the PROD release under the policy's ``prod_release``, the culprit of a check that fails, its
 revert and the rollback of PROD, the audit samples and the figures. Pure functions over plain values, standard library
-only; ``evo_agents.hub.server.post_merge`` runs them in the job hub.merge_queue.
+only; ``evo_agents.hub.server.merge.service.post_merge`` runs them in the job hub.merge_queue.
 
 **The checks.** Each merge has its commit on the target branch (``after_sha``) and the pipeline that commit runs there.
 The UAT check is the policy's job ``jobs.uat_check`` of that pipeline; a repo that names none has its pipeline as its

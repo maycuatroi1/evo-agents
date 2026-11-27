@@ -1349,7 +1349,7 @@ evo-agents hub agent edit lumen-helper --project northwind --runs-on hub --allow
 
 ### Draft pull requests of run branches
 
-The hub opens a draft pull request for the branch a chat run or a task run pushed (`evo_agents/hub/server/draft_pulls.py`),
+The hub opens a draft pull request for the branch a chat run or a task run pushed (`evo_agents/hub/server/merge/service/draft_pulls.py`),
 and follows it to its end; it never merges one.
 
 - Base. The base the run's task names goes first, then the one the worker names (`base` of `POST .../chat/pulls` and

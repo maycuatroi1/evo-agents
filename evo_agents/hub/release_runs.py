@@ -1,8 +1,8 @@
 """A run of a project's release cycle (kind ``release``) as the hub and the worker share it: the range it releases,
 the version it picks, the branch it pushes, and why the hub refuses to land it. Pure functions, standard library only,
 so the api, the hub's worker and the daemon share them. ``evo_agents.hub.releases`` describes the schedule and the
-cycle; ``evo_agents.hub.server.release_claims`` hands the run its prompt and takes its branch, and
-``evo_agents.hub.server.release_land`` lands it.
+cycle; ``evo_agents.hub.server.releases.service.claims`` hands the run its prompt and takes its branch, and
+``evo_agents.hub.server.releases.service.land`` lands it.
 
 When a check opens a cycle it reads the range of the release once (``span_of``): the commits from the newest release
 tag to the target's commit as GitHub compares them, at most MAX_SPAN_COMMITS, the pull requests their merge commits

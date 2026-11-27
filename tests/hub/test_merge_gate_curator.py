@@ -19,7 +19,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server.merge.service import gate as queue
 from tests.hub.fake_gitlab import FakeGitLab
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import GITLAB_KB, app_key, git_secret, sample  # noqa: F401 (app_key: a fixture)

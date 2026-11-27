@@ -1,4 +1,4 @@
-"""The hub's GitHub App (``evo_agents.hub.server.github_app``) against the fake GitHub of ``tests.hub.fake_github``.
+"""The hub's GitHub App (``evo_agents.hub.server.forge.client.github_app``) against the fake GitHub of ``tests.hub.fake_github``.
 
 The checks step 5 of the worker-credentials plan names: a token covers only the repos asked for, with
 ``GITHUB_PERMISSIONS`` and nothing more; the App's JWT ends within 10 minutes; a repo the App is not installed on comes
@@ -24,9 +24,9 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from evo_agents.hub.config import ConfigError, HubConfig
 from evo_agents.hub.credentials import GITHUB_CI_READ_PERMISSIONS, GITHUB_PERMISSIONS, GITHUB_READ_PERMISSIONS
 from evo_agents.hub.log import JsonFormatter
-from evo_agents.hub.server import github_app
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import AppTokens, GitHubApp, Installation, Pusher
+from evo_agents.hub.server.forge.client import github_app
+from evo_agents.hub.server.forge.client.github_app import AppTokens, GitHubApp, Installation, Pusher
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from tests.hub.fake_github import Account, _unb64
 
 OWNER, THEIRS = "maycuatroi1", "heron-team"

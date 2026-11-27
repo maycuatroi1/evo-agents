@@ -66,7 +66,7 @@ category wait is a wait of the agent's (``run_waits``): the hub answers it when 
 person asked may answer it sooner like any other.
 
 A decision of category release is the hub's own, asked of the owner of a release cycle that stopped, on the cycle's
-last run (``release_cycles``): its answer names one of its options, which ``release_answer`` does (go on, close the
+last run (``releases.service.cycles``): its answer names one of its options, which ``releases.service.answer`` does (go on, close the
 cycle, or pause the schedule) whatever the state of that run, and goes to no inbox. So is a decision of category loop,
 asked of the person a work item of the Loop stands for once it failed a third time, on its last run (``loop.stall``):
 ``stall.answer_loop`` does the option chosen (run it again, drop it, leave it to a person).

@@ -11,17 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, judge, runs
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, merge_gate
+from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.changes.repository import repos as repo_store
 from evo_agents.hub.server.changes.repository import shift as store
 from evo_agents.hub.server.changes.repository.views import change_of_plan, plan_body
 from evo_agents.hub.server.changes.service import repos as change_repos
 from evo_agents.hub.server.changes.service.moves import set_change
+from evo_agents.hub.server.forge.models.forges import built_state_of, forge_named
+from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.merge.service import gate as merge_gate
 from evo_agents.hub.server.plans import service as plan_service
-from evo_agents.hub.server.protection import (
-    reason_line,
-)
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
@@ -129,9 +129,10 @@ async def _build_wait(conn: AsyncConnection, due, gate, change, runtime: str, *,
             f"its plan {change.plan_id} is not on the hub, or {due.owner}, the night shift's owner, may not read it",
         )
     why, repos = None, await change_repos.repo_names(conn, change)
-    if change.forge == "github":  # the ruleset of each of its repos (``service.repos``)
+    forge = forge_named(change.forge)
+    if forge is not None and forge.waits_on_rulesets:  # the ruleset of each of its repos (``service.repos``)
         why = await change_repos.ruleset_waits(conn, due.project_id, repos, curator_app=curator_app)
-    elif change.forge == "gitlab":
+    elif forge is not None and forge.pushes_with_git_secret:
         why = await _git_secret_wait(conn, due, change)
     why = why or await _run_wait(conn, due.project_id, change, held)
     problems = [] if why else gate.duty.unfit(due.project, "plan", repos, runtime)
@@ -292,7 +293,7 @@ async def builder_ended(conn: AsyncConnection, found: RunStep, old: str, new: st
         return
     body = await plan_body(conn, found.project_id, found.plan_id)
     if new == "done" and _all_done(body):
-        state = "pr_pending" if change.forge == "github" else "judge_pending"
+        state = built_state_of(change.forge)
         await set_change(conn, change.id, state=state, builder_run_id=found.run_id, reason=None)
         what = (
             "the hub opens its pull request"

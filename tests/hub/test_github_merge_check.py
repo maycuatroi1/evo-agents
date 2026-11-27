@@ -1,4 +1,4 @@
-"""The merge check of a run's pull request on github.com (``evo_agents.hub.server.merge_check``; plan
+"""The merge check of a run's pull request on github.com (``evo_agents.hub.server.merge.service.check``; plan
 super-board-parity-2, step 1), against Postgres and the fake GitHub of ``tests.hub.fake_github``: the real GitHub is
 never called.
 
@@ -26,9 +26,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from evo_agents.hub import judge, runs, tables
-from evo_agents.hub.server import merge_check
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.protection import github_target
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.merge.service import check as merge_check
 from tests.hub.fake_github import FakePull
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture)
@@ -252,7 +252,7 @@ def test_github_merge_check_passes_signs_its_judge_weighed_and_fails_on_a_hidden
 
 
 def comments_pass(world) -> dict:
-    from evo_agents.hub.server import merge_comments
+    from evo_agents.hub.server.merge.service import comments as merge_comments
 
     state = world.client.app.state
     return world.client.portal.call(
@@ -293,7 +293,7 @@ def test_github_merge_check_comments_its_verdict_on_the_pull_request_once_a_head
 
 
 def merge_comments_mark() -> str:
-    from evo_agents.hub.server import merge_comments
+    from evo_agents.hub.server.merge.service import comments as merge_comments
 
     return merge_comments.MARK
 
@@ -382,7 +382,7 @@ def test_merge_gate_k5_a_failed_check_holds_the_merge(world):
 
 
 def settle_merges(world) -> dict:
-    from evo_agents.hub.server import merge_ancestry
+    from evo_agents.hub.server.merge.service import ancestry as merge_ancestry
 
     state = world.client.app.state
     found = world.client.portal.call(partial(merge_ancestry.settle, state.engine, state.github_app))
@@ -446,7 +446,7 @@ def test_merge_ancestry_a_merge_commit_off_the_base_opens_a_notice(world):
 def test_merge_ancestry_judges_what_github_says_alone():
     from types import SimpleNamespace
 
-    from evo_agents.hub.server import merge_ancestry
+    from evo_agents.hub.server.merge.service import ancestry as merge_ancestry
 
     assert merge_ancestry.problems(HEAD, HEAD, MERGE, "ahead") == []
     assert merge_ancestry.problems(HEAD, HEAD, MERGE, "identical") == []

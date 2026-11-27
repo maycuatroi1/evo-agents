@@ -52,7 +52,6 @@ from evo_agents.hub.credentials import (
 from evo_agents.hub.server import (
     core_plugin_api,
     invites,
-    post_merge,
     run_access,
     run_access_rules,
     run_events,
@@ -68,6 +67,7 @@ from evo_agents.hub.server.canvas.models import content as canvas_content
 from evo_agents.hub.server.chats.routes import events as chat_events
 from evo_agents.hub.server.goals import service as goals
 from evo_agents.hub.server.loop import breaker as loop_breaker
+from evo_agents.hub.server.merge.service import access as merge_access
 from evo_agents.hub.server.opportunities import service as opportunities
 from evo_agents.hub.server.probes.service import probes
 from evo_agents.hub.server.problems import service as problems
@@ -618,7 +618,7 @@ RAISING = (
     ("builder answer", lambda user, access: builder_server.answer_as(None, user, PROJECT, 1, "approve", "0")),
     ("srs review", lambda user, access: srs_reviews._may_review(None, access, user, None, None, None)),
     ("canvas decide", lambda user, access: canvas_routes._no_run(user, "decides an item of a baseline")),
-    ("merge queue", lambda user, access: post_merge.admin_only(user, access)),
+    ("merge queue", lambda user, access: merge_access.admin_only(user, access)),
     ("loop breaker", lambda user, access: loop_breaker.resume(None, user, access)),
     ("org chart", lambda user, access: org_routes.actor(user)),
     ("autonomy preference", lambda user, access: autonomy_store.write_pref(None, user, None)),

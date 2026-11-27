@@ -1,5 +1,5 @@
 """Whether a merge check failed for a reason of the hub's own machinery rather than of the pull request it judges
-(``evo_agents.hub.server.merge_holds`` then holds the check for the project's triage instead of handing the failure
+(``evo_agents.hub.server.merge.service.holds`` then holds the check for the project's triage instead of handing the failure
 to the plan run that asked).
 
 The plan run cannot fix such a failure: a judge run runs the code installed on its worker, not the pull request's.

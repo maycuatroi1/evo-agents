@@ -212,7 +212,7 @@ WARM_MODULES = (
     "evo_agents.hub.server.curator.routes.charter",
     "evo_agents.hub.server.curator.service.shift",
     "evo_agents.hub.server.brief",
-    "evo_agents.hub.server.release_cycles",
+    "evo_agents.hub.server.releases.service.cycles",
     "evo_agents.hub.server.canvas.value_check",
     "evo_agents.hub.server.probes.service.runs",
     "evo_agents.hub.plugin_events",

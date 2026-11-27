@@ -37,7 +37,7 @@ from evo_agents.hub.server.run_state import move_run, notify_queued, past_timeou
 
 if TYPE_CHECKING:
     from evo_agents.hub.server.credentials.models.sealing import Sealer
-    from evo_agents.hub.server.github_app import GitHubApp
+    from evo_agents.hub.server.forge.client.github_app import GitHubApp
 
 log = logging.getLogger("evo_agents.hub.server.run_state")  # the logger of the module it was split from
 
@@ -271,7 +271,7 @@ async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> Non
     from evo_agents.hub.server.triage.service import threads as triage  # it reads runs through this module
 
     await triage.open_stale(engine)
-    from evo_agents.hub.server import draft_pulls  # it opens threads through triage
+    from evo_agents.hub.server.merge.service import draft_pulls  # it opens threads through triage
     from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 
     await orchestrator.open_idle(engine)

@@ -1,5 +1,5 @@
 """A fake GitLab for the hub tests: the API v4 of one host held in memory and served through ``httpx.MockTransport``, so
-the real GitLab is never called (``evo_agents.hub.server.gitlab``).
+the real GitLab is never called (``evo_agents.hub.server.forge.client.gitlab``).
 
 A test adds projects (``add_project``: merge settings, branch heads, protected branches), their merge requests
 (``add_merge_request``: head, labels, files, commits, whether GitLab would merge it, the head a rebase gives it, the
