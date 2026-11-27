@@ -13158,6 +13158,7 @@
           "questions",
           "current",
           "candidate",
+          "by_type",
           "candidate_settings",
           "needs_rebuild",
           "why"
@@ -153120,6 +153121,19 @@
               "type": "array",
               "title": "Needs Rebuild",
               "description": "keys of the candidate that need a new build and were not measured"
+            },
+            "by_type": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "By Type",
+              "description": "per question type, {type: {current, candidate}}: the same figures; null when nothing was measured"
             },
             "why": {
               "anyOf": [

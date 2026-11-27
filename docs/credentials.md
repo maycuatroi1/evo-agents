@@ -125,7 +125,7 @@ revoked and its runs now go to other nodes, such as the agent's own pool `agent-
 
 A name is 1 to 64 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit, unique among the
 owner's secrets that are not deleted; a deleted secret's name is free again. A member keeps at most
-`MAX_SECRETS_PER_OWNER` (200) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
+`MAX_SECRETS_PER_OWNER` (1000) secrets (409 past that). A hub admin's routes are the same: they list, change and delete
 only their own secrets, and `/v1/admin/stats` counts the rows of `secrets` without showing one. Each write adds an
 audit row `secret.put`, `secret.delete`, `secret.rebind` (a PATCH, the target followed by `workers=<names>`,
 `pools=<names>` or `anywhere`) or `secret.bind` (a credential request's binding, below) whose target is the
@@ -1222,7 +1222,7 @@ evo-agents hub decision answer 91 --option refuse              # nothing
 
 `--secret` sends the value as `secret` in `POST /v1/projects/{p}/decisions/{id}/answer`, which the web's password
 field sends too; a value with no option stands for `value`. The hub keeps it as the owner's secret of kind `env` for
-that variable, under the rules of `PUT /v1/secrets` (at most 16 KiB, no NUL, at most 200 secrets, the hub's key; 503
+that variable, under the rules of `PUT /v1/secrets` (at most 16 KiB, no NUL, at most 1000 secrets, the hub's key; 503
 without it): the owner's live env secret for that variable bound to the run's project has its value replaced, the one
 of the proposed name first, so no second one is made; with none, the secret of the proposed name is made, bound to the
 run's project and, when the run is on a worker of the owner's, to that worker. A proposed name the owner holds for

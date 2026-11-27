@@ -567,7 +567,8 @@ def test_the_hub_runtimes_work_set_tool_sets_the_work(client, hub, hub_db):
     async def go(raw: str) -> str:
         engine = create_async_engine(hub_db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))
         try:
-            return await hub_tools.call(SimpleNamespace(engine=engine, run_id=parent), "work_set", raw)
+            turn = SimpleNamespace(engine=engine, run_id=parent, names=hub_tools.NAMES)
+            return await hub_tools.call(turn, "work_set", raw)
         finally:
             await engine.dispose()
 

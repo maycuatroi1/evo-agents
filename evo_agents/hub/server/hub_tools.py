@@ -1,6 +1,7 @@
 """The tools of the hub runtime (``hub_runtime``): what the agent of a chat run that runs on the hub does in place of
 the worker's commands, each through the code the worker's route runs, in a transaction of its own that holds the run's
-row.
+row. A member's task run, which has no chat, is offered TASK_NAMES alone, the tools that need no thread; ``call``
+answers a call of a tool the turn was not offered as one it does not know.
 
 - ``kg_search``: a search of the project's knowledge graph, the graph its agent system binds it to included
   (``kg.tool_result``), through the agent sink.
@@ -220,6 +221,12 @@ TOOLS = [
     ),
 ]
 NAMES = tuple(tool["function"]["name"] for tool in TOOLS)
+TASK_NAMES = ("kg_search", "memory_write")  # the tools of a task run's turn: none needs a chat thread
+
+
+def offered(names: tuple[str, ...]) -> list[dict]:
+    """The definitions of TOOLS a turn offered ``names`` sends the model."""
+    return [tool for tool in TOOLS if tool["function"]["name"] in names]
 
 
 @dataclass
@@ -232,6 +239,7 @@ class Turn:
     sealer: Any  # a Sealer, None without EVO_HUB_SECRETS_KEY (app.state.sealer)
     run_id: int
     project: str
+    names: tuple[str, ...] = NAMES  # the tools the turn is offered: NAMES for a chat run, TASK_NAMES for a task run
     asked: list[int] = field(default_factory=list)  # the runs it asked or escalated to this turn
     state: SimpleNamespace | None = None
 
@@ -452,9 +460,9 @@ HANDLERS = {
 
 async def call(turn: Turn, name: str, raw: str) -> str:
     """The result of tool ``name`` with the JSON arguments ``raw``, for the model: a refusal or an error included."""
-    handler = HANDLERS.get(name)
+    handler = HANDLERS.get(name) if name in turn.names else None
     if handler is None:
-        return f"error: no tool {name}; the tools are {', '.join(NAMES)}"
+        return f"error: no tool {name}; the tools are {', '.join(turn.names)}"
     try:
         arguments = json.loads(raw or "{}")
     except json.JSONDecodeError:

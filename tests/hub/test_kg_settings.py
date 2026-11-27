@@ -206,6 +206,68 @@ def test_a_measure_asks_with_the_current_and_the_candidate_tuning_and_leaves_bui
     assert found["build_id"] == 3 and found["questions"] == 2 and found["candidate"]["n"] == 2
 
 
+def _measure_with(monkeypatch, by_type, questions=None):
+    from evo_agents.hub.server import kg_settings as route
+
+    class Opened:
+        tuning = kg.DEFAULT
+
+        def vector_info(self):
+            return None
+
+    def score(qs, skipped, available, session, **kw):
+        hit = 0.9 if session.opened.tuning.semantic_weight == kg.DEFAULT.semantic_weight else 0.4
+        row = lambda n: {"kg_search": {"n": n, "hit@5": hit, "tokens_per_file": 10.0}}  # noqa: E731
+        types = {t: row(n) for t, n in by_type.items()}
+        return {"methods": row(sum(by_type.values())), "by_type": types}
+
+    monkeypatch.setattr(route, "HubSession", lambda *a, **k: SimpleNamespace(opened=a[4], semantic=False))
+    monkeypatch.setattr(route.kg_health_eval, "score", score)
+    access = SimpleNamespace(rules=SimpleNamespace(ceiling=lambda *a: None, policy=None), max_level=None)
+    current = kg.of({})
+    candidate = kg.of({"semantic_weight": 1.5}, current)
+    items = (
+        [SimpleNamespace(project=None, id="secret-id", question="secret question")] if questions is None else questions
+    )
+
+    class Questions:
+        def part(self, split):
+            return items
+
+    return route._measure(
+        "p", access, "cli", frozenset(), [None], (Questions(), "d"), current, candidate, "tune", 5,
+        (Opened(), SimpleNamespace(build_id=3)),
+    )  # fmt: skip
+
+
+def test_a_measure_over_two_question_types_returns_n_and_hit_of_each_for_both_settings(monkeypatch):
+    found = _measure_with(monkeypatch, {"lookup": 4, "trace": 2})
+    assert set(found["by_type"]) == {"lookup", "trace"}
+    assert found["by_type"]["lookup"]["current"]["n"] == 4 and found["by_type"]["lookup"]["current"]["hit@5"] == 90.0
+    assert found["by_type"]["trace"]["candidate"]["n"] == 2 and found["by_type"]["trace"]["candidate"]["hit@5"] == 40.0
+    assert found["by_type"]["trace"]["current"]["tokens_per_file"] == 10.0
+
+
+def test_a_measure_without_an_eval_set_or_a_question_has_no_by_type_and_says_why(monkeypatch):
+    from evo_agents.hub.server import kg_settings as route
+
+    access = SimpleNamespace(rules=SimpleNamespace(ceiling=lambda *a: None, policy=None), max_level=None)
+    none = route._measure("p", access, "cli", frozenset(), [None], None, kg.DEFAULT, kg.DEFAULT, "tune", 5)
+    assert none == {"why": "the project has no eval set yet"}
+    empty = _measure_with(monkeypatch, {"lookup": 1}, questions=[])
+    assert "no tune question" in empty["why"] and "by_type" not in empty
+    out = route.MeasureOut(
+        build_id=None, split="tune", questions=0, current=None, candidate=None, candidate_settings={}, needs_rebuild=[]
+    )
+    assert out.by_type is None
+
+
+def test_a_measure_response_holds_no_question_id_or_answer(monkeypatch):
+    found = _measure_with(monkeypatch, {"lookup": 4, "trace": 2})
+    text = json.dumps(found)
+    assert "secret" not in text and "question" not in text.replace('"questions"', "")
+
+
 def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, capsys):
     from evo_agents.hub.cli import base
     from evo_agents.hub.cli import kg as kg_cli
@@ -224,6 +286,37 @@ def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, ca
     assert calls == [("POST", "/v1/kg/evo-agents/measure", kg_cli.MEASURE_TIMEOUT)]
     assert kg_cli.MEASURE_TIMEOUT >= 600
     assert json.loads(capsys.readouterr().out)["build_id"] == 3
+
+
+def _measure_cli(monkeypatch, capsys, by_type, as_json):
+    from evo_agents.hub.cli import base
+    from evo_agents.hub.cli.kg import settings as kg_settings_cli
+
+    figures = lambda hit: {"n": 3, "hit@5": hit}  # noqa: E731
+    found = {
+        "build_id": 3, "split": "tune", "questions": 6, "current": {}, "candidate": {},
+        "by_type": {t: {"current": figures(c), "candidate": figures(d)} for t, (c, d) in by_type.items()},
+    }  # fmt: skip
+
+    class FakeHub:
+        def call(self, *a, **k):
+            return found
+
+    monkeypatch.setattr(base, "signed_in", lambda: (FakeHub(), None))
+    args = SimpleNamespace(project="p", settings=None, split="tune", max_questions=5, json=as_json)
+    assert kg_settings_cli.MEASURE(args) == 0
+    return capsys.readouterr().out
+
+
+def test_a_measure_json_holds_by_type(monkeypatch, capsys):
+    out = _measure_cli(monkeypatch, capsys, {"lookup": (90.0, 40.0)}, True)
+    assert json.loads(out)["by_type"]["lookup"]["candidate"]["hit@5"] == 40.0
+
+
+def test_a_measure_text_names_each_type_whose_hit_falls_and_not_one_that_holds(monkeypatch, capsys):
+    out = _measure_cli(monkeypatch, capsys, {"lookup": (90.0, 40.0), "trace": (50.0, 60.0)}, False)
+    lines = {line.split(":")[0].strip(): line for line in out.splitlines() if line.startswith("  ")}
+    assert "LOWER" in lines["lookup"] and "LOWER" not in lines["trace"]
 
 
 def test_a_hub_build_reads_the_ontology_of_the_strategy_its_settings_name():

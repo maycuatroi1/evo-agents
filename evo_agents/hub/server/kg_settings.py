@@ -201,7 +201,17 @@ class MeasureOut(BaseModel):
     candidate: dict | None = Field(description="the figures with the candidate's query keys on top")
     candidate_settings: dict
     needs_rebuild: list[str] = Field(description="keys of the candidate that need a new build and were not measured")
+    by_type: dict | None = Field(
+        None,
+        description="per question type, {type: {current, candidate}}: the same figures; null when nothing was measured",
+    )
     why: str | None = Field(None, description="why nothing was measured")
+
+
+def _by_type(found: dict) -> dict:
+    """The kg_search figures of each question type of an eval's ``found``: aggregates only, never a question."""
+    rows = found.get("by_type") or {}
+    return {t: fig for t, row in rows.items() if (fig := model.figures((row or {}).get("kg_search")))}
 
 
 def _measure(project, access, sink, audience, graphs, found_set, current, candidate, split, limit, snapshot=None):
@@ -224,13 +234,20 @@ def _measure(project, access, sink, audience, graphs, found_set, current, candid
             opened.tuning = tuning
             session.semantic = tuning.semantic_mode == "on" and opened.vector_info() is not None
             found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
-            return model.figures((found.get("methods") or {}).get("kg_search"))
+            return model.figures((found.get("methods") or {}).get("kg_search")), _by_type(found)
 
+        now, now_types = asked(current)
+        then, then_types = asked(candidate)
+        by_type = {
+            t: {"current": now_types.get(t), "candidate": then_types.get(t)}
+            for t in sorted(set(now_types) | set(then_types))
+        }
         return {
             "build_id": graph.build_id,
             "questions": len(questions),
-            "current": asked(current),
-            "candidate": asked(candidate),
+            "current": now,
+            "candidate": then,
+            "by_type": by_type or None,
         }
 
 
@@ -255,7 +272,7 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
     if "semantic_mode" in needs:
         kept["semantic_mode"] = current.semantic_mode
     candidate = kg_settings.of(kept, current)
-    empty = {"build_id": None, "split": body.split, "questions": 0, "current": None, "candidate": None}
+    empty = {"build_id": None, "split": body.split, "questions": 0, "current": None, "candidate": None, "by_type": None}
     out = dict(empty, candidate_settings=candidate.to_json(), needs_rebuild=needs)
     if not graphs:
         return MeasureOut(**out, why=f"project {project} has no graph on the hub yet")

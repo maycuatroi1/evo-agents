@@ -30,7 +30,7 @@ export const MAX_USERNAME_CHARS = 200;
 /** `credentials.MAX_SECRET_BYTES`: a value is 1 to 16384 bytes of UTF-8. */
 export const MAX_SECRET_BYTES = 16384;
 /** `credentials.MAX_SECRETS_PER_OWNER`. */
-export const MAX_SECRETS_PER_OWNER = 200;
+export const MAX_SECRETS_PER_OWNER = 1000;
 /** `credentials.DEFAULT_GIT_USERNAME`: what git sends with the value when no username is given. */
 export const DEFAULT_GIT_USERNAME = "oauth2";
 

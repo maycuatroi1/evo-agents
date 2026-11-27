@@ -412,7 +412,8 @@ def _note(text: str) -> str:
 def evidence(found: RunStep, summary: str | None = None) -> str:
     """The evidence a run gives its step: the run, the commit and its diffstat, each verify command with its exit
     code, and the agent's summary, within MAX_EVIDENCE_BYTES."""
-    head = f"run #{found.run_id} on worker {found.worker or '?'} ({found.runtime}, attempt {found.attempt})"
+    where = "the hub" if found.worker is None and found.runtime == runs.HUB_RUNTIME else f"worker {found.worker or '?'}"
+    head = f"run #{found.run_id} on {where} ({found.runtime}, attempt {found.attempt})"
     if found.commit_sha and found.repo:
         head += f": {found.repo}@{found.commit_sha[:12]}"
         if found.branch:

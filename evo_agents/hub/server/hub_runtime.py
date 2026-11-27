@@ -1,5 +1,6 @@
-"""The hub runtime: the turns of a chat run of an agent whose profile runs on the hub (``runs_on: hub``), each taken by
-the job ``hub.hub_turn`` (``evo_agents.hub.worker``) with no worker and no pool. docs/hub.md, section Hub runtime.
+"""The hub runtime: the turns of a chat run, or of a member's task run, of an agent whose profile runs on the hub
+(``runs_on: hub``), each taken by the job ``hub.hub_turn`` (``evo_agents.hub.worker``) with no worker and no pool.
+docs/hub.md, section Hub runtime.
 
 A run of runtime ``hub`` queues as any chat run (``chats.service.runs._start``); ``run_state.notify_queued`` defers its job in
 the same transaction. ``take_turn`` holds the run (queued, leased and running as the actor worker, leased for
@@ -27,6 +28,14 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
 6. A run that asked an agent and waits for the answer parks (waiting, then parked), and the answer wakes it in a new
    run (``run_waits.wake``); any other ends done, and messages left in its inbox go on in a new run
    (``chats.service.runs.chat_run_moved``). A turn that raises fails the run with the error's kind.
+
+A member's task run of such an agent (``member_tasks``) queues with runtime ``hub`` too, and its turn goes as above
+with no chat: the prompt is the profile's instructions and ON_HUB_TASK, then the task with its input and assets
+(``task_runs.build_member_task_prompt``), all of it new to the provider for the data loss prevention policy; its tools
+are TASK_TOOLS of ``hub_tools``, none of which needs a thread, and no inbox joins. Its last answer, masked, is the
+run's evidence, which GET .../task-runs/{task} gives as the task's output, as the summary of a worker's task run is;
+nothing is posted in a chat. A task run that takes no turn (no gateway, the daily limit, no provider account) or whose
+rounds run out without a final answer fails with why, since its output would be no result.
 """
 
 from __future__ import annotations
@@ -42,7 +51,7 @@ from sqlalchemy import func, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import runs, system_context, system_spec, tables
+from evo_agents.hub import runs, system_context, system_spec, tables, task_runs
 from evo_agents.hub.server import (
     dlp_policy,
     hub_run_events,
@@ -59,7 +68,7 @@ from evo_agents.hub.server.gateway.service.leases import used_with
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.profile_store import by_id, version_rules
-from evo_agents.hub.server.run_state import move_run
+from evo_agents.hub.server.run_state import evidence, move_run, run_step
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.spend_store import write_figures
 
@@ -91,6 +100,16 @@ You run on the hub, without a worker, a checkout or a shell: the commands above 
 
 Your last answer without a tool call is your reply in the thread, and ends your turn. A call of agent_ask or escalate
 ends your turn too: the answer wakes you in a new turn."""
+ON_HUB_TASK = """# On the hub
+
+You run on the hub, without a worker, a checkout or a shell, for a task a member handed you; no chat thread goes with
+it, so nobody reads a message before your answer.
+
+- The knowledge graph: the tool kg_search. A memory of the project: the tool memory_write.
+- Repos, branches, pull requests, files and other commands are not on the hub: say what you cannot do.
+
+Your last answer without a tool call is the task's output, which the member reads, and ends your turn."""
+TASK = "task"  # the kind of a member's task run (runs.RUN_KINDS); any other run the runtime takes is a chat run
 
 
 @dataclass(frozen=True)
@@ -109,6 +128,7 @@ class Held:
     branch: str | None
     repos: list
     session: str
+    kind: str = "chat"  # chat, or TASK for a member's task run
 
 
 def _row_query(run_id: int):
@@ -128,6 +148,7 @@ def _row_query(run_id: int):
             r.c.branch,
             r.c.repos,
             r.c.session_id,
+            r.c.kind,
         )
         .join_from(r, p, p.c.id == r.c.project_id)
         .where(r.c.id == run_id)
@@ -160,6 +181,7 @@ async def _hold(engine: AsyncEngine, run_id: int) -> Held | None:
         row.branch,
         list(row.repos or []),
         session,
+        row.kind,
     )
 
 
@@ -265,17 +287,23 @@ async def _again(work):
 
 
 async def _end(engine: AsyncEngine, run_id: int, reply: str | None, *, park: bool = False) -> str:
-    """Post ``reply`` as the agent's and end the turn of run ``run_id``: parked when ``park``, else done. The state."""
+    """Post ``reply`` as the agent's and end the turn of run ``run_id``: parked when ``park``, else done; a task run's
+    ``reply`` is its evidence, its output, and goes to no chat. The state."""
     return await _again(lambda: _ending(engine, run_id, reply, park))
 
 
 async def _ending(engine: AsyncEngine, run_id: int, reply: str | None, park: bool) -> str:
     async with engine.begin() as conn:
-        state = (
-            await conn.execute(select(tables.runs.c.state).where(tables.runs.c.id == run_id).with_for_update())
-        ).scalar_one()
-        if state != "running":
-            return state
+        r = tables.runs
+        row = (await conn.execute(select(r.c.state, r.c.kind).where(r.c.id == run_id).with_for_update())).one()
+        if row.state != "running":
+            return row.state
+        if row.kind == TASK:
+            columns = {"evidence": evidence(await run_step(conn, run_id), reply)}
+            why = "the hub runtime's turn ended"
+            await move_run(conn, run_id, "running", "verifying", "worker", reason=why)
+            await move_run(conn, run_id, "verifying", "done", "worker", reason=why, columns=columns)
+            return "done"
         if reply:
             await agent_reply(conn, run_id, reply)
         if park:
@@ -289,6 +317,15 @@ async def _ending(engine: AsyncEngine, run_id: int, reply: str | None, park: boo
 
 async def _fail(engine: AsyncEngine, run_id: int, error: str) -> None:
     await _again(lambda: _failing(engine, run_id, error))
+
+
+async def _no_turn(engine: AsyncEngine, held: Held, reply: str, why: str) -> str:
+    """End the run of ``held``, which takes no turn: a chat run's agent replies ``reply`` and the run ends done; a task
+    run, whose output would be no result, fails with ``why``. The state."""
+    if held.kind != TASK:
+        return await _end(engine, held.run_id, reply)
+    await _fail(engine, held.run_id, f"the hub runtime took no turn: {why}")
+    return "failed"
 
 
 async def _failing(engine: AsyncEngine, run_id: int, error: str) -> None:
@@ -344,6 +381,8 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
 async def _prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str]]:
     """(the first messages of the turn: the profile's instructions, then the worker's prompt and the inbox's; the texts
     in them new to the provider: the body of the message that woke the run, and the inbox's)."""
+    if held.kind == TASK:
+        return await _task_prompt(engine, held)
     cm = tables.chat_messages
     async with engine.begin() as conn:
         profile = await by_id(conn, held.profile_id)
@@ -356,6 +395,30 @@ async def _prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str
     system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB) if part)
     messages = [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join([text, *inbox])}]
     return messages, [woke or "", *inbox]
+
+
+async def _task_prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str]]:
+    """(the first messages of a task run's turn: the profile's instructions and ON_HUB_TASK, then the member's task with
+    its input and assets; that task, all of it new to the provider)."""
+    r, u, m = tables.runs, tables.users, tables.member_tasks
+    async with engine.connect() as conn:
+        profile = await by_id(conn, held.profile_id)
+        assert profile is not None  # _hold holds a run of an agent alone
+        query = select(r.c.request, r.c.branch, u.c.login).join_from(r, u, u.c.id == r.c.dispatched_by)
+        row = (await conn.execute(query.where(r.c.id == held.run_id))).one()
+        task_id = task_runs.task_of(row.branch) or held.run_id  # a lost run's next attempt keeps its task
+        given = (await conn.execute(select(m.c.input, m.c.assets).where(m.c.task_id == task_id))).one_or_none()
+    agent = {"handle": profile.handle, "name": profile.name, "project": profile.project}
+    text = task_runs.build_member_task_prompt(
+        agent={**agent, "description": profile.description},
+        login=row.login,
+        task=row.request or "",
+        data=dict(given.input) if given is not None else {},
+        assets=list(given.assets) if given is not None else [],
+        on_hub=True,
+    )
+    system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB_TASK) if part)
+    return [{"role": "system", "content": system}, {"role": "user", "content": text}], [text]
 
 
 async def _take_inbox(conn, run_id: int) -> list[str]:
@@ -405,7 +468,7 @@ async def _rounds(
         )
         messages[:] = sent["messages"]  # redacted once: a later round counts what is new alone
         fresh = None
-        body = {"model": held.model, "messages": messages, "tools": hub_tools.TOOLS}
+        body = {"model": held.model, "messages": messages, "tools": hub_tools.offered(turn.names)}
         data = await _answer(client, key, body, deadline - time.monotonic())
         usage = data.get("usage") or {}
         found.tokens["input"] += int(usage.get("prompt_tokens") or 0)
@@ -416,7 +479,7 @@ async def _rounds(
         await _log(turn, held, [*answered, hub_run_events.usage(held.model, data)])
         if not calls:
             found.reply = message.get("content") or ""
-            if not await _between(turn.engine, held.run_id, messages, found.reply):
+            if held.kind == TASK or not await _between(turn.engine, held.run_id, messages, found.reply):
                 return found
             continue
         messages.append({"role": "assistant", "content": message.get("content"), "tool_calls": calls})
@@ -429,7 +492,8 @@ async def _rounds(
         if len(turn.asked) > asked:  # an ask or an escalation: the turn ends here, the answer wakes a new one
             found.reply = message.get("content") or ""
             return found
-        await _between(turn.engine, held.run_id, messages, None)
+        if held.kind != TASK:  # a task run has no inbox: nothing joins it
+            await _between(turn.engine, held.run_id, messages, None)
     found.exhausted = found.reply is None
     found.reply = found.reply or f"I stopped after {found.rounds} round(s) of this turn without a final answer."
     return found
@@ -487,10 +551,11 @@ async def _converse(engine, config, blobs, sealer, held: Held, client: GatewayCl
     """The turn of ``held`` through ``client``: its state and figures."""
     reach, why = await _connections(client, engine, held)
     if not reach:
-        return {"state": await _end(engine, held.run_id, f"I cannot answer on the hub: {why}.")}
+        return {"state": await _no_turn(engine, held, f"I cannot answer on the hub: {why}.", why or "")}
     expires = datetime.now(UTC) + timedelta(seconds=TURN_SECONDS + KEY_GRACE)
     key = await client.create_key(KEY_NAME.format(run_id=held.run_id), reach, expires)
-    turn = hub_tools.Turn(engine, config, blobs, sealer, held.run_id, held.project)
+    names = hub_tools.TASK_NAMES if held.kind == TASK else hub_tools.NAMES
+    turn = hub_tools.Turn(engine, config, blobs, sealer, held.run_id, held.project, names=names)
     try:
         messages, fresh = await _prompt(engine, held)
         found = await _rounds(client, key.value.get_secret_value(), held, turn, messages, fresh)
@@ -505,12 +570,16 @@ async def _converse(engine, config, blobs, sealer, held: Held, client: GatewayCl
     async with engine.connect() as conn:
         reply = await mask_values(conn, sealer, held.profile_id, found.reply or "")
         reply = await mask_run(conn, sealer, held.run_id, reply)
-    state = await _end(engine, held.run_id, reply, park=await _open_waits(engine, held.run_id))
+    if held.kind == TASK and found.exhausted:  # its output would be no result
+        await _fail(engine, held.run_id, f"the hub runtime stopped after {found.rounds} round(s), no final answer")
+        state = "failed"
+    else:
+        state = await _end(engine, held.run_id, reply, park=await _open_waits(engine, held.run_id))
     return {"state": state, "rounds": found.rounds, **found.tokens, "cost_usd": cost, "asked": turn.asked}
 
 
 async def take_turn(engine: AsyncEngine, config, blobs, sealer, run_id: int, *, transport=None) -> dict:
-    """One turn of chat run ``run_id`` of the hub runtime (see the module); what it did."""
+    """One turn of chat or task run ``run_id`` of the hub runtime (see the module); what it did."""
     held = await _hold(engine, run_id)
     if held is None:
         return {"run_id": run_id, "state": None}
@@ -520,12 +589,12 @@ async def take_turn(engine: AsyncEngine, config, blobs, sealer, run_id: int, *, 
             async with engine.connect() as conn:
                 profile = await by_id(conn, held.profile_id)
             assert profile is not None  # _hold holds a run of an agent alone
-            handle = profile.handle
-            return {"run_id": run_id, "state": await _end(engine, run_id, OFF.format(handle=handle))}
+            off = OFF.format(handle=profile.handle)
+            return {"run_id": run_id, "state": await _no_turn(engine, held, off, "this hub has no model gateway")}
         async with engine.begin() as conn:
             capped = await daily_problem(conn, run_id)
         if capped is not None:
-            return {"run_id": run_id, "state": await _end(engine, run_id, f"I take no turn now: {capped}.")}
+            return {"run_id": run_id, "state": await _no_turn(engine, held, f"I take no turn now: {capped}.", capped)}
         return {"run_id": run_id, **await _converse(engine, config, blobs, sealer, held, client)}
     except (GatewayOff, GatewayError, TimeoutError) as exc:
         await _fail(engine, run_id, f"the hub runtime failed: {exc or type(exc).__name__}")
