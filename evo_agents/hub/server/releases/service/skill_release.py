@@ -33,34 +33,18 @@ import tempfile
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
-from sqlalchemy import exists, func, insert, select, true
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import blob_gc, judge, replay, skills, tables
+from evo_agents.hub import blob_gc, judge, replay, skills
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStoreUnavailable
 from evo_agents.hub.server import audit, pulls
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.forge.models.forges import github_target
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.releases.models.skill_release import ACTION, PUBLISH
+from evo_agents.hub.server.releases.repository import skills as skills_repo
 
 log = logging.getLogger(__name__)
-
-ACTION = "skill_release"  # the ledger's line of a release
-PUBLISH = "skill.publish"  # evo_agents.hub.server.skills.PUBLISH: the target is skill:global/<name>
-MAX_RELEASES = 10  # merges one pass of the job releases a skill of
-NIGHT_SHIFT = "night_shift"
-
-
-def _latest_global(name: str):
-    """The global skill ``name`` (matched ignoring case) with its latest version's number, bundle and source."""
-    s, v = tables.skills, tables.skill_versions
-    latest = select(v).where(v.c.skill_id == s.c.id).order_by(v.c.version.desc()).limit(1).lateral("v")
-    return (
-        select(s.c.id, s.c.name, latest.c.version, latest.c.sha256, latest.c.source_repo)
-        .select_from(s.join(latest, true()))
-        .where(s.c.scope == "global", func.lower(s.c.name) == name.lower())
-    )
 
 
 async def wanted(conn: AsyncConnection, change, found: dict) -> dict | None:
@@ -71,16 +55,10 @@ async def wanted(conn: AsyncConnection, change, found: dict) -> dict | None:
     if len(directories) != 1:
         return None
     name = PurePosixPath(directories[0]).name
-    row = (await conn.execute(_latest_global(name))).one_or_none()
+    row = await skills_repo.latest_global(conn, name)
     if row is None or row.name != name or row.source_repo != change.repo:
         return None
     return {"skill": name, "directory": directories[0], "scope": "global", "version": row.version}
-
-
-async def _owner(conn: AsyncConnection, project_id: int) -> int | None:
-    s = tables.schedules
-    query = select(s.c.owner_id).where(s.c.project_id == project_id, s.c.kind == NIGHT_SHIFT).order_by(s.c.id)
-    return (await conn.execute(query.limit(1))).scalar_one_or_none()
 
 
 async def _line(conn: AsyncConnection, change, change_id: int, what: str, details: dict) -> None:
@@ -99,29 +77,6 @@ async def _line(conn: AsyncConnection, change, change_id: int, what: str, detail
 
 
 # Publishing from the merge commit
-
-
-def _due():
-    """The hub's merges that release a skill and have no line ``skill_release`` yet, the oldest first."""
-    lg, c, r = tables.curator_ledger, tables.curator_changes, tables.project_repos
-    done = tables.curator_ledger.alias("done")
-    released = exists().where(done.c.change_id == lg.c.change_id, done.c.action == ACTION)
-    return (
-        select(
-            lg.c.change_id,
-            lg.c.details,
-            c.c.project_id,
-            c.c.proposal_id,
-            c.c.repo,
-            c.c.merge_sha,
-            r.c.origin,
-        )
-        .join_from(lg, c, c.c.id == lg.c.change_id)
-        .join(r, (r.c.project_id == c.c.project_id) & (r.c.name == c.c.repo), isouter=True)
-        .where(lg.c.action == "merged", lg.c.actor == "curator", lg.c.details.has_key("release"), ~released)
-        .order_by(lg.c.id)
-        .limit(MAX_RELEASES)
-    )
 
 
 def _pack(name: str, files: list[tuple[str, bool, bytes]]) -> skills.Bundle:
@@ -154,25 +109,24 @@ def _put(blobs, bundle: skills.Bundle) -> None:
 async def _version(conn: AsyncConnection, change, bundle: skills.Bundle, owner_id: int) -> tuple[int | None, int]:
     """(the version of the global skill made from ``bundle``, None when it is the latest one already; the one before),
     the skill's row locked so the version numbers follow one at a time."""
-    s, v = tables.skills, tables.skill_versions
-    skill = (await conn.execute(_latest_global(bundle.name))).one()
-    await conn.execute(select(s.c.id).where(s.c.id == skill.id).with_for_update())
-    latest = (await conn.execute(_latest_global(bundle.name))).one()
+    skill = await skills_repo.latest_global(conn, bundle.name)
+    latest = await skills_repo.lock_latest(conn, skill.id, bundle.name)  # pyright: ignore[reportOptionalMemberAccess]
     if latest.sha256 == bundle.sha256:
         return None, latest.version
-    await conn.execute(
-        insert(v).values(
-            skill_id=latest.id,
-            version=latest.version + 1,
-            name=bundle.contents.name,
-            description=bundle.contents.description[: skills.MAX_DESCRIPTION],
-            sha256=bundle.sha256,
-            size=bundle.size,
-            r2_key=BLOB_PREFIX + bundle.sha256,
-            source_repo=change.repo,
-            source_commit=change.merge_sha,
-            published_by=owner_id,
-        )
+    await skills_repo.insert_version(
+        conn,
+        {
+            "skill_id": latest.id,
+            "version": latest.version + 1,
+            "name": bundle.contents.name,
+            "description": bundle.contents.description[: skills.MAX_DESCRIPTION],
+            "sha256": bundle.sha256,
+            "size": bundle.size,
+            "r2_key": BLOB_PREFIX + bundle.sha256,
+            "source_repo": change.repo,
+            "source_commit": change.merge_sha,
+            "published_by": owner_id,
+        },
     )
     return latest.version + 1, latest.version
 
@@ -184,7 +138,7 @@ async def _store(engine: AsyncEngine, blobs, change, bundle: skills.Bundle, owne
         if await blob_gc.revive(conn, [bundle.sha256]):  # its object may be gone: put the bytes back first
             await asyncio.to_thread(_put, blobs, bundle)
         values = {"project_id": None, "sha256": bundle.sha256, "size": bundle.size, "kind": skills.KIND}
-        await conn.execute(pg_insert(tables.blobs).values(**values, created_by=owner_id).on_conflict_do_nothing())
+        await skills_repo.insert_blob(conn, {**values, "created_by": owner_id})
         made, before = await _version(conn, change, bundle, owner_id)
         name, merge = bundle.name, change.merge_sha
         details = {"kind": "publish", "skill": name, "scope": "global", "sha256": bundle.sha256, "previous": before}
@@ -217,7 +171,7 @@ async def _publish(engine: AsyncEngine, app, blobs, change) -> str:
     release = change.details["release"]
     target = github_target(change.origin)
     async with engine.begin() as conn:
-        owner_id = await _owner(conn, change.project_id)
+        owner_id = await skills_repo.night_shift_owner(conn, change.project_id)
     if target is None or not judge.is_sha(change.merge_sha):
         return await _refusal(engine, change, release, "its repo has no origin on GitHub, or no merge commit")
     if owner_id is None:
@@ -249,7 +203,7 @@ async def release(engine: AsyncEngine, app, blobs, outcomes: Counter) -> None:
     if app is None or blobs is None:
         return
     async with engine.begin() as conn:
-        due = (await conn.execute(_due())).all()
+        due = await skills_repo.due(conn)
     for change in due:
         try:
             outcomes[await _publish(engine, app, blobs, change)] += 1
@@ -268,16 +222,13 @@ async def republish(conn: AsyncConnection, change, owner_id: int) -> str | None:
     """After the figures of merged ``change`` (a row of curator_changes) got worse, make the version of its global skill
     before the one the hub published from it the latest again (see the module's docstring), in the caller's
     transaction, as ``owner_id``; what it did, in words for the ledger, or None when the change released no skill."""
-    lg, s, v = tables.curator_ledger, tables.skills, tables.skill_versions
-    query = select(lg.c.details).where(lg.c.change_id == change.id, lg.c.action == ACTION).order_by(lg.c.id.desc())
-    details = (await conn.execute(query.limit(1))).scalar_one_or_none()
+    details = await skills_repo.release_details(conn, change.id)
     if not isinstance(details, dict) or details.get("kind") != "publish" or details.get("published") is not True:
         return None
     name, made, before = str(details.get("skill")), details.get("version"), details.get("previous")
-    latest = (await conn.execute(_latest_global(name))).one_or_none()
+    latest = await skills_repo.latest_global(conn, name)
     if latest is not None:  # locked, then read again, so the version numbers follow one at a time
-        await conn.execute(select(s.c.id).where(s.c.id == latest.id).with_for_update())
-        latest = (await conn.execute(_latest_global(name))).one()
+        latest = await skills_repo.lock_latest(conn, latest.id, name)
     done = {"kind": "republish", "skill": name, "scope": "global", "reverted": made, "previous": before}
     why = None
     if latest is None or latest.version != made:
@@ -288,11 +239,14 @@ async def republish(conn: AsyncConnection, change, owner_id: int) -> str | None:
         what = f"The hub published no version of global skill {name} again: {why}"
         await _line(conn, change, change.id, what, {**done, "published": False, "why": why})
         return what
-    old = (await conn.execute(select(v).where(v.c.skill_id == latest.id, v.c.version == before))).one()
+    old = await skills_repo.version_of(conn, latest.id, before)  # pyright: ignore[reportOptionalMemberAccess, reportArgumentType]
     copied = {key: getattr(old, key) for key in ("name", "description", "sha256", "size", "r2_key")}
     copied |= {"source_repo": old.source_repo, "source_commit": old.source_commit}
-    version = latest.version + 1
-    await conn.execute(insert(v).values(skill_id=latest.id, version=version, published_by=owner_id, **copied))
+    version = latest.version + 1  # pyright: ignore[reportOptionalMemberAccess]
+    await skills_repo.insert_version(
+        conn,
+        {"skill_id": latest.id, "version": version, "published_by": owner_id, **copied},  # pyright: ignore[reportOptionalMemberAccess]
+    )
     what = f"The hub published version {before} of global skill {name} again as version {version}, after {made}"
     await _line(conn, change, change.id, what, {**done, "version": version, "published": True, "sha256": old.sha256})
     target = f"skill:global/{name}"

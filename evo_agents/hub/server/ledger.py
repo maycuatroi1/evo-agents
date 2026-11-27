@@ -13,7 +13,7 @@ hand), left open for its owner with why, or closed (by a member, by the hub for 
 Builder, which drops it with a reason and keeps what it measured under ``details.note``); a Builder that ends otherwise
 adds ``build_failed`` (``build_failed``). The hub's merge of a change whose replays won keeps their verdict under
 ``details.replay`` and, when it releases a global skill, the skill under ``details.release``;
-``evo_agents.hub.server.skill_release`` adds the line ``skill_release`` once it published the skill, or its version
+``evo_agents.hub.server.releases.service.skill_release`` adds the line ``skill_release`` once it published the skill, or its version
 before again after a revert.
 
 GET /v1/projects/{p}/curator/proposals/{id}/ledger lists the lines of a proposal the caller may read (as GET
@@ -487,8 +487,8 @@ async def _replayed_merge(conn: AsyncConnection, row, details: dict, what: str) 
     """The details and the words of the hub's merge of change ``row`` once its replays won at the head it merged
     (``change_tiers.replay_verdict``): the verdict under ``replay`` and, when the merge releases a global skill
     (``skill_release.wanted``), the skill under ``release``; as they were otherwise."""
-    from evo_agents.hub.server import skill_release  # skill_release writes through this module
     from evo_agents.hub.server.changes.service import tiers as change_tiers
+    from evo_agents.hub.server.releases.service import skill_release  # skill_release writes through this module
 
     found = await change_tiers.replay_verdict(conn, row.id, row.head_sha)
     if not found["won"]:

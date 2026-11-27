@@ -1,6 +1,6 @@
 """A release cycle after its tag: the hub follows the CI of the tag's workflow, fixes a red tag forward and stops with a
-triage thread and a decision (``evo_agents.hub.release_ci``, ``evo_agents.hub.server.release_watch``,
-``evo_agents.hub.server.release_cycles``, ``evo_agents.hub.server.release_answer``).
+triage thread and a decision (``evo_agents.hub.release_ci``, ``evo_agents.hub.server.releases.service.watch``,
+``evo_agents.hub.server.releases.service.cycles``, ``evo_agents.hub.server.releases.service.answer``).
 
 The checks step 3 of the daily-release plan names. a3: release.yml of the tag passes with every job, publish included,
 and the cycle is published, its owner told on the web and Telegram with the version, the workflow run and the page on
@@ -35,9 +35,9 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import diff_signs, release_ci, release_runs, releases, runs, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.release_check import release_pass
-from evo_agents.hub.server.release_settle import settle_releases
-from evo_agents.hub.server.release_watch import watch_releases
+from evo_agents.hub.server.releases.service.check import release_pass
+from evo_agents.hub.server.releases.service.settle import settle_releases
+from evo_agents.hub.server.releases.service.watch import watch_releases
 from evo_agents.hub.server.run_state import move_run
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, OWNER, app_key, claimable, install  # noqa: F401 (app_key: a fixture)

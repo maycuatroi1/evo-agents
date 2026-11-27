@@ -61,7 +61,7 @@ closed or an agent merged while the pass read GitHub is left as it is (MOVED).
 CI must be green, or, when the charter has ``merge_without_ci``, may be none at all or, with a ruleset that requires no
 check, what ran: a check that ran and failed still leaves the change open, and one still running makes it wait. A
 change of a harness alone whose replays won merges as tier 0 (``service.tiers.merge_tier``), and the merge of one
-releases its global skill (``evo_agents.hub.server.skill_release``, part of each pass).
+releases its global skill (``evo_agents.hub.server.releases.service.skill_release``, part of each pass).
 A change left open for its owner is told in its proposal's thread when the charter has the agent answer, and the agent
 may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head`` and ``record_merge``, which the
 hub's own merge uses too). While the project's night shift is paused the hub merges nothing: a judged change waits for
@@ -98,7 +98,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import approval_heads, diff_signs, guard, judge, tiers
-from evo_agents.hub.server import audit, merge_gate, skill_release
+from evo_agents.hub.server import audit, merge_gate
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.changes.repository import job as store
 from evo_agents.hub.server.changes.repository.job import night_paused, unchanged
@@ -111,6 +111,7 @@ from evo_agents.hub.server.forge.models.forges import forge_named, github_target
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, Target
 from evo_agents.hub.server.forge.models.protection import reason_line
 from evo_agents.hub.server.forge.service.protection import check_rulesets, store_check
+from evo_agents.hub.server.releases.service import skill_release
 from evo_agents.hub.server.run_state import write_event
 
 log = logging.getLogger(__name__)

@@ -10,7 +10,7 @@ holds its lock): each release run that is done, pushed its branch, waits to land
 lands. One token of the App's installation on the repo, for that repo alone with contents and pull_requests write
 (``pulls.with_token``, use ``merge``), serves the whole landing and is revoked after it. Before the pull request
 merges, the hub reads the version VERSION_FILE names on the default branch's tip and on the run's commit and the
-release tags (``release_github.read_refs``), and refuses (``release_runs.land_problem``) a version that is not
+release tags (``service.github.read_refs``), and refuses (``release_runs.land_problem``) a version that is not
 greater, changes the major, is neither the next patch nor the next minor, whose tag exists, or that the branch does not
 name. Then: the pull request opened (or the one open found into the default branch), its number kept, its body naming
 the agent's Decision line with nothing GitHub acts on (``release_runs.inert``); its files read for signs of test
@@ -25,24 +25,21 @@ the hub did not merge itself is the run's only when its head is the run's branch
 base the default branch (``pull_problem``), and its files show no sign of test hacking either: else no tag is made.
 
 A refusal (``land_problem``, a pull request closed, GitHub refusing a call, a tag elsewhere) marks the run refused and
-stops the cycle with the reason (``release_cycles.stop_cycle``, cause refused, or hacking for signs of test hacking,
+stops the cycle with the reason (``service.cycles.stop_cycle``, cause refused, or hacking for signs of test hacking,
 whose pull request stays open); GitHub failing marks a try, and LAND_TRIES in a row mark it failed and stop the cycle
 too (cause github). A run tagged is audited as release.tag, with the cycle's owner as actor and no token; its cycle
-stays open, and follows the tag (a row of release_tags) for the hub to watch its CI (``release_watch``).
+stays open, and follows the tag (a row of release_tags) for the hub to watch its CI (``service.watch``).
 """
 
 from __future__ import annotations
 
 import logging
 from collections import Counter
-from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import diff_signs, guard, release_ci, release_runs, releases, tables
+from evo_agents.hub import diff_signs, guard, release_ci, release_runs, releases
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pull_trailers, pulls
@@ -50,107 +47,17 @@ from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.release_cycles import cycle_of, notify_release, stop_cycle
-from evo_agents.hub.server.release_github import ReadFailed, read_refs
+from evo_agents.hub.server.releases.models.github import TAGS, ReadFailed
+from evo_agents.hub.server.releases.models.land import TAG, Hacking, Landing, Refusal
+from evo_agents.hub.server.releases.repository import runs as runs_repo
+from evo_agents.hub.server.releases.repository import tags as tags_repo
+from evo_agents.hub.server.releases.repository.cycles import cycle_of
+from evo_agents.hub.server.releases.service.cycles import notify_release, stop_cycle
+from evo_agents.hub.server.releases.service.github import read_refs
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.security import MACHINE, Principal
 
 log = logging.getLogger(__name__)
-
-TAG = "release.tag"  # the hub tagged a release: "<project> cycle:<id> run:<id> tag=<tag> commit=<sha>"
-TAGS = "refs/tags/"
-
-
-class Refusal(Exception):
-    """Why the hub does not land a run, in words safe to show."""
-
-    cause = "refused"
-
-
-class Hacking(Refusal):
-    """The run's change shows signs of test hacking."""
-
-    cause = "hacking"
-
-
-@dataclass(frozen=True)
-class Landing:
-    """A release run waiting to land, with its cycle, schedule, project and repo."""
-
-    run_id: int
-    cycle_id: int
-    project_id: int
-    project: str
-    owner_id: int
-    owner: str
-    repo: str
-    origin: str | None
-    tag_pattern: str
-    workflow: str
-    target_ref: str
-    target_commit: str | None
-    base_tag: str | None
-    version: str
-    branch: str
-    head_commit: str
-    decision: str | None
-    pull_number: int | None
-    merge_commit: str | None
-    cycle_state: str
-
-    @property
-    def tag(self) -> str:
-        return releases.tag_prefix(self.tag_pattern) + self.version
-
-
-def landing_rows(*where):
-    """The release runs with their branch, done, that ``where`` keeps, with their cycle, schedule, project and repo."""
-    rr, r, c, s, p, pr, u = (
-        tables.release_runs,
-        tables.runs,
-        tables.release_cycles,
-        tables.release_schedules,
-        tables.projects,
-        tables.project_repos,
-        tables.users,
-    )
-    return (
-        select(
-            rr.c.run_id,
-            rr.c.cycle_id,
-            c.c.project_id,
-            p.c.name.label("project"),
-            c.c.owner_id,
-            u.c.login.label("owner"),
-            s.c.repo,
-            pr.c.origin,
-            s.c.tag_pattern,
-            s.c.workflow,
-            c.c.target_ref,
-            c.c.target_commit,
-            c.c.base_tag,
-            c.c.state.label("cycle_state"),
-            rr.c.version,
-            rr.c.branch,
-            rr.c.head_commit,
-            rr.c.decision,
-            rr.c.pull_number,
-            rr.c.merge_commit,
-        )
-        .join_from(rr, r, r.c.id == rr.c.run_id)
-        .join(c, c.c.id == rr.c.cycle_id)
-        .join(s, s.c.id == c.c.schedule_id)
-        .join(p, p.c.id == c.c.project_id)
-        .join(u, u.c.id == c.c.owner_id)
-        .outerjoin(pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == s.c.repo))
-        .where(r.c.state == "done", rr.c.branch.is_not(None), *where)
-        .order_by(rr.c.run_id)
-    )
-
-
-def _waiting():
-    """The release runs that wait to land: done, with their branch, not landed, of an open cycle."""
-    return landing_rows(tables.release_runs.c.land_state.is_(None), tables.release_cycles.c.state == "open")
 
 
 async def owner_is_admin(conn: AsyncConnection, owner_id: int, owner: str, project: str) -> bool:
@@ -165,15 +72,13 @@ async def owner_is_admin(conn: AsyncConnection, owner_id: int, owner: str, proje
 
 
 async def save_run(engine: AsyncEngine, run_id: int, **values) -> None:
-    rr = tables.release_runs
     async with engine.begin() as conn:
-        await conn.execute(update(rr).where(rr.c.run_id == run_id).values(**values))
+        await runs_repo.save_release_run(conn, run_id, **values)
 
 
 async def run_event(conn, run_id: int, body: dict) -> None:
     """Write ``body`` in the log of run ``run_id``, its row locked as write_event wants."""
-    r = tables.runs
-    await conn.execute(select(r.c.id).where(r.c.id == run_id).with_for_update())
+    await runs_repo.lock_run(conn, run_id)
     await write_event(conn, run_id, body)
 
 
@@ -202,15 +107,15 @@ def pull_problem(found: dict, row: Landing, default: str) -> str | None:
     head = found.get("head") if isinstance(found.get("head"), dict) else {}
     base = found.get("base") if isinstance(found.get("base"), dict) else {}
     number = found.get("number")
-    if head.get("ref") != row.branch:
-        return f"pull request #{number} is of {head.get('ref')!r}, not of {row.branch}"
-    if head.get("sha") != row.head_commit:
+    if head.get("ref") != row.branch:  # pyright: ignore[reportOptionalMemberAccess]
+        return f"pull request #{number} is of {head.get('ref')!r}, not of {row.branch}"  # pyright: ignore[reportOptionalMemberAccess]
+    if head.get("sha") != row.head_commit:  # pyright: ignore[reportOptionalMemberAccess]
         return (
-            f"the head of pull request #{number} of {row.branch} is {releases.short(head.get('sha'))}, not "
+            f"the head of pull request #{number} of {row.branch} is {releases.short(head.get('sha'))}, not "  # pyright: ignore[reportOptionalMemberAccess]
             f"{releases.short(row.head_commit)}, the commit release run #{row.run_id} pushed"
         )
-    if base.get("ref") != default:
-        into = base.get("ref")
+    if base.get("ref") != default:  # pyright: ignore[reportOptionalMemberAccess]
+        into = base.get("ref")  # pyright: ignore[reportOptionalMemberAccess]
         return f"pull request #{number} of {row.branch} is into {into!r}, not into {default}, the default branch"
     return None
 
@@ -353,13 +258,8 @@ async def _refuse(
     engine: AsyncEngine, row: Landing, reason: str, state: str = "refused", cause: str = "refused"
 ) -> str:
     """Mark ``row`` ``state`` (refused, or failed) for ``reason`` and stop its cycle of ``cause``."""
-    rr = tables.release_runs
     async with engine.begin() as conn:
-        await conn.execute(
-            update(rr)
-            .where(rr.c.run_id == row.run_id)
-            .values(land_state=state, land_reason=releases.clip_reason(reason))
-        )
+        await runs_repo.save_release_run(conn, row.run_id, land_state=state, land_reason=releases.clip_reason(reason))
         await stop_cycle(
             conn, row.cycle_id, f"the hub did not land {row.branch} of release run #{row.run_id}: {reason}", cause
         )
@@ -370,16 +270,8 @@ async def _refuse(
 
 async def _try_failed(engine: AsyncEngine, row: Landing, reason: str) -> str:
     """Count a pass GitHub failed for ``row``: failed, the cycle stopped, once LAND_TRIES did in a row; else waiting."""
-    rr = tables.release_runs
     async with engine.begin() as conn:
-        tries = (
-            await conn.execute(
-                update(rr)
-                .where(rr.c.run_id == row.run_id)
-                .values(land_tries=rr.c.land_tries + 1, land_reason=releases.clip_reason(reason))
-                .returning(rr.c.land_tries)
-            )
-        ).scalar_one()
+        tries = await runs_repo.count_try(conn, row.run_id, reason)
     log.warning("release landing tried again later", extra={"run_id": row.run_id, "tries": tries, "why": reason})
     if tries < release_runs.LAND_TRIES:
         return "waiting"
@@ -388,18 +280,9 @@ async def _try_failed(engine: AsyncEngine, row: Landing, reason: str) -> str:
 
 async def mark_tagged(engine: AsyncEngine, row: Landing, merge: str, *, by_hand: bool = False) -> str:
     """Keep ``row`` tagged at ``merge``, follow the tag, audit it; ``by_hand`` when a person merged the pull request."""
-    rr = tables.release_runs
     async with engine.begin() as conn:
-        await conn.execute(
-            update(rr)
-            .where(rr.c.run_id == row.run_id)
-            .values(merge_commit=merge, tagged=row.tag, tagged_at=func.now(), land_state="tagged", land_reason=None)
-        )
-        t = tables.release_tags
-        followed = upsert(t).values(cycle_id=row.cycle_id, tag=row.tag, commit=merge, run_id=row.run_id)
-        await conn.execute(  # a watch that saw the tag before this pass followed it as a person's: it is the run's
-            followed.on_conflict_do_update(constraint="release_tags_cycle_id_tag_key", set_={"run_id": row.run_id})
-        )
+        await runs_repo.mark_tagged(conn, row.run_id, merge, row.tag)
+        await tags_repo.follow_tagged(conn, row.cycle_id, row.tag, merge, row.run_id)
         who = "A person merged" if by_hand else "The hub merged"
         text = (
             f"{who} {row.branch} as {releases.short(merge)} and "
@@ -460,19 +343,17 @@ async def _autonomy(engine: AsyncEngine, row: Landing) -> str | None:
     async with engine.begin() as conn:
         said = await autonomy_gates.check(conn, row.run_id, "K6", key=f"release {row.tag}", what=what, repo=row.repo)
         if said.waits:
-            rr = tables.release_runs
-            reason = releases.clip_reason(said.reason)
-            await conn.execute(update(rr).where(rr.c.run_id == row.run_id).values(land_reason=reason))
+            await runs_repo.save_release_run(conn, row.run_id, land_reason=releases.clip_reason(said.reason))  # pyright: ignore[reportArgumentType]
     if said.act:
         return None
-    return "waiting" if said.waits else await _refuse(engine, row, said.reason)
+    return "waiting" if said.waits else await _refuse(engine, row, said.reason)  # pyright: ignore[reportArgumentType]
 
 
 async def land_releases(engine: AsyncEngine, app: GitHubApp | None) -> dict:
     """One pass of landing: each release run waiting to land gets ``land``, one failing leaving the others their
     turn; how many ended each way."""
     async with engine.connect() as conn:
-        rows = [Landing(**row._mapping) for row in (await conn.execute(_waiting())).all()]
+        rows = [Landing(**row._mapping) for row in await runs_repo.waiting(conn)]
     outcomes: Counter = Counter()
     for row in rows:
         try:

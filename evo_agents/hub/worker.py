@@ -80,9 +80,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.release_schedules``, every minute, one pass at a time: each project's release schedule whose local time came
   within the hour gets the check of that day, once: without any model, the newest release tag and the commit of the
   target ref are compared on the packaging paths, and a change opens a cycle and queues its cut run, with the workers'
-  App reading GitHub (``evo_agents.hub.server.release_check``, ``evo_agents.hub.releases``); then each release run
+  App reading GitHub (``evo_agents.hub.server.releases.service.check``, ``evo_agents.hub.releases``); then each release run
   that is done with its branch is landed: its pull request opened and merged, and its merge commit tagged, with the
-  same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
+  same App (``evo_agents.hub.server.releases.service.land``). The pass is the server's: the ``hub worker`` command hands it
   down (``HubContext.release_pass``), since this module imports no server module beyond its job list
   (docs/structure.md, section Package boundaries).
 - ``hub.cron_jobs``, every minute, one pass at a time: each cron job of a project not archived that is due fires once
@@ -218,7 +218,7 @@ class HubContext:
     github_app: GitHubApp | None = None  # None without EVO_HUB_GITHUB_APP_*: no GitHub token to revoke
     engine: AsyncEngine | None = None  # on ``pool``; made on it when not given
     curator_app: GitHubApp | None = None  # None without EVO_HUB_CURATOR_APP_*: no ruleset checked
-    # the server's release pass (evo_agents.hub.server.release_check), which the hub worker command hands down;
+    # the server's release pass (evo_agents.hub.server.releases.service.check), which the hub worker command hands down;
     # None checks and lands no release
     release_pass: Callable[[AsyncEngine, GitHubApp | None], Awaitable[dict]] | None = None
     # the server's tick of a project's Loop (evo_agents.hub.server.loop.tick), handed down the same way and called

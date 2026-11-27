@@ -1,8 +1,8 @@
 """The CI of a release tag as the hub follows it, what a red one means, and why a cycle stops (``evo_agents.hub.releases``
 describes the cycle). Pure functions over JSON values and text, on the standard library and ``evo_agents.hub.judge``,
-so the api, the hub's worker and the tests share them. ``evo_agents.hub.server.release_watch`` follows the tags,
-``evo_agents.hub.server.release_actions`` reads GitHub Actions, ``evo_agents.hub.server.release_cycles`` stops a cycle
-and asks its owner, and ``evo_agents.hub.server.release_answer`` does what the owner answers.
+so the api, the hub's worker and the tests share them. ``evo_agents.hub.server.releases.service.watch`` follows the tags,
+``evo_agents.hub.server.releases.service.actions`` reads GitHub Actions, ``evo_agents.hub.server.releases.service.cycles`` stops a cycle
+and asks its owner, and ``evo_agents.hub.server.releases.service.answer`` does what the owner answers.
 
 A cycle follows, one row of release_tags each: the tag the hub makes on the merge commit of each of its runs, a tag a
 person pushes while it is open (a version greater than every tag it follows), and the red tag a cycle that starts with

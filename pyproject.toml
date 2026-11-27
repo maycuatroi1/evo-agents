@@ -1145,6 +1145,25 @@ import the service, the client, the repository and the models, never the routes.
 into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-releases-layers"
+name = "The releases go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.releases"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.releases a route handler (releases, a project's daily release under /v1/projects, and \
+claims, the worker protocol's push of a release run's branch) checks the caller's token and passes the engine and \
+the request's parts to the service, which checks access, opens the transaction and decides: the daily check, the \
+cycles and their stops, the landing, the watch of a tag's CI, the settling, the answer to a stop, the claim of a \
+release run and the release of a global skill; the repository holds the SQL of the schedules, checks, cycles, tags, \
+release runs and skill versions; the models (the API's shapes, the job names, the texts and limits more than one \
+layer gives) import none of them. Move the code that reaches up into the layer that needs it: a check or a message \
+into the service, a query into the repository, a shape or a constant into the models. Other modules import the \
+service and the models, never the routes but the app, which includes them. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

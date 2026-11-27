@@ -4,7 +4,7 @@ job of it fails, rather than only at ``--until``.
 
 GitHub tells the hub nothing of Actions: the hub serves no webhook of GitHub (the one webhook it serves is Telegram's,
 ``security.PUBLIC_PATHS``) and its Apps subscribe to no event. What it knows of a workflow run it reads with the
-workers' App, as the release watch does (``release_actions``: a token with actions read, revoked after). So the hub
+workers' App, as the release watch does (``releases.service.actions``: a token with actions read, revoked after). So the hub
 polls, and only the runs an open wait names: ``poll``, on each pass of the reaper and before the waits wake
 (``run_reaper.recover_runs``), reads each such run once, however many waits name it, with the jobs of its latest
 attempt, and records event ``github.workflow_run`` (``hub_events.WORKFLOW_RUN``) of the wait's project when the run
@@ -55,7 +55,7 @@ from evo_agents.hub import hub_events, release_ci, runs, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.release_actions import recent_successes, run_by_id, run_jobs, with_actions
+from evo_agents.hub.server.releases.service.actions import recent_successes, run_by_id, run_jobs, with_actions
 
 log = logging.getLogger(__name__)
 

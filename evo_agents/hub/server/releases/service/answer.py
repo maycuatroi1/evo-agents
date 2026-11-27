@@ -1,10 +1,10 @@
-"""What the owner's answer to the decision of a stopped release cycle does (``release_cycles.ask_owner`` asks it;
+"""What the owner's answer to the decision of a stopped release cycle does (``service.cycles.ask_owner`` asks it;
 ``decisions.answer_decision`` answers it as any decision, and hands the option here).
 
 - ``continue``: the cycle is open again and goes on from where it stopped: the CI of its newest tag is followed again
   from now when it was pending, running or overdue; a red newest tag gets a new fix run; a cycle with no tag of its own
-  yet gets a new cut run (``release_cycles.go_on``). Nothing is queued while a release run of the cycle is active, nor
-  while the branch a refused landing left is not settled (``release_cycles.left_behind``): ``release_settle`` tags a
+  yet gets a new cut run (``service.cycles.go_on``). Nothing is queued while a release run of the cycle is active, nor
+  while the branch a refused landing left is not settled (``service.cycles.left_behind``): ``service.settle`` tags a
   merge of it a person made, or deletes it and then queues the run.
 - ``close``: the cycle is closed, its reason kept.
 - ``pause``: the schedule is paused as ``evo-agents hub release pause`` pauses it (its queued release runs cancelled),
@@ -19,31 +19,26 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import releases, tables
+from evo_agents.hub import releases
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.release_check import cancel_queued
-from evo_agents.hub.server.release_cycles import cycle_of, go_on, held_by
+from evo_agents.hub.server.releases.repository import cycles as cycles_repo
+from evo_agents.hub.server.releases.repository import schedules as schedules_repo
+from evo_agents.hub.server.releases.repository.cycles import cycle_of
+from evo_agents.hub.server.releases.service.check import cancel_queued
+from evo_agents.hub.server.releases.service.cycles import go_on, held_by
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.tables import RUN_ACTIVE
 
 log = logging.getLogger(__name__)
 
 
 async def _go_on(conn: AsyncConnection, found) -> str:
-    c, rr, r = tables.release_cycles, tables.release_runs, tables.runs
-    await conn.execute(
-        update(c)
-        .where(c.c.id == found.id)
-        .values(state="open", stop_reason=None, stop_cause=None, updated_at=func.now())
-    )
+    await cycles_repo.reopen(conn, found.id)
     said = f"cycle #{found.id} goes on"
-    active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
-    if (await conn.execute(select(active))).scalar_one():
+    if await cycles_repo.run_active(conn, found.id):
         return said + ": a run of it is still active"
     left = await held_by(conn, found)
     if left is not None:
@@ -55,22 +50,12 @@ async def _go_on(conn: AsyncConnection, found) -> str:
 
 
 async def _close(conn: AsyncConnection, found, why: str) -> None:
-    c = tables.release_cycles
     reason = releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}")
-    await conn.execute(
-        update(c)
-        .where(c.c.id == found.id)
-        .values(state="closed", stop_reason=reason, ended_at=func.now(), updated_at=func.now())
-    )
+    await cycles_repo.close(conn, found.id, reason)
 
 
 async def _pause(conn: AsyncConnection, found, user: Principal) -> str:
-    s = tables.release_schedules
-    await conn.execute(
-        update(s)
-        .values(paused_at=func.now(), paused_by=user.user_id, updated_at=func.now())
-        .where(s.c.id == found.schedule_id, s.c.paused_at.is_(None))
-    )
+    await schedules_repo.pause(conn, found.schedule_id, user.user_id)
     why = f"the release schedule of {found.project} was paused by {user.login}"
     cancelled = await cancel_queued(conn, found.project_id, why)
     await _close(conn, found, why)
@@ -80,9 +65,7 @@ async def _pause(conn: AsyncConnection, found, user: Principal) -> str:
 async def answer_stop(conn: AsyncConnection, user: Principal, decision_id: int, option: str) -> str:
     """Do what ``option`` of decision ``decision_id`` says for the cycle that asked it (see the module), in the
     caller's transaction; what the hub did, in words."""
-    c = tables.release_cycles
-    query = select(c.c.id, c.c.state).where(c.c.decision_id == decision_id).with_for_update()
-    locked = (await conn.execute(query)).one_or_none()
+    locked = await cycles_repo.asked_by(conn, decision_id)
     if locked is None or locked.state != "stopped":
         state = locked.state if locked else "gone"
         raise HTTPException(409, f"decision {decision_id} is about a release cycle that is {state}, not stopped")

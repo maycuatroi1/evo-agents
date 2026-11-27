@@ -1,5 +1,5 @@
 """A release run of a project's daily release on the hub, from its claim to its tag (``evo_agents.hub.release_runs``,
-``evo_agents.hub.server.release_claims``, ``evo_agents.hub.server.release_land``).
+``evo_agents.hub.server.releases.service.claims``, ``evo_agents.hub.server.releases.service.land``).
 
 The checks step 2 of the daily-release plan names (criterion a2). The check that opens a cycle keeps the range of the
 release (the commits from the newest v* tag to nightly, the pull requests they merge, the migrations nightly adds);
@@ -40,8 +40,8 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import jobs, release_runs, releases, runs, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.release_check import release_pass
-from evo_agents.hub.server.release_land import land_releases
+from evo_agents.hub.server.releases.service.check import release_pass
+from evo_agents.hub.server.releases.service.land import land_releases
 from evo_agents.hub.worker import queue
 from tests.hub.fake_github import FakePull
 from tests.hub.live import sql
