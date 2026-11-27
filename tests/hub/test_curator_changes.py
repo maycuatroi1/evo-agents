@@ -1544,9 +1544,9 @@ def test_close_an_admin_closes_a_change_left_open_with_no_pull_request(world, tm
         assert (closed["state"], closed["reason"]) == ("closed", why["reason"])
         assert ok(curator("changes")).out.splitlines()[-1] == f"#{change['id']}: memory #212 covers it"
         refused = curator("change", "close", str(change["id"]), "--reason", why["reason"])
-        assert refused.code != 0 and "only a change left open is closed by hand" in refused.err
+        assert refused.code != 0 and "only a change left open or planned is closed by hand" in refused.err
     again = world.client.post(url, json=why, headers=owner)
-    assert again.status_code == 409 and "only a change left open is closed by hand" in again.text
+    assert again.status_code == 409 and "only a change left open or planned is closed by hand" in again.text
     ledger = world.client.get(path("proposals", str(change["proposal_id"]), "ledger"), headers=owner).json()
     line = ledger["lines"][-1]
     assert (line["action"], line["actor"], line["actor_login"]) == ("closed", "user", "owner")
@@ -1644,6 +1644,26 @@ def drop(world, run_id: int, **body):
 
 DROPPED = "the owner answered drop on decision 4: holdout hit@5 fell"
 MEASURED = "kg eval, 50 questions each:\n- tune hit@5 0.71 -> 0.72\n- holdout hit@5 0.62 -> 0.58"
+
+
+def test_close_an_admin_closes_a_planned_change_once_no_run_builds_its_plan(world):
+    accepted(world)  # planned, no pull request: its work may have landed through another pull request
+    change = one_change(world)
+    assert (change["state"], change["pr_number"]) == ("planned", None)
+    url, owner = path("changes", str(change["id"]), "close"), world.headers["owner"]
+    why = {"reason": "landed through pull request #399"}
+    assert protect(world).json()["protected"] is True
+    assert fire(world.client, NIGHT)["builder"] == 1  # its Builder is queued: the change waits for that run
+    refused = world.client.post(url, json=why, headers=owner)
+    assert refused.status_code == 409 and "a run of its plan" in refused.text and PLAN_ID in refused.text
+    r = tables.runs
+    sql(world.db, update(r).values(state="cancelled", finished_at=func.now()).where(r.c.plan_id == PLAN_ID))
+    sql(world.db, update(tables.curator_changes).values(state="planned"))
+    closed = world.client.post(url, json=why, headers=owner)
+    assert closed.status_code == 200, closed.text
+    assert (closed.json()["state"], closed.json()["reason"]) == ("closed", why["reason"])
+    line = world.client.get(path("proposals", str(change["proposal_id"]), "ledger"), headers=owner).json()["lines"][-1]
+    assert line["what"] == f"owner closed change #{change['id']}: {why['reason']}"
 
 
 def test_drop_the_builder_closes_its_own_change_with_why_and_what_it_measured(world):

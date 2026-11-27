@@ -77,8 +77,9 @@ a merged change again after the charter's outcome_days (``evo_agents.hub.server.
 
 GET /v1/projects/{p}/curator/changes (reader) lists the project's changes the caller may read (its proposal, and its
 plan when it has one, through the project's hub sink), newest first, each with its reason. POST
-.../curator/changes/{id}/close (admin), with a reason, closes a change left ``open`` with no pull request, such as one
-whose proposal named no repo: the reason becomes the change's, and its proposal's ledger gets the line. A change with a
+.../curator/changes/{id}/close (admin), with a reason, closes a change with no pull request, left ``open`` (one
+whose proposal named no repo) or ``planned`` while no run builds or judges its plan (its work landed through another
+pull request): the reason becomes the change's, and its proposal's ledger gets the line. A change with a
 pull request closes when its pull request does. POST /v1/worker/runs/{id}/curator/drop (``routes.drop_change``, behind
 ``evo-agents worker curator drop``) is the Builder's own way out: the plan run of a change's plan closes that change
 while it is ``planned`` or ``pr_pending`` with no pull request, for the member who dispatched the run, an admin of the

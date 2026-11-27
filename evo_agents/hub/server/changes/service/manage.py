@@ -1,6 +1,6 @@
-"""The list of a project's changes of the Curator, an admin's close of a change left open with no pull request, and
-the drop of a change by its own Builder before its pull request opens (the routes:
-``evo_agents.hub.server.changes.routes``)."""
+"""The list of a project's changes of the Curator, an admin's close of a change with no pull request (left open, or
+planned with no run of its plan active, such as one whose work landed through another pull request), and the drop of
+a change by its own Builder before its pull request opens (the routes: ``evo_agents.hub.server.changes.routes``)."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 CLOSE = "curator.close"  # an admin closed a change with no pull request: "<project> change:<id> proposal:<id>"
 MAX_LIST = 200
 DROPPABLE = ("planned", "pr_pending")  # a change its Builder may drop: no pull request yet, no Judge
+CLOSABLE = ("open", *DROPPABLE)  # a change an admin may close by hand, when it has no pull request
 
 
 async def list_changes(engine: AsyncEngine, user: Principal, project: str) -> ChangeList:
@@ -48,7 +49,8 @@ async def list_changes(engine: AsyncEngine, user: Principal, project: str) -> Ch
 
 
 async def close_change(engine: AsyncEngine, user: Principal, project: str, change_id: int, body: ChangeClose) -> Change:
-    """Close a change left open with no pull request, saying why; the admins of the project alone may."""
+    """Close a change with no pull request, saying why: one left open, or one planned whose plan no run builds or judges
+    now (its work landed through another pull request, say); the admins of the project alone may."""
     why = reason_line(body.reason)
     if why is None:
         raise HTTPException(422, "say why the change is closed: the reason is empty")
@@ -68,9 +70,11 @@ async def close_change(engine: AsyncEngine, user: Principal, project: str, chang
             or (row.plan_id is not None and row.plan_id not in set(await visible_plans(conn, access, None)))
         ):
             raise HTTPException(404, f"no change #{change_id} of the Curator in project {access.name} you may read")
-        if row.state != "open":
+        if row.state not in CLOSABLE:
             raise HTTPException(
-                409, f"change #{change_id} is {row.state}: only a change left open is closed by hand; nothing changed"
+                409,
+                f"change #{change_id} is {row.state}: only a change left open or planned is closed by hand; nothing "
+                "changed",
             )
         if row.pr_number is not None:
             raise HTTPException(
@@ -78,6 +82,17 @@ async def close_change(engine: AsyncEngine, user: Principal, project: str, chang
                 f"change #{change_id} has pull request {row.pr_url or row.pr_number}: close that on GitHub and the "
                 "hub closes the change when it reads it again; nothing changed",
             )
+        if row.state in DROPPABLE and row.plan_id is not None:
+            from evo_agents.hub.server.changes.repository.shift import judging
+            from evo_agents.hub.server.runs.service.views import plan_activity
+
+            activity = await plan_activity(conn, access.project_id, row.plan_id)
+            if activity.plan_run is not None or activity.steps or await judging(conn, access.project_id, row.plan_id):
+                raise HTTPException(
+                    409,
+                    f"change #{change_id} is {row.state} and a run of its plan {row.plan_id} is still active: stop "
+                    "that run first, or let its Builder drop the change; nothing changed",
+                )
         await set_change(
             conn, change_id, state="closed", reason=why, ledger_extra={"actor_id": user.user_id, "login": user.login}
         )
