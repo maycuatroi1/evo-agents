@@ -825,6 +825,30 @@ def test_the_steps_a_plan_run_still_has_to_do_leave_out_blocked_descoped_and_wai
     assert runs.steps_to_go({"steps": "none"}) == []
 
 
+def test_a_plans_context_repos_are_read_only_repos_its_plan_run_lists_apart(plan):
+    # a plan run checked out only the repos it worked in: the design another repo held was missing, and the agent read
+    # a stale clone elsewhere on the machine
+    plan = {**plan, "context_repos": ["design-docs", " design-docs ", "evo-agents", 7]}
+    issues = validate(plan, load_schema("plan"))
+    assert [issue.path for issue in errors(issues)] == ["context_repos[3]"], issues
+    plan["context_repos"] = ["design-docs", "evo-agents"]
+    assert errors(validate(plan, load_schema("plan"))) == []
+    assert runs.context_repos(plan) == ["design-docs", "evo-agents"]
+    context = {"repo": "design-docs", "branch": None, "read_only": True}
+    repos = [*plan["repos"], context]
+    assert runs.work_repos(repos) == plan["repos"] and runs.read_only_names(repos) == ["design-docs"]
+    worktrees = {"design-docs": "design-docs-2"}
+    for prompt in (
+        build_plan_prompt(plan, repos, worktrees),
+        run_prompts.build_step_session_prompt(plan, step(plan, 2), repos, worktrees),
+    ):
+        assert "- design-docs: worktree design-docs-2, read-only" in prompt
+        assert "- design-docs: branch" not in prompt, "not among the repos the run works in"
+        assert "never in another clone or worktree on this machine" in prompt
+        assert "`evo-agents worker step` reports no step in them" in prompt
+    assert "read-only" not in build_plan_prompt(plan, plan["repos"]), "a run without one says nothing of it"
+
+
 def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff(plan):
     target = step(plan, 2)
     worktrees = {entry["repo"]: entry["repo"] for entry in plan.get("repos") or []}

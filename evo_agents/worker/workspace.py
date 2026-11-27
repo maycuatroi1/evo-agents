@@ -23,9 +23,12 @@ class Workspace:
     local_branch: str  # the branch the worktree is on: ``branch``, or evo-run/<run>/<repo> when that is elsewhere
     base: str  # the commit the worktree started at
     protected: tuple[str, ...]  # the repo's default branches: the remote's HEAD, the hub's default_branch, main, master
+    # detached at origin's default branch, to read: a review's, an author run's, a plan run's repo of its plan's
+    # context_repos, which nothing commits or pushes and `evo-agents worker step` reports no step in
+    read_only: bool = False
 
     def to_record(self) -> dict:
-        return {
+        record = {
             "repo": self.repo,
             "branch": self.branch,
             "plan_branch": self.plan_branch,
@@ -35,6 +38,7 @@ class Workspace:
             "base": self.base,
             "protected": sorted(self.protected),
         }
+        return {**record, "read_only": True} if self.read_only else record
 
     @classmethod
     def from_record(cls, item) -> Workspace:
@@ -52,6 +56,7 @@ class Workspace:
                 local_branch=_text(item["local_branch"]),
                 base=_text(item["base"]),
                 protected=tuple(str(name) for name in item.get("protected") or ()),
+                read_only=item.get("read_only") is True,
             )
         except KeyError as exc:
             raise ValueError(f"a repo of a plan run's record lacks {exc}") from None

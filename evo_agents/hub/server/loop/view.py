@@ -29,6 +29,7 @@ from evo_agents.hub.chats import chat_link as chats_link
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.merge_gate import GITLAB_STATE, MERGE_SHA
 from evo_agents.hub.plugin_calls import enabled_in
+from evo_agents.hub.runs import work_repos
 from evo_agents.hub.server.autonomy.repository.policies import newest, project_repos
 from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.loop import backlog, baseline, covering
@@ -432,7 +433,7 @@ async def _run_rows(conn: AsyncConnection, project_id: int, ids: Sequence[int]) 
     made = await _proposals(conn, [row.id for row in rows if row.kind == "task"])
     found = {}
     for row in rows:
-        repos = tuple(entry["repo"] for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo"))
+        repos = tuple(entry["repo"] for entry in work_repos(row.repos) if entry.get("repo"))  # none it only read
         found[row.id] = RunView(
             row.id,
             row.kind,

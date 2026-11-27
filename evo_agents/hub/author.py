@@ -329,6 +329,17 @@ def _rules(skill_version: int, plan: tuple[str, int] | None, decisions: bool = F
     ]
 
 
+# A plan run checks out only the repos the plan works in, so a design the plan points to in another repo was missing
+# from it, and its agent read a stale clone elsewhere on the machine instead.
+CONTEXT_REPOS_RULE = (
+    "- A plan run checks out only the repos its plan works in (the plan's repos and each step's repo), while this run "
+    "has every repo of the project. When the plan points to files of another repo that its steps read and do not "
+    "change (a design, a specification, a document), list that repo in the plan's context_repos: the plan run checks "
+    "it out read-only beside the others, at origin's default branch, and never pushes it. Name those files by repo "
+    "and path in the plan's context or the step's what."
+)
+
+
 def _put_rules(plan: tuple[str, int] | None) -> list[str]:
     keep = (
         f"keep the {', '.join(STEP_PROGRESS)} of each step and the {', '.join(REPO_PROGRESS)} of each repo as the hub "
@@ -352,6 +363,7 @@ def _put_rules(plan: tuple[str, int] | None) -> list[str]:
         ]
     return [
         *target,
+        CONTEXT_REPOS_RULE,
         f"- Whenever you put the plan, {keep}. A 409 means someone changed the plan since you read it: read it again "
         "and redo your change on what you read. A 422 or 413 says what to fix; the warnings it prints are worth "
         "fixing too.",

@@ -351,6 +351,15 @@ def test_bare_commits_in_evidence(harness: Path, evidence: str, message: str | N
     )
 
 
+def test_a_context_repo_is_declared_and_not_one_the_plan_works_in(harness: Path):
+    data = {"id": "demo-plan", "context_repos": ["docs", "app"], "steps": [{"id": 1, "what": "x", "repo": "app"}]}
+    issues = plan_semantics(data, harness / "plans/active/demo-plan.yaml", load_manifest(harness))
+    found = [(i.path, i.severity) for i in issues if i.path.startswith("context_repos")]
+    assert found == [("context_repos[0]", "warning"), ("context_repos[1]", "warning")]
+    assert "'docs' is not declared in harness.yaml" in issues[0].message
+    assert "the plan works in app too" in issues[1].message
+
+
 TITLE_60 = ("Đồng bộ khoá học nói thật " * 3)[:60]  # 60 characters, more than 60 bytes in UTF-8
 
 

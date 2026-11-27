@@ -84,9 +84,17 @@ def step_proofs(args, body: dict, step, worktree) -> list[dict] | None:
 
 
 def step_workspaces(agent: Any, repo: str | None) -> dict:
-    """The run's worktrees by repo, once ``--repo``, when given, names one of them."""
-    workspaces = agent.workspaces()
+    """The run's worktrees by repo it works in, once ``--repo``, when given, names one of them: a repo the run only
+    reads (one of the plan's context_repos) takes no step."""
+    held = agent.workspaces()
+    workspaces = {name: workspace for name, workspace in held.items() if not workspace.read_only}
     if repo is not None and repo not in workspaces:
+        works = f"it works in {', '.join(workspaces) or 'no repo'}"
+        if repo in held:
+            raise WorkerStateError(
+                f"run {agent.run_id} only reads {repo}, one of the plan's context_repos: no step is done, committed "
+                f"or pushed in it; {works}"
+            )
         raise WorkerStateError(f"run {agent.run_id} works in {', '.join(workspaces) or 'no repo'}, not in {repo}")
     return workspaces
 

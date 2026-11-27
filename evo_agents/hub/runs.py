@@ -233,6 +233,11 @@ AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-de
 # a daemon whose heartbeat names apart (``orphans``) the runs a previous daemon left, and that takes a run's leases again
 # when the answer says ``renew``: the hub re-attaches a run it lost for no other (evo_agents.hub.server.run_reattach)
 REATTACH = "reattach"
+# a daemon whose plan run checks out the repos the plan reads as context (the plan's context_repos, the entries of the
+# run's repos with read_only) detached at origin's default branch, and never pushes, preflights a push to or opens a
+# pull request in them (evo_agents.worker.runner.plan): the hub hands a plan run with such a repo to no other, since an
+# older daemon would take it for a repo to push
+CONTEXT_REPOS = "context_repos"
 # a daemon that installed Chromium (`evo-agents worker browser install`) and starts it for a run dispatched with
 # browser (evo_agents.worker.browser); its heartbeat's browser says how many at once, and only it gets such a run
 BROWSER = "browser"
@@ -275,6 +280,7 @@ WORKER_FEATURES = (
     REPOLESS_REVIEW,
     REATTACH,
     PROBE_CHANGE_ARMS,
+    CONTEXT_REPOS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 Runtime = Literal["claude-code", "opencode", "codex"]
@@ -884,6 +890,36 @@ def plan_repo(plan: dict, step: dict) -> dict | None:
     if name is None:
         return repos[0] if len(repos) == 1 else None
     return next((entry for entry in repos if entry.get("repo") == name), {"repo": name})
+
+
+# The repos a plan run reads as context
+
+READ_ONLY = "read_only"  # the key of an entry of a run's repos that the run reads and never pushes (CONTEXT_REPOS)
+
+
+def context_repos(plan: dict) -> list[str]:
+    """The names of the plan's ``context_repos``, each once, in order: repos its plan run checks out to read, and
+    never changes."""
+    named = plan.get("context_repos") if isinstance(plan, dict) else None
+    names = (
+        [name.strip() for name in named if isinstance(name, str) and name.strip()] if isinstance(named, list) else []
+    )
+    return list(dict.fromkeys(names))
+
+
+def read_only(entry) -> bool:
+    """Whether ``entry``, one of a run's repos, is a repo the run only reads (``READ_ONLY``)."""
+    return isinstance(entry, dict) and entry.get(READ_ONLY) is True
+
+
+def work_repos(repos) -> list[dict]:
+    """The entries of a run's ``repos`` the run works in, pushes and lands: every one but those it only reads."""
+    return [entry for entry in repos or [] if isinstance(entry, dict) and not read_only(entry)]
+
+
+def read_only_names(repos) -> list[str]:
+    """The names of the entries of a run's ``repos`` the run only reads, in order."""
+    return [entry["repo"] for entry in repos or [] if read_only(entry) and isinstance(entry.get("repo"), str)]
 
 
 # Texts cut to a budget

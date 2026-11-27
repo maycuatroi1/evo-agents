@@ -140,6 +140,7 @@ class RunDirectory:
             local_branch="HEAD",
             base=base,
             protected=(),
+            read_only=True,
         )
 
     # What the parts every kind shares ask of it

@@ -112,7 +112,7 @@ def _repo_of(project, run, body: MergeCheckIn, plan: dict | None) -> tuple[str, 
     target = github_target(facts.origin)
     if target is None:
         raise HTTPException(409, f"{body.repo} is not on github.com: the merge check judges a pull request there")
-    entry = next((item for item in run.repos or [] if isinstance(item, dict) and item.get("repo") == body.repo), None)
+    entry = next((item for item in runs.work_repos(run.repos) if item.get("repo") == body.repo), None)
     if entry is None:
         raise HTTPException(422, f"the run has no repo {body.repo}")
     branch = entry.get("branch") or (merge_gate.plan_branch(plan, body.repo) if plan else None) or body.branch

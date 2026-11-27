@@ -43510,6 +43510,12 @@ export interface components {
              * @description a task run's: the branch of origin its worktree starts from instead of the default branch, and the base of the draft pull request of its push; absent when its task names none
              */
             base?: string | null;
+            /**
+             * Read Only
+             * @description a plan run's repo of the plan's context_repos: checked out detached at origin's default branch, read and never committed, pushed or landed; absent for a repo the run works in
+             * @default false
+             */
+            read_only: boolean;
         };
         /**
          * RunRepoSource
