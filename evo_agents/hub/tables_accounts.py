@@ -11,7 +11,7 @@ has the defaults. account_policies holds a member's policy for a project; none m
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 
 provider_accounts (0151) holds what a provider account calls, for its secret of kind provider, whose sealed value is
-its API key (``evo_agents.hub.server.provider_accounts``): the catalog id of its provider, its base URL, its API
+its API key (``evo_agents.hub.server.accounts.service.provider_accounts``): the catalog id of its provider, its base URL, its API
 format and the names of its models. Its weight, priority, pause and cooldown are its ``accounts`` row, as for any
 account.
 

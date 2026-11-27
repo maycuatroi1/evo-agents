@@ -40,7 +40,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import gateway_accounts, pool_accounts
+from evo_agents.hub.server import gateway_accounts
+from evo_agents.hub.server.accounts.repository import pool_runs as pooled_runs
+from evo_agents.hub.server.accounts.service import pool_runs as pool_accounts
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -418,7 +420,7 @@ async def own_home(conn: AsyncConnection, run_id: int) -> bool:
     r, ap = tables.runs, tables.agent_profiles
     query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
     default = (await conn.execute(query)).scalar_one_or_none()
-    return default is False or await pool_accounts.is_pooled(conn, run_id)
+    return default is False or await pooled_runs.is_pooled(conn, run_id)
 
 
 async def owner_setup(conn: AsyncConnection, run_id: int) -> bool:
@@ -427,7 +429,7 @@ async def owner_setup(conn: AsyncConnection, run_id: int) -> bool:
     r, ap = tables.runs, tables.agent_profiles
     query = select(ap.c.is_default).join_from(r, ap, ap.c.id == r.c.profile_id).where(r.c.id == run_id)
     default = (await conn.execute(query)).scalar_one_or_none()
-    return default is True and await pool_accounts.is_pooled(conn, run_id)
+    return default is True and await pooled_runs.is_pooled(conn, run_id)
 
 
 async def run_origin(conn: AsyncConnection, run_id: int) -> RunOrigin:

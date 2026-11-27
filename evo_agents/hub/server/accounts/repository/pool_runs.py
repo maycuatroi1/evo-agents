@@ -1,5 +1,5 @@
 """The env accounts of an agent's account pool, as a run of the agent in pool mode is leased them
-(``credentials.survey_run``; ``account_pools``)."""
+(``credentials.survey_run``; ``evo_agents.hub.server.accounts.service.pools``)."""
 
 from __future__ import annotations
 
@@ -9,27 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import PROVIDER_KIND
-
-NEEDS_POOL = (
-    "agent @{handle} has no account pool, so a run of it has no account to use: ask an admin of "
-    "project {project} to attach one (`evo-agents hub agent account-pool {handle} POOL`)"
-)
-
-
-def needs_pool(profile, project: str) -> str | None:
-    """Why a run of ``profile`` (an agent with no account pool) cannot be dispatched: an admin must attach an account
-    pool; None for an agent that has one."""
-    if profile.account_pool_id is not None:
-        return None
-    return NEEDS_POOL.format(handle=profile.handle, project=project)
-
-
-def chat_needs_pool(profile, project: str) -> str | None:
-    """``needs_pool`` for a chat turn: an agent that runs on the hub takes its model through the hub's gateway with the
-    project's provider account, not an account pool (``hub_runtime``), so it needs none."""
-    if profile.runs_on == "hub":
-        return None
-    return needs_pool(profile, project)
 
 
 def pool_env_accounts(pool_id: int, *, lock: bool):
@@ -61,7 +40,7 @@ def pool_env_accounts(pool_id: int, *, lock: bool):
 def usable_member():
     """A member of the account pool of the run being claimed (``tables.runs``, correlated) a run can take now: its
     secret live, not past its end (an OAuth account whose access token ended is, as the lease refreshes it first:
-    ``account_refresh``; one whose refresh the endpoint refused is cooling), not paused and not cooling, an env account
+    ``refresh``; one whose refresh the endpoint refused is cooling), not paused and not cooling, an env account
     of a model variable or a provider account."""
     m, s, a, ap, r = (
         tables.account_pool_members,

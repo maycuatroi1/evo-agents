@@ -8,7 +8,7 @@ creates or replaces one whole, PATCH changes what it is given and keeps the id, 
 and shares go on, DELETE deletes it softly. The key is given by ``value`` only: an agent has no env secret of a
 member to copy. ``workers`` are those of an agent's account: one or more, the caller's own or shared ones serving the
 project. Every member of the project reads them, without the key, and may have the hub read the quota a Z.ai one has
-left (POST .../{name}/quota, ``provider_quota``), which it keeps as the account's last usage.
+left (POST .../{name}/quota, ``accounts.service.quota``), which it keeps as the account's last usage.
 
 The name space is that of the agent's accounts: a name an env account of the agent holds answers 409, as a PUT of
 an env account answers 409 for a provider account's name. The agent counts both against MAX_ACCOUNTS_PER_AGENT. Each
@@ -23,6 +23,19 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.accounts.models.provider_accounts import ProviderAccount, ProviderAccountWritten
+from evo_agents.hub.server.accounts.models.quota import ProviderQuota
+from evo_agents.hub.server.accounts.repository.provider_accounts import provider_rows, store_endpoint
+from evo_agents.hub.server.accounts.service.providers import (
+    audit_text,
+    checked_url,
+    endpoint,
+    key_value,
+    listed_models,
+    no_past_end,
+    view_of,
+)
+from evo_agents.hub.server.accounts.service.quota import refresh_for
 from evo_agents.hub.server.agent_accounts.models.accounts import MAX_ACCOUNTS_PER_AGENT
 from evo_agents.hub.server.agent_accounts.repository import accounts as account_repository
 from evo_agents.hub.server.agent_accounts.repository import provider_accounts as repository
@@ -31,20 +44,6 @@ from evo_agents.hub.server.agent_accounts.service.shapes import AgentProviderAcc
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.provider_quota import ProviderQuota, refresh_for
-from evo_agents.hub.server.provider_store import (
-    ProviderAccount,
-    ProviderAccountWritten,
-    audit_text,
-    checked_url,
-    endpoint,
-    key_value,
-    listed_models,
-    no_past_end,
-    provider_rows,
-    store_endpoint,
-    view_of,
-)
 from evo_agents.hub.server.sealing import Sealed, agent_provider_aad
 from evo_agents.hub.server.secrets import sealer_of, unique_names
 from evo_agents.hub.server.security import Principal

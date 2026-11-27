@@ -1,7 +1,7 @@
 """The hub is the source of truth of the model gateway: ``reconcile`` makes the gateway's connections what the provider
 accounts in Postgres say, and ``GatewaySync`` runs it when the api starts, shortly after a write of a provider account
 (``poke``) and every ``INTERVAL`` seconds, so a gateway that lost its volume is rebuilt on the next round. Each round
-also reads the quota of every Z.ai account (``provider_quota.refresh_all``) when ``QUOTA_INTERVAL`` seconds passed
+also reads the quota of every Z.ai account (``accounts.service.quota.refresh_all``) when ``QUOTA_INTERVAL`` seconds passed
 since the last read, or when its sweep took back the keys of runs that ended.
 
 Each live provider account whose catalog entry goes through the gateway is one connection named
@@ -42,7 +42,7 @@ from evo_agents.hub.server.sealing import Sealed, Sealer, agent_provider_aad, se
 log = logging.getLogger(__name__)
 
 INTERVAL = 60.0  # seconds between two rounds when nothing pokes
-QUOTA_INTERVAL = 300.0  # seconds between two reads of the Z.ai accounts' quotas (provider_quota)
+QUOTA_INTERVAL = 300.0  # seconds between two reads of the Z.ai accounts' quotas (accounts.service.quota)
 DEBOUNCE = 0.2  # seconds a poke waits for the writes that follow it
 NAME = re.compile(r"evo-(\d+)-([0-9a-f]{16})")  # a connection the hub made
 NODE_KINDS = {"custom-openai": "openai-compatible", "custom-anthropic": "anthropic-compatible"}
@@ -289,7 +289,9 @@ class GatewaySync:
 
     async def _quotas(self, swept: int) -> None:
         """Read the quota of every Z.ai account when it is time, as the module says; a failure waits for the next."""
-        from evo_agents.hub.server import provider_quota  # it reads the accounts' cooldowns through account_choice
+        from evo_agents.hub.server.accounts.service import (
+            quota as provider_quota,  # it reads the accounts' cooldowns through repository.choice
+        )
 
         now = time.monotonic()
         if not swept and self._quota_at is not None and now - self._quota_at < self.quota_interval:

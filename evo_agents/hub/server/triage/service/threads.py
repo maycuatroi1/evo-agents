@@ -21,7 +21,7 @@ then opens no thread. The triage chats each plan had before stay as they are, wi
 
 A run the hub stopped on a usage limit or a refused login (cause ``rate_limit`` or ``account_auth``, an ``account_event``
 stop in its log) while no account of its owner for that variable is ready for the project gets the thread and the facts,
-and no agent: the chat run of the agent would take the same accounts (``account_choice``) and fail at once. The thread
+and no agent: the chat run of the agent would take the same accounts (``accounts.service.choice``) and fail at once. The thread
 says when the first of them is ready again.
 
 A run that failed for a program its worker lacks (``triage_rules.lacks_program``) and that no other worker is left to

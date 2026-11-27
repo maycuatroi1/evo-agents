@@ -1,6 +1,6 @@
 """The shapes of the accounts of an agent: what a PUT and a PATCH of an account or a provider account take, and what
-reads as an account. They hold a worker's name (``worker_models``), an account's figures (``account_views``) and a
-provider account's ``ModelsFrom`` (``provider_store``), modules of the hub that reach this service, so they are here
+reads as an account. They hold a worker's name (``worker_models``), an account's figures (``accounts.service.views``) and a
+provider account's ``ModelsFrom`` (``accounts.service.providers``), modules of the hub that reach this service, so they are here
 and not in the models."""
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from evo_agents.hub.account_providers import Category, Provider
 from evo_agents.hub.accounts import ACCOUNT_STATES, MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID
-from evo_agents.hub.server.account_views import AccountUsage, HeldBy
+from evo_agents.hub.server.accounts.models.provider_accounts import ModelsFrom
+from evo_agents.hub.server.accounts.models.views import AccountUsage, HeldBy
 from evo_agents.hub.server.agent_accounts.models.accounts import MAX_ENV_VAR_CHARS, MAX_WORKERS
 from evo_agents.hub.server.agent_accounts.models.provider_accounts import Models
 from evo_agents.hub.server.base.models import StrictModel
-from evo_agents.hub.server.provider_store import ModelsFrom
 from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 Workers = list[Annotated[str, Field(pattern=WORKER_NAME)]]
@@ -62,7 +62,7 @@ class AgentAccountChange(StrictModel):
 class AgentAccount(BaseModel):
     """An account of an agent as an admin sees it: everything but the value."""
 
-    # every member of its project reads it too, with the figures a member's own account has (``account_views``)
+    # every member of its project reads it too, with the figures a member's own account has (``accounts.service.views``)
 
     id: int = Field(description="the id of its secret, which audit lines name it by")
     name: str

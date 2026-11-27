@@ -1,6 +1,6 @@
 """The leases of a run under an agent with accounts of its own (``evo_agents.hub.server.credentials``,
-``account_choice``), criteria a3, a4 and a7 of the plan agent-accounts, now that an agent's accounts reach its runs
-through its account pool (plan agent-dedicated-pools: ``pool_accounts``).
+``accounts.service.choice``), criteria a3, a4 and a7 of the plan agent-accounts, now that an agent's accounts reach its runs
+through its account pool (plan agent-dedicated-pools: ``accounts.repository.pool_runs``).
 
 The agent's accounts in its account pool go to every node of its pool: the run is leased one of them and never the
 dispatcher's secret for a model variable, whoever dispatches it; every account unusable leaves the run without that

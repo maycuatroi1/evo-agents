@@ -1,6 +1,6 @@
 """The usage windows of a model account that no run's CLI reports: what Z.ai's Coding Plan says of its own quota, and
 the weekly budget an owner gives an account whose provider has no quota API. Standard library only: the server keeps
-the windows (``evo_agents.hub.server.provider_quota``), the command line and the tests read the same rules.
+the windows (``evo_agents.hub.server.accounts.service.quota``), the command line and the tests read the same rules.
 
 Both end in the shape a run's CLI reports (``accounts.last_usage``, ``rate_limits``): ``windows`` of ``five_hour`` and
 ``seven_day``, each the share of its limit used (0 to 1) and when it resets (UTC, ISO 8601), with ``status``

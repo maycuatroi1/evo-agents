@@ -49,7 +49,7 @@ from evo_agents.hub.cli.secret.bindings import check_secret_name
 from evo_agents.hub.cli.secret.resources import Accounts
 from evo_agents.hub.cli.secret.shares import ACCOUNT_SHARE, ACCOUNT_UNSHARE
 
-MAX_BUDGET_USD = 1_000_000  # evo_agents.hub.server.accounts.MAX_BUDGET_USD
+MAX_BUDGET_USD = 1_000_000  # evo_agents.hub.server.accounts.models.accounts.MAX_BUDGET_USD
 BOUNDS = {
     "weight": (0, MAX_WEIGHT, "--weight"),
     "priority": (0, MAX_PRIORITY, "--priority"),

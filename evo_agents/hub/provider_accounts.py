@@ -1,5 +1,5 @@
 """Provider accounts as both ends model them: an API key of a model provider that a member, or an agent, keeps on the
-hub with the endpoint it calls and the models it serves (``evo_agents.hub.server.provider_accounts``). Standard
+hub with the endpoint it calls and the models it serves (``evo_agents.hub.server.accounts.service.provider_accounts``). Standard
 library only, so the CLI shares it with the api.
 
 A provider account is a secret of kind ``provider`` (``credentials.PROVIDER_KIND``) and a row of

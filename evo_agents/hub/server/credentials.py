@@ -10,7 +10,7 @@ owner holds a grant on: ``repo_origins``), compared in the form of ``credentials
 project, on any of their workers or on this one, and that has not expired, never one of kind forge (``LEASED_KINDS``):
 
 - each secret of kind env, one per variable: the account the run took already, else one bound to this worker before
-  one bound to any, by the strategy of the owner's policy for the project (``account_choice``);
+  one bound to any, by the strategy of the owner's policy for the project (``accounts.service.choice``);
 - each secret of kind git whose url_prefix covers one of the origins, the longest prefix for each origin, so a
   secret for ``https://gitlab.example.org/group`` answers for ``git@gitlab.example.org:group/repo.git`` too;
 - a token of the hub's GitHub App for the origins on github.com that no git secret covers, one per installation
@@ -44,9 +44,9 @@ and version it was handed out under; the credential.lease audit row names them (
 the profile is the project's default.
 
 The model accounts of a run under an agent (never a run of the Curator) are those of its account pool alone
-(``pool_accounts``), chosen as ``account_choice`` says by DEFAULT_POLICY, weight and priority: never a model account of
+(``accounts.repository.pool_runs``), chosen as ``accounts.service.choice`` says by DEFAULT_POLICY, weight and priority: never a model account of
 the dispatcher's or of a share, whatever the profile's credential axis says; when every account of the pool is paused,
-cooling or past its end, the run waits in the queue (``account_choice`` says why in an event). Every other variable is
+cooling or past its end, the run waits in the queue (``accounts.service.choice`` says why in an event). Every other variable is
 the dispatcher's as above. An account's lease is named ``@<handle>:<name>`` (``credentials.agent_lease_name``), and it
 is opened with the agent's own associated data (``sealing.agent_secret_aad``).
 
@@ -118,8 +118,9 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit, gateway_leases, gateway_sync, run_access
-from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relogin
-from evo_agents.hub.server.account_refresh import refresh_due
+from evo_agents.hub.server.accounts.repository.pool_runs import pool_env_accounts
+from evo_agents.hub.server.accounts.service.choice import choose_accounts, fail_over_relogin
+from evo_agents.hub.server.accounts.service.refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import lease as lease_autonomy
 from evo_agents.hub.server.credential_models import (
@@ -139,7 +140,6 @@ from evo_agents.hub.server.lease_ending import (  # noqa: F401  (re-exported: ca
     revoker,
 )
 from evo_agents.hub.server.org_store import ended_refusal
-from evo_agents.hub.server.pool_accounts import pool_env_accounts
 from evo_agents.hub.server.repo_origins import RepoOrigin, repo_origins
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.audits import run_target
@@ -579,7 +579,7 @@ def _leasable(run: _Run, allowed: set[tuple[str, str]] | None, row) -> bool:
 
 def _choose(survey: _Survey) -> None:
     """Which git secret for each origin, and which repos need a GitHub token; the reason of each repo that nothing can
-    cover. The env secrets are chosen when they are leased (``account_choice``)."""
+    cover. The env secrets are chosen when they are leased (``accounts.service.choice``)."""
     by_preference = sorted(survey.secrets, key=lambda secret: (not secret.on_worker, secret.name))
     git = [secret for secret in by_preference if secret.kind == "git"]
     for repo, origin in survey.origins.items():

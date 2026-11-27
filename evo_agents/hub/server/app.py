@@ -604,9 +604,6 @@ def _include_curator_routes(app: FastAPI) -> None:
 
 def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
-        account_pools,
-        account_views,
-        accounts,
         branding,
         claude_sign_in,
         context_answer_reuse,
@@ -639,7 +636,6 @@ def _include_member_routes(app: FastAPI) -> None:
         project_admin,
         project_archive,
         project_plugins,
-        provider_accounts,
         rate_limits,
         run_leases,
         run_waits,
@@ -650,6 +646,9 @@ def _include_member_routes(app: FastAPI) -> None:
         task_dispatch,
         work_cards,
     )
+    from evo_agents.hub.server.accounts.routes import accounts, provider_accounts
+    from evo_agents.hub.server.accounts.routes import pools as account_pools
+    from evo_agents.hub.server.accounts.routes import views as account_views
     from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
     from evo_agents.hub.server.agent_accounts.routes import provider_accounts as agent_provider_accounts
     from evo_agents.hub.server.agent_accounts.routes import views as agent_account_views

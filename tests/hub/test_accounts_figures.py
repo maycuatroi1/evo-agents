@@ -1,4 +1,4 @@
-"""What a member reads of their accounts at work (``evo_agents.hub.server.account_views``): the figures of GET
+"""What a member reads of their accounts at work (``evo_agents.hub.server.accounts.service.views``): the figures of GET
 /v1/accounts and GET /v1/accounts/{name}, the accounts of a run on GET .../runs/{id}/accounts, and
 ``evo-agents hub account show``.
 

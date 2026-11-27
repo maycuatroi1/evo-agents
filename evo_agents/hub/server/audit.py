@@ -202,7 +202,7 @@ SHARE_REVOKE = "share.revoke"
 ACCOUNT_SET = "account.set"  # the owner changed the weight or priority of an account, or paused or resumed it
 ACCOUNT_POLICY_PUT = "account.policy-put"  # the member set their policy for the project
 ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the defaults hold again
-# A provider account (evo_agents.hub.server.provider_accounts), a member's in no project and an agent's in its project:
+# A provider account (evo_agents.hub.server.accounts.service.provider_accounts), a member's in no project and an agent's in its project:
 # "secret:<id> provider=<catalog id> host=<host of its base URL>", after "<project>/@<handle> " for an agent's, with
 # " fields=<names>" for a change; never its name, its key or the path of its base URL.
 PROVIDER_ACCOUNT_PUT = "provider-account.put"  # created, or replaced whole with a new key
@@ -233,7 +233,7 @@ CRON_DELETE = "cron.delete"  # its owner or an admin deleted it with its fires
 CRON_PAUSE = "cron.pause"  # its owner or an admin paused it
 CRON_RESUME = "cron.resume"  # its owner or an admin resumed it
 CRON_RUN = "cron.run"  # its owner or an admin fired it now
-# Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
+# Account pools (evo_agents.hub.server.accounts.service.pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.
 ACCOUNT_POOL_CREATE = "account-pool.create"  # an admin made a named account pool

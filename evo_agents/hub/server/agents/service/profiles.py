@@ -38,7 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, profiles
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server import account_pools, audit
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.accounts.service import pools as account_pools
 from evo_agents.hub.server.agent_accounts.service.accounts import retire_profile_accounts
 from evo_agents.hub.server.agents.models.packs import pinned_view
 from evo_agents.hub.server.agents.models.profiles import (
