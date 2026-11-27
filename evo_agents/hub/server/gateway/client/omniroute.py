@@ -240,7 +240,7 @@ class GatewayClient:
         """A connection of ``provider`` with ``key``, at ``base_url`` when given; the gateway makes it inactive."""
         body = {"provider": provider, "name": name, "apiKey": key}
         if base_url:
-            body["providerSpecificData"] = {"baseUrl": base_url}
+            body["providerSpecificData"] = {"baseUrl": base_url}  # pyright: ignore[reportArgumentType]
         found = await self._call("POST", "/api/providers", "create a connection", body)
         return _connection(found["connection"])
 
@@ -306,7 +306,7 @@ class GatewayClient:
             float(summary.get("totalCost") or 0.0),
         )
 
-    # A run's requests to a model, relayed by the hub's gateway route (``gateway_proxy``)
+    # A run's requests to a model, relayed by the hub's gateway route (``gateway.routes.proxy``)
 
     async def relay(self, method: str, path: str, key: str, headers: dict[str, str], content: bytes) -> httpx.Response:
         """Send a run's request to the gateway's client endpoint ``path`` with the gateway's ``key`` and return its

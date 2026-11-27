@@ -9,7 +9,7 @@ the member each run was made for (``cost_by_principal``: credential_leases.princ
 over 24 hours, 7 days and the month so far (UTC, ``month_start``). For a member another shared the account with
 (``principal_id``), the figures are those of their own runs alone. A run took an account when it got a lease of it
 (credential_leases), at its first such lease; a run on a provider account's model when its key of the model gateway
-reached the account (``gateway_leases``), which holds it while that lease is not revoked, and whose cost the gateway
+reached the account (``gateway.service.leases``), which holds it while that lease is not revoked, and whose cost the gateway
 reports into its usage once it ends; its cost is the one its usage reports (``total_cost_usd``, else ``cost``, as
 ``curator.run_cost`` reads it), so an estimate: a run that failed over counts with each account it took, and a session
 resumed by several runs counts in each.

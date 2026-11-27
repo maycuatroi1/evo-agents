@@ -743,19 +743,19 @@ accounts keep the sign-in of the section above.
 
 **The gateway.** The model calls of such accounts go through OmniRoute, the hub's `gateway` service: it runs on a
 network only the api joins, with no port and no domain, and the hub reconciles its connections from the provider
-accounts (`server/gateway_sync.py`; `docs/hub.md`, section Model gateway). It holds the keys, opened by the hub, so a
+accounts (`server/gateway/service/sync.py`; `docs/hub.md`, section Model gateway). It holds the keys, opened by the hub, so a
 worker never does.
 
 **A run on a provider's model.** A run whose model reads `<alias>/<model>`, with the catalog's alias of a provider
 account's provider (or `evo-<id>` for a custom endpoint), is a gateway run (`evo_agents/hub/gateway_runs.py`,
 migration 0152), on Claude Code, opencode or Codex. Only a daemon of `GATEWAY_RUN_AGENT` (0.46.0) or later claims it.
 When the worker asks for the run's credentials, the hub has the gateway make a key for that run alone
-(`server/gateway_leases.py`): it reaches only the connections of the accounts the run may use, ends 300 seconds after
+(`server/gateway/service/leases.py`): it reaches only the connections of the accounts the run may use, ends 300 seconds after
 the run's timeout would, and logs no request. The hub keeps that key sealed under the lease's id. The worker gets one
 lease of kind `gateway`: the hub's route `<hub>/v1`, the **run token** `evr_...`, the model and the API format of the
 runtime. The run token is an HMAC of the lease's id under the run's key. The hub stores only its SHA-256, and the
 daemon masks it as it does every lease. The route (`/v1/messages`, `/v1/chat/completions`, `/v1/responses`,
-`/v1/models`, `server/gateway_proxy.py`) takes the token, refuses it once the run leaves its held states or the lease is
+`/v1/models`, `server/gateway/routes/proxy.py`) takes the token, refuses it once the run leaves its held states or the lease is
 revoked, and forwards the call with the run's key in its place. On Claude Code, `ANTHROPIC_BASE_URL` is the hub,
 `ANTHROPIC_AUTH_TOKEN` the token, and the run's own config dir holds no Claude login. opencode and Codex read the
 token from `EVO_GATEWAY_TOKEN` (`evo_agents/worker/runtimes/gateway.py`). When the run ends, the sweep reads the key's

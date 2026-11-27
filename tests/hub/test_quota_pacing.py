@@ -6,7 +6,7 @@ window is at ``five_hour_ceiling_pct`` or over while a cooler one exists, keeps 
 window back while another account has more, and takes the account with the most of its weekly window left per hour
 until it resets. Through the hub: a member's policy and an account pool take the strategy and its two thresholds (an
 admin sets a pool's, a writer may not), each change audited, and a run of an agent whose pool paces takes the account
-the rules name, env accounts and provider accounts through the gateway alike (``gateway_accounts.paced_accounts``).
+the rules name, env accounts and provider accounts through the gateway alike (``gateway.service.accounts.paced_accounts``).
 """
 
 import asyncio
@@ -184,9 +184,10 @@ def test_the_runs_of_a_pacing_pool_take_the_account_the_rules_name(client, hub, 
 
 @needs_db
 def test_the_gateway_narrows_a_runs_provider_accounts_to_the_one_quota_pacing_names(client, hub, hub_db):
-    """``gateway_accounts.paced_accounts`` on a run of the member's own, under the member's policy: all accounts
+    """``gateway.service.accounts.paced_accounts`` on a run of the member's own, under the member's policy: all accounts
     under another strategy, the best paced alone under quota-pacing, a cooling one never."""
-    from evo_agents.hub.server.gateway_accounts import Account, Asker, paced_accounts
+    from evo_agents.hub.server.gateway.models.accounts import Account, Asker
+    from evo_agents.hub.server.gateway.service.accounts import paced_accounts
     from tests.hub.test_credentials_api import env_secret, sample
 
     for name in ("zai-a", "zai-b"):

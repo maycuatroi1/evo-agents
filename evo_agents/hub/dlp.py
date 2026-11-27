@@ -6,7 +6,7 @@ A project's policy (dlp_policies, 0264) has a mode, off, redact or block, the ru
 keywords of its own added to CONTRACT_KEYWORDS. ``apply`` reads a text, or every string of a JSON body (``apply_json``),
 and gives what the policy makes of it: in redact mode each match replaced by ``[REDACTED:<kind>]``, in block mode the
 same text with ``blocked`` set, and in both the number of matches of each kind. The hub's gateway route
-(``evo_agents.hub.server.gateway_proxy``) and the hub runtime (``evo_agents.hub.server.hub_runtime``) apply the policy of
+(``evo_agents.hub.server.gateway.routes.proxy``) and the hub runtime (``evo_agents.hub.server.hub_runtime``) apply the policy of
 the run's project before a call leaves for a provider (``evo_agents.hub.server.dlp_policy``): a call blocked never leaves.
 
 A match's value never leaves this module: a ``Scan`` holds counts by kind, and the redacted text. Nothing here logs.

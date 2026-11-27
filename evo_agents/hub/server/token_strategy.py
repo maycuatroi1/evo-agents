@@ -16,8 +16,8 @@ model and whose agent profile does not pin one, while the project's policy has r
   budget counting as one (``accounts.service.budgets``); none live: used up;
 - it takes the strategy's model for the difficulty (``model_router.choose``) and places it: a gateway model goes through
   the gateway when the gateway serves its prefix, the worker's daemon runs gateway runs and the run may use an account
-  of the prefix (``gateway_accounts``), and sets ``runs.gateway_provider``, so the run's lease is a gateway key of the
-  run (``gateway_leases``); a runtime's own model is Claude Code's, so a run on another runtime keeps its own model.
+  of the prefix (``gateway.service.accounts``), and sets ``runs.gateway_provider``, so the run's lease is a gateway key of the
+  run (``gateway.service.leases``); a runtime's own model is Claude Code's, so a run on another runtime keeps its own model.
   A model the run cannot take falls back to the ladder's, and a model the profile's allowlist leaves out is not taken.
 
 A run the hub leaves to the scorer gets the strategy's model of each difficulty (``choices``), the medium one leased
@@ -39,8 +39,9 @@ from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.accounts import FIVE_HOUR, SEVEN_DAY, used_now, window_of
 from evo_agents.hub.model_router import NATIVE_RUNTIME, Choice, Quota, Rating
 from evo_agents.hub.plans import CLOSED_STEP_STATUSES, PlanProblem, step_index, step_key
-from evo_agents.hub.server import gateway_accounts
 from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
+from evo_agents.hub.server.gateway.models.accounts import Asker
+from evo_agents.hub.server.gateway.service import accounts as gateway_accounts
 from evo_agents.hub.server.runs.service.views import current_plan
 from evo_agents.hub.server.systems.service import traces as system_traces
 
@@ -84,10 +85,10 @@ def _permissions(row) -> dict | None:
     return found if isinstance(found, dict) else None
 
 
-def _asker(row) -> gateway_accounts.Asker:
+def _asker(row) -> Asker:
     agent_owned = row.profile_id is not None and not row.profile_default
     credential = (_permissions(row) or {}).get("credential")
-    return gateway_accounts.Asker(
+    return Asker(
         row.id,
         row.dispatched_by,
         row.dispatched_by if row.principal_id is None else row.principal_id,

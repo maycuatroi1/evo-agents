@@ -4,7 +4,7 @@
 after a HeadBucket on its bucket. It answers 503 naming the component that failed when Postgres does not answer
 within HEALTH_TIMEOUT or the bucket does not answer; both are checked at the same time. A hub without the
 EVO_HUB_S3_* variables reports ``r2: unconfigured`` and stays healthy, as it was configured. ``gateway`` is the model
-gateway (``gateway_client``): ``off`` without EVO_HUB_GATEWAY_SECRET, else ``ok`` when its health check answers and
+gateway (``gateway.client.omniroute``): ``off`` without EVO_HUB_GATEWAY_SECRET, else ``ok`` when its health check answers and
 ``error``, which fails the check, when it does not. ``broker`` is the event bus (``evo_agents.hub.bus``): ``off``
 without EVO_HUB_BROKER_URL, else ``ok`` when the broker takes a connection and ``error`` when it does not, which leaves
 the status ``ok``: the hub still delivers through Postgres and its jobs. ``cache`` is the shared cache

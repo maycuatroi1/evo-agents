@@ -1,5 +1,5 @@
 """Runs on a provider account's model through the model gateway (``evo_agents.hub.gateway_runs``,
-``server.gateway_accounts``, ``gateway_leases`` and ``gateway_proxy``), plan model-providers, criteria a3, a4 and a5:
+``server.gateway``: ``service.accounts``, ``service.leases`` and ``routes.proxy``), plan model-providers, criteria a3, a4 and a5:
 a dispatch of ``<alias>/<model>`` needs an account the run may use (one of the account pool of the run's agent, whoever
 dispatches it: plan agent-dedicated-pools) and says why when there is none; only a daemon of
 GATEWAY_RUN_AGENT or later claims such a run; its lease carries the hub's route, a run token, the model and the format,
@@ -26,7 +26,7 @@ from sqlalchemy import insert, select, update
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import Lease
 from evo_agents.hub.gateway_runs import GATEWAY_RUN_AGENT
-from evo_agents.hub.server.gateway_leases import TOKEN_PREFIX
+from evo_agents.hub.server.gateway.models.leases import TOKEN_PREFIX
 from tests.hub.live import database_of, sql, table_dump
 from tests.hub.test_credentials_api import audit_rows, leased, leases_of
 from tests.hub.test_gateway import FakeGateway, _app, poked, settled

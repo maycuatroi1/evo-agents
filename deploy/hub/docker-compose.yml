@@ -267,7 +267,7 @@ services:
   # the network gateway alone, which they join, so neither the dashboard nor the management API is on the internet and the
   # gateway has no route to the database (platform) or to web (default). It takes EVO_HUB_GATEWAY_SECRET and nothing
   # else of the hub's; the entrypoint derives OmniRoute's own secrets and dashboard password from it (each the
-  # HMAC-SHA256 of "evo-hub-gateway/<label>" under it, as evo_agents/hub/server/gateway_client.py derives the
+  # HMAC-SHA256 of "evo-hub-gateway/<label>" under it, as evo_agents/hub/server/gateway/client/omniroute.py derives the
   # password), drops it, and starts the gateway. Unset, the service exits at once and the hub runs without a gateway.
   # Every request needs a key (REQUIRE_API_KEY), and no request or response body is logged: request logs are off and
   # every key the hub makes is noLog. The volume holds what the hub reconciles into it; a lost one is rebuilt.

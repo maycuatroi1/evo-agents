@@ -268,7 +268,7 @@ async def leasable_runtimes(conn: AsyncConnection, worker_id: int, project_id: i
     """The runtimes the hub has an account of to lease the runs of project ``project_id`` on worker ``worker_id``,
     whether or not one ran there yet. On a node of an agent's pool (worker_pools.agent_id) its runs take their model
     account from the agent's account pool alone: its env accounts of a model variable and its provider accounts
-    (``credentials.survey_run``, ``gateway_accounts.usable_accounts``). Any worker also gets the env secrets bound to
+    (``credentials.survey_run``, ``gateway.service.accounts.usable_accounts``). Any worker also gets the env secrets bound to
     the project that reach it, but for a model variable or a provider account only off an agent's node."""
     w, wp, ap = tables.workers, tables.worker_pools, tables.agent_profiles
     s, m, b = tables.secrets, tables.account_pool_members, tables.secret_bindings

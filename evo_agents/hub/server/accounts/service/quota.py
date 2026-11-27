@@ -11,7 +11,7 @@ room again ends that cooldown, and no other.
 
 ``refresh`` reads and keeps the quota of one account whose key it opens (a member's or an agent's); POST
 /v1/provider-accounts/{name}/quota and the route of an agent's provider account call it, ``GatewaySync`` every
-``gateway_sync.QUOTA_INTERVAL`` seconds and after a sweep took back the keys of runs that ended (``refresh_all``). An error is made
+``gateway.models.sync.QUOTA_INTERVAL`` seconds and after a sweep took back the keys of runs that ended (``refresh_all``). An error is made
 for a member to read: no answer, the status and what the endpoint said (``probe.sanitized``), never the key.
 """
 

@@ -70,7 +70,7 @@ from evo_agents.hub.server.share_views import CredentialShare, shares_of
 
 def _gateway(row, seen: dict | None) -> GatewayAccount:
     """The gateway part of provider account ``row``, with ``seen``, the gateway's connections by secret id
-    (``gateway_sync.GatewaySync.status``): cooling while its rate limit lasts, failing when its last test failed."""
+    (``gateway.service.sync.GatewaySync.status``): cooling while its rate limit lasts, failing when its last test failed."""
     found = (seen or {}).get(row.id)
     status, reason = ("unknown", None) if found is None else ("ok", None)
     if found is not None:

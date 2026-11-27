@@ -11,7 +11,7 @@ the worker is the one it is pinned to, or any.
 
 Under quota-pacing (the policy of the run's account pool, else the dispatcher's for the project; an agent's own accounts
 follow DEFAULT_POLICY), ``paced_accounts`` narrows them to the one ``evo_agents.hub.accounts.pick`` gives, among those
-not cooling down when any is not: the run's key of the gateway reaches that account alone (``gateway_leases``).
+not cooling down when any is not: the run's key of the gateway reaches that account alone (``service.leases``).
 
 ``check_dispatch`` answers the prefix a dispatch's model goes through the gateway with, or None. On claude-code and
 codex a model whose prefix the gateway serves always does; on opencode, or with runtime any, whose own model names
@@ -22,13 +22,9 @@ runtime, which never does; one pinned to a worker whose daemon is older than GAT
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from fastapi import HTTPException
-from sqlalchemy import and_, exists, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import gateway_runs, profiles, runs, tables
+from evo_agents.hub import gateway_runs, runs
 from evo_agents.hub.accounts import FIVE_HOUR, QUOTA_PACING, SEVEN_DAY, Candidate, pick, window_of
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.gateway_runs import GATEWAY_RUNTIMES, PICK_PREFIX
@@ -36,87 +32,9 @@ from evo_agents.hub.server import share_leases  # a module: it imports worker_pl
 from evo_agents.hub.server.accounts.repository.choice import account_policy, pool_policy
 from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
 from evo_agents.hub.server.accounts.service.choice import DEFAULT_POLICY, pacing_of
-
-NOTHING = "nothing was dispatched"
-
-
-@dataclass(frozen=True)
-class Asker:
-    """What the rules read of a run, or of a dispatch before its run exists (id 0)."""
-
-    id: int
-    owner_id: int  # who dispatched it
-    principal: int  # who it acts for
-    project_id: int
-    profile_id: int | None = None
-    profile_project_id: int | None = None
-    agent_owned: bool = False  # an agent with a name, whose own accounts its runs take
-    permissions: dict | None = None  # its profile's, whose credential axis names the accounts it may use
-
-    def allows(self, name: str) -> bool:
-        return profiles.allows(self.permissions, "credential", name)
-
-
-@dataclass(frozen=True)
-class Account:
-    secret_id: int
-    name: str
-    share_id: int | None = None
-    agent: bool = False
-
-
-@dataclass
-class Usable:
-    accounts: list[Account] = field(default_factory=list)
-    reasons: list[str] = field(default_factory=list)  # why an account of the prefix is left out
-
-    def why(self, prefix: str) -> str:
-        found = "; ".join(dict.fromkeys(self.reasons))
-        return f"no provider account of {prefix} that this run may use" + (f": {found}" if found else "")
-
-
-def claim_gate(agent_version: str | None):
-    """What a daemon of ``agent_version`` may claim of the gateway's runs: all of them from GATEWAY_RUN_AGENT on, as
-    every runtime of the core takes one (``pick_runtime`` turns any into one of them); none before."""
-    if gateway_runs.takes_gateway_runs(agent_version):
-        return true()
-    return tables.runs.c.gateway_provider.is_(None)
-
-
-def _of_prefix(prefix: str):
-    """The provider accounts whose models ``prefix`` names (a condition on provider_accounts)."""
-    p = tables.provider_accounts
-    clause = p.c.provider.in_(gateway_runs.providers_of(prefix))
-    custom = gateway_runs.custom_id(prefix)
-    return clause if custom is None else and_(clause, p.c.secret_id == custom)
-
-
-async def _account_pool(conn: AsyncConnection, asker: Asker) -> tuple[bool, int | None]:
-    """(whether the asker has an agent, its account pool's id)."""
-    if asker.profile_id is None:
-        return False, None
-    ap = tables.agent_profiles
-    row = (await conn.execute(select(ap.c.account_pool_id).where(ap.c.id == asker.profile_id))).first()
-    return row is not None, (None if row is None else row.account_pool_id)
-
-
-def _rows(owner, project_id: int, on_worker, prefix: str, *, bound: bool = True):
-    """The live provider accounts ``owner`` says, of ``prefix``, bound to the project where ``on_worker`` says."""
-    s, p, a, b = tables.secrets, tables.provider_accounts, tables.accounts, tables.secret_bindings
-    where_bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, on_worker)
-    where_bound = where_bound if bound else true()  # an account pool's accounts are not bound to the project
-    return (
-        select(
-            s.c.id,
-            s.c.name,
-            func.coalesce(a.c.paused_at.is_not(None), False).label("paused"),
-            func.coalesce(s.c.expires_at <= func.now(), False).label("ended"),
-        )
-        .join_from(s, p, p.c.secret_id == s.c.id)
-        .outerjoin(a, a.c.secret_id == s.c.id)
-        .where(owner, s.c.kind == PROVIDER_KIND, s.c.deleted_at.is_(None), where_bound, _of_prefix(prefix))
-        .order_by(s.c.name, s.c.id)
-    )
+from evo_agents.hub.server.base.errors import Conflict, Unprocessable
+from evo_agents.hub.server.gateway.models.accounts import NOTHING, Account, Asker, Usable
+from evo_agents.hub.server.gateway.repository import accounts as repo
 
 
 def _sort(asker: Asker, rows, usable: Usable, picked: int | None, agent: bool) -> None:
@@ -138,30 +56,23 @@ async def usable_accounts(
 ) -> Usable:
     """The provider accounts of ``prefix`` that ``asker`` may use on worker ``worker_id`` (None: any it may go to),
     as the module says; only ``picked`` when one is."""
-    b, s = tables.secret_bindings, tables.secrets
     usable = Usable()
-    pooled, pool_id = await _account_pool(conn, asker)
+    pooled, pool_id = await repo.account_pool(conn, asker.profile_id)
     if pooled:  # an agent: its account pool alone, no account of the dispatcher's or a share's
         if pool_id is not None:
-            m = tables.account_pool_members
-            of_pool = s.c.id.in_(select(m.c.secret_id).where(m.c.pool_id == pool_id))
-            rows = (await conn.execute(_rows(of_pool, asker.project_id, true(), prefix, bound=False))).all()
+            rows = await repo.pool_rows(conn, pool_id, asker.project_id, prefix)
             _sort(asker, rows, usable, picked, agent=True)
         return usable
     if asker.agent_owned:
-        on_worker = true() if worker_id is None else b.c.worker_id == worker_id
-        owner = s.c.profile_id == asker.profile_id
-        rows = (await conn.execute(_rows(owner, asker.profile_project_id, on_worker, prefix))).all()
+        rows = await repo.agent_rows(conn, asker.profile_id, asker.profile_project_id, worker_id, prefix)
         if rows:
             _sort(asker, rows, usable, picked, agent=True)
             return usable
-    any_worker = or_(b.c.worker_id.is_(None), true() if worker_id is None else b.c.worker_id == worker_id)
-    own = (await conn.execute(_rows(s.c.owner_id == asker.owner_id, asker.project_id, any_worker, prefix))).all()
+    own = await repo.own_rows(conn, asker.owner_id, asker.project_id, worker_id, prefix)
     _sort(asker, own, usable, picked, agent=False)
     shared, refused = await share_leases.shared_secrets(conn, asker, worker_id or 0, lock=False, kinds=(PROVIDER_KIND,))
     ids = [row.id for row in shared if picked is None or row.id == picked]
-    p = tables.provider_accounts
-    mine = set((await conn.execute(select(p.c.secret_id).where(p.c.secret_id.in_(ids), _of_prefix(prefix)))).scalars())
+    mine = await repo.of_prefix_ids(conn, ids, prefix)
     seen = {account.secret_id for account in usable.accounts}
     for row in shared:
         if row.id in mine and row.id not in seen and asker.allows(row.name):
@@ -172,7 +83,7 @@ async def usable_accounts(
 
 
 async def _policy(conn: AsyncConnection, asker: Asker, accounts: list[Account]) -> dict:
-    pooled, pool_id = await _account_pool(conn, asker)
+    pooled, pool_id = await repo.account_pool(conn, asker.profile_id)
     if pooled:
         return await pool_policy(conn, pool_id)
     if any(account.agent for account in accounts):
@@ -188,16 +99,8 @@ async def paced_accounts(conn: AsyncConnection, asker: Asker, accounts: list[Acc
     policy = await _policy(conn, asker, accounts)
     if policy["strategy"] != QUOTA_PACING:
         return accounts
-    a, ids = tables.accounts, [account.secret_id for account in accounts]
-    query = select(
-        a.c.secret_id,
-        a.c.weight,
-        a.c.priority,
-        a.c.rotation,
-        a.c.last_usage,
-        (a.c.cooldown_until > func.now()).label("cooling"),
-    ).where(a.c.secret_id.in_(ids))
-    rows = {row.secret_id: row for row in await conn.execute(query)}
+    ids = [account.secret_id for account in accounts]
+    rows = await repo.pacing_rows(conn, ids)
     usages = with_budgets({i: rows[i].last_usage for i in rows}, await budget_windows(conn, ids))
     ready = [account for account in accounts if not (account.secret_id in rows and rows[account.secret_id].cooling)]
     candidates = [_candidate(account, rows.get(account.secret_id), usages.get(account.secret_id)) for account in ready]
@@ -214,36 +117,14 @@ def _candidate(account: Account, row, usage) -> Candidate:
     return Candidate(account.secret_id, account.name, row.weight, row.priority, row.rotation, *windows)
 
 
-async def _known(conn: AsyncConnection, asker: Asker, prefix: str) -> bool:
-    """Whether the dispatcher, the run's agent or a share for the project has any provider account of ``prefix``,
-    usable now or not: what makes a model of opencode's own naming a gateway model."""
-    s, p, cs, csp = tables.secrets, tables.provider_accounts, tables.credential_shares, tables.credential_share_projects
-    shared = exists().where(
-        cs.c.secret_id == s.c.id,
-        cs.c.revoked_at.is_(None),
-        exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == asker.project_id),
-    )
-    whose = [s.c.owner_id == asker.owner_id, shared]
-    if asker.agent_owned:
-        whose.append(s.c.profile_id == asker.profile_id)
-    statement = select(
-        exists().where(
-            p.c.secret_id == s.c.id,
-            s.c.kind == PROVIDER_KIND,
-            s.c.deleted_at.is_(None),
-            or_(*whose),
-            _of_prefix(prefix),
-        )
-    )
-    return bool((await conn.execute(statement)).scalar_one())
-
-
 async def prefix_for(conn: AsyncConnection, asker: Asker, runtime: str, model: str | None) -> str | None:
     """The prefix ``model`` goes through the gateway with on ``runtime``, as the module says; None when it does not."""
     split = gateway_runs.split(model)
     if split is None:
         return None
-    if runtime in ("opencode", "any") and not await _known(conn, asker, split[0]):
+    if runtime in ("opencode", "any") and not await repo.known(
+        conn, asker.owner_id, asker.project_id, split[0], agent_owned=asker.agent_owned, profile_id=asker.profile_id
+    ):
         return None  # opencode's own name for a model of its providers
     return split[0]
 
@@ -257,8 +138,7 @@ def _picked(asked, prefix: str | None) -> int | None:
     pick = found[0]
     if prefix is None or pick.env_var != PICK_PREFIX + prefix:
         named = pick.env_var.removeprefix(PICK_PREFIX)
-        raise HTTPException(
-            422,
+        raise Unprocessable(
             f"account {pick.name} is a provider account: it goes with a model {named}/<model> of its provider, which "
             f"the run does not ask for; {NOTHING}",
         )
@@ -266,15 +146,14 @@ def _picked(asked, prefix: str | None) -> int | None:
 
 
 async def check_dispatch(conn: AsyncConnection, asker: Asker, asked, model: str | None) -> str | None:
-    """The prefix the run's ``model`` goes through the gateway with, or None, as the module says; the HTTPException
+    """The prefix the run's ``model`` goes through the gateway with, or None, as the module says; the domain error
     that says why the dispatch cannot go."""
     prefix = await prefix_for(conn, asker, asked.runtime, model)
     picked = _picked(asked, prefix)
     if prefix is None:
         return None
     if asked.runtime not in (*GATEWAY_RUNTIMES, "any"):
-        raise HTTPException(
-            422,
+        raise Unprocessable(
             f"model {model} goes through the model gateway, which runtime {asked.runtime} cannot use: dispatch it on "
             f"{', '.join(GATEWAY_RUNTIMES)} or any; {NOTHING}",
         )
@@ -282,12 +161,11 @@ async def check_dispatch(conn: AsyncConnection, asker: Asker, asked, model: str 
     usable = await usable_accounts(conn, asker, None if pinned is None else pinned.id, prefix, picked)
     if not usable.accounts:
         where = "" if pinned is None else f" on worker {pinned.name}"
-        raise HTTPException(422, f"model {model}: {usable.why(prefix)}{where}; {NOTHING}")
+        raise Unprocessable(f"model {model}: {usable.why(prefix)}{where}; {NOTHING}")
     if pinned is not None and not gateway_runs.takes_gateway_runs(pinned.agent_version):
         version = pinned.agent_version or "of an unknown version"
         needed = runs.version_text(gateway_runs.GATEWAY_RUN_AGENT)
-        raise HTTPException(
-            409,
+        raise Conflict(
             f"worker {pinned.name} cannot take this run: its daemon (evo-agents {version}) does not run a model through "
             f"the gateway, which takes {needed} or later; upgrade it and restart its daemon; {NOTHING}",
         )

@@ -117,7 +117,7 @@ from evo_agents.hub.credentials import (
     matches,
     normalize_origin,
 )
-from evo_agents.hub.server import audit, gateway_leases, gateway_sync, run_access
+from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.accounts.repository.pool_runs import pool_env_accounts
 from evo_agents.hub.server.accounts.service.choice import choose_accounts, fail_over_relogin
 from evo_agents.hub.server.accounts.service.refresh import refresh_due
@@ -130,6 +130,8 @@ from evo_agents.hub.server.credential_models import (
     RunRepoSource,
 )
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.gateway.service import leases as gateway_leases
+from evo_agents.hub.server.gateway.service import sync as gateway_sync
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
 from evo_agents.hub.server.lease_ending import (  # noqa: F401  (re-exported: callers read credentials.<name>)

@@ -7,7 +7,6 @@ import logging
 
 from fastapi import APIRouter, Request, Response
 
-from evo_agents.hub.server import gateway_sync
 from evo_agents.hub.server.accounts.models.provider_accounts import (
     REFUSALS,
     AccountName,
@@ -24,6 +23,7 @@ from evo_agents.hub.server.accounts.service.shapes import ProviderAccountChange,
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.gateway.service import sync as gateway_sync
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
