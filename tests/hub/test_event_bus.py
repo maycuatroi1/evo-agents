@@ -40,6 +40,7 @@ from tests.hub.test_runs import add_worker, claim, dispatched
 BROKER = os.environ.get("EVO_HUB_TEST_BROKER_URL", "").strip()
 broker = pytest.mark.skipif(not BROKER, reason="EVO_HUB_TEST_BROKER_URL is not set: these tests need RabbitMQ")
 WITHIN = 5.0  # seconds from a commit to its plugin, with the bus
+STOP_WITHIN = 30.0  # seconds for a deliverer to stop and its broker to close
 
 
 class FakeBroker:
@@ -215,6 +216,30 @@ def test_while_the_broker_is_away_the_jobs_deliver_and_the_bus_carries_it_again_
     assert [body["id"] for _, body in fake_broker.published] == ids, "published once the broker is back"
 
 
+def test_a_relay_cancelled_mid_transaction_stops_even_when_the_rollback_fails():
+    """A stop that cancels the relay inside a transaction whose rollback raises (an invalidated connection) still ends
+    it: the error that replaced the CancelledError is not one to try again on."""
+    relay = deliverer.Deliverer(None, FakeBroker(), dsn="")
+
+    async def relay_once():
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            raise RuntimeError("the rollback of the cancelled transaction failed") from None
+
+    relay.relay_once = relay_once
+
+    async def scenario():
+        task = asyncio.create_task(relay.relay())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        done, _ = await asyncio.wait({task}, timeout=STOP_WITHIN)
+        assert done == {task}, "the relay went on after its cancel"
+        assert isinstance(task.exception(), RuntimeError)
+
+    asyncio.run(scenario())
+
+
 # With a real RabbitMQ (a2, a3, a6)
 
 
@@ -263,8 +288,8 @@ def _stop(client, started) -> None:
 
     async def end(app):
         stop.set()
-        await task
-        await found.broker.close()
+        await asyncio.wait_for(task, STOP_WITHIN)  # a stop that never ends fails here rather than hold the run
+        await asyncio.wait_for(found.broker.close(), STOP_WITHIN)
 
     on_hub(client, end)
 

@@ -91,6 +91,10 @@ def _committed(connection) -> None:
 
 
 def _rolled_back(connection) -> None:
+    # A connection a cancelled query invalidated raises PendingRollbackError on .info, which would replace the error
+    # being rolled back (a CancelledError among them); the pool's checkin drops what it kept.
+    if connection.invalidated:
+        return
     connection.info.pop(_KEPT, None)
 
 
