@@ -132,14 +132,14 @@ class Session(SearchTools, WalkTools, ImpactTools):
 
     # -- tools ----------------------------------------------------------------------------------
 
-    def _evidence(self, store: SnapshotView, elem: str, b: int, links: Links) -> list[dict]:
+    def _evidence(self, store: SnapshotView, elem: str, links: Links) -> list[dict]:
         """Where ``elem`` was read or derived from: items the reader sees, of the named graph the call reads."""
         out = []
-        for w in store.where(elem, b)[:10]:
-            unit = store.unit(w["unit"], b)
+        for w in store.where(elem)[:10]:
+            unit = store.unit(w["unit"])
             if not unit:
                 continue
-            item = store.node(unit["item"], b)
+            item = store.node(unit["item"])
             if item is None or not self.shows(item):
                 continue
             self._saw(item["label"])
@@ -154,11 +154,11 @@ class Session(SearchTools, WalkTools, ImpactTools):
                 }
             )
         if not out:
-            for d in store.derivations(elem, b)[:3]:
+            for d in store.derivations(elem)[:3]:
                 for u in d["units"][:3]:
-                    unit = store.unit(u, b)
+                    unit = store.unit(u)
                     if unit:
-                        item = store.node(unit["item"], b)
+                        item = store.node(unit["item"])
                         if item and self.shows(item):
                             self._saw(item["label"])
                             out.append(
@@ -174,14 +174,14 @@ class Session(SearchTools, WalkTools, ImpactTools):
         return out
 
     def tool_kg_node(self, id: str) -> tuple[str, dict]:
-        store, b = self._store()
-        n = self._lookup(store, id, b)
+        store = self._store()
+        n = self._lookup(store, id)
         if n is None:
-            return self._locked_node(store, id, b)
-        links = Links.of(store, b)
+            return self._locked_node(store, id)
+        links = Links.of(store)
         n = links.node(n)
-        edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.seen(e)]
-        others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges}, b)
+        edges = [e for e in store.edges_of(n["id"], limit=400) if self.seen(e)]
+        others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges})
         lines = [self._line(n)]
         if n["aliases"]:
             lines.append(f"aliases: {', '.join(n['aliases'])}")
@@ -190,14 +190,14 @@ class Session(SearchTools, WalkTools, ImpactTools):
         props = {k: v for k, v in n["props"].items() if k not in ("span", "deprecated")}
         if props:
             lines.append("props: " + json.dumps(props, ensure_ascii=False, sort_keys=True))
-        evidence = self._evidence(store, n["id"], b, links)
+        evidence = self._evidence(store, n["id"], links)
         for ev in evidence:
             lines.append(
                 f"evidence: {readable(ev['item'])}{'#' + ev['anchor'] if ev['anchor'] else ''} rev {ev['rev']}"
                 f"{' ' + ev['span'] if ev['span'] else ''}{' ' + ev['uri'] if ev['uri'] else ''}"
             )
         out_edges, in_edges = [], []
-        text = self._uploaded_text(store, b, n, edges)
+        text = self._uploaded_text(store, n, edges)
         if text is not None:
             cut = f"; the first {TEXT_CHARS:,} of {len(text):,} characters" if len(text) > TEXT_CHARS else ""
             lines += [TEXT_HEAD.format(cut=cut), text[:TEXT_CHARS]]
@@ -227,7 +227,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
                 if len(group) > 60:
                     lines.append(f"  ... {len(group) - 60} more")
         data = {
-            "build": b,
+            "build": store.build,
             "node": self._node_json(n),
             "evidence": evidence,
             "out": out_edges,
@@ -238,19 +238,19 @@ class Session(SearchTools, WalkTools, ImpactTools):
             data["text"] = text[:TEXT_CHARS]
         return "\n".join(lines), data
 
-    def _locked_node(self, store: SnapshotView, id: str, b: int) -> tuple[str, dict]:
+    def _locked_node(self, store: SnapshotView, id: str) -> tuple[str, dict]:
         """kg_node of a node above the clearance that shows as locked (``SessionView.locked``): that it exists, its
         kind and its label, and nothing of what it holds. Raises ToolError for any other node the reader cannot see."""
-        n = self.locked(store, id, b)
+        n = self.locked(store, id)
         if n is None:
             raise ToolError("no visible node has that id; search with kg_search")
         assert self.policy is not None, ANSWERS_NOTHING
         label = self.policy.describe(Label.of(n["label"]))
         node = {"id": n["id"], "kind": n["kind"], "label": label, "locked": True}
         text = f"[{readable(n['id'])}] {n['kind']}, locked: labelled {label}, above what this session may read"
-        return text, {"build": b, "node": node, "evidence": [], "out": [], "in": [], "summary": n["id"]}
+        return text, {"build": store.build, "node": node, "evidence": [], "out": [], "in": [], "summary": n["id"]}
 
-    def _uploaded_text(self, store: SnapshotView, b: int, n: dict, edges: list[dict]) -> str | None:
+    def _uploaded_text(self, store: SnapshotView, n: dict, edges: list[dict]) -> str | None:
         """The text of node ``n`` of an uploaded archive (UPLOADED) as the full-text index holds it: its own, or for a
         document without, those of its sections the reader sees, in the order of their lines. None for any other
         node, or one without text."""
@@ -260,7 +260,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
         if own or n["kind"] != "Document":
             return own
         parts = [e["src"] for e in edges if e["rel"] == "part_of" and e["dst"] == n["id"]]
-        sections = [s for s in store.nodes(set(parts), b).values() if s["kind"] == "Section"]
+        sections = [s for s in store.nodes(set(parts)).values() if s["kind"] == "Section"]
         sections = [s for s in sections if self.seen(s)]
         sections.sort(key=lambda s: (_first_line(s["props"]), s["id"]))
         texts = [t for t in (store.body(s["id"]) for s in sections) if t]

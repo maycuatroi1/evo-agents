@@ -14,7 +14,7 @@ def test_a_done_step_naming_a_harness_commit_is_asked_with_the_files_the_commit_
     project, sha = make_harness_history_project(tmp_path, kg_env)
     sync_build(project)
     body = yaml.safe_load((project.harness.root / "plans/active/demo.yaml").read_text(encoding="utf-8"))
-    commits = kg_health_eval.GraphCommits(view_of(project), 0)
+    commits = kg_health_eval.GraphCommits(view_of(project))
     assert commits.changed(sha[:10], "demo-harness") == (["CLUSTER.md"], 1)
     questions, skipped, available, sources = kg_health_eval.plan_questions("demo", [("demo", body)], commits)
     scored = kg_health_eval.score(questions, skipped, available, hub_session(project, "agent"), sources=sources)

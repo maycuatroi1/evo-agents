@@ -162,18 +162,18 @@ def is_entity(node_id: str) -> bool:
 
 
 class Reader:
-    """What a reader sees of build ``b``: ``seen`` of each node and edge, nodes read once."""
+    """What a reader sees of a snapshot: ``seen`` of each node and edge, nodes read once."""
 
-    def __init__(self, store, b: int, seen):
-        self.store, self.b, self.seen = store, b, seen
+    def __init__(self, store, seen):
+        self.store, self.seen = store, seen
         self.nodes: dict[str, bool] = {}
 
     def visible(self, ids) -> set[str]:
-        """The ids of ``ids`` whose node the reader sees (live at b, its audience within the store's reader, and
+        """The ids of ``ids`` whose node the reader sees (live, its audience within the store's reader, and
         ``seen``)."""
         fresh = [i for i in dict.fromkeys(ids) if i not in self.nodes]
         if fresh:
-            found = self.store.nodes(fresh, self.b)
+            found = self.store.nodes(fresh)
             for i in fresh:
                 node = found.get(i)
                 self.nodes[i] = node is not None and bool(self.seen(node))
@@ -183,7 +183,7 @@ class Reader:
         """(src, rel, dst, weight) of the live edges of ``ids``, either way, the reader sees and the walk follows."""
         return [
             (e["src"], e["rel"], e["dst"], w)
-            for e in self.store.walk_edges(ids, self.b)
+            for e in self.store.walk_edges(ids)
             if e["src"] != e["dst"] and (w := weight(e, walk)) > 0 and self.seen(e)
         ]
 
@@ -326,7 +326,7 @@ def _rels(scored) -> dict[str, float]:
 
 def _documents_of(reader: Reader, entity: str) -> int:
     """How many visible nodes mention ``entity`` (an entity's passages, in HippoRAG's words)."""
-    found = reader.store.edges_of(entity, reader.b, "in", limit=500)
+    found = reader.store.edges_of(entity, direction="in", limit=500)
     srcs = [e["src"] for e in found if e["rel"] == "mentions" and reader.seen(e)]
     return len(reader.visible(srcs))
 
@@ -356,9 +356,9 @@ def fallback_seeds(reader: Reader, base: dict[str, float], walk: Walk) -> dict[s
     return {i: w / math.log2(2 + len(adj.get(i, ()))) for i, w in seeds.items()}
 
 
-def walked(store, b: int, base: dict[str, float], walk: Walk, seen) -> tuple[dict[str, float], dict[str, dict]]:
+def walked(store, base: dict[str, float], walk: Walk, seen) -> tuple[dict[str, float], dict[str, dict]]:
     """``run``'s scores and the subgraph the walk went over (id -> its neighbours there)."""
-    reader = Reader(store, b, seen)
+    reader = Reader(store, seen)
     seeds = seed(reader, base, walk)
     if not seeds:
         return {}, {}
@@ -366,13 +366,13 @@ def walked(store, b: int, base: dict[str, float], walk: Walk, seen) -> tuple[dic
     return personalized(adj, seeds, walk), adj
 
 
-def run(store, b: int, base: dict[str, float], walk: Walk, seen) -> dict[str, float]:
+def run(store, base: dict[str, float], walk: Walk, seen) -> dict[str, float]:
     """The walk's score of each visible node it reached from ``base`` (id -> text match in 0..1); ``seen(element)`` is
     the reader's test of a node or an edge (``Session.seen``)."""
-    return walked(store, b, base, walk, seen)[0]
+    return walked(store, base, walk, seen)[0]
 
 
-def order(store, b: int, scored, walk: Walk, seen) -> list[str]:
+def order(store, scored, walk: Walk, seen) -> list[str]:
     """kg_search's ids under the walk: the matches the search gave no score (an id or a name is the query) first, then
     the first ``walk.top_matches`` text matches by their text score, then the nodes the walk reached that are not
     entities, by its score, then the entities it reached, then the other text matches in the text order. ``scored`` is
@@ -382,7 +382,7 @@ def order(store, b: int, scored, walk: Walk, seen) -> list[str]:
     ``fallback_seeds`` weighs a seed, so a hub joined to every seed gathers no rank by its edges alone; with
     ``top_matches`` 0 neither holds and the walk orders as it did before both."""
     scored = list(scored)
-    found, adj = walked(store, b, _rels(scored), walk, seen)
+    found, adj = walked(store, _rels(scored), walk, seen)
     matched = {i for i, _ in scored}
     if walk.top_matches:
         found = {i: s if i in matched else s / math.log2(2 + len(adj.get(i, ()))) for i, s in found.items()}

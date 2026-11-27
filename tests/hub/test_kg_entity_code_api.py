@@ -129,7 +129,7 @@ def test_graph_nodes_count_their_code_and_code_true_adds_the_code_nodes_of_the_e
     assert next(e for e in drawn["code_edges"] if e["dst"] == RELAY)["conf"] == 1.0
     around = session.entities_around("entity:Place:paris", 1, 100, code=True)
     assert {e["src"] for e in around["code_edges"]} == {ALICE}
-    cut = kg_entity_graph.code_of(session._entity_view(*session._visible_store()), [ALICE, ACME], limit=1)
+    cut = kg_entity_graph.code_of(session._entity_view(session._visible_store()), [ALICE, ACME], limit=1)
     assert (len(cut["nodes"]), cut["left_out"]) == (1, 3)
 
 

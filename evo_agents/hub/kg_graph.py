@@ -119,15 +119,14 @@ class HubSession(Session):
             self.clearance = (ceiling.level, ceiling.location)
             self.audience = ceiling.audience
 
-    def _graph(self) -> tuple[SnapshotView, int]:
-        b = self.graph_store.latest_ready()
-        if b is None:
+    def _graph(self) -> SnapshotView:
+        if self.graph_store.latest_ready() is None:
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")
-        return self.graph_store, b
+        return self.graph_store
 
-    def whole(self, b: int) -> bool:
-        """Whether the session's audience holds every audience of build ``b``."""
-        return audience_below(self.graph_store.top_audience(b), self.audience)
+    def whole(self) -> bool:
+        """Whether the session's audience holds every audience of its build."""
+        return audience_below(self.graph_store.top_audience(), self.audience)
 
     def recorded(self, summary: dict) -> dict:
         """The graph file's ``summary`` with the vectors the hub recorded of the build, which the file lacks."""
@@ -137,11 +136,10 @@ class HubSession(Session):
 
     def within(self, summary: dict) -> dict:
         """The build's ``summary`` as the session's audience may read it (see the module)."""
-        b = summary.get("build_id")
-        if not summary.get("ready") or self.whole(b):
+        if not summary.get("ready") or self.whole():
             return summary
         self.graph_store.reader = self.audience
-        seen = self.graph_store.seen(b)
+        seen = self.graph_store.seen()
         coverage = summary.get("coverage") or {}
         sources = [
             {"id": s["id"], "items": seen["items"].get(s["id"], 0)} if s["id"] in seen["audience"] else s
@@ -159,10 +157,10 @@ class HubSession(Session):
     def counted(self, graph: BuiltGraph) -> BuiltGraph:
         """``graph`` with the nodes and edges the session's audience holds, when it does not hold every audience."""
         b = self.graph_store.latest_ready()
-        if b is None or self.whole(b):
+        if b is None or self.whole():
             return graph
         self.graph_store.reader = self.audience
-        seen = self.graph_store.seen(b)
+        seen = self.graph_store.seen()
         return replace(graph, nodes=seen["nodes"], edges=seen["edges"])
 
     def cleared(self, summary: dict) -> dict:
@@ -172,8 +170,7 @@ class HubSession(Session):
         if not summary.get("ready"):
             return summary
         assert self.clearance is not None, ANSWERS_NOTHING
-        b = int(summary["build_id"])
-        level, location = self.graph_store.top_label(b)
+        level, location = self.graph_store.top_label()
         if level > self.clearance[0] or location > self.clearance[1]:
             return {k: v for k, v in summary.items() if k not in ("coverage", "stats")}
         coverage = summary.get("coverage") or {}
@@ -187,8 +184,8 @@ class HubSession(Session):
                     continue
                 self._saw(shown)
             sources.append(src)
-        whole = self.whole(b)
-        self._saw((level, location, "U", self.graph_store.top_audience(b) if whole else frozenset()))
+        whole = self.whole()
+        self._saw((level, location, "U", self.graph_store.top_audience() if whole else frozenset()))
         return {**summary, "coverage": {**coverage, "sources": sources}}
 
     def tool_kg_status(self) -> tuple[str, dict]:
@@ -251,10 +248,10 @@ class HubSession(Session):
         is left out as a missing one is (``_lookup``). ToolError as ``unknown``."""
         if self.error:
             raise ToolError(self.error)
-        store, b = self._store()
+        store = self._store()
         found = {}
         for node_id in dict.fromkeys(ids):
-            n = self._lookup(store, node_id, b)
+            n = self._lookup(store, node_id)
             if n is not None:
                 found[node_id] = (n["id"], n["kind"])
         return found
@@ -265,15 +262,15 @@ class HubSession(Session):
         visible to the session, or the graph holds no ready build."""
         if self.error:
             raise ToolError(self.error)
-        store, b = self._store()
+        store = self._store()
         lacking, named = [], set()
         for node_id in ids:
-            found = self._lookup(store, node_id, b)
+            found = self._lookup(store, node_id)
             if found is None:
                 lacking.append(node_id)
             elif found["kind"] in ("File", "Document"):
                 named.add(found["id"])
-        files = [found for found in store.path_nodes(b) if self.visible(found["label"])] if paths else []
+        files = [found for found in store.path_nodes() if self.visible(found["label"])] if paths else []
         held: dict[tuple, set[str]] = {}
         for found in files:
             held.setdefault((found["props"].get("repo"), found["props"]["path"]), set()).add(found["id"])
@@ -289,7 +286,7 @@ class HubSession(Session):
                 named |= bare[path]
             else:
                 missing.append(path)
-        return lacking, missing, self._authors(store, b, sorted(named))
+        return lacking, missing, self._authors(store, sorted(named))
 
     def mentions(self, codes: list[str]) -> dict[str, list[Evidence]]:
         """For each use case code of ``codes`` (the node ``usecase:<code>``), what the graph shows of its delivery as
@@ -298,13 +295,13 @@ class HubSession(Session):
         graph holds no ready build."""
         if self.error:
             raise ToolError(self.error)
-        store, b = self._store()
+        store = self._store()
         found: dict[str, list[Evidence]] = {}
         for code in codes:
             edges = store.edges_into(
-                f"usecase:{code}", b, ("mentions",), IMPACT_STATUSES, self.clearance, limit=MAX_MENTIONS_READ
+                f"usecase:{code}", ("mentions",), IMPACT_STATUSES, self.clearance, limit=MAX_MENTIONS_READ
             )
-            sources = store.nodes([edge["src"] for edge in edges if self.visible(edge["label"])], b)
+            sources = store.nodes([edge["src"] for edge in edges if self.visible(edge["label"])])
             found[code] = sorted(
                 {
                     item
@@ -315,7 +312,7 @@ class HubSession(Session):
             )
         return found
 
-    def _authors(self, store: SnapshotView, b: int, file_ids: list[str]) -> list[str]:
+    def _authors(self, store: SnapshotView, file_ids: list[str]) -> list[str]:
         """The author emails of the LATEST_COMMITS newest commits visible to the session that changed each of
         ``file_ids``, each address once, in the order found."""
         found: list[str] = []
@@ -323,7 +320,7 @@ class HubSession(Session):
             edges: list[dict] = []
             while len(edges) < MAX_COMMITS_READ:
                 page = store.edges_into(
-                    file_id, b, ("changes",), IMPACT_STATUSES, self.clearance, limit=COMMITS_PAGE, offset=len(edges)
+                    file_id, ("changes",), IMPACT_STATUSES, self.clearance, limit=COMMITS_PAGE, offset=len(edges)
                 )
                 edges += page
                 if len(page) < COMMITS_PAGE:
@@ -331,7 +328,7 @@ class HubSession(Session):
             sources = [edge["src"] for edge in edges if self.visible(edge["label"])]
             commits = [
                 node
-                for node in store.nodes(sources, b).values()
+                for node in store.nodes(sources).values()
                 if node["kind"] == "Commit" and self.visible(node["label"])
             ]
             commits.sort(key=lambda node: (str(node["props"].get("time") or ""), node["id"]), reverse=True)

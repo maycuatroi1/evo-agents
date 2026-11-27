@@ -199,15 +199,14 @@ class Ranker:
         self.text: TextIndex = view.snap.text
         self.weights = tuple(view.tuning.bm25[2:])
 
-    def search(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[str]:
-        return [node_id for node_id, _ in self.search_scored(query, b, limit, **kw)]
+    def search(self, query: str, *, limit: int = 50, **kw) -> list[str]:
+        return [node_id for node_id, _ in self.search_scored(query, limit=limit, **kw)]
 
     def search_scored(
         self,
         query: str,
-        b: int = 0,
-        limit: int = 50,
         *,
+        limit: int = 50,
         kinds: list[str] | None = None,
         any_word: bool = True,
         deprecated: bool = True,
@@ -216,7 +215,7 @@ class Ranker:
         """(id, text score) of the nodes matching a query, best first, at most ``limit * 3``."""
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
-        hits = self.view.exact(query, b, want, kinds)
+        hits = self.view.exact(query, limit=want, kinds=kinds)
         words_of = text_search.query_words(query)
         scores, rows = self._by_words(words_of, hits, want, kinds, any_word)
         named = text_search.named_words(query)
@@ -250,7 +249,7 @@ class Ranker:
         (want, kinds), (scores, rows) = pool, found
         top = min(scores.values(), default=-1.0)
         for word in named if query.strip() not in named else ():
-            for node_id in self.view.exact(word, 0, want, kinds):
+            for node_id in self.view.exact(word, limit=want, kinds=kinds):
                 if node_id not in scores and node_id not in hits:
                     scores[node_id], rows[node_id] = top, self.text.index_row(node_id)
         for word in named:

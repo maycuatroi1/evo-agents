@@ -37,14 +37,14 @@ class Reach:
 class PackTools(SessionText):
     """The part of kg_context that fills the budget past the seeds."""
 
-    def _adjacent(self, store: SnapshotView, b: int, cache: dict, nid: str, limit: int) -> list[tuple[str, dict]]:
+    def _adjacent(self, store: SnapshotView, cache: dict, nid: str, limit: int) -> list[tuple[str, dict]]:
         """(other end, edge) of the visible edges of ``nid``, read once per call."""
         if nid not in cache:
-            found = [e for e in store.edges_of(nid, b, limit=limit) if self.seen(e)]
+            found = [e for e in store.edges_of(nid, limit=limit) if self.seen(e)]
             cache[nid] = [(e["dst"] if e["src"] == nid else e["src"], e) for e in found]
         return cache[nid]
 
-    def _reach(self, store: SnapshotView, b: int, seeds: dict[str, dict], hops: int, cache: dict) -> Reach:
+    def _reach(self, store: SnapshotView, seeds: dict[str, dict], hops: int, cache: dict) -> Reach:
         """Best-first from the seeds: relevance 1 at a seed, and across an edge the relevance of its end times its
         status over ``ln(2 + degree)`` of the end it left, so a hub passes on little but is still read."""
         reach = Reach()
@@ -59,9 +59,9 @@ class PackTools(SessionText):
             if nid in done or -neg < reach.relevance[nid] or depth >= hops:
                 continue
             done.add(nid)
-            damp = math.log(2 + store.degree(nid, b))
-            links = self._adjacent(store, b, cache, nid, SEED_EDGES if nid in seeds else EDGES)
-            known = store.nodes({o for o, _ in links if o not in reach.nodes}, b)
+            damp = math.log(2 + store.degree(nid))
+            links = self._adjacent(store, cache, nid, SEED_EDGES if nid in seeds else EDGES)
+            known = store.nodes({o for o, _ in links if o not in reach.nodes})
             for other, e in links:
                 node = reach.nodes.get(other) or known.get(other)
                 if node is None or not self.seen(node):
@@ -74,16 +74,16 @@ class PackTools(SessionText):
                     heapq.heappush(heap, (-score, depth + 1, other))
         return reach
 
-    def _walked(self, store: SnapshotView, b: int, query, room: Room, walk, reach: Reach) -> None:
+    def _walked(self, store: SnapshotView, query, room: Room, walk, reach: Reach) -> None:
         """Add the nodes the walk settles on (``evo_agents.kg.ppr``) to the reach, scored by its probability."""
-        scored = store.search_scored(str(query), b, limit=walk.seeds, deprecated=self.deprecated) if query else []
+        scored = store.search_scored(str(query), limit=walk.seeds, deprecated=self.deprecated) if query else []
         base = {sid: 1.0 for sid in room.nodes}
         for nid, rel in locate._rels(scored).items():
             base[nid] = max(base.get(nid, 0.0), rel)
-        found = ppr.run(store, b, base, walk, self.seen)
+        found = ppr.run(store, base, walk, self.seen)
         order = sorted((i for i in found if i not in room.nodes), key=lambda i: (-found[i], i))[: walk.keep * 4]
         top = max((found[i] for i in order), default=0.0) or 1.0
-        nodes = store.nodes([i for i in order if i not in reach.nodes], b)
+        nodes = store.nodes([i for i in order if i not in reach.nodes])
         for nid in order:
             node = reach.nodes.get(nid) or nodes.get(nid)
             if node is not None and self.seen(node):
@@ -106,25 +106,24 @@ class PackTools(SessionText):
             items.append(context_pack.Item(nid, cost, reach.relevance.get(nid, 0.0), frozenset(facets)))
         return items, weights
 
-    def _bridged(self, store: SnapshotView, b: int, room: Room, cache: dict, reach: Reach) -> dict[str, dict]:
+    def _bridged(self, store: SnapshotView, room: Room, cache: dict, reach: Reach) -> dict[str, dict]:
         """Take the nodes that join the seeds into ``room``; the edges that did are returned by id."""
         seeds = list(room.nodes)
 
         def near(nid: str):
             return [
-                (o, e["id"])
-                for o, e in self._adjacent(store, b, cache, nid, SEED_EDGES if nid in room.nodes else EDGES)
+                (o, e["id"]) for o, e in self._adjacent(store, cache, nid, SEED_EDGES if nid in room.nodes else EDGES)
             ]
 
         degrees: dict[str, int] = {}
 
         def degree(nid: str) -> int:
             if nid not in degrees:
-                degrees[nid] = store.degree(nid, b)
+                degrees[nid] = store.degree(nid)
             return degrees[nid]
 
         nodes, edge_ids = context_pack.bridge(seeds, near, degree, BRIDGE_COST)
-        found = store.nodes([n for n in nodes if n not in reach.nodes], b)
+        found = store.nodes([n for n in nodes if n not in reach.nodes])
         for nid in nodes:
             node = reach.nodes.get(nid) or found.get(nid)
             if node is None or not self.seen(node):
@@ -134,14 +133,14 @@ class PackTools(SessionText):
         by_id = {e["id"]: e for links in cache.values() for _, e in links}
         return {eid: by_id[eid] for eid in edge_ids if eid in by_id}
 
-    def _context_pack(self, store: SnapshotView, b: int, query, room: Room, hops: int, walk, given: Counter) -> None:
+    def _context_pack(self, store: SnapshotView, query, room: Room, hops: int, walk, given: Counter) -> None:
         """Fill ``room`` past its seeds: bridge them, then the nodes of best marginal gain per byte."""
         cache: dict = {}
         walking = walk is not None and walk.context  # the walk's weights decide what is reached, not the hops
-        reach = self._reach(store, b, dict(room.nodes), 0 if walking else hops, cache)
+        reach = self._reach(store, dict(room.nodes), 0 if walking else hops, cache)
         if walking:
-            self._walked(store, b, query, room, walk, reach)
-        core = self._bridged(store, b, room, cache, reach)
+            self._walked(store, query, room, walk, reach)
+        core = self._bridged(store, room, cache, reach)
         items, weights = self._items(reach, room, query)
         forced = [
             context_pack.Item(nid, 0, 1.0, frozenset(f"seed:{s}" for s in reach.origin.get(nid, ())))

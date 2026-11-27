@@ -43,17 +43,17 @@ def test_semantic_json_says_mode_model_availability_and_coverage():
 class PartStore:
     reader = None
 
-    def top_audience(self, b):
+    def top_audience(self):
         return ["chat:9"]
 
-    def seen(self, b):
+    def seen(self):
         return {"nodes": 2, "edges": 1, "units": 1, "items": {"chat": 1}, "audience": {"chat"}}
 
 
 def test_a_reader_below_the_build_still_learns_whether_it_embedded_but_not_how_many_rows():
     from evo_agents.hub.kg_graph import HubSession
 
-    session = type("S", (), {"graph_store": PartStore(), "audience": ["chat:1"], "whole": lambda self, b: False})()
+    session = type("S", (), {"graph_store": PartStore(), "audience": ["chat:1"], "whole": lambda self: False})()
     vectors = {"model": "m", "mode": "index", "rows": 10, "vectors": 4, "partial": True}
     summary = {"ready": True, "build_id": 3, "built_at": "t", "content_hash": "h", "stats": {"size": 9}}
     summary["coverage"] = {"sources": [{"id": "chat", "items": 4}], "warnings": [], "vectors": vectors}

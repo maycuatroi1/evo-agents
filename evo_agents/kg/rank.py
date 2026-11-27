@@ -216,11 +216,11 @@ class Ranker:
         return [float(s) for s in self.model.predict(numpy.asarray(rows, dtype=float))]
 
     def order(
-        self, store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, limit: int = 10
+        self, store, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, limit: int = 10
     ) -> list[str]:
         """The ids of ``ranked``'s nodes (``locate.files``) in reading order: the SLOTS nodes the model scores best
         of the first PER_FILE nodes of the first FILES files, then the others as ``locate.place`` lists them."""
-        ids, rows = node_rows(store, b, query, pool, ranked, params, limit=limit)
+        ids, rows = node_rows(store, query, pool, ranked, params, limit=limit)
         if len(ids) < 2:
             return locate.place(ranked, params)
         got = self.scores(rows)
@@ -435,7 +435,7 @@ def _tested(pool: locate.Pool) -> set[str]:
     return tested
 
 
-def features(store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None):
+def features(store, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None):
     """One row of FEATURES for each file of ``ranked`` (``locate.files``), in its order. ``cosine``, when given, is
     the cosine of the query's embedding with each node's (id -> float); without it the feature is missing (NaN)."""
     cands = pool.cands
@@ -551,15 +551,13 @@ def _file_lines(store, file_ids: list[str]) -> dict[str, int]:
     return _snapshot_lines(store.snap, file_ids)
 
 
-def node_rows(
-    store, b: int, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None, limit: int = 10
-):
+def node_rows(store, query: str, pool: locate.Pool, ranked: list, params=locate.DEFAULT, cosine=None, limit: int = 10):
     """(ids, rows of FEATURES) of the nodes the model orders: the first PER_FILE nodes of each of the first FILES
     files of ``ranked`` (``locate.files``), each its file's FILE_FEATURES then its own NODE_FEATURES."""
     head = ranked[:TOP_FILES]
     if not head:
         return [], []
-    file_rows = features(store, b, query, pool, head, params, cosine)
+    file_rows = features(store, query, pool, head, params, cosine)
     total = locate.scores(pool, params)
     picked = [(g, k, i) for g, (_, _, ids) in enumerate(head[:FILES]) for k, i in enumerate(ids[:PER_FILE])]
     placed = {i: p for p, i in enumerate(locate.place(head[:FILES], params))}

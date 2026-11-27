@@ -140,12 +140,11 @@ class RowsSession(Session):
         assert self.project is not None
         return self.snap.view(tuning=tuning_of(self.project))
 
-    def _graph(self) -> tuple[SnapshotView, int]:
+    def _graph(self) -> SnapshotView:
         view = self.view()
-        b = view.latest_ready()
-        if b is None:
+        if view.latest_ready() is None:
             raise self.no_graph()
-        return view, b
+        return view
 
 
 class VectorFile(semantic.MemoryCache):

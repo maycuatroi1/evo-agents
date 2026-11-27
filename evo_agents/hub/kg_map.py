@@ -53,13 +53,13 @@ class View:
     pairs: dict[tuple[str, str], int] = field(default_factory=dict)  # (member, member), sorted: visible edges
 
 
-def view(store: SnapshotView, b: int, visible: Visible) -> View:
+def view(store: SnapshotView, visible: Visible) -> View:
     """The visible clusters of build b, recounted and renamed over their visible members."""
-    stored = store.clusters(b)
+    stored = store.clusters()
     if stored is None:
-        coverage = store.build_row(b)["coverage"].get("clusters") or {}
+        coverage = store.build_row()["coverage"].get("clusters") or {}
         return View(reason=coverage.get("reason") or NO_CLUSTERS)
-    nodes = [n for n in paced(store.cluster_nodes(b)) if n["cluster"] in stored.clusters and visible(n["label"])]
+    nodes = [n for n in paced(store.cluster_nodes()) if n["cluster"] in stored.clusters and visible(n["label"])]
     if not nodes:
         return View(reason=NO_VISIBLE)
     member = {n["id"]: n for n in paced(nodes)}
@@ -80,7 +80,7 @@ def view(store: SnapshotView, b: int, visible: Visible) -> View:
                 "kinds": dict(sorted(Counter(n["kind"] for n in ms).items())),
             }
     pairs: Counter = Counter()
-    for a, z, edge, src, dst, count in paced(store.member_links(b, kg_clusters.STRUCTURAL)):
+    for a, z, edge, src, dst, count in paced(store.member_links(kg_clusters.STRUCTURAL)):
         if a in member and z in member and visible(edge) and visible(src) and visible(dst):
             pairs[(a, z) if a < z else (z, a)] += count
     links: Counter = Counter()
@@ -210,13 +210,13 @@ def cluster_detail(found: View, cid: str) -> dict | None:
     }
 
 
-def whole(store: SnapshotView, b: int, visible: Visible, limit: int, found: View | None = None) -> dict:
+def whole(store: SnapshotView, visible: Visible, limit: int, found: View | None = None) -> dict:
     """Every visible node, at most ``limit`` by id, with the level-1 cluster it counts in, and the visible edges between
     two of them as [source index, target index, type index into ``rels``]. ``found`` is the reader's view of build b,
     counted here when not given."""
-    found = found if found is not None else view(store, b, visible)
+    found = found if found is not None else view(store, visible)
     top = {n["id"]: n["cluster"] for n in found.nodes}
-    nodes, edges = store.live_graph(b)
+    nodes, edges = store.live_graph()
     shown = [n for n in nodes if visible(n["label"])]
     truncated = len(shown) > limit
     shown = shown[:limit]

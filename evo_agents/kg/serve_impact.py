@@ -32,7 +32,7 @@ IMPACT_MENTIONS_SHOWN = 3  # reached nodes a document's line names; the data has
 class ImpactTools(SessionText):
     """kg_impact."""
 
-    def _changed_symbols(self, store: SnapshotView, b: int, symbols: list[dict], lines: set[int]) -> list[dict]:
+    def _changed_symbols(self, store: SnapshotView, symbols: list[dict], lines: set[int]) -> list[dict]:
         """The visible symbols a set of changed lines falls in: for each line, the symbol that starts last
         at or before it (the innermost one), within its unit's line span when the unit has one."""
         extents = []
@@ -40,11 +40,11 @@ class ImpactTools(SessionText):
             if not self.shows(s):
                 continue
             start, end = s["props"].get("line"), None
-            for w in store.where(s["id"], b):
+            for w in store.where(s["id"]):
                 m = SPAN.fullmatch(w["span"] or "")
                 if m:
                     start = int(m[1])
-                unit = store.unit(w["unit"], b)
+                unit = store.unit(w["unit"])
                 m = SPAN.fullmatch((unit or {}).get("span") or "")
                 if m and m[2]:
                     end = int(m[2])
@@ -69,15 +69,15 @@ class ImpactTools(SessionText):
         depth: int = 2,
         limit: int = IMPACT_LIMIT,
     ) -> tuple[str, dict]:
-        store, b = self._store()
-        found = Impact(b, max(1, min(int(depth), 3)), max(1, min(int(limit), IMPACT_MAX_LIMIT)))
+        store = self._store()
+        found = Impact(store.build, max(1, min(int(depth), 3)), max(1, min(int(limit), IMPACT_MAX_LIMIT)))
         wanted = ([id] if isinstance(id, str) and id else []) + [i for i in ids or [] if isinstance(i, str)]
         paths = [p for p in ([paths] if isinstance(paths, str) else paths or []) if isinstance(p, str) and p]
         changes = diff_lines(diff) if isinstance(diff, str) else {}
         if not (wanted or paths or changes):
             raise ToolError("give an id, ids, paths (repo:path) or a unified diff")
         for nid in wanted:
-            n = self._lookup(store, nid, b)
+            n = self._lookup(store, nid)
             if n is not None:
                 found.seeds[n["id"]] = n
             elif path_like(nid):
@@ -88,7 +88,7 @@ class ImpactTools(SessionText):
             self._seeds_by_path(store, found, paths, changes)
         unmatched, found.unmatched = found.unmatched, []
         for path in unmatched:  # a path that names no file may be an id, such as one the text showed
-            n = self._lookup(store, path, b)
+            n = self._lookup(store, path)
             if n is not None:
                 found.seeds[n["id"]] = n
             else:
@@ -98,7 +98,7 @@ class ImpactTools(SessionText):
         self._walk_back(store, found)
         found.docs = {
             d: n
-            for d, n in store.nodes(found.mentions, b).items()
+            for d, n in store.nodes(found.mentions).items()
             if self.shows(n) and d not in found.seeds and d not in found.reached
         }
         found.coverage = seed_coverage(found.seeds.values())
@@ -110,8 +110,7 @@ class ImpactTools(SessionText):
         """Seeds from repo:path paths and the files of a diff, and the symbols its changed lines fall in. A diff
         does not say which repo it comes from: a path names a file only when exactly one visible file matches it;
         otherwise the candidates go back to the caller."""
-        b = found.build
-        files = [f for f in store.path_nodes(b) if self.shows(f)]
+        files = [f for f in store.path_nodes() if self.shows(f)]
         changed: dict[str, set[int]] = {}
         for path, lines in [(p, None) for p in paths] + sorted(changes.items()):
             repo, sep, rest = path.partition(":")
@@ -127,9 +126,9 @@ class ImpactTools(SessionText):
                 found.ambiguous.append({"path": path, "candidates": [f["id"] for f in matches]})
             else:
                 found.unmatched.append(path)
-        symbols = store.file_symbols(changed, b)
+        symbols = store.file_symbols(changed)
         for fid, lines in changed.items():
-            for s in self._changed_symbols(store, b, symbols.get(fid, []), lines):
+            for s in self._changed_symbols(store, symbols.get(fid, []), lines):
                 found.seeds[s["id"]] = s
 
     def _walk_back(self, store: SnapshotView, found: Impact) -> None:
@@ -149,7 +148,7 @@ class ImpactTools(SessionText):
                         key = (-STATUS_RANK[e["status"]], e["rel"], e["dst"])
                         if e["src"] not in step or key < step[e["src"]][0]:
                             step[e["src"]] = (key, e)
-            nodes = store.nodes(step, found.build)
+            nodes = store.nodes(step)
             frontier = []
             for other in sorted(step):
                 node = nodes.get(other)
@@ -166,7 +165,7 @@ class ImpactTools(SessionText):
         if hop == 0:
             edges = self._seed_edges(store, found, nid)
         else:
-            edges = store.edges_of(nid, found.build, limit=HUB_DEGREE + 1)
+            edges = store.edges_of(nid, limit=HUB_DEGREE + 1)
             if len(edges) > HUB_DEGREE:
                 found.reached[nid]["hub"] = True
                 return []
@@ -184,7 +183,7 @@ class ImpactTools(SessionText):
         """The edges into a seed, SEED_EDGES at a time, up to IMPACT_SEED_EDGES; a seed with more is added to
         ``found.cut`` with the number of edges it has, so no caller is dropped without a word."""
         assert self.clearance is not None, ANSWERS_NOTHING
-        query = (nid, found.build, WALKED_RELS, IMPACT_STATUSES, self.clearance)
+        query = (nid, WALKED_RELS, IMPACT_STATUSES, self.clearance)
         edges: list[dict] = []
         while len(edges) < IMPACT_SEED_EDGES:
             want = min(SEED_EDGES, IMPACT_SEED_EDGES - len(edges))

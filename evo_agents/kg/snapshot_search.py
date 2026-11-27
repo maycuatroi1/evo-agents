@@ -75,18 +75,18 @@ class SnapshotSearch:
         """The result nodes of kg_search, best first, and what it says of them: ``mentioned_by`` (a node a hit
         mentions: that hit), ``entities`` (a document: the matched entities it stands for), ``code`` (a file whose code
         holds the query's words: the lines that do)."""
-        view, b = self.view, 0
+        view = self.view
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
         hits = self._hits(query, kinds, limit, repo)
         stood: dict[str, list[str]] = {}
         if not kinds:
             hits, stood = through_entities(
-                view, b, hits, self.seen, view.tuning.entity_code, query, view.tuning.entity_words
+                view, hits, self.seen, view.tuning.entity_code, query, view.tuning.entity_words
             )
             hits = [n for n in hits if in_repo(n, repo)]
         results, via = with_mentions(
-            view, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
+            view, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.seen, kinds
         )
         if repo:
             results = [n for n in results if in_repo(n, repo)]
@@ -106,15 +106,13 @@ class SnapshotSearch:
         ids = None if kinds or repo else self._ranked(query, limit, vector)
         if ids is None:
             pool = limit * (REPO_POOL if repo else 4)
-            ids = self.ranker.search(query, 0, limit=pool, kinds=kinds, deprecated=self.deprecated, vector=vector)
+            ids = self.ranker.search(query, limit=pool, kinds=kinds, deprecated=self.deprecated, vector=vector)
         found = self.view.nodes(ids)
         hits = [found[i] for i in ids if i in found and self.seen(found[i]) and in_repo(found[i], repo)]
         if not self.sees_all and len(hits) < limit:
             known, want = set(ids), max(len(ids), limit - len(hits)) * 4
             while len(hits) < limit:
-                ranked = self.ranker.search(
-                    query, 0, limit=want, kinds=kinds, deprecated=self.deprecated, vector=vector
-                )
+                ranked = self.ranker.search(query, limit=want, kinds=kinds, deprecated=self.deprecated, vector=vector)
                 extra = [i for i in ranked if i not in known]
                 known.update(extra)
                 more = self.view.nodes(extra)
@@ -125,13 +123,11 @@ class SnapshotSearch:
         return hits
 
     def _ranked(self, query: str, limit: int, vector) -> list[str]:
-        scored = self.ranker.search_scored(
-            query, 0, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector
-        )
+        scored = self.ranker.search_scored(query, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
         walk = ppr.of(self.view.tuning.walk, self.view.tuning.entity_code)
         if walk is None:
             return [i for i, _ in scored][: limit * 12]
-        return ppr.order(self.view, 0, scored, walk, self.seen)[: max(limit * 4, 40)]
+        return ppr.order(self.view, scored, walk, self.seen)[: max(limit * 4, 40)]
 
     def _with_code(self, query: str, results: list[dict], limit: int, repo) -> tuple[list[dict], dict[str, list[int]]]:
         words = code_words(query)

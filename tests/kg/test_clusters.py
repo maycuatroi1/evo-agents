@@ -206,9 +206,9 @@ def test_cluster_build_writes_clusters_with_a_stable_content_hash(tmp_path, kg_e
     clusters = report.coverage["clusters"]
     assert clusters["computed"] and clusters["clusters"] >= 1 and clusters["warm"] is False
     store = built.view_of(project)
-    found = store.clusters(report.build_id)
+    found = store.clusters()
     assert found is not None and found.members
-    assert set(found.members) <= set(store.alive_ids("nodes", report.build_id))
+    assert set(found.members) <= set(store.alive_ids("nodes"))
     first = report.content_hash
     store.close()
 
@@ -223,7 +223,7 @@ def test_cluster_build_writes_clusters_with_a_stable_content_hash(tmp_path, kg_e
     assert changed.verify["match"] and changed.content_hash != first
     store = built.view_of(project)
     old = {cid for cid, c in found.clusters.items() if c["level"] == 1}
-    now = store.clusters(changed.build_id)
+    now = store.clusters()
     assert len(old & set(now.clusters)) >= 0.9 * len(old)
     text = hub_status(project)["content"][0]["text"]
     assert f"clusters: {changed.coverage['clusters']['clusters']} clusters" in text
@@ -235,7 +235,7 @@ def test_cluster_build_without_the_extra_has_none_and_status_says_so(tmp_path, k
     report = sync_build(project, verify=True)
     assert report.verify["match"] and report.coverage["clusters"]["computed"] is False
     store = built.view_of(project)
-    assert store.clusters(report.build_id) is None
+    assert store.clusters() is None
     store.close()
     text = hub_status(project)["content"][0]["text"]
     assert "clusters: none, graspologic-native is not installed: pip install 'evo-ak[clusters]'" in text

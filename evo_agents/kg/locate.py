@@ -256,7 +256,7 @@ def _suffix_matches(files: dict[str, str], path: str) -> list[str]:
     return found
 
 
-def _symbols_at(store, b: int, file_id: str, line: int) -> list[str]:
+def _symbols_at(store, file_id: str, line: int) -> list[str]:
     """The innermost symbols of a file that hold ``line``."""
     m = _FILE_ID.match(file_id)
     if not m:
@@ -271,7 +271,7 @@ def _symbols_at(store, b: int, file_id: str, line: int) -> list[str]:
     return best
 
 
-def _lookup(store, b: int, found: list[Anchor], params: Params) -> dict[str, float]:
+def _lookup(store, found: list[Anchor], params: Params) -> dict[str, float]:
     """node id -> anchor strength of the nodes ``found`` names exactly."""
     out: dict[str, float] = {}
 
@@ -285,14 +285,14 @@ def _lookup(store, b: int, found: list[Anchor], params: Params) -> dict[str, flo
             for node_id in ids:
                 give(node_id, a.strength / math.sqrt(len(ids)))
                 if a.line:
-                    for sym in _symbols_at(store, b, node_id, a.line):
+                    for sym in _symbols_at(store, node_id, a.line):
                         give(sym, a.strength)
         else:
             names = [a.text]
             if "." in a.text:
                 names += [".".join(a.text.split(".")[-2:]), a.text.split(".")[-1]]
             for rank, name in enumerate(dict.fromkeys(names)):
-                ids = store.exact(name, b, params.name_hits + 1, ["Symbol", "File"])
+                ids = store.exact(name, limit=params.name_hits + 1, kinds=["Symbol", "File"])
                 if 0 < len(ids) <= params.name_hits:
                     for node_id in ids:
                         give(node_id, a.strength * (0.85**rank) / math.sqrt(len(ids)))
@@ -300,12 +300,12 @@ def _lookup(store, b: int, found: list[Anchor], params: Params) -> dict[str, flo
     return out
 
 
-def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: list[Anchor] | None = None) -> Pool:
+def gather(store, query: str, scored, params: Params = DEFAULT, found: list[Anchor] | None = None) -> Pool:
     """The candidates of a question: the text matches, the nodes it names, and the neighbours of the best."""
     scored = list(scored)[: params.pool]
     rels = _rels(scored)
     pool = Pool(text=any(s is not None for _, s in scored))
-    nodes = store.nodes([i for i, _ in scored], b)
+    nodes = store.nodes([i for i, _ in scored])
     for node_id, score in scored:
         if node_id in nodes:
             pool.cands[node_id] = _cand(nodes[node_id], rels[node_id])
@@ -314,9 +314,9 @@ def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: l
                 pool.exact.add(node_id)
             else:
                 pool.scores[node_id] = score
-    named = _lookup(store, b, anchors(query) if found is None else found, params)
+    named = _lookup(store, anchors(query) if found is None else found, params)
     fresh = [i for i in named if i not in pool.cands]
-    for node_id, node in store.nodes(fresh, b).items():
+    for node_id, node in store.nodes(fresh).items():
         pool.cands[node_id] = _cand(node, 0.0, False)
     for node_id, strength in named.items():
         if node_id in pool.cands:
@@ -325,7 +325,7 @@ def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: l
     near: set[str] = set()
     for c in lenders[: params.expand_from]:
         links: list[tuple[str, str, float]] = []
-        for e in store.edges_of(c.id, b, "both", limit=120):
+        for e in store.edges_of(c.id, direction="both", limit=120):
             rel = e["rel"]
             if rel not in EXPAND_RELS or (e["status"] != "parsed" and (e.get("conf") or 0.0) < CONF_FLOOR):
                 continue
@@ -341,10 +341,10 @@ def gather(store, b: int, query: str, scored, params: Params = DEFAULT, found: l
                 links.append((other, rel, 1.0 if e["status"] == "parsed" else float(e.get("conf") or 0.0)))
                 near.add(other)
         pool.links[c.id] = links
-    _structural(store, b, pool, lenders[: params.expand_from])
+    _structural(store, pool, lenders[: params.expand_from])
     near = {o for links in pool.links.values() for o, _, _ in links}
     fresh = [i for i in near if i not in pool.cands]
-    for node_id, node in store.nodes(fresh, b).items():
+    for node_id, node in store.nodes(fresh).items():
         pool.cands[node_id] = _cand(node, 0.0, False)
     return pool
 
@@ -374,7 +374,7 @@ def _test_names(path: str) -> list[str]:
     ]
 
 
-def _structural(store, b: int, pool: Pool, lenders: list[Cand]) -> None:
+def _structural(store, pool: Pool, lenders: list[Cand]) -> None:
     """The links no edge says: the test file named after a file, and the files that changed in the same commits."""
     files = _file_index(store)
     stems = getattr(store, "_locate_stems", None)
@@ -480,9 +480,7 @@ def code_like(pool: Pool, top: int = 10) -> bool:
     return bool(best) and sum(c.kind in CODE_KINDS for c in best) * 2 > len(best)
 
 
-def arrange(
-    store, b: int, query: str, scored, params: Params = DEFAULT, ranker=None, limit: int = 10
-) -> list[str] | None:
+def arrange(store, query: str, scored, params: Params = DEFAULT, ranker=None, limit: int = 10) -> list[str] | None:
     """The ids of a question's candidates in reading order, or None when the graph is not code and no ``ranker`` is
     given (the text order stands).
 
@@ -495,10 +493,10 @@ def arrange(
     scored = list(scored)
     if not scored:
         return None
-    pool = gather(store, b, query, scored, params)
+    pool = gather(store, query, scored, params)
     if ranker is None and not code_like(pool):
         return None
     ranked = files(pool, params)
-    listed = ranker.order(store, b, query, pool, ranked, params, limit) if ranker is not None else place(ranked, params)
+    listed = ranker.order(store, query, pool, ranked, params, limit) if ranker is not None else place(ranked, params)
     seen = set(listed)
     return listed + [i for i, _ in scored if i not in seen]

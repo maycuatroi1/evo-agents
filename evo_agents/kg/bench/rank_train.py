@@ -311,24 +311,24 @@ def grade(path: str | None, first: int | None, last: int | None, label: Label, a
     return 2 + sum(share >= g for g in GRADES)
 
 
-def group_of(store, b: int, label: Label, params=locate.DEFAULT, length=None) -> Group | None:
+def group_of(store, label: Label, params=locate.DEFAULT, length=None) -> Group | None:
     """The rows of ``label`` asked of ``store`` the way kg_search asks it with the model on; None when the search
     finds nothing. ``length`` (path -> lines) gives a whole file's lines."""
     from evo_agents.kg.evaluate import node_file, node_span
 
     limit = label.limit
-    scored = store.search_scored(label.query, b, limit=max(limit * 4, 30), deprecated=False)
+    scored = store.search_scored(label.query, limit=max(limit * 4, 30), deprecated=False)
     if not scored:
         return None
-    pool = locate.gather(store, b, label.query, scored, params)
+    pool = locate.gather(store, label.query, scored, params)
     ranked = locate.files(pool, params)
-    ids, rows = rank.node_rows(store, b, label.query, pool, ranked, params, limit=limit)
+    ids, rows = rank.node_rows(store, label.query, pool, ranked, params, limit=limit)
     if not ids:
         return None
     answer: dict[str, set[int]] = defaultdict(set)
     for path, first, last in label.lines:
         answer[path].update(range(first, last + 1))
-    nodes = store.nodes(ids, b)
+    nodes = store.nodes(ids)
     labels = []
     for i in ids:
         node = nodes.get(i)
@@ -362,10 +362,10 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                     task = group[0].task
                     graphs.warm(lay.project_dir(task))
                     with graphs.bench_home(lay.home):
-                        store, b = run.session_of(graphs.project_of(lay, task), "graph")._store()
+                        store = run.session_of(graphs.project_of(lay, task), "graph")._store()
                 else:
                     project = resolve_project(name)  # a build in memory of the corpus on this machine
-                    store, b = run.session_of(project, "graph", snap=rows_file.local_snapshot(project))._store()
+                    store = run.session_of(project, "graph", snap=rows_file.local_snapshot(project))._store()
             except Exception as exc:  # noqa: BLE001 - one graph that cannot be read leaves its labels out
                 stats["graph_error"] += len(group)
                 if progress:
@@ -384,7 +384,7 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                     return read(None, path)
 
             for label in group:
-                found = group_of(store, b, label, length=length)
+                found = group_of(store, label, length=length)
                 if found is None:
                     stats[f"{label.source}:not_found"] += 1
                     continue

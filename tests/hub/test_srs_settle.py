@@ -425,5 +425,5 @@ def test_srs_settle_graph_gives_the_authors_of_the_three_newest_commits_of_a_fil
     assert authors == ["nam@lumen.example", "lan@lumen.example", "mai@lumen.example"]  # not t@, the first's
     assert session.unknown([], ["docs/guide.md"])[2] == authors
     assert session.unknown([], ["app:app/search.py"])[2] == ["t@example.test"]
-    node = view.node([c for c in view.alive_ids("nodes", report.build_id) if ":commit:" in c][0], report.build_id)
+    node = view.node([c for c in view.alive_ids("nodes", report.build_id) if ":commit:" in c][0])
     assert node["props"]["time"].endswith("Z")

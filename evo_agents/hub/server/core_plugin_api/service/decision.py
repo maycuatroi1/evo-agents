@@ -345,9 +345,9 @@ def _queue(session: WebSession) -> dict:
     data = session.review()
     if not data.get("items"):
         return data
-    store, b = session._visible_store()
+    store = session._visible_store()
     ids = sorted({node["id"] for item in data["items"] for node in item["nodes"]})
-    return {**data, "props": {nid: n["props"] for nid, n in store.nodes(ids, b).items()}}
+    return {**data, "props": {nid: n["props"] for nid, n in store.nodes(ids).items()}}
 
 
 def _snippet(item: dict, props: Mapping[str, Mapping]) -> str:

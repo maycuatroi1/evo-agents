@@ -130,7 +130,7 @@ class LinkGraph:
         return out
 
 
-def read(view: SnapshotView, b: int = 0) -> LinkGraph:
+def read(view: SnapshotView) -> LinkGraph:
     """The live nodes and edges of a build the view's reader sees (``SnapshotView.sees``), nodes by id and edges by
     (src, rel, dst); ``b`` is the view's one build."""
     g = LinkGraph()

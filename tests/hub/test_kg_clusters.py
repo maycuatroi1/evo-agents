@@ -199,13 +199,13 @@ def test_a_project_without_a_build_has_an_empty_map_with_a_reason(hub):
 
 def test_a_build_without_clusters_says_why():
     class NoClusters:
-        def clusters(self, b):
+        def clusters(self):
             return None
 
-        def build_row(self, b):
+        def build_row(self):
             return {"coverage": {"clusters": {"computed": False, "reason": "graspologic-native is not installed"}}}
 
-    found = kg_map.cluster_map(kg_map.view(NoClusters(), 1, lambda label: True), True)
+    found = kg_map.cluster_map(kg_map.view(NoClusters(), lambda label: True), True)
     assert found == {
         "computed": False,
         "reason": "graspologic-native is not installed",

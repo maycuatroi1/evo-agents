@@ -102,8 +102,8 @@ class LinksPropose(KgCommand):
     def run(self, ctx: KgContext) -> Result:
         args = ctx.args
         project, store, b = open_build(args.project)
-        g = links.read(store, b)
-        review = store.review_items(b)
+        g = links.read(store)
+        review = store.review_items()
         if args.review is not None:
             review = json.loads(args.review.read_text(encoding="utf-8")).get("items") or []
         elif args.hub:

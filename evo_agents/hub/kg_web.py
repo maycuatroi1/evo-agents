@@ -71,7 +71,7 @@ class WebSession(HubSession):
             raise GraphProblem(str(exc)) from None
         return data
 
-    def _visible_store(self) -> tuple[SnapshotView, int]:
+    def _visible_store(self) -> SnapshotView:
         try:
             return self._store()
         except ToolError as exc:
@@ -94,8 +94,8 @@ class WebSession(HubSession):
         """kg_node: the node (by id or alias), its evidence and its visible edges. Raises NotVisible."""
         if self.error:
             raise NotVisible(node_id)
-        store, b = self._visible_store()
-        if self._lookup(store, node_id, b) is None:
+        store = self._visible_store()
+        if self._lookup(store, node_id) is None:
             raise NotVisible(node_id)
         return self._data(self.tool_kg_node, id=node_id)
 
@@ -103,9 +103,9 @@ class WebSession(HubSession):
         """How many visible nodes of each kind the graph holds, most first."""
         if self.error:
             return []
-        store, b = self._visible_store()
+        store = self._visible_store()
         counts: dict[str, int] = {}
-        for kind, level, location, integrity, count in store.kind_counts(b):
+        for kind, level, location, integrity, count in store.kind_counts():
             if self.visible((level, location, integrity)):
                 counts[kind] = counts.get(kind, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -116,14 +116,14 @@ class WebSession(HubSession):
         node the member can see."""
         if self.error:
             return []
-        store, b = self._visible_store()
-        coverage = store.build_row(b)["coverage"]
-        if not self.whole(b):
-            hidden = store.seen(b)["audience"]
+        store = self._visible_store()
+        coverage = store.build_row()["coverage"]
+        if not self.whole():
+            hidden = store.seen()["audience"]
             coverage = {"sources": [s for s in coverage.get("sources", []) if s["id"] not in hidden]}
         found = []
         for read in freshness.reads(coverage):
-            node = store.node(f"source:{read['source']}", b)
+            node = store.node(f"source:{read['source']}")
             if node is not None and self.visible(node["label"]):
                 found.append(read)
         return found
@@ -137,35 +137,35 @@ class WebSession(HubSession):
         only when it and both its nodes are visible; most first."""
         if self.error:
             return []
-        store, b = self._visible_store()
+        store = self._visible_store()
         counts: dict[tuple[str, str, str], int] = {}
-        for src_kind, rel, dst_kind, edge, src, dst, count in store.shape_counts(b):
+        for src_kind, rel, dst_kind, edge, src, dst, count in store.shape_counts():
             if self.visible(edge) and self.visible(src) and self.visible(dst):
                 key = (src_kind, rel, dst_kind)
                 counts[key] = counts.get(key, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"src_kind": k[0], "rel": k[1], "dst_kind": k[2], "count": count} for k, count in ordered]
 
-    def _map_view(self, store: SnapshotView, b: int) -> kg_map.View:
+    def _map_view(self, store: SnapshotView) -> kg_map.View:
         """The clusters of build b as this reader sees them, kept by the build's content and by everything ``visible``
         compares with (``evo_agents.hub.kg_map.ViewCache``); call after ``_visible_store``, which sets ``sees_all``."""
-        key = (self.project.name, self.graph.content_hash, b, self.sees_all, self.clearance, self.audience)
-        return kg_map.VIEWS.get(key, lambda: kg_map.view(store, b, self.visible))
+        key = (self.project.name, self.graph.content_hash, store.build, self.sees_all, self.clearance, self.audience)
+        return kg_map.VIEWS.get(key, lambda: kg_map.view(store, self.visible))
 
     def cluster_map(self, with_nodes: bool = True) -> dict:
         """The visible level-1 clusters, the links between them and (``with_nodes``) their visible members
         (``evo_agents.hub.kg_map``); empty with a reason when the build has none or none is visible."""
         if self.error:
             return kg_map.cluster_map(kg_map.View(reason=kg_map.NO_VISIBLE), with_nodes)
-        store, b = self._visible_store()
-        return kg_map.cluster_map(self._map_view(store, b), with_nodes)
+        store = self._visible_store()
+        return kg_map.cluster_map(self._map_view(store), with_nodes)
 
     def cluster(self, cluster_id: str) -> dict:
         """One visible cluster with its subclusters, members and neighbours. Raises NotVisible."""
         if self.error:
             raise NotVisible(cluster_id)
-        store, b = self._visible_store()
-        found = kg_map.cluster_detail(self._map_view(store, b), cluster_id)
+        store = self._visible_store()
+        found = kg_map.cluster_detail(self._map_view(store), cluster_id)
         if found is None:
             raise NotVisible(cluster_id)
         return found
@@ -174,30 +174,30 @@ class WebSession(HubSession):
         """Every visible node (at most ``limit``) and edge between them, compact, with each node's level-1 cluster."""
         if self.error:
             return {"nodes": [], "rels": [], "edges": [], "truncated": False}
-        store, b = self._visible_store()
-        return kg_map.whole(store, b, self.visible, limit, self._map_view(store, b))
+        store = self._visible_store()
+        return kg_map.whole(store, self.visible, limit, self._map_view(store))
 
     def review(self) -> dict:
         """The review queue as the member sees it (``evo_agents.hub.kg_review``): only items about nodes they can
         read, each cut to those nodes."""
         if self.error:
             return {"computed": False, "reason": kg_map.NO_VISIBLE, "items": []}
-        store, b = self._visible_store()
-        return kg_review.queue(store, b, self.visible, self._degrees)
+        store = self._visible_store()
+        return kg_review.queue(store, self.visible, self._degrees)
 
     def decision_subjects(self, nodes, edges) -> dict:
         """Whether the build holds each node id and (src, rel, dst) edge decisions name, and whether the member sees
         it (``evo_agents.hub.kg_decisions.subjects``); all hidden for a member who sees nothing of the build."""
         if self.error:
             return {key: kg_decisions.HIDDEN for key in [*nodes, *edges]}
-        store, b = self._visible_store()
-        return kg_decisions.subjects(store, b, self.visible, nodes, edges)
+        store = self._visible_store()
+        return kg_decisions.subjects(store, self.visible, nodes, edges)
 
-    def _entity_view(self, store: SnapshotView, b: int) -> kg_entity_graph.EntityView:
+    def _entity_view(self, store: SnapshotView) -> kg_entity_graph.EntityView:
         """The entities, relations and mentions of build b this reader sees (``evo_agents.hub.kg_entity_graph``), kept
         as ``_map_view`` keeps the clusters; call after ``_visible_store``."""
-        key = (self.project.name, self.graph.content_hash, b, self.sees_all, self.clearance, self.audience)
-        return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, b, self.seen))
+        key = (self.project.name, self.graph.content_hash, store.build, self.sees_all, self.clearance, self.audience)
+        return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, self.seen))
 
     def _describe(self, label: tuple) -> dict:
         self._saw(label)
@@ -224,12 +224,12 @@ class WebSession(HubSession):
         ``code``, the visible code nodes they point to."""
         if self.error:
             return {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0, "truncated": False}
-        store, b = self._visible_store()
-        found = self._entity_view(store, b)
+        store = self._visible_store()
+        found = self._entity_view(store)
         return self._entity_graph(found, kg_entity_graph.top(found, limit), code)
 
-    def _entity(self, store: SnapshotView, b: int, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
-        n = self._lookup(store, entity_id, b)
+    def _entity(self, store: SnapshotView, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
+        n = self._lookup(store, entity_id)
         if n is None or n["id"] not in found.nodes:
             raise NotVisible(entity_id)
         return n
@@ -239,9 +239,9 @@ class WebSession(HubSession):
         nodes they point to. Raises NotVisible."""
         if self.error:
             raise NotVisible(entity_id)
-        store, b = self._visible_store()
-        found = self._entity_view(store, b)
-        focus = self._entity(store, b, found, entity_id)["id"]
+        store = self._visible_store()
+        found = self._entity_view(store)
+        focus = self._entity(store, found, entity_id)["id"]
         picked = kg_entity_graph.around(found, focus, depth, limit)
         out = self._entity_graph(found, picked, code)
         for n in out["nodes"]:
@@ -254,11 +254,11 @@ class WebSession(HubSession):
         NotVisible."""
         if self.error:
             raise NotVisible(entity_id)
-        store, b = self._visible_store()
-        found = self._entity_view(store, b)
-        n = self._entity(store, b, found, entity_id)
-        citations, total = kg_entity_graph.entity_citations(store, b, found, n["id"])
-        code, code_total = kg_entity_graph.code_links(store, b, found, n["id"], self.seen, self._describe)
+        store = self._visible_store()
+        found = self._entity_view(store)
+        n = self._entity(store, found, entity_id)
+        citations, total = kg_entity_graph.entity_citations(store, found, n["id"])
+        code, code_total = kg_entity_graph.code_links(store, found, n["id"], self.seen, self._describe)
         relations = sorted(
             (found.relations[eid] for eid in found.adjacent.get(n["id"], ())),
             key=lambda e: (-kg_entity_graph.weight(e), e["id"]),
@@ -280,12 +280,12 @@ class WebSession(HubSession):
         NotVisible."""
         if self.error:
             raise NotVisible(edge_id)
-        store, b = self._visible_store()
-        found = self._entity_view(store, b)
+        store = self._visible_store()
+        found = self._entity_view(store)
         e = found.relations.get(edge_id)
         if e is None:
             raise NotVisible(edge_id)
-        citations, total = kg_entity_graph.relation_citations(store, b, e, self.seen)
+        citations, total = kg_entity_graph.relation_citations(store, e, self.seen)
         return {
             "edge": kg_entity_graph.edge_json(e, self._describe),
             "src": kg_entity_graph.node_json(found, found.nodes[e["src"]], self._describe),
@@ -294,9 +294,9 @@ class WebSession(HubSession):
             "documents": total,
         }
 
-    def _degrees(self, store: SnapshotView, ids, b: int) -> dict[str, int]:
+    def _degrees(self, store: SnapshotView, ids) -> dict[str, int]:
         """Visible edges of each node of ``ids``, by the same ceiling ``visible`` compares labels with."""
-        return store.degrees(ids, b, self.clearance)
+        return store.degrees(ids, self.clearance)
 
     def neighbourhood(
         self,
@@ -314,17 +314,17 @@ class WebSession(HubSession):
             raise NotVisible(node_id)
         hops = max(1, min(int(hops), MAX_HOPS))
         limit = max(1, min(int(limit), MAX_NODES))
-        store, b = self._visible_store()
-        focus = self._lookup(store, node_id, b)
+        store = self._visible_store()
+        focus = self._lookup(store, node_id)
         if focus is None:
             raise NotVisible(node_id)
         self.read = None
-        walk = self._neighbourhood_walk(store, b, focus, hops, limit, group, opened)
+        walk = self._neighbourhood_walk(store, focus, hops, limit, group, opened)
         missing = [nid for nid in walk.included if nid not in walk.degree]
         if missing:
-            walk.degree.update(self._degrees(store, missing, b))
+            walk.degree.update(self._degrees(store, missing))
         return {
-            "build": b,
+            "build": store.build,
             "focus": focus["id"],
             "hops": hops,
             "limit": limit,
@@ -338,7 +338,7 @@ class WebSession(HubSession):
         }
 
     def _neighbourhood_walk(
-        self, store: SnapshotView, b: int, focus: dict, hops: int, limit: int, group: int | None, opened: frozenset[str]
+        self, store: SnapshotView, focus: dict, hops: int, limit: int, group: int | None, opened: frozenset[str]
     ) -> _Walk:
         """Breadth first from ``focus``, at most ``hops`` steps and ``limit`` nodes, as ``neighbourhood`` says."""
         walk = _Walk(included={focus["id"]: focus}, hop={focus["id"]: 0})
@@ -347,13 +347,13 @@ class WebSession(HubSession):
             current, depth = frontier.popleft()
             if depth >= hops:
                 continue
-            found = [e for e in store.edges_of(current, b, limit=SEED_EDGES) if self.visible(e["label"])]
+            found = [e for e in store.edges_of(current, limit=SEED_EDGES) if self.visible(e["label"])]
             if depth > 0 and len(found) > HUB_DEGREE:
                 walk.hubs.add(current)  # not expanded: open it to see its neighbours
                 continue
-            found, others = self._steps(store, b, current, found)
+            found, others = self._steps(store, current, found)
             if depth == 0:
-                found = self._first_step(walk, store, b, current, found, others, group, opened)
+                found = self._first_step(walk, store, current, found, others, group, opened)
             for e in found:
                 other = _other(e, current)
                 if other not in walk.included:
@@ -366,9 +366,7 @@ class WebSession(HubSession):
                 walk.edges[e["id"]] = e
         return walk
 
-    def _steps(
-        self, store: SnapshotView, b: int, current: str, found: list[dict]
-    ) -> tuple[list[dict], dict[str, dict]]:
+    def _steps(self, store: SnapshotView, current: str, found: list[dict]) -> tuple[list[dict], dict[str, dict]]:
         """The visible edges ``found`` of ``current`` whose other node is visible too, strongest status first and
         ``in_source`` and ``part_of`` last, with the other nodes by id."""
         found = sorted(
@@ -381,14 +379,13 @@ class WebSession(HubSession):
                 e["dst"],
             ),
         )
-        others = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in found}, b)
+        others = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in found})
         return [e for e in found if _visible_node(self, others, _other(e, current))], others
 
     def _first_step(
         self,
         walk: _Walk,
         store: SnapshotView,
-        b: int,
         current: str,
         found: list[dict],
         others: dict[str, dict],
@@ -399,7 +396,7 @@ class WebSession(HubSession):
         follows: with ``group``, those to the neighbours each group shows, in their order."""
         walk.neighbours = {_other(e, current) for e in found}
         walk.groups = _groups(found, current, others)
-        walk.degree.update(self._degrees(store, {nid for g in walk.groups.values() for nid in g["members"]}, b))
+        walk.degree.update(self._degrees(store, {nid for g in walk.groups.values() for nid in g["members"]}))
         if group is None:
             return found
         rank = _ranked(walk.groups, walk.degree, group, opened)  # the direct neighbours shown, in order

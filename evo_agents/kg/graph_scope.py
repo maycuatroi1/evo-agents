@@ -28,14 +28,13 @@ class GraphScope:
         self.name = name
         self.sources = frozenset(s.lower() for s in sources)
         self._store = None
-        self._build: int | None = None
         self._nodes: dict[str, bool] = {}
         self._units: dict[str, str | None] = {}
 
-    def bind(self, store, b: int) -> None:
-        """Read build ``b`` of ``store`` from now on; the cache of another build is dropped."""
-        if store is not self._store or b != self._build:
-            self._store, self._build = store, b
+    def bind(self, store) -> None:
+        """Read ``store`` from now on; the cache of another store is dropped."""
+        if store is not self._store:
+            self._store = store
             self._nodes, self._units = {}, {}
 
     def _named(self, source: str | None) -> bool:
@@ -45,7 +44,7 @@ class GraphScope:
         """The source of a unit: as the store holds it, else the part of its id before the first colon (a unit the
         reader's audience does not hold still names its source)."""
         if unit_id not in self._units:
-            row = self._store.unit(unit_id, self._build) if self._store is not None else None
+            row = self._store.unit(unit_id) if self._store is not None else None
             source = row.get("source") if row else None
             self._units[unit_id] = source if isinstance(source, str) and source else unit_id.partition(":")[0]
         return self._units[unit_id]
@@ -57,8 +56,8 @@ class GraphScope:
             return found
         found = self._named(readable(node_id).partition(":")[0])
         if not found and self._store is not None:
-            units = [w["unit"] for w in self._store.where(node_id, self._build)]
-            units += [u for d in self._store.derivations(node_id, self._build) for u in d["units"]]
+            units = [w["unit"] for w in self._store.where(node_id)]
+            units += [u for d in self._store.derivations(node_id) for u in d["units"]]
             found = any(self._named(self._unit_source(u)) for u in units if isinstance(u, str))
         self._nodes[node_id] = found
         return found

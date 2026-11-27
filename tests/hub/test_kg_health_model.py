@@ -430,7 +430,7 @@ def plan(sha: str, **step) -> dict:
 
 def test_the_eval_asks_the_done_steps_whose_commits_the_graph_read(demo):
     head = git(demo.app, "rev-parse", "HEAD").strip()
-    commits = kg_health_eval.GraphCommits(built.view_of(demo.project), 0)
+    commits = kg_health_eval.GraphCommits(built.view_of(demo.project))
     assert commits.changed(head[:10], "app")[1] == 5 and commits.changed(head, "other") is None
     bodies = [
         ("demo", plan(head[:10])),
@@ -470,7 +470,7 @@ def test_a_step_whose_commits_change_more_than_twenty_files_is_still_asked(demo)
     commit(demo.app, "many files")
     built.sync_build(demo.project)
     head = git(demo.app, "rev-parse", "HEAD").strip()
-    commits = kg_health_eval.GraphCommits(built.view_of(demo.project), 0)
+    commits = kg_health_eval.GraphCommits(built.view_of(demo.project))
     questions, skipped, available, _ = kg_health_eval.plan_questions("demo", [("demo", plan(head))], commits)
     scored = kg_health_eval.score(questions, skipped, available, hub_session(demo.project, "agent"))
     assert available == 1 and skipped == [] and len(questions[0].files) == 21
@@ -486,13 +486,13 @@ class FakeGraph:
         self.by_id = {node["id"]: node for node in nodes}
         self.changes = changes
 
-    def alive_ids(self, table, b):
+    def alive_ids(self, table):
         return list(self.by_id)
 
-    def nodes(self, ids, b):
+    def nodes(self, ids):
         return {i: self.by_id[i] for i in ids if i in self.by_id}
 
-    def edges_of(self, node, b, direction, limit):
+    def edges_of(self, node, *, direction="both", limit=200):
         return [{"rel": "changes", "dst": f"app:file:{path}"} for path in self.changes.get(node, [])][:limit]
 
 
@@ -514,7 +514,7 @@ def squashed_graph() -> FakeGraph:
 
 
 def test_a_squashed_steps_answers_come_from_its_pull_request_or_the_paths_of_its_evidence():
-    commits = kg_health_eval.GraphCommits(squashed_graph(), 1)
+    commits = kg_health_eval.GraphCommits(squashed_graph())
     bodies = [
         ("by-branch", plan(SQUASHED[:10], evidence=f"app@{SQUASHED[:10]} on feat/rank")),
         ("by-number", plan(SQUASHED[:10], evidence=f"app@{SQUASHED[:10]}, merged in PR #12")),

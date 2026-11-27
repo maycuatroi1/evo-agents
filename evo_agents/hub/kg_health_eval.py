@@ -99,19 +99,19 @@ class GraphCommits:
     are its ``changes`` edges. Also the graph's pull requests, with their branch and the commit each merged as, and
     whether a path is a file of the graph."""
 
-    def __init__(self, store, b: int):
-        self.store, self.b = store, b
+    def __init__(self, store):
+        self.store = store
         self.found: dict[str, list[dict]] = defaultdict(list)
         self.pulls: list[dict] = []
-        alive = sorted(store.alive_ids("nodes", b))
+        alive = sorted(store.alive_ids("nodes"))
         ids = [node for node in alive if ":commit:" in node and not node.startswith("commit:")]
-        for node in store.nodes(ids, b).values():
+        for node in store.nodes(ids).values():
             props = node.get("props") or {}
             sha, files = props.get("sha"), props.get("files")
             if node.get("kind") == "Commit" and isinstance(sha, str) and type(files) is int:
                 entry = {"node": node["id"], "sha": sha, "repo": props.get("repo"), "files": files}
                 self.found[sha[:SHA_PREFIX]].append(entry)
-        for node in store.nodes([node for node in alive if ":pr:" in node], b).values():
+        for node in store.nodes([node for node in alive if ":pr:" in node]).values():
             props = node.get("props") or {}
             if node.get("kind") == "PullRequest" and isinstance(props.get("merge_commit"), str):
                 keep = ("repo", "number", "head", "merge_commit")
@@ -123,7 +123,7 @@ class GraphCommits:
         found = [e for e in self.found.get(sha[:SHA_PREFIX], []) if e["sha"].startswith(sha) and e["repo"] == repo]
         if len({e["sha"] for e in found}) != 1:
             return None
-        edges = self.store.edges_of(found[0]["node"], self.b, "out", limit=MAX_EDGES)
+        edges = self.store.edges_of(found[0]["node"], direction="out", limit=MAX_EDGES)
         named = (id_file(edge["dst"]) for edge in edges if edge.get("rel") == "changes")
         return sorted({file[1] for file in named if file is not None}), found[0]["files"]
 
@@ -139,7 +139,7 @@ class GraphCommits:
     def files(self, repo: str, paths: Iterable[str]) -> list[str]:
         """Those of ``paths`` that are files of the graph in ``repo``, in order."""
         wanted = list(dict.fromkeys(paths))
-        held = self.store.nodes([f"{repo}:file:{path}" for path in wanted], self.b)
+        held = self.store.nodes([f"{repo}:file:{path}" for path in wanted])
         return [path for path in wanted if f"{repo}:file:{path}" in held]
 
 

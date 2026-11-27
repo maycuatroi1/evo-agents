@@ -125,26 +125,25 @@ class SessionView:
         seen = Label.of(label, frozenset({self.project.name}))
         self.read = seen if self.read is None else self.read.join(seen)
 
-    def _store(self) -> tuple[SnapshotView, int]:
-        """The graph this call reads, as the session's audience reads it, and its latest ready build. When the highest
-        label of that build is within the clearance and its audiences within the session's, every element is
+    def _store(self) -> SnapshotView:
+        """The graph this call reads, as the session's audience reads it. When the highest label of its build is within the clearance and its audiences within the session's, every element is
         visible, and ``visible`` answers so without comparing labels."""
-        store, b = self._graph()
+        store = self._graph()
         clearance = self.clearance
         assert clearance is not None, ANSWERS_NOTHING
         store.reader = self.audience
         store.asked_clearance = clearance  # what agents asked before reading a node, under this clearance only
-        top = store.top_label(b)
+        top = store.top_label()
         within = top is not None and top[0] <= clearance[0] and top[1] <= clearance[1]
-        self.sees_all = within and audience_below(store.top_audience(b), self.audience)
+        self.sees_all = within and audience_below(store.top_audience(), self.audience)
         store.ceiling = None if self.sees_all else clearance  # edges above it are left out before the limit
         if self.scope is not None:  # a named graph leaves out nodes the label lets through: read further, as then
-            self.scope.bind(store, b)
+            self.scope.bind(store)
             self.sees_all = False
-        return store, b
+        return store
 
-    def _graph(self) -> tuple[SnapshotView, int]:
-        """The graph this call reads and its latest ready build: the subclass's. This machine holds none."""
+    def _graph(self) -> SnapshotView:
+        """The graph this call reads, of a ready build: the subclass's. This machine holds none."""
         raise self.no_graph()
 
     def no_graph(self) -> ToolError:
@@ -155,22 +154,22 @@ class SessionView:
             " which kg serve reads signed in"
         )
 
-    def _lookup(self, store: SnapshotView, node_id: str, b: int) -> dict | None:
+    def _lookup(self, store: SnapshotView, node_id: str) -> dict | None:
         """A visible node by its stored id, its readable id (``refs.stored``) or an alias; None alike for a missing
         node and a hidden one."""
         if not isinstance(node_id, str) or not node_id:
             return None
         n = None
         for candidate in stored(node_id):
-            n = store.node(candidate, b)
+            n = store.node(candidate)
             if n is not None:
                 break
         if n is None:
-            alias = store.alias_of(node_id, b)
-            n = store.node(alias, b) if alias else None
+            alias = store.alias_of(node_id)
+            n = store.node(alias) if alias else None
         return n if n is not None and self.shows(n) else None
 
-    def locked(self, store: SnapshotView, node_id: str, b: int) -> dict | None:
+    def locked(self, store: SnapshotView, node_id: str) -> dict | None:
         """The node ``node_id`` names when it is above the clearance and asks to show as locked (``props.locked``, as
         the docs plugin's typed nodes do): of the reader's audience and the named graph the call reads, but of a level
         or location the clearance does not reach. None for any other, a missing node among them. Only its id, kind
@@ -178,7 +177,7 @@ class SessionView:
         before this is asked (``SnapshotView.node``)."""
         if not isinstance(node_id, str) or not node_id:
             return None
-        n = next((x for x in (store.node(c, b) for c in stored(node_id)) if x is not None), None)
+        n = next((x for x in (store.node(c) for c in stored(node_id)) if x is not None), None)
         if n is None or (n.get("props") or {}).get("locked") is not True or not self.scoped(n):
             return None
         return n if audience_below(n["label"][3] if len(n["label"]) > 3 else frozenset(), self.audience) else None

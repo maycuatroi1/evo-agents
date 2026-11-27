@@ -52,7 +52,7 @@ def graph_numbers(name: str, view: SnapshotView, options: dict, say=None) -> dic
     b = view.latest_ready()
     if b is None:
         raise BenchError(f"{name} has no build")
-    g = links.read(view, b)
+    g = links.read(view)
     started = time.monotonic()
     _, numbers = links.evaluate(g, **options)
     numbers["seconds"] = round(time.monotonic() - started, 1)

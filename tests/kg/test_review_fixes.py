@@ -225,7 +225,9 @@ def test_vietnamese_slug_keeps_names_apart(tmp_path, kg_env, fake_project):
     fake.set(items=[doc("a")])
     project = with_entities(project, kg_env, VIETNAMESE, tmp_path)
     assert build(project).ok
-    edges = [e for e in view_of(project).edges_of("entity:Concept:le-van-tam", 0, "out") if e["rel"] == "depends_on"]
+    edges = [
+        e for e in view_of(project).edges_of("entity:Concept:le-van-tam", direction="out") if e["rel"] == "depends_on"
+    ]
     assert [e["dst"] for e in edges] == ["entity:Concept:ly-van-tam"]
 
 
@@ -336,8 +338,8 @@ def test_filter_before_limit_in_edges_of():
         graph.edges[eid] |= {"conf": 1.0, "label": label}
         graph.derivations[eid] = [{"units": [u], "needs": ["hub", nid]}]
     snap = Snapshot.from_graph(graph)
-    assert [e["dst"] for e in snap.view(ceiling=(0, 0)).edges_of("hub", 0, "out", limit=2)] == ["z8", "z9"]
-    assert len(snap.view().edges_of("hub", 0, "out", limit=2)) == 2
+    assert [e["dst"] for e in snap.view(ceiling=(0, 0)).edges_of("hub", direction="out", limit=2)] == ["z8", "z9"]
+    assert len(snap.view().edges_of("hub", direction="out", limit=2)) == 2
 
 
 def test_harness_walk_leaves_out_symlinks_out_of_the_repo(tmp_path):
