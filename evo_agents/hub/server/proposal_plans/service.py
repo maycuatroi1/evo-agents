@@ -10,7 +10,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import judge
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict
@@ -30,7 +29,7 @@ from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.proposal_plans.repository import STORE
 from evo_agents.hub.server.proposals.service.reads import readable_proposal
 from evo_agents.hub.server.proposals.service.record import planned_tiers_of
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ class CuratorAdmins(ProjectScope):
     """The project's admins, who alone make an accepted proposal the Curator's plan by hand."""
 
     def refusal(self, user: Principal, access: ProjectAccess) -> str | None:
-        if has_role(access.role, "admin"):
+        if holds(access.role, "admin"):
             return None
         held = access.role or "no role"
         return (

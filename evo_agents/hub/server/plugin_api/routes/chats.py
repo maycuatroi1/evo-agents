@@ -21,7 +21,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.chats.models.members import ChatId
 from evo_agents.hub.server.chats.models.messages import MAX_PAGE, PAGE
 from evo_agents.hub.server.errors import ErrorBody

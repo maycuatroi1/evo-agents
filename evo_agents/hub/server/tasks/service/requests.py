@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.tasks.models.api import (
     TasksBlocker,
     TasksBlockerEdit,
@@ -79,7 +79,7 @@ async def list_people(conn: AsyncConnection, user, project: str) -> list[TasksPe
 async def create_task(conn: AsyncConnection, jobs, user, project: str, body: TasksItemIn, sink) -> TasksItemDetail:
     access, config = await opened(conn, user, project)
     writer = writer_of(access, user, sink, config, "creating a task")
-    if body.label is not None and not has_role(access.role, "admin"):
+    if body.label is not None and not holds(access.role, "admin"):
         raise TasksError(403, f"giving a task a label of its own in project {access.name} takes an admin")
     given = body.model_dump(exclude={"roles", "links", "label"})
     task = TaskInput(

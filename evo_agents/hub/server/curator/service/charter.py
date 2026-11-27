@@ -10,18 +10,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.curator.models.charter import CHARTER, Charter, CharterRevision, CharterWrite
 from evo_agents.hub.server.curator.repository import charter as store
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 
 def admin(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise Forbidden(f"{doing} of project {access.name} needs the admin role on it; you hold {held}")
 
@@ -64,7 +63,7 @@ async def show(conn: AsyncConnection, user: Principal, project: str, revision: i
         if revision is not None:
             raise NotFound(f"project {project} has no charter revision {revision}")
         raise no_charter(project)
-    return charter_view(access.name, row, admin=has_role(access.role, "admin"))
+    return charter_view(access.name, row, admin=holds(access.role, "admin"))
 
 
 async def revisions(conn: AsyncConnection, user: Principal, project: str) -> list[CharterRevision]:

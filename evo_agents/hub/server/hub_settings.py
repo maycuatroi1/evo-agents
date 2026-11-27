@@ -32,7 +32,7 @@ from typing import Any, Literal
 
 import psycopg
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, exists, func, insert, or_, select
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import distinct_on
@@ -42,6 +42,7 @@ from starlette.requests import Request
 from evo_agents.hub import features, tables
 from evo_agents.hub.feature_rule import feature_on  # noqa: F401 (where the jobs read it, as before)
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
@@ -69,19 +70,15 @@ class SettingsLayer(BaseModel):
     changed_at: datetime | None
 
 
-class SettingsWrite(BaseModel):
+class SettingsWrite(StrictModel):
     """The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."""
-
-    model_config = ConfigDict(extra="forbid")
 
     values: dict[str, Any] = Field(default_factory=dict, max_length=MAX_FIELDS, description="field -> value")
     unset: list[str] = Field(default_factory=list, max_length=MAX_FIELDS, description="fields the layer sets now")
     if_version: int | None = Field(None, ge=0, description="409 unless the layer is at this version now")
 
 
-class SettingsRollback(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SettingsRollback(StrictModel):
     version: int = Field(ge=1, description="the older version of the layer to copy as its next one")
     if_version: int | None = Field(None, ge=0, description="409 unless the layer is at this version now")
 

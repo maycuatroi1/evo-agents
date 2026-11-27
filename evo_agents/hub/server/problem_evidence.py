@@ -28,14 +28,14 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Request
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import problems, tables
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName, StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.problems import service as project_problems
 from evo_agents.hub.server.projects import ProjectAccess
@@ -52,10 +52,8 @@ Said = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 router = APIRouter(prefix="/v1/projects", tags=["problems"], responses={401: {"model": ErrorBody}})
 
 
-class ProblemEvidenceWrite(BaseModel):
+class ProblemEvidenceWrite(StrictModel):
     """One line of evidence, as a writer adds it or @builder proposes it."""
-
-    model_config = ConfigDict(extra="forbid")
 
     source_kind: str = Field(description=f"where it was read: {', '.join(problems.SOURCE_KINDS)}")
     source_uri: Said = Field(max_length=problems.MAX_URI_CHARS, description="the source's URI or path")

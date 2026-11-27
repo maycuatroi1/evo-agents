@@ -40,7 +40,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_bridge_events, chats, ops_events, ops_queue, profiles, runs, system_context
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import run_access_rules
 from evo_agents.hub.server.accounts.service import pool_runs as pool_accounts
 from evo_agents.hub.server.agents.models.placement import Home
@@ -71,6 +70,7 @@ from evo_agents.hub.server.runs.models.attachment_parts import as_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.priority import ahead
 from evo_agents.hub.server.runs.service.worker_fit import NO_FREE_SLOT, worker_problems
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.systems.repository import store as system_store
 from evo_agents.hub.server.systems.service import traces as system_traces
 
@@ -367,7 +367,7 @@ async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     """Why the run_as of ``hand``'s route takes no run of its profile now: they no longer hold writer on the project."""
     profile, route = hand.profile, hand.route
     role = await role_on(conn, route.user_id, profile.project_id)
-    if has_role(role, "writer"):
+    if holds(role, "writer"):
         return None
     return (
         f"@{profile.handle} runs on the workers of {route.login}, who holds {role or 'no grant'} on project "

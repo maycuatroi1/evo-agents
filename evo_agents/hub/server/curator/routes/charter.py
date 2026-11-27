@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.curator.models.charter import (
     DEFAULT_NIGHTS,
     MAX_NIGHTS,

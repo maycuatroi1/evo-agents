@@ -160,7 +160,15 @@ JOIN_HINT = "join the machine with `evo-agents worker join`"
 WWW_AUTHENTICATE = {"WWW-Authenticate": 'Bearer realm="evo-agents hub"'}
 
 _TOKEN = re.compile(r"ev[hswra]_[A-Za-z0-9_-]{43}")  # a prefix and 32 bytes of base64url without padding
-WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
+
+
+def holds(role: str | None, needed: str) -> bool:
+    """Whether a member of ``role`` in a project (None: no grant) may do what ``needed`` may: the one rule of the
+    roles' ladder, which ``ProjectScope`` (``evo_agents.hub.server.base.scope``) checks for the routes it guards."""
+    return has_role(role, needed)
+
+
+WRITER_ROLES = tuple(role for role in ROLES if holds(role, "writer"))
 
 
 def admin_login(users=None):

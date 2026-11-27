@@ -7,12 +7,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from evo_agents.hub import curator, ledger, runs
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.judge import PLANNED_TIERS, PlannableTier
 from evo_agents.hub.plans import PLAN_ID
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.curator.models.settings import (
     EvolveSettings,
     HistorySettings,
@@ -42,9 +43,7 @@ PlanIdentifier = Annotated[str, Field(pattern=PLAN_ID)]
 SecretName = Annotated[str, Field(pattern=f"^{SECRET_NAME.pattern}$", description="a secret of the schedule's owner")]
 
 
-class Window(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class Window(StrictModel):
     start: TimeOfDay
     end: TimeOfDay = Field(description="when it is not after start, the window runs past midnight")
     timezone: str = Field(
@@ -61,9 +60,7 @@ class Window(BaseModel):
         return self
 
 
-class PacingQuietHours(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PacingQuietHours(StrictModel):
     start: TimeOfDay
     end: TimeOfDay = Field(description="when it is not after start, the quiet hours run past midnight")
 
@@ -74,11 +71,9 @@ class PacingQuietHours(BaseModel):
         return self
 
 
-class Pacing(BaseModel):
+class Pacing(StrictModel):
     """The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the
     period's budget evenly (``curator.pace_line``)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     period: curator.PacingPeriod = Field(description="day, from local midnight, or week, from Monday 00:00 local")
     budget_usd: float = Field(gt=0, le=curator.MAX_PERIOD_BUDGET_USD, description="the most a period may cost")
@@ -93,17 +88,13 @@ class Pacing(BaseModel):
     )
 
 
-class Goal(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class Goal(StrictModel):
     id: str = Field(pattern=curator.GOAL_ID)
     what: str = Field(min_length=1, max_length=curator.MAX_GOAL_CHARS)
 
 
-class Role(BaseModel):
+class Role(StrictModel):
     """The runtime and model one role of the Curator runs on."""
-
-    model_config = ConfigDict(extra="forbid")
 
     runtime: runs.Runtime = curator.DEFAULT_RUNTIME
     model: ModelName | None = Field(None, description="as the runtime names it; null: the runtime's own choice")
@@ -121,11 +112,9 @@ class Judge(Role):
 BackoffMinutes = Annotated[int, Field(ge=curator.INFRA_BACKOFF_RANGE[0], le=curator.INFRA_BACKOFF_RANGE[1])]
 
 
-class InfraBreaker(BaseModel):
+class InfraBreaker(StrictModel):
     """How the night shift holds off the kinds of run whose dependency (the hub, or a runtime and its account) failed
     (``curator.outages``); a charter written before it gets the defaults."""
-
-    model_config = ConfigDict(extra="forbid")
 
     backoff_minutes: list[BackoffMinutes] = Field(
         default_factory=lambda: list(curator.INFRA_BACKOFF_MINUTES),
@@ -142,9 +131,7 @@ class InfraBreaker(BaseModel):
     )
 
 
-class CircuitBreaker(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CircuitBreaker(StrictModel):
     max_failed_in_a_row: int = Field(
         2,
         ge=curator.CIRCUIT_BREAKER[0],
@@ -155,10 +142,8 @@ class CircuitBreaker(BaseModel):
     infra: InfraBreaker = Field(default_factory=lambda: InfraBreaker.model_validate({}))
 
 
-class CharterBody(BaseModel):
+class CharterBody(StrictModel):
     """What an admin writes."""
-
-    model_config = ConfigDict(extra="forbid")
 
     goals: list[Goal] = Field(
         default_factory=list, max_length=curator.MAX_GOALS, description="the product's goals, highest first"

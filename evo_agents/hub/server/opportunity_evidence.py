@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import opportunities, problems, tables
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.opportunities import service as project_opportunities
 from evo_agents.hub.server.problem_evidence import ProblemEvidenceWrite

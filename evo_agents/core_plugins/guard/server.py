@@ -25,7 +25,7 @@ from evo_agents import private_names
 from evo_agents.hub import guard, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal

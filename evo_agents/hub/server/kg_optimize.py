@@ -46,17 +46,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_asked, kg_health_eval, kg_semantic, kg_snapshots, runs, tables
 from evo_agents.hub import kg_optimize as model
-from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, queue_build
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal, holds
 from evo_agents.hub.tables_kg import OPTIMIZE_ACTIVE
 from evo_agents.kg import explore, rank, semantic
 from evo_agents.kg import search as text_search
@@ -695,7 +694,7 @@ async def start(conn: AsyncConnection, user: Principal, project: str) -> tuple[O
     """Start a KG optimize run of ``project`` for ``user`` (a writer): (the run, True), or (the run in flight, False).
     HTTPException 409 for a project without a knowledge config or a night shift."""
     access = await project_access(conn, user, project)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"optimizing the knowledge graph of project {access.name} needs the writer role on it")
     found = await active_of(conn, access.project_id)
     if found is not None:

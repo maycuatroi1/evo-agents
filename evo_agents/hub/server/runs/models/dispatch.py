@@ -6,11 +6,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import author, runs, system_spec
 from evo_agents.hub.credentials import DispatchedVia
 from evo_agents.hub.plans import PLAN_ID
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.plans.models import PlanTrace
 from evo_agents.hub.server.runs.models import browser as browser_help
 from evo_agents.hub.server.runs.models.limits import (
@@ -142,9 +143,7 @@ class PlanRunDispatch(HubPlaced):
     as_me: bool = Field(False, description=AS_ME_HELP)
 
 
-class SystemDispatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SystemDispatch(StrictModel):
     system: str = Field(
         min_length=1,
         max_length=63,
@@ -167,10 +166,8 @@ class SystemDispatched(BaseModel):
     run_id: int = Field(description="the entry agent's run the message woke")
 
 
-class Rerun(HubPlaced):
+class Rerun(HubPlaced, StrictModel):
     """What a rerun may change of the run it reruns; no body keeps everything."""
-
-    model_config = ConfigDict(extra="forbid")
 
     account: AccountName | None = Field(
         None,
@@ -191,20 +188,16 @@ class Rerun(HubPlaced):
         return self
 
 
-class AccessChange(BaseModel):
+class AccessChange(StrictModel):
     """What PUT /v1/projects/{p}/runs/{id}/access changes of a run of the caller's."""
-
-    model_config = ConfigDict(extra="forbid")
 
     as_me: bool = Field(
         description=AS_ME_HELP + "; false: it stops, and its token ends at once, as a run that never ran as you"
     )
 
 
-class PriorityChange(BaseModel):
+class PriorityChange(StrictModel):
     """What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project."""
-
-    model_config = ConfigDict(extra="forbid")
 
     priority: runs.Priority = Field(description="the run's new priority: a worker claims urgent first, low last")
 

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Path, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_records import COLLECTION, KEY, MAX_PAGE
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_api.models.records import RecordIn, RecordOut, RecordPage
 from evo_agents.hub.server.plugin_api.service import records

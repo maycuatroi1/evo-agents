@@ -24,7 +24,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.plugins.models.pages import UI_PREFIX
 from evo_agents.hub.server.plugins.models.ui import KIT_HEADERS, UI_HEADERS, UI_TYPES, PluginName

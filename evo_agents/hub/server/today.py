@@ -47,15 +47,15 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Request
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import DateTime, Text, and_, bindparam, case, cast, func, literal, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import JSONPATH, aggregate_order_by, array_agg
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, problems, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.db import one_of
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.decisions.repository import asked_person
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.loop.view import measure
@@ -76,7 +76,7 @@ from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.releases.models.cycles import releases_link
 from evo_agents.hub.server.review_inbox import proposal_link
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 
 log = logging.getLogger(__name__)
 
@@ -150,9 +150,7 @@ class Today(BaseModel):
     caught_up: bool = Field(description="whether the items are everything that changed in the window")
 
 
-class TodaySeenIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TodaySeenIn(StrictModel):
     seen_at: AwareDatetime | None = Field(
         None, description="what you saw up to, as seen_until gave it; now when left out; a moment past now is now"
     )
@@ -576,7 +574,7 @@ async def _problems(conn: AsyncConnection, bound: dict) -> list[Found]:
 
 async def _proposals(conn: AsyncConnection, accesses: list[ProjectAccess], bound: dict) -> list[Found]:
     """The open proposals of the window in the projects the caller is an admin of, whose label their grant reaches."""
-    admins = {access.project_id: access for access in accesses if has_role(access.role, "admin")}
+    admins = {access.project_id: access for access in accesses if holds(access.role, "admin")}
     if not admins:
         return []
     p = tables.proposals

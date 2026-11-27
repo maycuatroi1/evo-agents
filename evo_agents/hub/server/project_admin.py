@@ -31,17 +31,17 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.self_managed import ProjectScope, SelfManaged, normalized, own_signer, state_of
 from evo_agents.hub.server import admin as grants
 from evo_agents.hub.server import audit, invites
-from evo_agents.hub.server.admin import LOGIN_NAME, MISSING, Grant, GrantRequest, Login, ProjectName
+from evo_agents.hub.server.admin import MISSING, Grant, GrantRequest
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.base.models import LOGIN_NAME, Login, ProjectName, StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.invites import InviteCreated, InviteRequest
 from evo_agents.hub.server.market.models.install import NOTHING_INSTALLED, TAG, GitHubInstallIn, MarketInstalled
@@ -52,7 +52,7 @@ from evo_agents.hub.server.plugins.repository.store import find, version_rows
 from evo_agents.hub.server.plugins.service.grants import check_admin
 from evo_agents.hub.server.plugins.service.store import from_image, plugin, set_removed
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal, admin
+from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal, admin, holds
 from evo_agents.plugins.market import REPO
 
 OWNER = r"^[A-Za-z0-9][A-Za-z0-9-]{0,99}$"
@@ -92,9 +92,7 @@ class SelfManagedIn(BaseModel):
     )
 
 
-class ProjectInstallIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")  # no trust_publisher: the hub keeps no trust of a project's install
-
+class ProjectInstallIn(StrictModel):  # no trust_publisher: the hub keeps no trust of a project's install
     repo: Annotated[str, Field(pattern=f"^{REPO.pattern}$", description="OWNER/REPO of a trusted owner")]
     tag: Annotated[str | None, Field(pattern=TAG)] = Field(
         None, description="the release's tag; the latest if left out"
@@ -204,7 +202,7 @@ def _rank(access: ProjectAccess, level: str) -> int:
 
 def _within(access: ProjectAccess, role: str, max_level: str, doing: str) -> None:
     """403 when the role or the max level is above what the admin holds themselves."""
-    if not has_role(access.role, role):
+    if not holds(access.role, role):
         raise HTTPException(403, f"{doing}: role {role} is above your own, {access.role}")
     if access.max_level is None or _rank(access, max_level) > _rank(access, access.max_level):
         raise HTTPException(

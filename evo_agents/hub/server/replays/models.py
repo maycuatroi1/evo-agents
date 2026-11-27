@@ -7,9 +7,10 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import Header
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import replay
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import OBJECT_NAME
 
@@ -34,17 +35,13 @@ ReplayKey = Annotated[
 Split = Literal[replay.SPLITS]  # pyright: ignore[reportInvalidTypeForm]
 
 
-class VerifyRun(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class VerifyRun(StrictModel):
     exit_code: int
     duration_ms: int | None = Field(None, ge=0)
 
 
-class ArmResult(BaseModel):
+class ArmResult(StrictModel):
     """What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took."""
-
-    model_config = ConfigDict(extra="forbid")
 
     passed: bool = Field(description="every verify command exited 0")
     harness_sha: str = Field(pattern=OBJECT_NAME, description="the commit of the change's repo the arm's harness is at")
@@ -62,10 +59,8 @@ class ArmResult(BaseModel):
     session_id: str | None = Field(None, max_length=200)
 
 
-class ReplayReport(BaseModel):
+class ReplayReport(StrictModel):
     """One arm's result with the task's base commit; or why the worker cannot replay the task at all."""
-
-    model_config = ConfigDict(extra="forbid")
 
     arm: Literal[replay.ARMS] | None = None  # pyright: ignore[reportInvalidTypeForm]
     base_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the task's base commit the arm started at")

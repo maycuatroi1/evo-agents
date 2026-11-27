@@ -8,17 +8,16 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from evo_agents.hub import curator, evolve, history, playbook, probes, replay, review, runs
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.runs.models import ModelName
 
 
-class ReviewTrigger(BaseModel):
+class ReviewTrigger(StrictModel):
     """When the review run of a night or period is worth queuing (``curator.review_wait``): enough new evidence since
     the previous review and a gap after it, or a long enough gap alone."""
-
-    model_config = ConfigDict(extra="forbid")
 
     min_new: int = Field(
         1,
@@ -47,10 +46,8 @@ class ReviewTrigger(BaseModel):
         return self
 
 
-class ReviewSettings(BaseModel):
+class ReviewSettings(StrictModel):
     """How the night's review run of the Curator looks (``evo_agents.hub.review``)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     lenses: int = Field(
         review.LENSES_PER_NIGHT, ge=1, le=len(review.LENSES), description="lenses a night looks through, in turn"
@@ -68,11 +65,9 @@ class ReviewSettings(BaseModel):
     )
 
 
-class ReplaySettings(BaseModel):
+class ReplaySettings(StrictModel):
     """How the night shift replays the Curator's changes of a skill, an AGENTS.md or a CLAUDE.md on tasks of the
     project's own history (``evo_agents.hub.replay``)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     tasks: int = Field(
         replay.DEFAULT_TASKS,
@@ -85,11 +80,9 @@ class ReplaySettings(BaseModel):
     )
 
 
-class HistorySettings(BaseModel):
+class HistorySettings(StrictModel):
     """How the night's history run reads the project's sessions and runs with a cheap model
     (``evo_agents.hub.history``)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     budget_usd: float | None = Field(
         None,
@@ -105,20 +98,16 @@ class HistorySettings(BaseModel):
     )
 
 
-class ProbeModel(BaseModel):
+class ProbeModel(StrictModel):
     """A runtime and model the arms of a probe run on."""
-
-    model_config = ConfigDict(extra="forbid")
 
     runtime: Literal[runs.RUNTIMES] = curator.DEFAULT_RUNTIME
     model: ModelName | None = Field(None, description="as the runtime names it; null: the runtime's own choice")
 
 
-class ProbeSettings(BaseModel):
+class ProbeSettings(StrictModel):
     """How the probes of the Curator's changes run (``evo_agents.hub.probes``): how many arms of each probe, on which
     models, and the most they cost in an ISO week of the charter's time zone."""
-
-    model_config = ConfigDict(extra="forbid")
 
     k: int = Field(probes.DEFAULT_K, ge=1, le=probes.MAX_K, description="arms of each probe, on each model")
     models: list[ProbeModel] = Field(
@@ -152,11 +141,9 @@ MAX_EXPOSURE_LIMIT = 1000
 PathGlob = Annotated[str, Field(min_length=1, max_length=curator.MAX_PATH_CHARS, pattern=r"^[^\x00-\x1f\x7f]+$")]
 
 
-class EvolveBudget(BaseModel):
+class EvolveBudget(StrictModel):
     """What one evolution may spend (``evo_agents.hub.server.evolve``): rounds of its loop, candidates it measures,
     and dollars."""
-
-    model_config = ConfigDict(extra="forbid")
 
     iterations: int = Field(EVOLVE_ITERATIONS[0], ge=1, le=EVOLVE_ITERATIONS[1], description="rounds of its loop")
     max_candidates: int = Field(
@@ -167,12 +154,10 @@ class EvolveBudget(BaseModel):
     )
 
 
-class EvolveSettings(BaseModel):
+class EvolveSettings(StrictModel):
     """Whether and how the Curator evolves a harness or an agent's configuration (``evo_agents.hub.evolve``): the
     paths it may rewrite, what one evolution spends, how many light tasks of the select split and probes it measures
     on, and how many review runs show an entry of the playbook never found helpful before it is retired."""
-
-    model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(False, description="false: no evolution is started or queued")
     evolvable_paths: list[PathGlob] = Field(

@@ -20,7 +20,7 @@ from evo_agents.plugins.manifest import PLUGIN_ID
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
 LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
 TAINT = PLACEMENT_LABEL  # a word or key=value, as a run tolerates it
-PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as evo_agents.hub.server.admin.PROJECT_NAME
+PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as evo_agents.hub.server.base.models.PROJECT_NAME
 LINE = r"^[^\x00-\x1f\x7f]+$"  # one line, without control characters
 MAX_LABELS = 16
 MAX_ID = 2**63 - 1  # bigint

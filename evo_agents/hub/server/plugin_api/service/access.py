@@ -18,10 +18,10 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_calls
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.plugin_api.models.access import Acting
 from evo_agents.hub.server.plugin_api.repository import access as store
 from evo_agents.hub.server.projects import access_of
+from evo_agents.hub.server.security import holds
 
 
 async def granted(conn: AsyncConnection, plugin_id: int, project: str, permission: str):
@@ -43,7 +43,7 @@ async def acting(conn: AsyncConnection, enabled, *, writes: bool = True) -> Acti
     found = await store.granter(conn, enabled)
     access = await access_of(conn, found.id, enabled.project) if found is not None else None
     needs = "writer" if writes else "reader"
-    if found is None or access is None or not has_role(access.role, needs):
+    if found is None or access is None or not holds(access.role, needs):
         held = access.role if access is not None and access.role else "no grant"
         who = found.login if found is not None else "nobody"
         raise HTTPException(

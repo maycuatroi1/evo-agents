@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.plans import PLAN_ID, PlanProblem, step_index
 from evo_agents.hub.server import audit, project_archive
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.decisions.models import AnswerIn, Decision, DecisionAsk
 from evo_agents.hub.server.decisions.service.answers import answer_target
 from evo_agents.hub.server.decisions.service.asks import store_decision

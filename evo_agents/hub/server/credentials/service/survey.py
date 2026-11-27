@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import command_runs, profiles, releases, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import RELEASE_ENV_VARS, agent_lease_name, github_repo, matches, normalize_origin
 from evo_agents.hub.server.accounts.repository.pool_runs import pool_env_accounts
@@ -24,7 +23,7 @@ from evo_agents.hub.server.repo_origins import RepoOrigin, repo_origins
 from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.share_leases import Refusal, kg_pool_logins, own_secrets, shared_secrets
 
 if TYPE_CHECKING:
@@ -187,7 +186,7 @@ async def held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock: 
     if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES:
         raise NotFound(NOT_HELD.format(id=run_id))
     role = await repository.owner_role(conn, row.dispatched_by, row.project_id, lock=lock)
-    if not has_role(role, "writer"):
+    if not holds(role, "writer"):
         raise Forbidden(
             f"{row.owner}, who dispatched run {run_id}, no longer holds the writer role on project {row.project}: "
             "the run gets no credentials",

@@ -14,14 +14,13 @@ from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import Run
 from evo_agents.hub.server.runs.service.audits import audit_run
 from evo_agents.hub.server.runs.service.views import run_view
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger
 
@@ -82,7 +81,7 @@ async def change_priority(engine, user: Principal, project: str, run_id: int, le
         found = select(r.c.id).where(r.c.id == run_id, r.c.project_id == access.project_id)
         if (await conn.execute(found)).one_or_none() is None:
             raise HTTPException(404, f"project {access.name} has no run {run_id}")
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"changing the priority of a run of project {access.name} needs the writer role")
         was = await set_priority(conn, run_id, level, user.login)
         if was != level:

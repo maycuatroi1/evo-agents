@@ -36,7 +36,6 @@ from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, profiles
-from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.accounts.service import pools as account_pools
@@ -63,7 +62,7 @@ from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.browser.service.identities import retire_profile_identities
 from evo_agents.hub.server.profile_store import Profile, create_pool, icon_url, write_version
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 # Reading
 
@@ -100,7 +99,7 @@ def _reader(access: ProjectAccess) -> None:
 
 
 def _admin(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise Forbidden(f"{doing} the agents of project {access.name} needs the admin role on it; you hold {held}")
 

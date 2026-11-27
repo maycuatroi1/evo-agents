@@ -33,13 +33,12 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.profile_store import POOL_PREFIX
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.workers.models.pools import SETTINGS, Pool, PoolNode, PoolRequest, PoolUpdate, no_pool
 from evo_agents.hub.server.workers.repository import pools as store
 from evo_agents.hub.server.workers.repository import projects as project_store
@@ -59,7 +58,7 @@ async def agent_pool_row(conn: AsyncConnection, user: Principal, name: str, *, l
     if row is None:
         raise NotFound(no_pool(name))
     access = await project_access(conn, user, row.project)
-    if not (user.admin or has_role(access.role, "admin")):
+    if not (user.admin or holds(access.role, "admin")):
         held = access.role or "no grant"
         raise Forbidden(
             f"pool {row.name} is the pool of an agent of project {row.project}: managing it needs the admin role on "

@@ -22,14 +22,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from evo_agents.hub import claude_oauth
 from evo_agents.hub.credentials import MAX_SECRETS_PER_OWNER, SECRET_NAME
 from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR
-from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.base.models import PROJECT_NAME, StrictModel
 from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable
 from evo_agents.hub.server.credentials.models.secrets import (
     MAX_BINDINGS,
@@ -77,9 +77,7 @@ class SignInStarted(BaseModel):
     expires_at: datetime = Field(description="after this the flow is refused and the sign-in starts again")
 
 
-class SignInFinish(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SignInFinish(StrictModel):
     flow: str = Field(min_length=1, max_length=4096, description="what POST /v1/accounts/claude-sign-in gave")
     code: SecretStr = Field(
         min_length=1,

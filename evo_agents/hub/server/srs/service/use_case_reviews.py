@@ -40,7 +40,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.srs.models.doc import Document
 from evo_agents.hub.server.srs.repository import people, revisions, store
 from evo_agents.hub.server.srs.repository import use_case_reviews as rows
@@ -272,8 +272,8 @@ async def states(
     rows = await _rows(conn, doc, held.number)
     ids = {review.reviewer_id for _, review in rows} | {review.reviewer_id for review in version_wide}
     roles = await _roles(conn, project_id, ids)
-    writers = {user_id for user_id, role in roles.items() if has_role(role, "writer")}
-    admins = {user_id for user_id, role in roles.items() if has_role(role, "admin")}
+    writers = {user_id for user_id, role in roles.items() if holds(role, "writer")}
+    admins = {user_id for user_id, role in roles.items() if holds(role, "admin")}
     latest = {(key, review.reviewer_id): review for key, review in rows}  # a later review replaces the earlier one
     policy = settings.policy.get(doc.kind)
     found = []

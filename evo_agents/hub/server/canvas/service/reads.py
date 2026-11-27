@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.canvas.models.content import CanvasError, code
 from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow
 from evo_agents.hub.server.canvas.repository import store
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import holds
 
 # Who may do what
 
@@ -28,13 +28,13 @@ def reader(access: ProjectAccess) -> None:
 
 def writer(access: ProjectAccess, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise CanvasError(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
 
 
 def admin(access: ProjectAccess, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise CanvasError(403, f"{what} in project {access.name} needs the admin role; you are {access.role}")
 
 

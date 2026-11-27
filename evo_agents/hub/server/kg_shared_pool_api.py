@@ -14,13 +14,13 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import LOGIN_NAME
+from evo_agents.hub.server.base.models import LOGIN_NAME, StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import AdminUser, admin
 
@@ -42,10 +42,8 @@ class KgSharedPool(BaseModel):
     projects: list[str] = Field(description="the projects it serves, by name")
 
 
-class KgSharedPoolSet(BaseModel):
+class KgSharedPoolSet(StrictModel):
     """The member's pool to name the shared KG pool."""
-
-    model_config = ConfigDict(extra="forbid")
 
     owner: Annotated[str, Field(pattern=LOGIN_NAME, description="the login of the member who owns the pool")]
     pool: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$", description="the pool's name")]

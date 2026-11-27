@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.srs.models.api import (
     SrsComment,
     SrsCommentIn,
@@ -78,7 +77,7 @@ async def save_version(
     base = base or await store.snapshot(conn, await store.version(conn, doc, body.base_version))
     content = edits.edited(latest, base, edit_changes(body.changes), body.preamble)
     await give_screen_codes(conn, access.project_id, content)
-    writer = Writer(access.project_id, doc.id, user.user_id, has_role(access.role, "admin"))
+    writer = Writer(access.project_id, doc.id, user.user_id, holds(access.role, "admin"))
     template = (await store.settings(conn, access)).template
     number = await write_version(conn, writer, content, latest, template, body.summary, body.base_version)
     return await detail(conn, access, await store.document(conn, access, slug, sink), number)

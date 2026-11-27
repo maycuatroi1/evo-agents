@@ -22,7 +22,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import releases
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.releases.repository import cycles as cycles_repo
@@ -30,7 +29,7 @@ from evo_agents.hub.server.releases.repository import schedules as schedules_rep
 from evo_agents.hub.server.releases.repository.cycles import cycle_of
 from evo_agents.hub.server.releases.service.check import cancel_queued
 from evo_agents.hub.server.releases.service.cycles import go_on, held_by
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +70,7 @@ async def answer_stop(conn: AsyncConnection, user: Principal, decision_id: int, 
         raise HTTPException(409, f"decision {decision_id} is about a release cycle that is {state}, not stopped")
     found = await cycle_of(conn, locked.id)
     access = await project_access(conn, user, found.project)
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise HTTPException(403, f"answering for the release of {found.project} needs the admin role on it")
     if option == "continue":
         done = await _go_on(conn, found)

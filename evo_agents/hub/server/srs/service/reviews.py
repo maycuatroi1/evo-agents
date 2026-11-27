@@ -49,9 +49,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.srs import ROLES
 from evo_agents.hub.server.srs.models import checks
 from evo_agents.hub.server.srs.models.doc import Document, SrsError
@@ -73,7 +72,7 @@ from evo_agents.hub.server.srs.service.use_case_reviews import (
 
 
 def writer(access: ProjectAccess, what: str) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise SrsError(403, f"{what} in project {access.name} needs the writer role on it")
 
 
@@ -192,7 +191,7 @@ async def _owns_some(
 ) -> None:
     """Refuse ``user``, no admin, a review of ``held`` when the config's ``owners`` leaves them none of the use cases it
     needs reviewed to decide."""
-    if not settings.owners or has_role(access.role, "admin"):
+    if not settings.owners or holds(access.role, "admin"):
         return
     content = (await store.snapshot(conn, held)).doc
     cases = await use_case_reviews.states(conn, access.project_id, doc, held, content, settings, [])
@@ -282,7 +281,7 @@ def _reviewable(access: ProjectAccess, user: Principal, doc: DocumentRow, held: 
         raise SrsError(
             403, f"{user.login} wrote a revision of {case.code or case.title} since {since}: another member reviews it"
         )
-    if not use_case_reviews.may_decide(case.owners, user.login, has_role(access.role, "admin")):
+    if not use_case_reviews.may_decide(case.owners, user.login, holds(access.role, "admin")):
         group = use_case_reviews.code_group(case.code)
         raise SrsError(
             403,
@@ -399,7 +398,7 @@ async def withdraw(
         raise SrsError(403, "the agent of a run never withdraws a version: its author or an admin of the project does")
     writer(access, "withdrawing a version")
     held = await store.version(conn, doc, number, lock=True)
-    if held.author_id != user.user_id and not has_role(access.role, "admin"):
+    if held.author_id != user.user_id and not holds(access.role, "admin"):
         raise SrsError(
             403,
             f"version {number} of {doc.slug} is {held.author}'s: its author or an admin of {access.name} withdraws it",
@@ -417,7 +416,7 @@ def admin(access: ProjectAccess, user: Principal, what: str) -> None:
     scope refuses it before anything else is read."""
     if user.scope is not None:
         raise SrsError(403, f"the agent of a run never {what}: an admin of the project does")
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise SrsError(403, f"only an admin of project {access.name} {what}")
 
 

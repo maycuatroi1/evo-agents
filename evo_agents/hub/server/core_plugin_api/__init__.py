@@ -85,7 +85,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from evo_agents.hub.chat_bridge_events import EVENT as BRIDGE_EVENT
-from evo_agents.hub.server.admin import Login
+from evo_agents.hub.server.base.models import Login
 from evo_agents.hub.server.core_plugin_api.models.decision import (
     AcceptedRule,
     CauseClassified,

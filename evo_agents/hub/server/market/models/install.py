@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugins.models.publishers import SIGNER
 from evo_agents.hub.server.plugins.models.store import Plugin

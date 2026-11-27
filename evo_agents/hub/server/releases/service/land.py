@@ -40,7 +40,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import diff_signs, guard, release_ci, release_runs, releases
-from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
@@ -57,7 +56,7 @@ from evo_agents.hub.server.releases.repository.cycles import cycle_of
 from evo_agents.hub.server.releases.service.cycles import notify_release, stop_cycle
 from evo_agents.hub.server.releases.service.github import read_refs
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +69,7 @@ async def owner_is_admin(conn: AsyncConnection, owner_id: int, owner: str, proje
         access = await project_access(conn, member, project)
     except HTTPException:
         return False
-    return has_role(access.role, "admin")
+    return holds(access.role, "admin")
 
 
 async def save_run(engine: AsyncEngine, run_id: int, **values) -> None:

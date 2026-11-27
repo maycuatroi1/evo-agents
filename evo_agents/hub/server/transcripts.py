@@ -56,17 +56,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, digest, tables, transcript_prune
 from evo_agents.hub import transcripts as local
-from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import KIND_LIMITS
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
+from evo_agents.hub.server.base.models import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.blobs import Mismatch, commit_uploads
 from evo_agents.hub.server.digests.models.sessions import BoundedRoute, SessionId
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -252,7 +251,7 @@ class TranscriptsDeleted(BaseModel):
 
 
 def _writer(access: ProjectAccess) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"sending transcripts to project {access.name} needs the writer role on it")
 
 
@@ -262,7 +261,7 @@ def _reader(access: ProjectAccess) -> None:
 
 
 def _admin(access: ProjectAccess) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise HTTPException(
             403, f"deleting transcripts of project {access.name} needs the admin role on it; you hold {held}"

@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import goals
 from evo_agents.hub import opportunities as opportunity_model
 from evo_agents.hub import problems as problem_model
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server import audit, brainstorms
 from evo_agents.hub.server.base.auditor import Auditor
@@ -29,7 +28,7 @@ from evo_agents.hub.server.goals.models import (
 )
 from evo_agents.hub.server.goals.repository import STORE
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.srs_backlog import BACKLOG_METRIC
 
 log = logging.getLogger(__name__)
@@ -216,7 +215,7 @@ async def owner_of(
 ) -> tuple[int | None, list[str]]:
     """The id of member ``login`` as the owner of a goal (or of what ``of`` names), and why they cannot be one."""
     row = await repository.member_role(conn, access.project_id, login)
-    if row is not None and has_role(row.role, "writer"):
+    if row is not None and holds(row.role, "writer"):
         return row.id, []
     held = row.role if row is not None and row.role else "no grant"
     return None, [f"owner: {login} holds {held} on project {access.name}; {of} owner holds the writer role or above"]

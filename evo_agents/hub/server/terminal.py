@@ -53,7 +53,7 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub import terminal as frames
 from evo_agents.hub.runs import PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.controls import ask_takeover

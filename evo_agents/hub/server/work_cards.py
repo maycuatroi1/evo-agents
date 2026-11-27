@@ -33,7 +33,6 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, system_context, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, work_status
 from evo_agents.hub.server.chats.models.agents import REFUSALS
 from evo_agents.hub.server.chats.models.members import ChatId
@@ -43,7 +42,7 @@ from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 from evo_agents.hub.server.work_status_models import Outcome, WorkCard
@@ -202,7 +201,7 @@ async def mark_handled(conn: AsyncConnection, user: Principal, chat_id: int) -> 
         .where(p.c.id == trace.project_id)
     )
     project, role = (await conn.execute(query)).one()
-    if role is None or not has_role(role, "writer"):
+    if role is None or not holds(role, "writer"):
         raise HTTPException(403, NOT_WRITER.format(chat=chat_id, project=project, role=role or "no grant"))
     t = tables.system_traces
     await conn.execute(update(t).values(handled_by=user.user_id, handled_at=func.now()).where(t.c.id == trace.id))

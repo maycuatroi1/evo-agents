@@ -17,7 +17,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Path, Query, Request, Response
 
 from evo_agents.hub import outputs
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.outputs.models import CONTENT, Download, IfNoneMatch, RangeHeader
 from evo_agents.hub.server.outputs.service.serving import serve

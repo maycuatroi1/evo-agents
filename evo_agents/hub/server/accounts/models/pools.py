@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import Path
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from evo_agents.hub.accounts import (
     DEFAULT_FIVE_HOUR_CEILING_PCT,
@@ -18,6 +18,7 @@ from evo_agents.hub.accounts import (
     Strategy,
 )
 from evo_agents.hub.credentials import PROVIDER_KIND
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 
 POOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
@@ -30,9 +31,7 @@ NEEDS_POOL = (
 )
 
 
-class PoolWrite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PoolWrite(StrictModel):
     name: str = Field(pattern=POOL_NAME.pattern, description="1 to 40 characters, unique in the project in any case")
     strategy: Strategy = Field(DEFAULT_STRATEGY, description="how a run picks among the pool's accounts")
     hard_reserve_pct: int = Field(
@@ -49,19 +48,15 @@ class PoolWrite(BaseModel):
     )
 
 
-class PoolPolicy(BaseModel):
+class PoolPolicy(StrictModel):
     """What PATCH .../account-pools/{pool} changes; a field left out stays as it is."""
-
-    model_config = ConfigDict(extra="forbid")
 
     strategy: Strategy | None = None
     hard_reserve_pct: int | None = Field(None, ge=0, le=MAX_PCT)
     five_hour_ceiling_pct: int | None = Field(None, ge=1, le=MAX_PCT)
 
 
-class AccountAdd(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class AccountAdd(StrictModel):
     name: str = Field(min_length=1, max_length=64, description="the name of the account: one of yours, or an agent's")
     agent: str | None = Field(
         None, description="the handle of the agent of the project that owns the account; null: your own account"

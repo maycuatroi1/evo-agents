@@ -49,7 +49,7 @@ from evo_agents.hub.blobs import (
     new_upload_id,
 )
 from evo_agents.hub.server import audit, kg_upload_project, project_archive
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access

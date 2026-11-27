@@ -29,7 +29,6 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, profiles, task_runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in, enabled_plugins
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.agents.models.agent_types import MAX_HANDLE, NOTHING, POINT, AgentType, AgentTypeIn
@@ -42,7 +41,7 @@ from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.profile_store import create_pool, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 
 def contributed(manifest: dict, name: str) -> dict | None:
@@ -51,7 +50,7 @@ def contributed(manifest: dict, name: str) -> dict | None:
 
 
 def _admin(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise Forbidden(f"{doing} needs the admin role on project {access.name}; you hold {held}")
 
@@ -156,7 +155,7 @@ async def _contribution(conn: AsyncConnection, access: ProjectAccess, plugin: st
 async def _member(conn: AsyncConnection, access: ProjectAccess, login: str) -> int:
     """The id of ``login``, a writer or an admin of the project; 422 otherwise."""
     row = await repository.member_role(conn, access.project_id, login)
-    if row is None or not has_role(row.role, "writer"):
+    if row is None or not holds(row.role, "writer"):
         held = "is no member of the hub" if row is None else f"holds {row.role or 'no grant'} there"
         raise Unprocessable(
             f"the runs of an agent type go under a writer of project {access.name}, and {login} {held}; {NOTHING}"

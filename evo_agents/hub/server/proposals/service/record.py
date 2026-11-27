@@ -84,7 +84,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tiers, webhook_events
-from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PLAN_ID, VERIFY_RULE, PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import (
@@ -110,7 +109,7 @@ from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
-from evo_agents.hub.server.security import MACHINE, WEB, Principal
+from evo_agents.hub.server.security import MACHINE, WEB, Principal, holds
 from evo_agents.hub.server.systems.service import curation as system_curation
 from evo_agents.hub.verify_words import shell_problem
 from evo_agents.schema import errors, validate
@@ -183,7 +182,7 @@ def night_only(body) -> None:
 
 async def writer_of(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
     access = await project_access(conn, run.owner, run.project)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(
             403, f"{run.owner.login}, who owns run {run.id}, no longer holds the writer role on project {run.project}"
         )

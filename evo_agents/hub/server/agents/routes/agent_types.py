@@ -7,7 +7,6 @@ import logging
 
 from fastapi import APIRouter, Request
 
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agents.models.agent_types import (
     READ_REFUSALS,
     WRITE_REFUSALS,
@@ -17,6 +16,7 @@ from evo_agents.hub.server.agents.models.agent_types import (
     TypeName,
 )
 from evo_agents.hub.server.agents.service import agent_types as service
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 

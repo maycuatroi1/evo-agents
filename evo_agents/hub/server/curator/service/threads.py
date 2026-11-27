@@ -49,7 +49,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.changes.models.views import Change
@@ -69,7 +68,7 @@ from evo_agents.hub.server.proposals.models import ProposalAnswer
 from evo_agents.hub.server.proposals.service.reads import answer_proposal_as
 from evo_agents.hub.server.proposals.service.record import planned_tiers_of
 from evo_agents.hub.server.proposals.service.shapes import Proposal
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.triage.models.threads import Thread
 from evo_agents.hub.server.triage.service import threads as triage
 
@@ -190,7 +189,7 @@ async def _ask(conn: AsyncConnection, proposal_id: int, *, again: bool) -> Threa
         return None
     lines = _facts(row, await planned_tiers_of(conn, row.project_id), row.owner, again=again)
     role = await store.role(conn, row.owner_id, row.project_id)
-    admin = has_role(role, "admin")
+    admin = holds(role, "admin")
     if not admin:
         lines.append(
             f"{row.owner}, whom the night shift runs as, holds {role or 'no role'} on {row.project}, not admin: the hub "
@@ -257,7 +256,7 @@ async def _left(conn: AsyncConnection, change_id: int) -> Thread | None:
         return None
     row = await store.proposal_row(conn, change.proposal_id)
     role = await store.role(conn, row.owner_id, row.project_id)
-    ask = bool(change.passed) and has_role(role, "admin")
+    ask = bool(change.passed) and holds(role, "admin")
     existing = await thread_of(conn, change.proposal_id)
     posted = await _post(conn, row, existing, "\n".join(_left_lines(change, row, ask=ask, role=role)), ask=ask)
     if posted is None:
@@ -306,7 +305,7 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int, proposal_i
         raise Conflict(f"proposal {held} is in another project than the agent of chat run {run_id}")
     owner = agent.principal
     access = await project_access(conn, owner, row.name)
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise Forbidden(
             f"{owner.login}, who dispatched chat run {run_id}, holds {access.role or 'no role'} on project {row.name}: "
             "the agent answers a proposal only for an admin of the project"

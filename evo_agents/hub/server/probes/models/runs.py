@@ -7,9 +7,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import probes, runs
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.runs.models import OBJECT_NAME
 
 PROBE_RUN = "curator.probe_run"  # the night shift queued a probe run: "<project>/<plan> run:<id> probe:<id> week:<day>"
@@ -19,11 +20,9 @@ REQUEUED = ("stale", "failed", "unmeasured")  # the states of a week's row an ad
 Reason = Annotated[str, Field(min_length=1, max_length=probes.MAX_REASON_CHARS)]
 
 
-class ProbeSession(BaseModel):
+class ProbeSession(StrictModel):
     """One session of a probe run: its arm, which of the arm's k it is, whether the probe's verify passed on its work,
     and what the agent took, on the runtime and the model it actually ran."""
-
-    model_config = ConfigDict(extra="forbid")
 
     arm: Literal[probes.ARMS] = Field(description="on: the change's rule in place; off: the change's diff taken off")  # pyright: ignore[reportInvalidTypeForm]
     index: int = Field(ge=1, le=probes.MAX_K, description="which of the arm's k sessions, from 1")
@@ -38,11 +37,9 @@ class ProbeSession(BaseModel):
     session_id: str | None = Field(None, max_length=200)
 
 
-class ProbeReport(BaseModel):
+class ProbeReport(StrictModel):
     """A session's result with the commits the arms run from and where (``arms_at``); or why the arms cannot be made,
     neither at the tip of the default branch nor at the change's commits (``stale``)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     base_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the task's base commit the sessions start at")
     harness_sha: str | None = Field(

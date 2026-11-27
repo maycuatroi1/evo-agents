@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import chats
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.chats.models.views import GroupMessage
 from evo_agents.hub.server.runs.models import MAX_ID
 
@@ -20,10 +21,8 @@ NOT_GRANTED = (
 )
 
 
-class PluginMessageIn(BaseModel):
+class PluginMessageIn(StrictModel):
     """A message of the plugin: its text, and the message it answers."""
-
-    model_config = ConfigDict(extra="forbid")
 
     body: str = Field(
         description=f"some text, at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8, whose mentions read as a member's"

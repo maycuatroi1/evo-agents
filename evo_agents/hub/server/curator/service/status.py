@@ -8,7 +8,6 @@ from collections import Counter
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden
 from evo_agents.hub.server.curator.models.charter import (
@@ -32,7 +31,7 @@ from evo_agents.hub.server.curator.service.charter import charter_view, read_acc
 from evo_agents.hub.server.night_cost import NightFigures, night_figures
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.shift_hours import cancel_queued
 
 
@@ -109,7 +108,7 @@ async def status_of(conn: AsyncConnection, access: ProjectAccess) -> CuratorStat
     paused = bool(schedules) and all(item.paused_at is not None for item in schedules)
     return CuratorStatus(
         project=access.name,
-        charter=None if row is None else charter_view(access.name, row, admin=has_role(access.role, "admin")),
+        charter=None if row is None else charter_view(access.name, row, admin=holds(access.role, "admin")),
         paused=paused,
         schedules=schedules,
         night=night,
@@ -207,7 +206,7 @@ async def _pausable(conn: AsyncConnection, user: Principal, project: str, doing:
     rows = await store.lock_schedules(conn, access.project_id)
     if not rows:
         raise Conflict(f"project {access.name} has no schedule to {doing}: an admin writes its charter first")
-    if not has_role(access.role, "admin") and all(row.owner_id != user.user_id for row in rows):
+    if not holds(access.role, "admin") and all(row.owner_id != user.user_id for row in rows):
         raise Forbidden(
             f"{doing} the night shift of project {access.name} needs the admin role on it, or one of its schedules"
         )

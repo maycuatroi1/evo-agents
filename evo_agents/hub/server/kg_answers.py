@@ -37,12 +37,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_answers as model
 from evo_agents.hub import runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, run_access_rules
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -338,7 +337,7 @@ async def ask(request: Request, project: ProjectName, body: KgAnswerAsk, user: C
     j = tables.kg_answer_jobs
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"asking questions of project {access.name}'s graph needs the writer role on it")
         if user.acts_for_run is not None and run_access_rules.ANSWERS not in user.run_reach:
             raise HTTPException(
@@ -405,7 +404,7 @@ async def reply(
     a = tables.kg_answers
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"sending answers to project {access.name} needs the writer role on it")
         mine = await _batch_rows(conn, user, access, job_id)
         problems: list[str] = []
@@ -470,7 +469,7 @@ async def stop(request: Request, project: ProjectName, job_id: JobId, user: Curr
     a, j, r = tables.kg_answers, tables.kg_answer_jobs, tables.runs
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"stopping an answer job of project {access.name} needs the writer role on it")
         job = await _job(conn, access, job_id, lock=True)
         if job.state != model.RUNNING:

@@ -8,7 +8,6 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import probes as probe_shape
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.curator.repository.charter import charter_row
@@ -23,7 +22,7 @@ from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.proposals.repository.record import project_repos
 from evo_agents.hub.server.proposals.service.record import held_review_run, writer_of
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 NOT_REPLACEABLE = (
     "probe {probe} is not an active probe of change {change} that was not reproduced, or stale, on one model in the two "
@@ -33,7 +32,7 @@ NOT_REPLACEABLE = (
 
 def need_admin(access: ProjectAccess, what: str) -> None:
     """403 unless the caller holds the admin role on the project."""
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise Forbidden(
             f"{what} of project {access.name} needs the admin role on it; you hold {access.role or 'no role'}"
         )

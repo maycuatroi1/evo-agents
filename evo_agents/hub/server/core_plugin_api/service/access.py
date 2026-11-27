@@ -17,7 +17,7 @@ from evo_agents.hub.server.core_plugin_api.service.handles import (
     refusing,
     session_principal,
 )
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 ROLES: tuple[str, ...] = access.ROLES  # each role may do what the ones before it may
 NEEDS_ROLE = "{login} is {held} of project {project}: this needs {needed}"
@@ -27,7 +27,7 @@ def has_role(held: str | None, needed: str) -> bool:
     """Whether role ``held`` (None: no grant) may do what ``needed`` may."""
     if needed not in ROLES:
         raise ValueError(f"a role is one of {', '.join(ROLES)}")
-    return access.has_role(held, needed)
+    return holds(held, needed)
 
 
 async def project_access(conn: AsyncConnection, caller: Session, project: str, *, role: str = "reader") -> ProjectRef:
@@ -41,7 +41,7 @@ async def project_access(conn: AsyncConnection, caller: Session, project: str, *
     with refusing():
         found = await projects.project_access(conn, principal, project)
     held = found.role if found.role is not None or not principal.admin else "admin"
-    if not access.has_role(held, role):
+    if not holds(held, role):
         article = f"a {held}" if held else "no member"
         raise Refused(403, NEEDS_ROLE.format(login=caller.login, held=article, project=project, needed=role))
     return ProjectRef(found.project_id, found.name, held, found.max_level)

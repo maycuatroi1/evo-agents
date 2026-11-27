@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from evo_agents.hub import access, chats, telegram
+from evo_agents.hub.server.security import holds
 
 NOT_A_MEMBER = "no chat {id} that you are a member of: see `evo-agents hub chat list`"
 
@@ -196,7 +197,7 @@ def shares_part(project: LabelProject, role: str | None, max_level: str | None) 
     """Whether a person holding ``role`` up to ``max_level`` on ``project`` may share its part of a chat's label: the
     writer role and a grant that clears the part, shared with nobody else counted."""
     bare = replace(project, shared_with=())
-    return access.has_role(role, "writer") and bare.rules.visible_by_grant(bare.label, max_level)
+    return holds(role, "writer") and bare.rules.visible_by_grant(bare.label, max_level)
 
 
 def with_shares(projects: Iterable[LabelProject], shares: Iterable, chat_id: int) -> list[LabelProject]:

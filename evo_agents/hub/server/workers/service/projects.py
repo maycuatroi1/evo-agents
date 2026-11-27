@@ -17,10 +17,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.base.errors import Conflict, Forbidden
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.workers.repository import projects as store
 
 
@@ -29,7 +28,7 @@ async def writable(conn, user: Principal, names: list[str]) -> list[int]:
     ids = []
     for name in names:
         access = await project_access(conn, user, name)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             role = access.role or "no role"
             raise Forbidden(f"a worker of project {name} needs the writer role on it; you hold {role}")
         ids.append(access.project_id)

@@ -43,7 +43,7 @@ from evo_agents.harness import channel_sink_id, channel_sink_problem, load_schem
 from evo_agents.hub import kg_semantic, tables
 from evo_agents.hub.access import CHANNEL_KIND, HUB_KIND, INTEGRITIES, ROLES, ProjectRules, Refused
 from evo_agents.hub.server import audit, invites
-from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
+from evo_agents.hub.server.base.models import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Page, Paging
 from evo_agents.hub.server.profile_store import ensure_default, handle_owner

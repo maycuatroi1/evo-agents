@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query
 
 from evo_agents.hub import intakes
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.base.scope import Scope
 from evo_agents.hub.server.errors import READ_REFUSALS, WRITE_REFUSALS, ErrorBody
 from evo_agents.hub.server.intake import service

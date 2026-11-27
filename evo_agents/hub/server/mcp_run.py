@@ -12,9 +12,8 @@ from sqlalchemy import and_, case, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import question_runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import HELD_STATES
-from evo_agents.hub.server.security import Principal, RunScope, admin_login
+from evo_agents.hub.server.security import Principal, RunScope, admin_login, holds
 
 MOUNT = "/mcp"  # where the hub mounts its MCP server (``evo_agents.hub.server.mcp``)
 NOT_HELD = (
@@ -95,7 +94,7 @@ def _scoped(row, run_id: int) -> tuple[RunScope, dict]:
     project, role, max_level, kind = row.name, row.role, row.max_level, row.kind
     if role is None:
         raise HTTPException(403, f"the owner of run {run_id} holds no grant on project {project} any more")
-    role = "writer" if has_role(role, "writer") else role
+    role = "writer" if holds(role, "writer") else role
     if kind == "question":  # its answer leaves the hub: it reads, up to the label the answer carries
         role, max_level = "reader", question_runs.lowered_level(row.levels, max_level, row.default_label)
     memory = (row.profile_id, row.profile_version, row.agent, row.hop, row.chat_id, row.chat_message_id)

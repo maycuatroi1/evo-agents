@@ -35,7 +35,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.security import CurrentUser, Principal

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, kg_upload_sources, tables
 from evo_agents.hub.kg_ingest import config_digest, config_problems
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import LOG_KIND, REFUSALS, Queued, SourceId, find_builds, hub_ceiling, queue, writer

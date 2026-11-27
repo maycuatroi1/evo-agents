@@ -12,7 +12,7 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT
 from evo_agents.hub.plans import AREAS
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.plans import READ_REFUSALS, REFUSALS, Written

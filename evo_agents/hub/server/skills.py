@@ -55,15 +55,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BLOB_PREFIX, GET_TTL, BlobStoreUnavailable, blob_key
-from evo_agents.hub.server.admin import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.audit import record
+from evo_agents.hub.server.base.models import PROJECT_NAME, ProjectName
 from evo_agents.hub.server.blobs import GLOBAL, blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.projects import PRINTABLE, project_access
-from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal
+from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal, holds
 from evo_agents.hub.skills import MAX_BUNDLE, MAX_DESCRIPTION, BundleError, name_problem, read_bundle
 
 log = logging.getLogger(__name__)
@@ -239,7 +238,7 @@ async def _writable(conn: AsyncConnection, user: Principal, project: str | None)
         if exc.status_code == 404:
             raise _no_grant(project) from None
         raise
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"publishing skills of project {project} needs the writer role on it")
     access.push_label()  # the write rule: a hub sink that clears the project's default label
     return Place("project", access.project_id, project)

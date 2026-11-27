@@ -11,7 +11,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import review
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.changes.models.views import Change
@@ -38,7 +37,7 @@ from evo_agents.hub.server.proposals.service.record import (
 )
 from evo_agents.hub.server.proposals.service.shapes import Proposal
 from evo_agents.hub.server.runs.service.views import visible_plans
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.systems.service import curation as system_curation
 
 PROPOSAL = "curator.proposal"  # the owner answered: "<project> proposal:<id> run:<id> answer=<accept|reject|defer>"
@@ -170,7 +169,7 @@ async def answer_proposal_as(
         via = f"@{agent[0]} in chat run {agent[1]}"
     access = await project_access(conn, user, project)
     require_reader(access)
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise HTTPException(
             403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
         )

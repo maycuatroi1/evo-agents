@@ -9,8 +9,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Request, Response
 
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.changes.models.views import (
     Change,
     ChangeClose,

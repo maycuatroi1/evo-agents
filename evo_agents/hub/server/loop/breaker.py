@@ -23,9 +23,9 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import loop_jobs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.loop.model import View
+from evo_agents.hub.server.security import holds
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ async def check(conn: AsyncConnection, project_id: int, view: View) -> bool:
 
 async def resume(conn: AsyncConnection, user, access) -> None:
     """An admin of the project resets the breaker of its Loop; 403 for anyone else, 409 when it has not tripped."""
-    if user.acts_for_run is not None or not has_role(access.role, "admin"):
+    if user.acts_for_run is not None or not holds(access.role, "admin"):
         raise HTTPException(403, f"resetting the breaker of the Loop needs the admin role on project {access.name}")
     s, n = tables.loop_states, tables.notifications
     query = select(s.c.breaker).where(s.c.project_id == access.project_id).with_for_update()

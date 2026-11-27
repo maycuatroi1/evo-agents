@@ -7,7 +7,6 @@ import logging
 
 from fastapi import APIRouter, Request, Response
 
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_accounts.models.accounts import REFUSALS, AccountName, Handle
 from evo_agents.hub.server.agent_accounts.service import accounts as service
 from evo_agents.hub.server.agent_accounts.service.shapes import (
@@ -17,6 +16,7 @@ from evo_agents.hub.server.agent_accounts.service.shapes import (
     AgentAccountWritten,
 )
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 

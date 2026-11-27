@@ -19,7 +19,7 @@ from fastapi import APIRouter, Path, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.docs import images
 from evo_agents.hub.server.docs.models import IMAGE_BODY, DocsError, DocsSave, DocsSaved, DocsUploadedImage
 from evo_agents.hub.server.errors import ErrorBody, error_response

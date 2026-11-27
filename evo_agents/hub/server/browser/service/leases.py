@@ -15,7 +15,6 @@ from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import browser_archive, browser_login, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
@@ -36,7 +35,7 @@ from evo_agents.hub.server.browser.service.profiles import open_profile, save_pr
 from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable
 from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ async def usable_identity(conn: AsyncConnection, user: Principal, run_id: int, i
     run = await repository.run_of(conn, run_id)
     if run is None or run.worker_id != worker_id or run.state not in runs.HELD_STATES:
         raise NotFound(NOT_HELD.format(id=run_id))
-    if not has_role(run.role, "writer"):
+    if not holds(run.role, "writer"):
         raise Forbidden(
             f"the member who dispatched run {run_id} no longer holds the writer role on project {run.name}: the run "
             "opens no browser identity",

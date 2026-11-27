@@ -15,7 +15,6 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.autonomy.models.policies import (
     MAX_AUDITED_KEYS_CHARS,
@@ -26,10 +25,11 @@ from evo_agents.hub.server.autonomy.models.policies import (
 )
 from evo_agents.hub.server.autonomy.repository import policies as store
 from evo_agents.hub.server.base.auditor import Auditor
-from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, refuse
+from evo_agents.hub.server.base.errors import Forbidden, NotFound, refuse
+from evo_agents.hub.server.base.revisions import at_revision
 from evo_agents.hub.server.loop import state as loop_state
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ def refusal(user: Principal, access: ProjectAccess) -> str | None:
     """Why ``user`` may not write the project's policy; None when they may."""
     if user.acts_for_run is not None:
         return "the agent of a run never writes the policy: @builder proposes a change, which an admin approves"
-    if has_role(access.role, "admin"):
+    if holds(access.role, "admin"):
         return None
     held = access.role or "no grant"
     return f"writing the policy of project {access.name} needs the admin role on it; {user.login} holds {held}"
@@ -161,8 +161,7 @@ async def write(
     await store.lock(conn, access.project_id)
     held = await store.newest(conn, access.project_id)
     now = 0 if held is None else held.revision
-    if if_revision is not None and if_revision != now:
-        raise Conflict(f"the policy of project {access.name} is at revision {now}, not {if_revision}; nothing changed")
+    at_revision(f"the policy of project {access.name}", now, if_revision)
     repos = await store.project_repos(conn, access.project_id)
     refuse(autonomy.problems(body, repos))
     before = {} if held is None else held.body

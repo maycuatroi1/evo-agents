@@ -12,7 +12,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import findings, judge, judges, merge_gate, merge_infra, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.changes.models.views import security_dimension, security_findings
 from evo_agents.hub.server.merge.models.judge import MergeVerdictIn
 from evo_agents.hub.server.merge.repository import judge as repository
@@ -20,7 +19,7 @@ from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 JUDGE_TIMEOUT_S = 3600  # a judge run of the queue, its checks and its agent
 
@@ -46,7 +45,7 @@ async def queue_judge_run(
         access = await project_access(conn, member, project.name)
     except HTTPException:
         access = None
-    if access is None or not has_role(access.role, "writer"):
+    if access is None or not holds(access.role, "writer"):
         return None, None, f"{login}, who wrote the policy, no longer holds writer on project {project.name}"
     model, chosen = judges.merge_judge_model(
         project.policy["judge"]["model"], builder_model, built=built, second=second

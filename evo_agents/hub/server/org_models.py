@@ -7,11 +7,12 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from evo_agents.hub import org
+from evo_agents.hub.server.base.models import StrictModel
 
-LOGIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # evo_agents.hub.server.admin.LOGIN_NAME
+LOGIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # evo_agents.hub.server.base.models.LOGIN_NAME
 HANDLE_PATTERN = r"^[a-z0-9][a-z0-9-]{0,99}$"  # evo_agents.hub.profiles.HANDLE_PATTERN
 Slug = Annotated[str, StringConstraints(pattern=org.SLUG_PATTERN)]
 LoginName = Annotated[str, StringConstraints(pattern=LOGIN_PATTERN)]
@@ -85,9 +86,7 @@ class OrgRuns(BaseModel):
     )
 
 
-class UnitCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class UnitCreate(StrictModel):
     slug: Slug
     parent: Slug
     kind: ChildKind
@@ -97,10 +96,8 @@ class UnitCreate(BaseModel):
     note: Note | None = None
 
 
-class UnitEdit(BaseModel):
+class UnitEdit(StrictModel):
     """The fields to change; a field left out keeps its value, ends_on null clears it."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: Name | None = None
     parent: Slug | None = None
@@ -108,10 +105,8 @@ class UnitEdit(BaseModel):
     if_revision: int | None = Field(None, ge=1, description="409 unless the unit is at this revision now")
 
 
-class SeatAdd(BaseModel):
+class SeatAdd(StrictModel):
     """A seat for a person (login) or for an agent profile (agent and project)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     unit: Slug
     role: Role
@@ -129,10 +124,8 @@ class SeatAdd(BaseModel):
     ends_on: date | None = None
 
 
-class SeatEdit(BaseModel):
+class SeatEdit(StrictModel):
     """The fields to change; a field left out keeps its value, reports_to or ends_on null clears it."""
-
-    model_config = ConfigDict(extra="forbid")
 
     role: Role | None = None
     primary: Literal[True] | None = Field(None, description="make it the person's primary seat")
@@ -142,10 +135,8 @@ class SeatEdit(BaseModel):
     ends_on: date | None = None
 
 
-class CeilingSet(BaseModel):
+class CeilingSet(StrictModel):
     """The next ceiling revision of one unit (unit), one person's primary seat (login) or one seat (seat)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     unit: Slug | None = None
     login: LoginName | None = None

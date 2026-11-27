@@ -33,7 +33,6 @@ from fastapi import Request
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import category_of, provider_of
 from evo_agents.hub.accounts import account_state
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, env_name_refusal
@@ -56,7 +55,7 @@ from evo_agents.hub.server.credentials.models.sealing import agent_secret_aad
 from evo_agents.hub.server.credentials.repository.secrets import bound_names
 from evo_agents.hub.server.credentials.service.secrets import sealer_of
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 # Reading
 
@@ -109,7 +108,7 @@ async def admin_agent(conn: AsyncConnection, user: Principal, project: str, hand
     """The access to ``project`` and the id of its live, non-default profile ``handle``, its row locked; 404 for a
     project or an agent the caller cannot see, 403 without the admin role, 422 for the default or a deleted profile."""
     access = await project_access(conn, user, project)
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise Forbidden(
             f"changing the accounts of an agent of project {project} needs the admin role on it; you hold {held}"

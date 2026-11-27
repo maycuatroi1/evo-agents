@@ -73,7 +73,7 @@ from evo_agents.hub.heap import give_back
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.kg import built_graphs

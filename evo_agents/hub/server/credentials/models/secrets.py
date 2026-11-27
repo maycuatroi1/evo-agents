@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import Path
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AwareDatetime, BaseModel, Field, SecretStr
 
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
@@ -18,7 +18,7 @@ from evo_agents.hub.credentials import (
     SECRET_NAME,
 )
 from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR, OAuthTokens
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME, StrictModel
 from evo_agents.hub.server.runs.models.placement import PoolName
 from evo_agents.hub.server.share_views import CredentialShare
 from evo_agents.hub.server.workers.models.workers import LINE, WORKER_NAME
@@ -107,10 +107,8 @@ class SecretWrite(BaseModel):
     )
 
 
-class SecretRebind(BaseModel):
+class SecretRebind(StrictModel):
     """The binding a PATCH puts in place of the secret's: workers or pools, exactly one of them."""
-
-    model_config = ConfigDict(extra="forbid")
 
     workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] | None = Field(
         None,

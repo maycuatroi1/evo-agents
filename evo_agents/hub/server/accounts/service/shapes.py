@@ -5,22 +5,20 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AwareDatetime, Field, SecretStr
 
 from evo_agents.hub.accounts import MAX_PRIORITY, MAX_WEIGHT
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, SECRET_NAME
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID
 from evo_agents.hub.server.accounts.models.provider_accounts import MAX_BINDINGS, Models, ModelsFrom
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME, StrictModel
 from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 Projects = list[Annotated[str, Field(pattern=PROJECT_NAME)]]
 Workers = list[Annotated[str, Field(pattern=WORKER_NAME)]]
 
 
-class ProviderAccountWrite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ProviderAccountWrite(StrictModel):
     provider: str = Field(pattern=PROVIDER_ID.pattern, description="the id of an entry of the catalog")
     base_url: str | None = Field(None, description="the https root of its API; the catalog's when left out")
     api_format: Literal[API_FORMATS] | None = Field(None, description="the catalog's when left out")  # pyright: ignore[reportInvalidTypeForm]
@@ -40,9 +38,7 @@ class ProviderAccountWrite(BaseModel):
     paused: bool | None = Field(None, description="true: no new run takes it")
 
 
-class ProviderAccountChange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ProviderAccountChange(StrictModel):
     base_url: str | None = Field(None, description="the https root of its API")
     api_format: Literal[API_FORMATS] | None = None  # pyright: ignore[reportInvalidTypeForm]
     value: SecretStr | None = Field(None, min_length=1, max_length=MAX_SECRET_BYTES, description="a new API key")

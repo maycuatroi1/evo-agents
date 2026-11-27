@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub.kg_map import WHOLE_NODES
 from evo_agents.hub.kg_web import NotVisible, WebSession
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph
 from evo_agents.hub.server.security import CurrentUser

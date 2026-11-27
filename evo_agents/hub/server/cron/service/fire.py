@@ -42,7 +42,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, command_runs, cron, cron_store, curator, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.agents.repository.tasking import project_role
 from evo_agents.hub.server.chats.models.runs import Hand
 from evo_agents.hub.server.chats.repository.store import insert_mentions
@@ -59,7 +58,7 @@ from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.runs.models import PlanRunDispatch
 from evo_agents.hub.server.runs.service.dispatch import NO_PENDING, queue_plan_run
 from evo_agents.hub.server.runs.service.views import plan_activity
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -162,7 +161,7 @@ async def _due(conn: AsyncConnection, job: cron_store.Job, now: datetime) -> int
 async def _owner_refusal(conn: AsyncConnection, job: cron_store.Job) -> str | None:
     """Why the job's owner may no longer have it fire: not a writer of its project, or their seat ended."""
     role = await project_role(conn, job.owner_id, job.project_id)
-    if not has_role(role, "writer"):
+    if not holds(role, "writer"):
         return f"its owner {job.owner} is no longer a writer of project {job.project}"
     return await ended_refusal(conn, job.owner_id, job.owner, what=f"cron job {job.name}")
 

@@ -24,9 +24,8 @@ from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.canvas.models.api import (
     CanvasBrainstorm,
@@ -90,7 +89,7 @@ from evo_agents.hub.server.canvas.service import (
 from evo_agents.hub.server.canvas.service.brainstorm import hand_brainstorm
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 from evo_agents.hub.tables_canvas import PROPOSAL_STATUSES, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
@@ -176,7 +175,7 @@ async def _edited(conn, access: ProjectAccess, canvas: CanvasRow, outcomes, sink
 def _label(access: ProjectAccess, label) -> dict | None:
     if label is None:
         return None
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         raise CanvasError(403, f"giving a canvas a label of its own in project {access.name} takes an admin")
     return label.model_dump(exclude_none=True)
 
@@ -580,7 +579,7 @@ def _may_decide(access: ProjectAccess, user_id: int, row: BaselineRow, item: Ite
     """What ``user_id`` may decide of ``item`` now: nothing once it is decided, nor while the member is ``barred``."""
     if row.status != "proposed" or not item.waiting or user_id in barred:
         return []
-    return list(DECIDES[item.kind]) if has_role(access.role, "writer") else []
+    return list(DECIDES[item.kind]) if holds(access.role, "writer") else []
 
 
 async def _baseline_model(conn, access: ProjectAccess, user, canvas: CanvasRow, row, sink) -> CanvasBaseline:

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 
 from evo_agents.hub import runs
 from evo_agents.hub.plans import PLAN_ID
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.base.scope import Scope
 from evo_agents.hub.server.decisions.models import (
     MAX_LIST,

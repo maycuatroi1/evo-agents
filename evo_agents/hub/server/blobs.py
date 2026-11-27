@@ -50,7 +50,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import (
     KIND_LIMITS,
     STALE_AFTER,
@@ -63,11 +62,10 @@ from evo_agents.hub.blobs import (
     new_upload_id,
 )
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.base.models import Sha256
+from evo_agents.hub.server.base.models import PROJECT_NAME, Sha256
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -154,7 +152,7 @@ def fetch_bytes(store: BlobStore, sha256: str, limit: int) -> bytes | None:
 
 
 def _writer(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"{doing} blobs of project {access.name} needs the writer role on it")
 
 

@@ -30,7 +30,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     BigInteger,
@@ -52,20 +52,18 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
 from evo_agents.hub.server import audit, kg_scrub, org_store
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
-from evo_agents.hub.server.base.models import LOGIN_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME, Login, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.security import AdminUser, admin, admin_login
+from evo_agents.hub.server.security import AdminUser, admin, admin_login, holds
 from evo_agents.kg.policy import Policy
 
-PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as the projects table accepts it
 SHA256 = r"^[0-9a-f]{64}$"
 MISSING = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
@@ -85,8 +83,6 @@ TOKEN_UNUSED = and_(
     _tokens.c.revoked_at.is_(None),
     func.coalesce(_tokens.c.last_used_at, _tokens.c.created_at) <= func.now() - timedelta(days=TOKEN_UNUSED_DAYS),
 )
-ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
-Login = Annotated[str, Path(pattern=LOGIN_NAME)]
 
 router = APIRouter(
     prefix="/v1/admin", tags=["admin"], dependencies=[Depends(admin)], responses={401: {"model": ErrorBody}}
@@ -364,7 +360,7 @@ async def give_grant(
     target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
     taken = []
-    if not has_role(body.role, "writer"):
+    if not holds(body.role, "writer"):
         taken = await _take_back_leases(conn, user, project_id, grantee_id, f"grant-{body.role}")
     return Grant(project=project, login=grantee, role=body.role, max_level=body.max_level, created=created), taken
 
@@ -386,7 +382,7 @@ async def grant(request: Request, body: GrantRequest, project: ProjectName, logi
 async def _take_back_leases(conn: AsyncConnection, user, project_id: int, member_id: int, by: str) -> list[int]:
     """The leases still out of the runs ``member_id`` dispatched in the project, given back now that the member no
     longer holds writer on it; the runs, for ``_revoke_taken`` once the transaction commits."""
-    from evo_agents.hub.server import lease_ending  # it reads ProjectName of this module
+    from evo_agents.hub.server import lease_ending  # through runs and projects it imports this module
 
     return await lease_ending.end_member_leases(
         conn, user_id=member_id, project_id=project_id, actor_id=user.user_id, token_id=user.token_id, by=by

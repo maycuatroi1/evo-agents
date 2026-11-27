@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import kg_decisions
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.kg_decisions import ABSENT, HIDDEN, MAX_REASON_CHARS, TRANSITIONS, plugin_actor, seen_state
 from evo_agents.hub.server import audit
@@ -28,7 +27,7 @@ from evo_agents.hub.server.kg_decisions.models import (
 )
 from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.kg.schema import known_relations
 
 
@@ -46,7 +45,7 @@ class GraphScope(ProjectScope):
     def refusal(self, user: Principal, access: ProjectAccess) -> str | None:
         if access.role is None:
             return f"reading the knowledge graph of project {access.name} needs a grant on it"
-        if self.role != "reader" and not has_role(access.role, self.role):
+        if self.role != "reader" and not holds(access.role, self.role):
             return f"deciding on the knowledge graph of project {access.name} needs the {self.role} role on it"
         return None
 

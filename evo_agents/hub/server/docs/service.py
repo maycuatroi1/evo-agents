@@ -20,7 +20,6 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import telegram
-from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.docs import repository
@@ -40,7 +39,7 @@ from evo_agents.hub.server.docs.models import (
     version_model,
 )
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 
 def sink_of(access: ProjectAccess, sink: str | None) -> str | None:
@@ -63,7 +62,7 @@ def reader(access: ProjectAccess) -> None:
 
 
 def writer(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise DocsError(403, f"{doing} in project {access.name} needs the writer role on it")
 
 
@@ -194,7 +193,7 @@ class DocumentSave(repository.DocumentStore):
 
 def _new_label(access: ProjectAccess, label: dict | None) -> dict:
     """The label a new document carries: the project's, or ``label`` an admin gives it, which the writer reads."""
-    if label is not None and not has_role(access.role, "admin"):
+    if label is not None and not holds(access.role, "admin"):
         raise DocsError(403, f"only an admin of project {access.name} sets the label of a document")
     stored = access.push_label(label)
     if not visible(access, None, stored):

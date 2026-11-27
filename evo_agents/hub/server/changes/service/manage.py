@@ -9,7 +9,6 @@ import logging
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.changes.models.views import Change, ChangeClose, ChangeDrop, ChangeList
 from evo_agents.hub.server.changes.repository import judge as store
@@ -20,7 +19,7 @@ from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ async def close_change(engine: AsyncEngine, user: Principal, project: str, chang
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         need_reader(access)
-        if not has_role(access.role, "admin"):
+        if not holds(access.role, "admin"):
             raise HTTPException(
                 403, f"closing a change of project {access.name} needs the admin role on it; you hold {access.role}"
             )
@@ -115,7 +114,7 @@ async def drop_change(engine: AsyncEngine, user: Principal, run_id: int, body: C
             )
         owner = Principal(row.dispatched_by, row.login, False, user.token_id, MACHINE, "")
         access = await project_access(conn, owner, row.name)
-        if not has_role(access.role, "admin"):
+        if not holds(access.role, "admin"):
             raise HTTPException(
                 403,
                 f"dropping change #{change.id} closes it for {row.login}, who dispatched run {run_id}, and closing a "

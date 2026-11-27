@@ -7,8 +7,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.server.tasks import GROUPS
 from evo_agents.hub.server.tasks.models.files import Plan, TasksFile
@@ -175,10 +176,8 @@ class TasksLinksIn(BaseModel):
     pulls: list[str] = Field(default_factory=list, max_length=MAX_LINKS, description="URLs of pull or merge requests")
 
 
-class TasksRolesIn(BaseModel):
+class TasksRolesIn(StrictModel):
     """The people of each role given, each list whole; a role left out stays as it is."""
-
-    model_config = ConfigDict(extra="forbid")
 
     ba: list[str] | None = Field(None, max_length=MAX_PEOPLE)
     qa: list[str] | None = Field(None, max_length=MAX_PEOPLE)
@@ -206,11 +205,9 @@ class TasksItemIn(BaseModel):
     label: LabelIn | None = Field(None, description="a label above the project's default; an admin's to give")
 
 
-class TasksItemEdit(BaseModel):
+class TasksItemEdit(StrictModel):
     """A change of a task: the fields given (null clears due_on, sprint and parent), the assignees when given (the
     whole list), the roles given, links to add and link ids to drop."""
-
-    model_config = ConfigDict(extra="forbid")
 
     title: str | None = Field(None, min_length=1, max_length=MAX_TITLE_CHARS)
     description_md: str | None = Field(None, max_length=MAX_DESCRIPTION_CHARS)
@@ -238,10 +235,8 @@ class TasksItemEdit(BaseModel):
         }
 
 
-class TasksBlockerIn(BaseModel):
+class TasksBlockerIn(StrictModel):
     """A new blocker: why, and exactly one of the three things it waits on."""
-
-    model_config = ConfigDict(extra="forbid")
 
     reason: str = Field(min_length=1, max_length=MAX_REASON_CHARS)
     waiting_member: str | None = Field(None, max_length=100, description="the login of a member with a grant")
@@ -252,10 +247,8 @@ class TasksBlockerIn(BaseModel):
         return Waiting(self.waiting_member, self.waiting_task, self.waiting_text)
 
 
-class TasksBlockerEdit(BaseModel):
+class TasksBlockerEdit(StrictModel):
     """A change of a blocker: its reason, who it waits on (exactly one of the three, when given), or ``cleared``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     reason: str | None = Field(None, min_length=1, max_length=MAX_REASON_CHARS)
     waiting_member: str | None = Field(None, max_length=100)
@@ -298,10 +291,8 @@ class TasksSprintIn(BaseModel):
     state: Literal["planned", "active"] = "planned"
 
 
-class TasksSprintEdit(BaseModel):
+class TasksSprintEdit(StrictModel):
     """A change of a sprint; closing it moves its unfinished tasks to ``move_to``, or to no sprint."""
-
-    model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(None, min_length=1, max_length=MAX_SPRINT_NAME_CHARS)
     goal: str | None = Field(None, max_length=MAX_GOAL_CHARS)

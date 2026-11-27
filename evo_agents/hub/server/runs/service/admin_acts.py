@@ -21,10 +21,9 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import write_event
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 ADMIN_NOTICE = "run_admin_action"  # runs.NOTICE_KINDS: an admin acted on a run the member dispatched
 PROJECT_ADMIN, HUB_ADMIN = "project_admin", "hub_admin"  # what the admin acted as, in the event's ``as``
@@ -51,7 +50,7 @@ def standing(user: Principal, access: ProjectAccess) -> str | None:
     ``access`` reads; None otherwise."""
     if user.acts_for_run is not None:
         return None
-    if has_role(access.role, "admin"):
+    if holds(access.role, "admin"):
         return PROJECT_ADMIN
     return HUB_ADMIN if user.admin else None
 

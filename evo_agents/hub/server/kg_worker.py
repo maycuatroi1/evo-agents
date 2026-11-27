@@ -34,7 +34,7 @@ from sqlalchemy import Text, cast, select
 from evo_agents.hub import tables
 from evo_agents.hub.kg_source_state import SourceState
 from evo_agents.hub.server import blobs, kg
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.service.claims import worker_of

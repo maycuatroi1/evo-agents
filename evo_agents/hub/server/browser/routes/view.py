@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.browser.service import view as service
 from evo_agents.hub.server.runs.models import RunId
 

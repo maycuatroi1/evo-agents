@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import plan_body
 from evo_agents.hub import author, proofs, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PLAN_ID, PlanProblem, step_index
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.plans import Written
@@ -26,7 +25,7 @@ from evo_agents.hub.server.runs.models import NOT_HELD, AuthoredPlan, StepReport
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import current_plan, text_or_none
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
@@ -139,7 +138,7 @@ async def put_authored_plan(engine, user: Principal, run_id: int, payload: Autho
             raise HTTPException(
                 403, f"{row.login}, who dispatched run {run_id}, no longer has a grant on project {project}"
             ) from None
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(
                 403,
                 f"{row.login}, who dispatched run {run_id}, no longer has the writer role on project {project}, "

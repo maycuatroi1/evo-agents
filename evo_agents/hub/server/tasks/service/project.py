@@ -14,11 +14,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.tasks import DEFAULT_STATUSES, DEFAULT_TYPES
 from evo_agents.hub.server.tasks.models.values import PLUGIN, SRS, Settings, Status, TasksError, Writer
 from evo_agents.hub.server.tasks.repository import tasks as repository
@@ -73,7 +73,7 @@ def reader(access: ProjectAccess) -> None:
 
 def writer(access: ProjectAccess, what: str) -> None:
     reader(access)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise TasksError(403, f"{what} in project {access.name} needs the writer role; you are {access.role}")
 
 

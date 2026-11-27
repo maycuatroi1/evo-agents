@@ -6,19 +6,18 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.base.errors import NotFound
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probes.models.probe import Probe, ProbeIn, ProbeList, view
 from evo_agents.hub.server.probes.repository import probes as repository
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 
 def verify_shown(access: ProjectAccess, user: Principal) -> bool:
     """Whether ``user`` reads the verify of the project's probes: an admin of it, and not the agent of a run."""
-    return has_role(access.role, "admin") and user.acts_for_run is None
+    return holds(access.role, "admin") and user.acts_for_run is None
 
 
 async def store(

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from evo_agents.hub import runs
-from evo_agents.hub.server.base.models import LOGIN_NAME
+from evo_agents.hub.server.base.models import LOGIN_NAME, StrictModel
 from evo_agents.hub.server.notifications.models import TITLE_CHARS
 
 PERMISSION = "notifications:send"
@@ -20,9 +20,7 @@ LOGIN = re.compile(LOGIN_NAME)
 CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
-class PluginNoticeIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PluginNoticeIn(StrictModel):
     to: list[str] = Field(
         min_length=1,
         max_length=MAX_TO,

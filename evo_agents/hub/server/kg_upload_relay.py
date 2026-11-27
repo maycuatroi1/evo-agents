@@ -28,7 +28,7 @@ from sqlalchemy import func, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.blobs import MAX_PARTS, BlobStoreUnavailable
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg_uploads import REFUSALS, UploadId, part_sizes

@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import outputs, tables
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.chats.models.members import ChatId
 from evo_agents.hub.server.chats.models.views import HUB_AUTHOR, ChatAuthor, agent_author, person_author
 from evo_agents.hub.server.chats.repository.views import profiles_by_id

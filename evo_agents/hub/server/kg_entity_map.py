@@ -26,7 +26,7 @@ from evo_agents.hub import kg_entity_relay as relay
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import kg_run_access, project_archive
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import REFUSALS, queue, visible_nodes, writer

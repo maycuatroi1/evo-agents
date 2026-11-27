@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import signals
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.core_plugin_api.models.people import EnabledProject, InviteRef, LabelReader, RunActorRef
 from evo_agents.hub.server.core_plugin_api.models.types import Plugin, ProjectRef, Refused, UserRef
 from evo_agents.hub.server.core_plugin_api.repository import people as rows_of

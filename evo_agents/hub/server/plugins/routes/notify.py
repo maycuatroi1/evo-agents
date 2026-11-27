@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugins.models.notify import PluginNoticeIn, PluginNoticeSent
 from evo_agents.hub.server.plugins.service.notify import check_body, send

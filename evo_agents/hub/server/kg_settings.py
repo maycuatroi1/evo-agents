@@ -27,16 +27,15 @@ from sqlalchemy import select
 from evo_agents.hub import kg_health_eval, tables
 from evo_agents.hub import kg_optimize as model
 from evo_agents.hub import kg_settings as store
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs, member, read_sink, snapshot_view
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.kg_web import require_reader
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 from evo_agents.kg import settings as kg_settings
 
 MAX_REASON_CHARS = 1000
@@ -83,7 +82,7 @@ class UndoBody(BaseModel):
 
 async def may_change(conn, user, access) -> None:
     require_reader(access)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"changing the KG settings of project {access.name} needs the writer role on it")
     run = user.acts_for_run
     if run is not None:
@@ -120,7 +119,7 @@ async def _out(conn, project_id: int, role, *, needs_rebuild: list[str], before=
             )
             for c in found
         ],
-        can_change=has_role(role, "writer"),
+        can_change=holds(role, "writer"),
     )
 
 

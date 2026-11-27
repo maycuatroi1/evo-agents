@@ -9,13 +9,12 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import signals
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
 from evo_agents.hub.server.base.scope import Noun, ProjectScope, Role, Scope
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.signals import repository
 from evo_agents.hub.server.signals.models import (
     Signal,
@@ -40,7 +39,7 @@ class KeysScope(ProjectScope):
         self.what = what
 
     def refusal(self, user: Principal, access: ProjectAccess) -> str | None:
-        if has_role(access.role, self.role):
+        if holds(access.role, self.role):
             return None
         held = access.role or "no grant"
         return f"{self.what} of project {access.name} needs the {self.role} role on it; you hold {held}"

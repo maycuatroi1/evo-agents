@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import judge
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.changes.repository.views import change_of_plan
 from evo_agents.hub.server.changes.service.shift import queue_builder
 from evo_agents.hub.server.curator.service.shift import project_gate

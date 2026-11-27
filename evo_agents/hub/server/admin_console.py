@@ -32,14 +32,13 @@ from sqlalchemy import and_, case, func, literal, select, tuple_, update
 from evo_agents.hub import tables
 from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.admin import (
-    LOGIN_NAME,
-    PROJECT_NAME,
     TOKEN_EXPIRING,
     TOKEN_EXPIRING_DAYS,
     TOKEN_LIVE,
     TOKEN_UNUSED,
     TOKEN_UNUSED_DAYS,
 )
+from evo_agents.hub.server.base.models import LOGIN_NAME, PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
 from evo_agents.hub.server.workers.repository.workers import lock_worker_of_token

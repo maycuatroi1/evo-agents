@@ -15,8 +15,8 @@ from dataclasses import dataclass, field, replace
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.srs.models import checks, markdown
 from evo_agents.hub.server.srs.models.api import MAX_MARKDOWN_BYTES
 from evo_agents.hub.server.srs.models.diff import text_of
@@ -126,9 +126,9 @@ async def _create(conn: AsyncConnection, access: ProjectAccess, user_id: int, re
 
 
 def _writer_check(access: ProjectAccess, request: ImportRequest) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise SrsError(403, f"importing a document into project {access.name} needs the writer role on it")
-    if request.label is not None and not has_role(access.role, "admin"):
+    if request.label is not None and not holds(access.role, "admin"):
         raise SrsError(403, f"only an admin of project {access.name} sets the label of a document")
     if len(request.markdown.encode()) > MAX_MARKDOWN_BYTES:
         raise SrsError(413, f"the Markdown is over {MAX_MARKDOWN_BYTES // (1024 * 1024)} MiB")
@@ -151,7 +151,7 @@ async def import_markdown(
         await _slug_free(conn, access, request.slug)
     match_keys(doc, base.doc if base else None)
     await give_screen_codes(conn, access.project_id, doc)
-    writer = Writer(access.project_id, held.id if held else 0, user_id, has_role(access.role, "admin"))
+    writer = Writer(access.project_id, held.id if held else 0, user_id, holds(access.role, "admin"))
     problems = checks.problems(doc, settings.template) + await store_problems(conn, writer, doc, base)
     preview = preview_of(doc, base, problems)
     slug = held.slug if held else request.slug

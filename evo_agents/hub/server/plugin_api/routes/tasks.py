@@ -21,7 +21,7 @@ from fastapi import APIRouter, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plugin_api.models.tasks import MAX_KEY_CHARS, RACE, PluginTask, PluginTaskIn
 from evo_agents.hub.server.plugin_api.service import tasks

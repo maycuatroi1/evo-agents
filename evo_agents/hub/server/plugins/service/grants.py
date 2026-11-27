@@ -36,7 +36,6 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import features
-from evo_agents.hub.access import has_role
 from evo_agents.hub.feature_rule import FEATURES
 from evo_agents.hub.plugin_calls import asked_for, effective_grant
 from evo_agents.hub.server import audit, hub_settings
@@ -44,7 +43,7 @@ from evo_agents.hub.server.plugins.models.grants import PluginPermission, Projec
 from evo_agents.hub.server.plugins.repository import grants as repository
 from evo_agents.hub.server.plugins.service.pages import pages_of
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.plugins.manifest import PERMISSION_TEXT, is_per_project
 
 log = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ def check_reader(access: ProjectAccess) -> None:
 
 
 def check_admin(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise HTTPException(403, f"{doing} needs the admin role on project {access.name}; you hold {held}")
 

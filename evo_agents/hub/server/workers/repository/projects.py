@@ -8,11 +8,12 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.access import ROLES, has_role
+from evo_agents.hub.access import ROLES
 from evo_agents.hub.server.runs.service.kg_duties import kept_by
+from evo_agents.hub.server.security import holds
 
 NIGHT_SHIFT = "night_shift"  # the kind of schedule the charter of a project's Curator keeps on one worker
-WRITER_ROLES = [role for role in ROLES if has_role(role, "writer")]
+WRITER_ROLES = [role for role in ROLES if holds(role, "writer")]
 
 
 async def served(conn: AsyncConnection, worker_id: int) -> dict[str, int]:

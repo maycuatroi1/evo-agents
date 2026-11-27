@@ -26,16 +26,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_eval_starter import ANSWER_KEYS, QUESTION_KEYS, set_digest
 from evo_agents.hub.kg_eval_starter import clean as _clean
 from evo_agents.hub.server import audit, kg_run_access
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 from evo_agents.kg.evaluate import ALL_TYPES, HOLDOUT, QuestionError, QuestionSet, parse_set, split_of
 
 MAX_QUESTIONS = 5000
@@ -131,7 +130,7 @@ async def put_eval_set(request: Request, project: ProjectName, body: EvalSetBody
     s = tables.kg_eval_sets
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"putting the question set of project {access.name} needs the writer role on it")
         await conn.execute(
             select(tables.projects.c.id).where(tables.projects.c.id == access.project_id).with_for_update()

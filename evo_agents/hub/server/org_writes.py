@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy_levels, org, tables
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.revisions import at_revision
 from evo_agents.hub.server.org_models import CeilingSet, CeilingWritten, SeatAdd, SeatEdit, UnitCreate, UnitEdit
 from evo_agents.hub.server.org_store import load, lock, profile_by_handle, today, user_by_login
 
@@ -138,8 +139,7 @@ async def edit_unit(w: Write, slug: str, body: UnitEdit) -> str:
     """Change the name, the parent or the end date of a unit; its slug."""
     unit = w.unit(slug)
     forbid(org.unit_refusal(w.chart, w.actor, unit, w.today, what=f"editing unit {slug}"))
-    if body.if_revision is not None and body.if_revision != unit.revision:
-        raise HTTPException(409, f"unit {slug} is at revision {unit.revision}, not {body.if_revision}; nothing changed")
+    at_revision(f"unit {slug}", unit.revision, body.if_revision)
     given = body.model_fields_set
     if ("name" in given and body.name is None) or ("parent" in given and body.parent is None):
         raise HTTPException(422, "a unit always has a name and a parent; nothing changed")

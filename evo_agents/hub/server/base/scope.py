@@ -18,13 +18,12 @@ from typing import Literal
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 
 Role = Literal["reader", "writer", "admin"]
 APPROVER = {"writer": "a writer", "admin": "an admin"}  # who approves what @builder proposes, by the role it needs
@@ -70,7 +69,7 @@ class ProjectScope:
         if user.acts_for_run is not None:
             approver = APPROVER[self.role]
             return f"the agent of a run never writes {self.noun.one}: @builder proposes one, which {approver} approves"
-        if has_role(access.role, self.role):
+        if holds(access.role, self.role):
             return None
         held = access.role or "no grant"
         return f"writing {self.noun.one} of project {access.name} needs the {self.role} role on it; {user.login} holds {held}"

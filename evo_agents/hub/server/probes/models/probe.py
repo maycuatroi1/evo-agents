@@ -20,10 +20,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import probes, replay, review
 from evo_agents.hub.redact import redact
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.runs.models import MAX_ID
 
 PROBE = "curator.probe"  # an admin wrote a probe: "<project> probe:<id> <add|edit|retire> change:<id>|proposal:<id>"
@@ -49,11 +50,9 @@ def _verify(text: str) -> str:
     return text
 
 
-class ProbeIn(BaseModel):
+class ProbeIn(StrictModel):
     """A probe: the task an agent is given, from a base commit of a repo, and the verify that says it did not repeat
     the mistake."""
-
-    model_config = ConfigDict(extra="forbid")
 
     repo: RepoName = Field(description="the repo of the project the task runs in")
     commit: Commit | None = Field(
@@ -72,10 +71,8 @@ class ProbeIn(BaseModel):
         return self
 
 
-class ProbeEdit(BaseModel):
+class ProbeEdit(StrictModel):
     """What an admin changes of a probe: any of its repo, commit, task and verify, at least one."""
-
-    model_config = ConfigDict(extra="forbid")
 
     repo: RepoName | None = None
     commit: Commit | None = None
@@ -122,9 +119,7 @@ class ReviewProbe(ProbeIn):
     )
 
 
-class ProbeRetire(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ProbeRetire(StrictModel):
     note: str | None = Field(None, min_length=1, max_length=probes.MAX_NOTE_CHARS, description="why it is retired")
 
 
