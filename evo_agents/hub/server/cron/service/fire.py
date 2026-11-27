@@ -39,10 +39,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import chats, command_runs, cron, cron_store, curator, runs, tables
+from evo_agents.hub import chats, command_runs, cron, cron_store, curator, runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.agents.repository.tasking import project_role
 from evo_agents.hub.server.chats.models.runs import Hand
@@ -53,6 +52,7 @@ from evo_agents.hub.server.chats.service.messages import resolve_mentions
 from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
 from evo_agents.hub.server.command_dispatch import command_workers, queue_command_run
+from evo_agents.hub.server.cron import repository as store
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.profile_store import by_id
@@ -168,14 +168,7 @@ async def _owner_refusal(conn: AsyncConnection, job: cron_store.Job) -> str | No
 
 
 async def _busy(conn: AsyncConnection, job: cron_store.Job) -> str | None:
-    r = tables.runs
-    query = (
-        select(r.c.id, r.c.state)
-        .where(r.c.cron_job_id == job.id, r.c.state.in_(runs.ACTIVE_STATES))
-        .order_by(r.c.id)
-        .limit(1)
-    )
-    active = (await conn.execute(query)).one_or_none()
+    active = await store.active_run(conn, job.id)
     if active is not None:
         return f"run #{active.id} of the job's last fire is {active.state}"
     if job.kind == "plan" and job.plan_id is not None:
@@ -226,13 +219,12 @@ async def _agent(conn: AsyncConnection, job: cron_store.Job) -> Outcome:
     run_id = next((mention.get("run_id") for mention in kept if mention.get("run_id")), None)
     if run_id is None:
         return Outcome("refused", "\n".join(refusals) or f"@{profile.handle} took no work")
-    r = tables.runs
-    await conn.execute(r.update().where(r.c.id == run_id).values(cron_job_id=job.id))
+    await store.mark_run(conn, run_id, job.id)
     return Outcome("started", run_id=run_id)
 
 
 async def _plan(conn: AsyncConnection, job: cron_store.Job) -> Outcome:
-    body = PlanRunDispatch(plan_id=job.plan_id or "")
+    body = PlanRunDispatch(plan_id=job.plan_id or "")  # pyright: ignore[reportCallIssue]
     run_id = await queue_plan_run(conn, _owner(job), job.project, body, cron_job_id=job.id)
     return Outcome("started", run_id=run_id)
 
@@ -264,17 +256,9 @@ START = {"agent": _agent, "plan": _plan, "command": _command}
 async def _breaker(conn: AsyncConnection, job: cron_store.Job) -> str | None:
     """Why ``job`` pauses: its latest BREAKER_FAILURES runs ended since its creation or resume failed, each of a cause
     of the job's; None otherwise."""
-    r = tables.runs
-    since = job.resumed_at or job.created_at
-    query = (
-        select(r.c.id, r.c.state, r.c.failure_cause)
-        .where(r.c.cron_job_id == job.id, r.c.state.in_(("done", "failed")), r.c.queued_at >= since)
-        .order_by(r.c.finished_at.desc().nulls_last(), r.c.id.desc())
-        .limit(50)
-    )
     ended = [
         row
-        for row in await conn.execute(query)
+        for row in await store.ended_runs(conn, job.id, job.resumed_at or job.created_at)
         if not (row.state == "failed" and curator.is_infra(row.failure_cause))  # a dependency's failure, not the job's
     ][:BREAKER_FAILURES]
     if len(ended) < BREAKER_FAILURES or any(row.state != "failed" for row in ended):

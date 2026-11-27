@@ -22,8 +22,8 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
-from evo_agents.hub.server import route_autonomy
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.hub.server.systems.models.systems import (

@@ -22,8 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import dlp, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, route_autonomy
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser

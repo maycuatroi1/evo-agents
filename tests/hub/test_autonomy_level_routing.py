@@ -19,7 +19,9 @@ if not pg.DSN:
 from sqlalchemy import func, select, update
 
 from evo_agents.hub import autonomy_card, runs, tables
-from evo_agents.hub.server import autonomy_gates, principals, run_autonomy
+from evo_agents.hub.server import principals
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from tests.hub import live
 from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_autonomy_level_lease import FEATURES

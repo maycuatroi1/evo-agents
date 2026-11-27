@@ -42,16 +42,16 @@ from evo_agents.hub import chat_bridge_events, chats, ops_events, ops_queue, pro
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import (
-    autonomy_hold,
     gateway_accounts,
     pool_accounts,
     run_access_rules,
-    run_autonomy,
 )
 from evo_agents.hub.server.agents.models.placement import Home
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.attachments import repository as attachment_store
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import ChatRun, Hand
 from evo_agents.hub.server.chats.repository import runs as store

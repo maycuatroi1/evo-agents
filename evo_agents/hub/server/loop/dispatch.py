@@ -41,7 +41,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, autonomy_hold, run_autonomy
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.loop import act, caps, plugin_rules, texts
 from evo_agents.hub.server.loop.admit import WORKER, Handed, LoopWorker, loop_worker
 from evo_agents.hub.server.loop.model import (

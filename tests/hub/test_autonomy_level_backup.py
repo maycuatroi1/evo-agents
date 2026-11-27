@@ -1,4 +1,4 @@
-"""What the worker tells the hub of a run's autonomy (``evo_agents.hub.server.worker_autonomy``), as criteria a8 and a9
+"""What the worker tells the hub of a run's autonomy (``evo_agents.hub.server.autonomy.routes.worker``), as criteria a8 and a9
 of plan autonomy-levels name it: ``evo-agents worker backup`` records a backup as a ``system`` event of the run and the
 audit row ``autonomy.backup``, a time in the future refused; the hook of autonomy asks the hub about a command of a
 class in notify, which tells the principal (the notice ``autonomy``, audited ``autonomy.notified``) and answers the mode

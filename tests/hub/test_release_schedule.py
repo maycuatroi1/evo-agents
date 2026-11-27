@@ -582,7 +582,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker", queues=None
     )
     assert WORKER.run(WORKER.context(args)).status == 0
-    from evo_agents.hub.server.cron_fire import cron_pass
+    from evo_agents.hub.server.cron.service.fire import cron_pass
     from evo_agents.hub.server.hub_runtime import take_turn as hub_turn
     from evo_agents.hub.server.kg_entity_key import find as entity_key
 

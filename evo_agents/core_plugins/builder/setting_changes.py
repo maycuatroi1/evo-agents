@@ -21,11 +21,13 @@ from evo_agents.core_plugins.builder.kinds import (
 )
 from evo_agents.hub import autonomy, branding, features
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs
+from evo_agents.hub.server import audit, hub_settings, plugin_configs
 from evo_agents.hub.server.agents.models.packs import AgentPackPin
 from evo_agents.hub.server.agents.models.profiles import AgentEdit
 from evo_agents.hub.server.agents.service.packs import pinned
 from evo_agents.hub.server.agents.service.profiles import new_version, profile_changes
+from evo_agents.hub.server.autonomy.repository import policies as policy_store
+from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
 from evo_agents.hub.server.plugin_grants import installed_row
 from evo_agents.hub.server.profile_store import Profile, by_handle, version_rules
 from evo_agents.hub.server.projects import ProjectAccess
@@ -289,7 +291,7 @@ AGENT_PROFILE = Kind(_agent_target, _check_agent, _apply_agent, _roll_back_agent
 
 
 async def _policy_target(conn: AsyncConnection, access: ProjectAccess, change: Change, lock: bool) -> Target:
-    row = await autonomy_policies.newest(conn, access.project_id)
+    row = await policy_store.newest(conn, access.project_id)
     body = {} if row is None else dict(row.body)
     title = f"the autonomy policy of project {access.name}"
     return Target(title, 0 if row is None else row.revision, autonomy.flat(body), policy=body)
@@ -302,7 +304,7 @@ async def _policy_body(conn: AsyncConnection, access: ProjectAccess, change: Cha
     if not problems:
         problems = layer_problems(change, target)
     if not problems:
-        problems = autonomy.problems(body, await autonomy_policies.project_repos(conn, access.project_id))
+        problems = autonomy.problems(body, await policy_store.project_repos(conn, access.project_id))
     refuse(problems)
     return body
 
@@ -331,7 +333,7 @@ async def _apply_policy(w: Writing) -> int:
 async def _roll_back_policy(w: Writing) -> int:
     """The policy's next revision, a copy of revision ``applied - 1``; revision 0 is no policy."""
     access, before = w.access, w.version - 1
-    body = await autonomy_policies.body_at(w.conn, access.project_id, before)
+    body = await policy_store.body_at(w.conn, access.project_id, before)
     if body is None:
         raise ProposalError(409, f"the autonomy policy of project {access.name} has no revision {before}; {NOTHING}")
     note = f"rollback of proposal {w.proposal_id} of @builder: a copy of revision {before}"

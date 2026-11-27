@@ -51,9 +51,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs, webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules, run_autonomy
+from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agents.service.agent_types import contributed, enabled_type, type_left, type_spend
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable

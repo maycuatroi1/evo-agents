@@ -9,7 +9,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request, Response
 
-from evo_agents.hub.server import route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agents.models.profiles import (
     AVATAR_REFUSALS,
@@ -25,6 +24,7 @@ from evo_agents.hub.server.agents.models.profiles import (
     Handle,
 )
 from evo_agents.hub.server.agents.service import profiles as service
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 

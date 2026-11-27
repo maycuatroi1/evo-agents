@@ -43,7 +43,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, PLAN_KINDS
 from evo_agents.hub.server import run_audience
-from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.kg_health import owner_access
 from evo_agents.hub.server.mcp_text import memory_about

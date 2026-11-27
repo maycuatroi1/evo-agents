@@ -26,7 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import account_providers, merge_gate, profiles
 from evo_agents.hub.autonomy_levels import ACTING, DENY, TEST_SECRETS, Choice, refusal
 from evo_agents.hub.credentials import GITHUB_READ_PERMISSIONS, TEST_ENVIRONMENT, github_repo
-from evo_agents.hub.server import audit, autonomy_ledger, run_autonomy
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.forge import forge_token
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
@@ -63,7 +65,7 @@ def secret_allowed(choice: Choice | None, kind: str, env_var: str | None, enviro
     which names why its origin gets none; an env secret is the runtime's, or labelled test under test_secrets."""
     if not limits(choice) or kind != "env" or runtime_secret(kind, env_var):
         return True
-    return choice.mode in ACTING and choice.condition == TEST_SECRETS and environment == TEST_ENVIRONMENT
+    return choice.mode in ACTING and choice.condition == TEST_SECRETS and environment == TEST_ENVIRONMENT  # pyright: ignore[reportOptionalMemberAccess]
 
 
 def why(choice: Choice, what: str) -> str:

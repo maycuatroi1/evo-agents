@@ -60,7 +60,9 @@ from evo_agents.hub.server import (
     user_emails,
     web_auth,
 )
-from evo_agents.hub.server.cron_fire import cron_pass as cron_pass  # handed down to the hub worker, as those below
+from evo_agents.hub.server.cron.service.fire import (
+    cron_pass as cron_pass,  # handed down to the hub worker, as those below
+)
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
@@ -537,9 +539,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
 
 def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
-        autonomy_page,
-        autonomy_routes,
-        autonomy_stops,
         build_now,
         earlier,
         kg_health,
@@ -551,6 +550,9 @@ def _include_curator_routes(app: FastAPI) -> None:
         worker_doctor,
         worker_shares,
     )
+    from evo_agents.hub.server.autonomy.routes import levels as autonomy_routes
+    from evo_agents.hub.server.autonomy.routes import page as autonomy_page
+    from evo_agents.hub.server.autonomy.routes import stops as autonomy_stops
     from evo_agents.hub.server.changes import routes as change_routes
     from evo_agents.hub.server.digests import routes as digests
     from evo_agents.hub.server.evolve import routes as evolve
@@ -602,13 +604,11 @@ def _include_member_routes(app: FastAPI) -> None:
         account_pools,
         account_views,
         accounts,
-        autonomy_policies,
         branding,
         claude_sign_in,
         context_answer_reuse,
         credential_shares,
         credentials,
-        cron_jobs,
         features,
         gateway_proxy,
         kg_shared_pool_api,
@@ -646,7 +646,6 @@ def _include_member_routes(app: FastAPI) -> None:
         seller_api,
         task_dispatch,
         work_cards,
-        worker_autonomy,
     )
     from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
     from evo_agents.hub.server.agent_accounts.routes import provider_accounts as agent_provider_accounts
@@ -656,6 +655,8 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.agents.routes import packs as agent_packs
     from evo_agents.hub.server.agents.routes import profiles as agent_profiles
     from evo_agents.hub.server.agents.routes import reads as agent_reads
+    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
+    from evo_agents.hub.server.autonomy.routes import worker as worker_autonomy
     from evo_agents.hub.server.browser.routes import asks as browser_asks
     from evo_agents.hub.server.browser.routes import identities as browser_identities
     from evo_agents.hub.server.browser.routes import leases as browser_leases
@@ -672,6 +673,7 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import members as chat_members
     from evo_agents.hub.server.chats.routes import people as chat_people
     from evo_agents.hub.server.chats.routes import read as chat_read
+    from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake

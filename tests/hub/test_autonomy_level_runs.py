@@ -1,4 +1,4 @@
-"""The principal and the autonomy snapshot of a run (``evo_agents.hub.server.run_autonomy``), as criteria a4, a5 and a7
+"""The principal and the autonomy snapshot of a run (``evo_agents.hub.server.autonomy.service.runs``), as criteria a4, a5 and a7
 of plan autonomy-levels name them: schema 0113 gives runs principal_id and autonomy; a dispatched run acts for its
 dispatcher, a run the hub makes on its own for its agent's sponsor, and its snapshot is the effective autonomy when it was
 queued, over its repos; each gate takes the stricter of the snapshot and the value now, so a lower level reaches the run
@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import autonomy_levels, runs, tables
-from evo_agents.hub.server import run_autonomy
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from tests.hub.live import sql
 from tests.hub.test_migrate import columns, move_to
 from tests.hub.test_runs import (  # noqa: F401 (client and hub are fixtures)

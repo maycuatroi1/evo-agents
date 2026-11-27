@@ -1,4 +1,4 @@
-"""K7 at the lease (``evo_agents.hub.server.lease_autonomy``), as criterion a6 of plan autonomy-levels names it: a run is
+"""K7 at the lease (``evo_agents.hub.server.autonomy.service.lease``), as criterion a6 of plan autonomy-levels names it: a run is
 leased only the credentials K7 of its principal allows, the runtime's sign-in aside. Under deny a GitHub token that reads
 for each repo alone and no git or env secret; under auto:run_branch a token that writes only for a repo whose ruleset
 keeps the App off its default branch, a token that reads elsewhere, and a git secret only for an origin whose default

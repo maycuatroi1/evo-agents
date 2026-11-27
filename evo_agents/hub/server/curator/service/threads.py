@@ -50,7 +50,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import autonomy_gates, merge_gate
+from evo_agents.hub.server import merge_gate
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.changes.repository.job import night_paused

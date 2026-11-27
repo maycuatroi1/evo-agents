@@ -117,10 +117,11 @@ from evo_agents.hub.credentials import (
     matches,
     normalize_origin,
 )
-from evo_agents.hub.server import audit, gateway_leases, gateway_sync, lease_autonomy, run_access
+from evo_agents.hub.server import audit, gateway_leases, gateway_sync, run_access
 from evo_agents.hub.server.account_choice import choose_accounts, fail_over_relogin
 from evo_agents.hub.server.account_refresh import refresh_due
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.autonomy.service import lease as lease_autonomy
 from evo_agents.hub.server.credential_models import (
     Credentials,
     GivenBack,

@@ -1,4 +1,4 @@
-"""K5 and K6 at the merge queue and the deploy to PROD (``evo_agents.hub.server.autonomy_gates``), as criterion a6 of
+"""K5 and K6 at the merge queue and the deploy to PROD (``evo_agents.hub.server.autonomy.service.gates``), as criterion a6 of
 plan autonomy-levels names them: the hub reads the mode of the principal of the run that made a merge request before it
 merges it (K5) and before it deploys its merge to PROD (K6). deny leaves the act undone with a reason that names the
 class, the mode and the source, and writes the audit row ``autonomy.refused``; ask opens a decision of category

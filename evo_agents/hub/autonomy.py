@@ -1,6 +1,6 @@
 """The autonomy policy of a project (plan gitlab-merge-queue, criterion a2): what the hub may do on its own in the
 project's repos, first of all whether it merges their merge requests on GitLab, as keys an admin of the project
-writes and the hub keeps as revisions (``evo_agents.hub.server.autonomy_policies``, table autonomy_policies).
+writes and the hub keeps as revisions (``evo_agents.hub.server.autonomy.service.policies``, table autonomy_policies).
 
 A body is an object of sections. ``merge``, ``judge``, ``breaker``, ``audit``, ``loop``, ``context`` and ``routing``
 hold the keys of KEYS; ``repos`` maps a repo of the project to the keys of REPO_KEYS. A body holds only the keys its

@@ -16,11 +16,14 @@ holds whichever way the route is reached; a read (GET, HEAD, OPTIONS) is never h
 
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 
 from evo_agents.hub.autonomy_levels import ACTING, ASK, refusal
-from evo_agents.hub.server import audit, autonomy_ledger, run_autonomy
-from evo_agents.hub.server.autonomy_ledger import ALLOWED, REFUSED
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.autonomy.service.ledger import ALLOWED, REFUSED
+from evo_agents.hub.server.base.errors import Forbidden
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 READS = ("GET", "HEAD", "OPTIONS")
@@ -55,7 +58,7 @@ async def held(request: Request, user: Principal, klass: str) -> None:
             target=f"run:{run_id} {klass} {request.method} {route} mode={choice.mode} source={choice.source}",
         )
     why = f"{request.method} {route}: {refusal(klass, choice.mode, choice)}"
-    raise HTTPException(403, f"{why}; {ASK_HINT}" if choice.mode == ASK else why)
+    raise Forbidden(f"{why}; {ASK_HINT}" if choice.mode == ASK else why)
 
 
 async def _k8(request: Request, user: CurrentUser) -> None:

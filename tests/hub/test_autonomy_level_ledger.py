@@ -18,8 +18,8 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import autonomy_gates
 from evo_agents.hub.server.agent_accounts.service import mask as agent_account_mask
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from tests.hub.live import sql
 from tests.hub.test_autonomy_level_lease import autonomy_worker, github_repos, pref, secrets_of
 from tests.hub.test_autonomy_level_routes import SECRET, as_run  # noqa: F401 (as_run is a fixture)

@@ -1,4 +1,4 @@
-"""The principal and the autonomy snapshot of a chat run (``evo_agents.hub.server.run_autonomy.of_message``), as
+"""The principal and the autonomy snapshot of a chat run (``evo_agents.hub.server.autonomy.service.runs.of_message``), as
 criterion a4 of plan autonomy-levels names it: the person who wrote the message that mentions the agent; for an agent
 type that runs as a member, both, the stricter of them (an intern who mentions an agent run as their lead keeps the
 intern's level); for a mention by an agent, the principal of that agent's run, within its snapshot.
@@ -16,7 +16,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import run_autonomy
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from tests.hub.live import sql
 from tests.hub.test_autonomy_level_runs import on_db, pref, user_id
 from tests.hub.test_chat_runs import (  # noqa: F401 (app_key, client and hub are fixtures)

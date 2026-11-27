@@ -27,8 +27,9 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from evo_agents.hub.server import route_autonomy, work_observe
+from evo_agents.hub.server import work_observe
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute

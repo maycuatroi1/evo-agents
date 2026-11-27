@@ -1,6 +1,6 @@
 """The gates of autonomy (plan autonomy-levels, criterion a6): before the hub merges, deploys or releases for a run, it
 reads the mode of the run's principal for the class of the act, the stricter of the run's snapshot and the value now
-(``run_autonomy.recheck``), and acts on it.
+(``autonomy.service.runs.recheck``), and acts on it.
 
 - auto: the hub acts.
 - notify: the hub acts, then tells the principal (``told``, the notice ``autonomy``).
@@ -23,17 +23,16 @@ decision asked before schema 0184 has none and holds as it did.
 
 Every refusal names the class, the mode and its source, and writes the audit row ``autonomy.refused`` once for each
 act refused; the ask writes ``autonomy.asked``, the notice ``autonomy.notified``. Every verdict, whatever it is, goes
-to the ledger S1 (``autonomy_ledger``).
+to the ledger S1 (``autonomy.service.ledger``).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import exists, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import approval_heads, autonomy_levels, runs, tables
+from evo_agents.hub import approval_heads, autonomy_levels, runs
 from evo_agents.hub.autonomy_levels import (
     ACTING,
     ASK,
@@ -45,8 +44,11 @@ from evo_agents.hub.autonomy_levels import (
     Choice,
     refusal,
 )
-from evo_agents.hub.server import audit, autonomy_ledger, principals, run_autonomy
-from evo_agents.hub.server.autonomy_ledger import ACTED, ASKED, REFUSED
+from evo_agents.hub.server import audit, principals
+from evo_agents.hub.server.autonomy.repository import gates as store
+from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.autonomy.service.ledger import ACTED, ASKED, REFUSED
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 APPROVE, REFUSE = "approve", "refuse"
@@ -102,8 +104,7 @@ async def check(
     found = await run_autonomy.recheck(conn, run_id, repo=repo)
     if found is None:
         return Verdict(True)
-    r = tables.runs
-    row = (await conn.execute(select(r.c.principal_id, r.c.project_id).where(r.c.id == run_id))).one()
+    row = await store.principal_of(conn, run_id)
     choice = found.classes[klass]
     mode = mode_of(choice, klass, risk)
     said = Verdict(True, mode, None, False, row.principal_id, row.project_id, run_id, klass)
@@ -120,10 +121,8 @@ async def check(
 
 async def _refuse(conn: AsyncConnection, said: Verdict, reason: str, key: str) -> Verdict:
     """The refusal ``reason``, audited once for the act ``key``."""
-    a = tables.audit
     target = f"run:{said.run_id} {said.klass} {key} mode={said.mode}"
-    seen = exists().where(a.c.action == audit.AUTONOMY_REFUSED, a.c.target == target)
-    if not (await conn.execute(select(seen))).scalar_one():
+    if not await store.refused_before(conn, target):
         await audit.record(
             conn,
             actor_id=said.principal_id,
@@ -140,23 +139,16 @@ async def _ask(
 ) -> Verdict:
     """Ask the principal, or read the answer of the decision asked before; one asked for another head or scope than
     ``approval``'s is left behind, cancelled while open, and the question asked again."""
-    d = tables.decisions
-    query = (
-        select(d.c.id, d.c.state, d.c.answer_option, d.c.approval)
-        .where(d.c.run_id == said.run_id, d.c.category == runs.AUTONOMY_DECISION_CATEGORY, d.c.step_key == key)
-        .order_by(d.c.id.desc())
-        .limit(1)
-    )
-    found = (await conn.execute(query)).one_or_none()
+    found = await store.last_decision(conn, said.run_id, key)
     head, scope = (approval or {}).get("head"), (approval or {}).get("scope")
     if found is not None and approval is not None and not approval_heads.holds(found.approval, head, scope):
         if found.state == "open":
-            await conn.execute(update(d).values(state="cancelled").where(d.c.id == found.id, d.c.state == "open"))
+            await store.cancel_open(conn, found.id)
         found = None
     if found is not None and found.state == "answered":
         if found.answer_option == APPROVE:
             return Verdict(True, ASK, None, False, said.principal_id, said.project_id, said.run_id, said.klass)
-        why = f"{what}: the principal refused it in decision #{found.id}; {refusal(said.klass, ASK, choice)}"
+        why = f"{what}: the principal refused it in decision #{found.id}; {refusal(said.klass, ASK, choice)}"  # pyright: ignore[reportArgumentType]
         return await _refuse(conn, said, why, key)
     decision_id = found.id if found is not None and found.state not in AGAIN else None
     if decision_id is None:
@@ -170,19 +162,18 @@ async def _ask(
 async def _open(
     conn: AsyncConnection, said: Verdict, choice: Choice, key: str, what: str, approval: dict | None = None
 ) -> int:
-    d = tables.decisions
     question = runs.clip(f"May the hub {what} for run {said.run_id}?", runs.MAX_QUESTION_CHARS)
     bound = approval_heads.line(approval)
     context = runs.clip(
-        f"{refusal(said.klass, ASK, choice)}. The hub acts once you approve, and leaves it undone if you refuse."
+        f"{refusal(said.klass, ASK, choice)}. The hub acts once you approve, and leaves it undone if you refuse."  # pyright: ignore[reportArgumentType]
         + (f" {bound}" if bound else ""),
         runs.MAX_DECISION_CONTEXT_BYTES,
     )
-    asked = await principals.asked_of(conn, said.run_id)
+    asked = await principals.asked_of(conn, said.run_id)  # pyright: ignore[reportArgumentType]
     values = {"run_id": said.run_id, "project_id": said.project_id, "category": runs.AUTONOMY_DECISION_CATEGORY}
     values["approval"] = approval
-    inserted = insert(d).values(**values, step_key=key, question=question, context=context, options=OPTIONS)
-    decision_id = (await conn.execute(inserted.values(asked_of=asked).returning(d.c.id))).scalar_one()
+    values.update(step_key=key, question=question, context=context, options=OPTIONS, asked_of=asked)
+    decision_id = await store.add_decision(conn, values)
     await NOTIFIER.notify(
         conn,
         user_id=asked,
@@ -210,7 +201,7 @@ async def told(conn: AsyncConnection, said: Verdict, key: str, title: str, body:
     they report to when they are an intern (``principals.told_to``), audited."""
     if not said.tells:
         return
-    for user_id in await principals.told_to(conn, said.principal_id):
+    for user_id in await principals.told_to(conn, said.principal_id):  # pyright: ignore[reportArgumentType]
         await NOTIFIER.notify(
             conn,
             user_id=user_id,
@@ -220,7 +211,7 @@ async def told(conn: AsyncConnection, said: Verdict, key: str, title: str, body:
             run_id=said.run_id,
             title=NOTIFIER.one_line(title),
             body=body
-            or f"{said.klass} ({CLASS_NAMES[said.klass]}) is notify for the run's principal: the hub acted, "
+            or f"{said.klass} ({CLASS_NAMES[said.klass]}) is notify for the run's principal: the hub acted, "  # pyright: ignore[reportArgumentType]
             "and tells you.",
         )
     await audit.record(
@@ -242,8 +233,7 @@ async def tell_after(
     found = await run_autonomy.recheck(conn, run_id, repo=repo)
     if found is None or mode_of(found.classes[klass], klass, risk) != NOTIFY:
         return
-    r = tables.runs
-    row = (await conn.execute(select(r.c.principal_id, r.c.project_id).where(r.c.id == run_id))).one()
+    row = await store.principal_of(conn, run_id)
     await told(conn, Verdict(True, NOTIFY, None, False, row.principal_id, row.project_id, run_id, klass), key, title)
 
 
