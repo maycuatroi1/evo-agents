@@ -555,6 +555,51 @@ Other modules import the service and the models, never the routes. A new module 
 four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-work-cards-layers"
+name = "The work card of a trace goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.work_cards"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.work_cards a route handler only passes the request's parts and the app's engine to a \
+public function of the service, which checks the caller and decides what the card shows; the repository (CardStore) \
+reads and writes system_traces; the models import none of them. Move the code that reaches up into the layer that \
+needs it: a check or a message into the service, a query into the repository, a shape or a refusal into the models. \
+Other modules import the service and the models (through the package), never the routes. A new module of the \
+package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-member-tasks-layers"
+name = "A member's task run goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.member_tasks"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.member_tasks a route handler only passes the request's parts and the app's engine to a \
+public function of the service, which checks the caller and dispatches the task; the repository (TaskStore) reads \
+and writes runs and member_tasks; the models import none of them. Move the code that reaches up into the layer that \
+needs it: a check or a message into the service, a query into the repository, a shape or a limit into the models. \
+Other modules import the service and the models, never the routes. A new module of the package goes into one of \
+the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-doc-versions-layers"
+name = "The versions of a document go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.doc_versions"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.doc_versions a route handler only passes the request's parts and the app's engine to a \
+public function of the service, which checks the reader and keeps the versions of the document; the repository \
+(VersionStore) reads the files of a chat or a run; the models import none of them. Move the code that reaches up \
+into the layer that needs it: a check into the service, a query into the repository, a shape or a limit into the \
+models. Other modules import the service and the models, never the routes. A new module of the package goes into \
+one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "hub-plan-systems-layers"
 name = "A plan handed to a system goes from its routes to its service to its repository, never back"
 type = "layers"

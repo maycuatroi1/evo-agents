@@ -141,16 +141,16 @@ def runs() -> Routers:
 def run_reads() -> Routers:
     from evo_agents.hub.server import (
         dlp_policy,
-        doc_versions,
         kg_worker,
         local_runs,
-        member_tasks,
         overview,
         today,
     )
     from evo_agents.hub.server.attachments import routes as attachments
     from evo_agents.hub.server.curator.routes import charter as curator_routes
     from evo_agents.hub.server.decisions import routes as decisions
+    from evo_agents.hub.server.doc_versions import routes as doc_versions
+    from evo_agents.hub.server.member_tasks import routes as member_tasks
     from evo_agents.hub.server.outputs import routes as outputs
     from evo_agents.hub.server.proposals.routes import reads as proposal_reads
     from evo_agents.hub.server.proposals.routes import record as proposals
@@ -269,7 +269,6 @@ def members() -> Routers:
         run_leases,
         run_waits,
         task_dispatch,
-        work_cards,
     )
     from evo_agents.hub.server.accounts.routes import accounts as account_routes
     from evo_agents.hub.server.accounts.routes import pools as account_pools
@@ -318,6 +317,7 @@ def members() -> Routers:
     from evo_agents.hub.server.systems.routes import ops as system_ops
     from evo_agents.hub.server.systems.routes import systems as agent_systems
     from evo_agents.hub.server.triage import routes as triage_routes
+    from evo_agents.hub.server.work_cards import routes as work_cards
 
     return (
         secret_routes.router,

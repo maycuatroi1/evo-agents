@@ -1,95 +1,28 @@
-"""The versions of a document in a chat or a run (docs/hub.md, section "Versions of a document"): every file of one
-name that its messages carry, oldest first, so the web's document panel shows what each version changed even when the
-messages of the older ones are not on the page it loaded.
-
-- GET /v1/chats/{id}/doc-versions?name=, to a member of the chat (``chats.service.access``): the files people attached to its
-  messages and the outputs its agents' messages carry, threads included, of the messages whose label the caller
-  clears (``chats.service.access.label_reader``), in the order of the messages, a message's attachments before its outputs;
-- GET /v1/projects/{p}/runs/{id}/doc-versions?name=, to the run's readers (``views.readable_run``, by sink): the files
-  of the messages its inbox took and the outputs of the run, in the order they came.
-
-A document is named as the web names it (``docKey`` of web/src/components/chats/doc-model.ts): the last part of a
-file's name after a slash, without case, so an output kept under a path is a version of the file attached under its
-own name. Each version carries the URL of its bytes on the route that serves it to the same reader
-(``attachments.routes``, ``outputs.routes``). Anyone else gets the 404 of a chat or run that does not exist. Nothing here
-is stored: the versions are read from ``attachments``, ``run_inbox_attachments``, ``run_outputs`` and
-``run_output_links``.
-"""
+"""The versions of a document in a chat (``chat_versions``, ``in_chat``) and in a run (``run_versions``, ``in_run``):
+the files the repository reads (``VersionStore``) kept by their key and what the reader may read, each with the URL of
+its bytes and its author, oldest first."""
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, Literal
+from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import outputs, tables
-from evo_agents.hub.server.base.models import ProjectName
-from evo_agents.hub.server.chats.models.members import ChatId
+from evo_agents.hub import outputs
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.views import HUB_AUTHOR, ChatAuthor, agent_author, person_author
 from evo_agents.hub.server.chats.repository.views import profiles_by_id
 from evo_agents.hub.server.chats.service.access import chat_access, label_reader
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.outputs.models import Sink, chat_url, run_url
-from evo_agents.hub.server.runs.models import RunId
+from evo_agents.hub.server.doc_versions.models import ATTACHED, DocVersion, DocVersions, doc_key
+from evo_agents.hub.server.doc_versions.repository import STORE
+from evo_agents.hub.server.outputs.models import chat_url, run_url
 from evo_agents.hub.server.runs.service.views import readable_run
-from evo_agents.hub.server.security import CurrentUser
-
-ATTACHED = "attached"
-MAX_QUERY_CHARS = 1024  # an output's name may carry its path below .evo-run/outputs/
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422)}
-DocName = Annotated[
-    str,
-    Query(
-        min_length=1,
-        max_length=MAX_QUERY_CHARS,
-        description="the document's name; only its last part after a slash counts, without case",
-    ),
-]
-
-chat_router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
-router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
-
-
-class DocVersion(BaseModel):
-    source: Literal[(ATTACHED, *outputs.SOURCES)] = Field(
-        description="attached: a file a person attached to a message; sent, tool or outputs: an output of a run"
-    )
-    id: int = Field(description="the attachment's id, or the output's: the two are counted apart")
-    name: str = Field(description="the file's name; an output's may carry its path below .evo-run/outputs/")
-    media_type: str
-    viewer: Literal[outputs.VIEWERS] = Field(description="what the web opens it with; none offers a download only")
-    size: int = Field(description="bytes")
-    sha256: str
-    caption: str | None = Field(description="an output's caption; null for an attachment")
-    created_at: datetime = Field(description="when its message was sent, or when the run sent the output")
-    url: str = Field(description="where this hub answers its bytes to the reader of this list")
-    message_id: int | None = Field(description="the chat message that carries it; null for none")
-    seq: int | None = Field(description="the chat event of that message; null outside a chat")
-    thread_root_id: int | None = Field(description="the first message of that message's thread; null for none")
-    run_id: int | None = Field(description="the run that wrote it, for an output; null for an attachment")
-    author: ChatAuthor | None = Field(
-        description="who sent it: the person who attached it, or the agent of the chat message that carries an "
-        "output; null for an output in a run's list, which the run's agent wrote"
-    )
-
-
-class DocVersions(BaseModel):
-    key: str = Field(description="the name the versions share: the last part after a slash, lower case")
-    versions: list[DocVersion] = Field(description="oldest first; those the reader may not read left out")
-
-
-def doc_key(name: str) -> str:
-    """The key of the document ``name`` is a version of, as the web's ``docKey`` has it."""
-    name = name.strip()
-    return (name[name.rfind("/") + 1 :] or name).lower()
+from evo_agents.hub.server.security import Principal
 
 
 def _version(row, source: str, url: str, **found) -> DocVersion:
+    shown: dict[str, Any] = {"message_id": None, "seq": None, "thread_root_id": None, "run_id": None, "author": None}
     return DocVersion(
         source=source,
         id=row.id,
@@ -100,51 +33,15 @@ def _version(row, source: str, url: str, **found) -> DocVersion:
         sha256=row.sha256,
         caption=getattr(row, "caption", None),
         url=url,
-        **({"message_id": None, "seq": None, "thread_root_id": None, "run_id": None, "author": None} | found),
+        **(shown | found),
     )
 
 
-def _file_columns(table) -> tuple:
-    return (table.c.id, table.c.name, table.c.media_type, table.c.size, table.c.sha256)
+def _oldest_first(found: list[tuple[tuple, DocVersion]]) -> list[DocVersion]:
+    return [version for _, version in sorted(found, key=lambda pair: pair[0])]
 
 
 # A chat
-
-
-def _chat_message_columns() -> tuple:
-    cm, u = tables.chat_messages, tables.users
-    return (
-        cm.c.id.label("message_id"),
-        cm.c.seq,
-        cm.c.thread_root_id,
-        cm.c.label,
-        cm.c.created_at.label("sent_at"),
-        cm.c.author_profile_id,
-        u.c.login.label("author_login"),
-        u.c.github_id.label("author_github_id"),
-    )
-
-
-async def _chat_rows(conn: AsyncConnection, chat_id: int) -> tuple[list, list]:
-    """(attachments, outputs): every file the messages of chat ``chat_id`` carry, each with its message."""
-    a, cm, u = tables.attachments, tables.chat_messages, tables.users
-    o, k = tables.run_outputs, tables.run_output_links
-    attached = (
-        select(*_file_columns(a), *_chat_message_columns())
-        .select_from(a.join(cm, cm.c.id == a.c.chat_message_id).outerjoin(u, u.c.id == cm.c.author_user_id))
-        .where(cm.c.chat_id == chat_id)
-    )
-    carried = (
-        select(*_file_columns(o), o.c.caption, o.c.run_id, o.c.created_at, *_chat_message_columns())
-        .select_from(
-            k.join(o, o.c.id == k.c.output_id)
-            .join(cm, cm.c.id == k.c.chat_message_id)
-            .outerjoin(u, u.c.id == cm.c.author_user_id)
-        )
-        .where(cm.c.chat_id == chat_id)
-        .add_columns(o.c.source)
-    )
-    return (await conn.execute(attached)).all(), (await conn.execute(carried)).all()
 
 
 def _chat_author(row, profiles) -> ChatAuthor:
@@ -155,9 +52,18 @@ def _chat_author(row, profiles) -> ChatAuthor:
     return HUB_AUTHOR
 
 
+def _in_chat(row, profiles) -> dict:
+    return {
+        "message_id": row.message_id,
+        "seq": row.seq,
+        "thread_root_id": row.thread_root_id,
+        "author": _chat_author(row, profiles),
+    }
+
+
 async def chat_versions(conn: AsyncConnection, user_id: int, chat_id: int, key: str) -> list[DocVersion]:
     """The versions of document ``key`` in chat ``chat_id`` that person ``user_id`` reads, oldest first."""
-    attached, carried = await _chat_rows(conn, chat_id)
+    attached, carried = await STORE.chat_rows(conn, chat_id)
     attached = [row for row in attached if doc_key(row.name) == key]
     carried = [row for row in carried if doc_key(row.name) == key]
     reader = await label_reader(conn, user_id, [row.label for row in (*attached, *carried)])
@@ -179,24 +85,13 @@ async def chat_versions(conn: AsyncConnection, user_id: int, chat_id: int, key: 
             row, row.source, url, created_at=row.created_at, run_id=row.run_id, **_in_chat(row, profiles)
         )
         found.append(((row.seq, 1, row.id), version))
-    return [version for _, version in sorted(found, key=lambda pair: pair[0])]
+    return _oldest_first(found)
 
 
-def _in_chat(row, profiles) -> dict:
-    return {
-        "message_id": row.message_id,
-        "seq": row.seq,
-        "thread_root_id": row.thread_root_id,
-        "author": _chat_author(row, profiles),
-    }
-
-
-@chat_router.get("/{chat_id}/doc-versions", response_model=DocVersions, responses=REFUSALS)
-async def chat_doc_versions(request: Request, chat_id: ChatId, user: CurrentUser, name: DocName) -> DocVersions:
-    """Every version of the document ``name`` in the chat, threads included, oldest first: the files people attached
-    and the outputs agents sent under that name, of the messages the caller reads."""
+async def in_chat(engine: AsyncEngine, user: Principal, chat_id: int, name: str) -> DocVersions:
+    """The versions of the document ``name`` in chat ``chat_id``, to ``user``, a member of it."""
     key = doc_key(name)
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(engine) as conn:
         await chat_access(conn, user, chat_id)
         versions = await chat_versions(conn, user.user_id, chat_id, key)
     return DocVersions(key=key, versions=versions)
@@ -208,19 +103,10 @@ async def chat_doc_versions(request: Request, chat_id: ChatId, user: CurrentUser
 async def run_versions(conn: AsyncConnection, project: str, run_id: int, key: str) -> list[DocVersion]:
     """The versions of document ``key`` in run ``run_id`` of ``project``, oldest first: the files of the messages its
     inbox took and the outputs of the run."""
-    a, k, i, u = tables.attachments, tables.run_inbox_attachments, tables.run_inbox, tables.users
-    o = tables.run_outputs
-    attached = (
-        select(*_file_columns(a), i.c.created_at.label("sent_at"), u.c.login, u.c.github_id, a.c.chat_message_id)
-        .select_from(
-            k.join(a, a.c.id == k.c.attachment_id).join(i, i.c.id == k.c.inbox_id).join(u, u.c.id == i.c.sent_by)
-        )
-        .where(i.c.run_id == run_id)
-    )
-    written = select(*_file_columns(o), o.c.caption, o.c.source, o.c.created_at).where(o.c.run_id == run_id)
+    attached, written = await STORE.run_rows(conn, run_id)
     found: list[tuple[tuple, DocVersion]] = []
     seen: set[int] = set()
-    for row in sorted((await conn.execute(attached)).all(), key=lambda row: (row.sent_at, row.id)):
+    for row in sorted(attached, key=lambda row: (row.sent_at, row.id)):
         if doc_key(row.name) != key or row.id in seen:  # a file two inbox rows took is one version
             continue
         seen.add(row.id)
@@ -228,23 +114,22 @@ async def run_versions(conn: AsyncConnection, project: str, run_id: int, key: st
         author = person_author(row.login, row.github_id)
         version = _version(row, ATTACHED, url, created_at=row.sent_at, message_id=row.chat_message_id, author=author)
         found.append(((row.sent_at, 0, row.id), version))
-    for row in (await conn.execute(written)).all():
+    for row in written:
         if doc_key(row.name) == key:
             version = _version(
                 row, row.source, run_url(project, run_id, row.id), created_at=row.created_at, run_id=run_id
             )
             found.append(((row.created_at, 1, row.id), version))
-    return [version for _, version in sorted(found, key=lambda pair: pair[0])]
+    return _oldest_first(found)
 
 
-@router.get("/{project}/runs/{run_id}/doc-versions", response_model=DocVersions, responses=REFUSALS)
-async def run_doc_versions(
-    request: Request, project: ProjectName, run_id: RunId, user: CurrentUser, name: DocName, sink: Sink = None
+async def in_run(
+    engine: AsyncEngine, user: Principal, project: str, run_id: int, name: str, sink: str | None
 ) -> DocVersions:
-    """Every version of the document ``name`` in the run, oldest first: the files of the messages sent to its agent
-    and the outputs of the run under that name, for the run's readers."""
+    """The versions of the document ``name`` in run ``run_id`` of ``project``, to ``user``, a reader of the run through
+    ``sink``."""
     key = doc_key(name)
-    async with request.app.state.engine.begin() as conn:
+    async with UnitOfWork(engine) as conn:
         await readable_run(conn, user, project, run_id, sink)
         versions = await run_versions(conn, project, run_id, key)
     return DocVersions(key=key, versions=versions)
