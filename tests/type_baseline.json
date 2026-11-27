@@ -1,31 +1,5 @@
 {
     "files": {
-        "./evo_agents/core_plugins/builder/opportunity_changes.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 58,
-                    "endColumn": 60,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 64,
-                    "endColumn": 66,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 60,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/core_plugins/builder/plugin_changes.py": [
             {
                 "code": "reportArgumentType",
@@ -10848,8 +10822,8 @@
             {
                 "code": "reportGeneralTypeIssues",
                 "range": {
-                    "startColumn": 45,
-                    "endColumn": 50,
+                    "startColumn": 49,
+                    "endColumn": 54,
                     "lineCount": 1
                 }
             }
@@ -11032,56 +11006,6 @@
                 "range": {
                     "startColumn": 25,
                     "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 63,
-                    "endColumn": 74,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 38,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/plugins/runtimes.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 55,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 34,
                     "lineCount": 1
                 }
             }

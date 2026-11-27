@@ -11,9 +11,10 @@ go on while one still does. When the host has a hub, it asks the hub for a fresh
 each start (``mint``) and puts it in ``initialize``, so a token lives as long as the backend it was made for and an
 unchanged plugin is never restarted for a new one. ``call`` sends one request and, on ``BackendTimeout`` or
 ``BackendGone``, stops the backend and schedules a restart, raising ``BackendUnavailable`` so the caller answers an
-error within the timeout rather than waiting. Restarts back off (``BACKOFF``), capped at ``MAX_BACKOFF``; ``status``
-says the state, the process id, how many restarts, since when it runs, the last failure and when it is tried again,
-for an admin to read. Whatever a start raises is a failed start that backs off, a bug of the host's included.
+error within the timeout rather than waiting. Restarts back off (``RESTARTS``, a ``RetryPolicy``: ``BACKOFF``, then
+``MAX_BACKOFF``); ``status`` says the state, the process id, how many restarts, since when it runs, the last failure
+and when it is tried again, for an admin to read. Whatever a start raises is a failed start that backs off, a bug of
+the host's included.
 
 A backend starts only under a user of its own, which the host can give it as root (``environment.identity``). A host
 that is not root refuses to start one, unless it was made with ``allow_shared_user`` for a developer's machine: then
@@ -37,7 +38,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from evo_agents.infra.retry import Steps
+from evo_agents.infra.retry import RetryPolicy, Steps
 from evo_agents.plugins.environment import (
     MAX_PLUGIN_ID,
     Identity,
@@ -70,6 +71,7 @@ log = logging.getLogger(__name__)
 
 BACKOFF = (1.0, 2.0, 5.0, 15.0, 30.0)  # seconds before the n-th restart
 MAX_BACKOFF = 60.0
+RESTARTS = RetryPolicy(Steps(BACKOFF, MAX_BACKOFF), tries=None)  # of a backend, and the kills of a retired one's user
 CALL_TIMEOUT = 30.0  # seconds one call to a backend may take
 INIT_TIMEOUT = 30.0
 KILL_INTERVAL = 0.5  # seconds between kills of a plugin's user while its placing winds down
@@ -139,10 +141,6 @@ class BackendStatus:
             "error": self.error,
             "retry_at": self.retry_at,
         }
-
-
-def _backoff(restarts: int) -> float:
-    return Steps(BACKOFF, MAX_BACKOFF)(restarts)
 
 
 async def _clean(name: str, stopping: Awaitable[bool]) -> bool:
@@ -347,7 +345,7 @@ class Backend:
         self.status.pid = None
         self.status.started_at = None
         self.status.error = error[:MAX_ERROR]
-        self.status.retry_at = time.time() + _backoff(self.status.restarts - 1)
+        self.status.retry_at = time.time() + RESTARTS.delay(self.status.restarts - 1)
         log.warning(
             "plugin backend scheduled for restart",
             extra={"contribution": self.name, "restarts": self.status.restarts, "error": error[:200]},
@@ -471,7 +469,7 @@ class Host:
         clean = await _clean(backend.name, backend.stop())
         try:
             while not clean and owner is not None:
-                wait = _backoff(tries)
+                wait = RESTARTS.delay(tries)
                 tries += 1
                 self.lingering[backend.name] = BackendStatus(
                     backend.name,

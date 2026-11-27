@@ -12,7 +12,7 @@ from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.plugins import compat
 from evo_agents.plugins.agent_packs import pack_name
 from evo_agents.plugins.manifest import PLUGIN_ID
-from evo_agents.plugins.runtimes import CONTRIBUTION
+from evo_agents.plugins.names import CONTRIBUTION
 
 POINT = "agent_packs"
 NOTHING = "nothing changed"

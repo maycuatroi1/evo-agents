@@ -1,13 +1,13 @@
 """What a proposal of @builder changes (``evo_agents.core_plugins.builder.proposals``): the kinds of proposals, a
-``Change`` and the ``Target`` it applies to, and the ``Kind`` each kind implements, which ``proposals.KINDS`` maps the
-kinds to: where a change applies, how it is checked, applied and rolled back. A module ``*_changes`` holds the
-``Kind`` of its kinds.
+``Change`` and the ``Target`` it applies to, and the ``ProposalKind`` each kind is a subclass of, which
+``proposals.KINDS`` maps the kinds to: where a change applies, how it is checked, applied and rolled back. A module
+``*_changes`` holds the kinds of its proposals; ``records`` the base of a goal's, a problem's and an opportunity's.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -69,9 +69,8 @@ class Target:
     schema: dict | None = None
     profile: Profile | None = None
     policy: dict | None = None  # the body of the policy's revision now, for a policy
-    goal: dict | None = None  # the fields of the goal now as its route names them, {} for a new one, for a goal
-    problem: dict | None = None  # the same of the problem now, for a problem
-    opportunity: dict | None = None  # the same of the opportunity now, for an opportunity
+    # the fields of the goal, problem or opportunity now as its route names them, {} for a new one
+    record: dict | None = None
     names: dict = field(default_factory=dict)  # what the hub adds to the target it keeps: a goal's or problem's code
 
 
@@ -95,16 +94,58 @@ class Writing:
         return f"proposal {self.proposal_id} of @builder: {self.change.summary}"
 
 
-@dataclass(frozen=True)
-class Kind:
-    """What a kind of proposal does: ``locate`` where a change applies as it is now (``lock``: for a write), ``check``
-    it as the next version of its target (ProposalError naming what is wrong), ``apply`` it and ``roll_back`` an
-    applied one, each giving the version it wrote."""
+class ProposalKind:
+    """What a kind of proposal does, as a Template Method: ``locate`` where a change applies as it is now (``lock``:
+    for a write), ``check`` it as the next version of its target (ProposalError naming what is wrong), ``apply`` it and
+    ``roll_back`` an applied one, each giving the version it wrote.
 
-    locate: Callable[[AsyncConnection, ProjectAccess, Change, bool], Awaitable[Target]]
-    check: Callable[[AsyncConnection, ProjectAccess, Change, Target, str], Awaitable[None]]
-    apply: Callable[[Writing], Awaitable[int]]
-    roll_back: Callable[[Writing], Awaitable[int]]
+    ``check`` refuses the ``problems`` a kind finds; ``apply`` writes the ``body`` the change makes of its target, and
+    ``roll_back`` writes the body version ``applied - 1`` had again (``restored``), each through the kind's ``write``.
+    A kind fills in ``locate``, ``write`` and the hooks it needs, and overrides a step whose shape is its own."""
+
+    async def locate(self, conn: AsyncConnection, access: ProjectAccess, change: Change, lock: bool) -> Target:
+        raise NotImplementedError
+
+    async def body(
+        self, conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
+    ) -> Any:
+        """What ``change`` makes of ``target``, as ``write`` takes it; ProposalError naming what is wrong with it."""
+        return change.sets
+
+    async def problems(
+        self, conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
+    ) -> list[str]:
+        """Each thing wrong with ``change`` as the next version of ``target``."""
+        return []
+
+    async def check(
+        self, conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
+    ) -> None:
+        refuse(await self.problems(conn, access, change, target, hub_version))
+
+    async def write(self, w: Writing, body: Any, note: str, via: str) -> int:
+        """Write ``body`` as the next version of the target of ``w`` while it is at ``w.version``; that version."""
+        raise NotImplementedError
+
+    async def apply(self, w: Writing) -> int:
+        body = await self.body(w.conn, w.access, w.change, w.target, w.hub_version)
+        return await self.write(w, body, w.note, f" proposal={w.proposal_id}")
+
+    async def restored(self, w: Writing, before: int) -> tuple[Any, str]:
+        """The body version ``before`` of the target had, and the note of the revision writing it again;
+        ProposalError (409) when there is none."""
+        raise NotImplementedError
+
+    async def roll_back(self, w: Writing) -> int:
+        """The target's next version, a copy of version ``applied - 1``."""
+        before = w.version - 1
+        body, note = await self.restored(w, before)
+        return await self.write(w, body, note, f" proposal={w.proposal_id} copy-of={before}")
+
+
+def copy_note(w: Writing, before: int) -> str:
+    """The note of a revision rolling the proposal of ``w`` back to a copy of revision ``before``."""
+    return f"rollback of proposal {w.proposal_id} of @builder: a copy of revision {before}"
 
 
 def refuse(problems: list[str]) -> None:

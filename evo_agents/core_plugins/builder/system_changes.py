@@ -1,5 +1,5 @@
 """The proposals of @builder of kind ``system`` (``proposals``; plan multi-agent-systems, criterion a11): where one
-applies, how it is checked, applied and rolled back, as its ``Kind``.
+applies, how it is checked, applied and rolled back, as its ``SystemKind``.
 
 A member describes a whole agent system, or a change of one, to @builder in the designer's chat; the agent answers
 with a proposal that names the system (``target.system``, its slug) and sets:
@@ -21,6 +21,7 @@ made; the agents and graphs it made stay, since another system may use them by t
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -28,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
-from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing, refuse, said_by_pydantic
+from evo_agents.core_plugins.builder.kinds import Change, ProposalKind, Target, Writing, refuse, said_by_pydantic
 from evo_agents.hub import kg_named_graphs, system_spec, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.agents.models.profiles import AgentCreate
@@ -141,15 +142,6 @@ def _spec_problems(problems: list[system_spec.Problem]) -> list[str]:
     return [f"spec.{p.path}: {p.message}" if p.path else f"spec: {p.message}" for p in system_spec.errors(problems)]
 
 
-async def _locate(conn: AsyncConnection, access: ProjectAccess, change: Change, lock: bool) -> Target:
-    """System ``target.system`` as it is now, or a new system of that slug when the project has none."""
-    slug = _slug(change)
-    held = await system_store.one(conn, access.project_id, slug, lock=lock)
-    if held is None:
-        return Target(f"a new agent system {slug} of project {access.name}", 0, {})
-    return Target(f"agent system {slug} of project {access.name}", held.revision, {"spec": held.spec})
-
-
 async def _taken(conn: AsyncConnection, handles: list[str]) -> set[str]:
     """Those of ``handles`` an agent of the hub, a deleted one included, or a project has already."""
     if not handles:
@@ -157,31 +149,6 @@ async def _taken(conn: AsyncConnection, handles: list[str]) -> set[str]:
     ap, p = tables.agent_profiles, tables.projects
     agents = set((await conn.execute(select(ap.c.handle).where(ap.c.handle.in_(handles)))).scalars())
     return agents | set((await conn.execute(select(p.c.name).where(p.c.name.in_(handles)))).scalars())
-
-
-async def _check(
-    conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
-) -> None:
-    spec_in, agents, graphs = parts(change)
-    refs = await system_store.refs(conn, access.project_id)
-    handles, kgs = _named(spec_in)
-    problems = [
-        f"agents: @{handle} is taken on this hub already: name it in the spec, or pick another handle"
-        for handle in sorted(await _taken(conn, [a.handle for a in agents]))
-    ]
-    problems += [f"agents: no node of the spec names @{a.handle}" for a in agents if a.handle not in handles]
-    problems += [
-        f"graphs: the project has a graph named {g['name']} already" for g in graphs if g["name"] in refs.graphs
-    ]
-    problems += [f"graphs: no kg node of the spec names {g['name']}" for g in graphs if g["name"] not in kgs]
-    if len(refs.graphs) + len(graphs) > kg_named_graphs.MAX_GRAPHS:
-        problems.append(f"graphs: a project holds at most {kg_named_graphs.MAX_GRAPHS} named graphs")
-    refuse(problems)
-    spec, found = agent_systems.checked(spec_in, _with_new(refs, agents, graphs), _slug(change))
-    problems = _spec_problems(found)
-    if not problems and not agents and not graphs and target.held.get("spec") == spec:
-        problems.append(f"{target.title} has this spec already: it changes nothing")
-    refuse(problems)
 
 
 async def _make_graph(w: Writing, graph: dict) -> None:
@@ -200,47 +167,6 @@ async def _make_graph(w: Writing, graph: dict) -> None:
         target=f"{w.access.name} graph={made.name} kind=create sources={len(made.sources)} proposal={w.proposal_id}",
         project_id=w.access.project_id,
     )
-
-
-async def _write(w: Writing, spec_in: dict) -> int:
-    """Write ``spec_in``, checked and pinned against the project now, as the system's next revision; that one."""
-    slug = _slug(w.change)
-    held = await system_store.one(w.conn, w.access.project_id, slug, lock=True)
-    refs = await system_store.refs(w.conn, w.access.project_id)
-    spec, found = agent_systems.checked(spec_in, refs, slug)
-    if problems := _spec_problems(found):
-        raise ProposalError(409, f"{'; '.join(problems)}; {NOTHING}")
-    if held is not None and held.spec == spec:
-        raise ProposalError(409, f"{w.target.title} has this spec already; {NOTHING}")
-    return await agent_systems.write_spec(w.conn, w.user, w.access, slug, spec, held, refs)
-
-
-async def _apply(w: Writing) -> int:
-    """Make the agents and the graphs, then write the spec as the system's next revision; that revision."""
-    spec_in, agents, graphs = parts(w.change)
-    for agent in agents:
-        try:
-            await create_profile(w.conn, w.user, w.access, agent, w.hub_version)
-        except HTTPException as exc:
-            raise ProposalError(exc.status_code, f"@{agent.handle}: {exc.detail}") from None
-    for graph in graphs:
-        await _make_graph(w, graph)
-    return await _write(w, spec_in)
-
-
-async def _roll_back(w: Writing) -> int:
-    """The system's next revision, a copy of revision ``applied - 1``; a system the proposal made is deleted (0)."""
-    slug, before = _slug(w.change), w.version - 1
-    held = await system_store.one(w.conn, w.access.project_id, slug, lock=True)
-    assert held is not None  # located at the applied revision
-    if before == 0:
-        await system_store.remove(w.conn, held.id)
-        await agent_systems.record(w.conn, w.user, w.access, audit.SYSTEM_DELETE, slug, held.revision)
-        return 0
-    spec = await system_store.revision_spec(w.conn, held.id, before)
-    if spec is None:
-        raise ProposalError(409, f"{w.target.title} has no revision {before}; {NOTHING}")
-    return await _write(w, spec)
 
 
 def described(change: Change, target: Target) -> str:
@@ -275,4 +201,80 @@ def described(change: Change, target: Target) -> str:
     return f"It {'; '.join(said)}." if said else "It changes the system's names, places or limits."
 
 
-KIND = Kind(_locate, _check, _apply, _roll_back)
+class SystemKind(ProposalKind):
+    """An agent system: its version is the system's revision, and approving makes the agents and the graphs the
+    proposal brings before it writes the spec."""
+
+    async def locate(self, conn: AsyncConnection, access: ProjectAccess, change: Change, lock: bool) -> Target:
+        """System ``target.system`` as it is now, or a new system of that slug when the project has none."""
+        slug = _slug(change)
+        held = await system_store.one(conn, access.project_id, slug, lock=lock)
+        if held is None:
+            return Target(f"a new agent system {slug} of project {access.name}", 0, {})
+        return Target(f"agent system {slug} of project {access.name}", held.revision, {"spec": held.spec})
+
+    async def check(
+        self, conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target, hub_version: str
+    ) -> None:
+        spec_in, agents, graphs = parts(change)
+        refs = await system_store.refs(conn, access.project_id)
+        handles, kgs = _named(spec_in)
+        problems = [
+            f"agents: @{handle} is taken on this hub already: name it in the spec, or pick another handle"
+            for handle in sorted(await _taken(conn, [a.handle for a in agents]))
+        ]
+        problems += [f"agents: no node of the spec names @{a.handle}" for a in agents if a.handle not in handles]
+        problems += [
+            f"graphs: the project has a graph named {g['name']} already" for g in graphs if g["name"] in refs.graphs
+        ]
+        problems += [f"graphs: no kg node of the spec names {g['name']}" for g in graphs if g["name"] not in kgs]
+        if len(refs.graphs) + len(graphs) > kg_named_graphs.MAX_GRAPHS:
+            problems.append(f"graphs: a project holds at most {kg_named_graphs.MAX_GRAPHS} named graphs")
+        refuse(problems)
+        spec, found = agent_systems.checked(spec_in, _with_new(refs, agents, graphs), _slug(change))
+        problems = _spec_problems(found)
+        if not problems and not agents and not graphs and target.held.get("spec") == spec:
+            problems.append(f"{target.title} has this spec already: it changes nothing")
+        refuse(problems)
+
+    async def write(self, w: Writing, body: Any, note: str, via: str) -> int:
+        """Write spec ``body``, checked and pinned against the project now, as the system's next revision; that one."""
+        slug = _slug(w.change)
+        held = await system_store.one(w.conn, w.access.project_id, slug, lock=True)
+        refs = await system_store.refs(w.conn, w.access.project_id)
+        spec, found = agent_systems.checked(body, refs, slug)
+        if problems := _spec_problems(found):
+            raise ProposalError(409, f"{'; '.join(problems)}; {NOTHING}")
+        if held is not None and held.spec == spec:
+            raise ProposalError(409, f"{w.target.title} has this spec already; {NOTHING}")
+        return await agent_systems.write_spec(w.conn, w.user, w.access, slug, spec, held, refs)
+
+    async def apply(self, w: Writing) -> int:
+        """Make the agents and the graphs, then write the spec as the system's next revision; that revision."""
+        spec_in, agents, graphs = parts(w.change)
+        for agent in agents:
+            try:
+                await create_profile(w.conn, w.user, w.access, agent, w.hub_version)
+            except HTTPException as exc:
+                raise ProposalError(exc.status_code, f"@{agent.handle}: {exc.detail}") from None
+        for graph in graphs:
+            await _make_graph(w, graph)
+        return await self.write(w, spec_in, w.note, f" proposal={w.proposal_id}")
+
+    async def roll_back(self, w: Writing) -> int:
+        """The system's next revision, a copy of revision ``applied - 1``; a system the proposal made is deleted
+        (0)."""
+        slug, before = _slug(w.change), w.version - 1
+        held = await system_store.one(w.conn, w.access.project_id, slug, lock=True)
+        assert held is not None  # located at the applied revision
+        if before == 0:
+            await system_store.remove(w.conn, held.id)
+            await agent_systems.record(w.conn, w.user, w.access, audit.SYSTEM_DELETE, slug, held.revision)
+            return 0
+        spec = await system_store.revision_spec(w.conn, held.id, before)
+        if spec is None:
+            raise ProposalError(409, f"{w.target.title} has no revision {before}; {NOTHING}")
+        return await self.write(w, spec, "", "")
+
+
+KIND = SystemKind()

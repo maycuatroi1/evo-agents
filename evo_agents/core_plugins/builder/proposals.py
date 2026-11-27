@@ -46,10 +46,10 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   hands @builder its task in the proposal's thread for the member who approved it, an install installs the release.
   The logic is ``builder.plugin_changes``.
 
-What each kind does (where its change applies, how it is checked, applied and rolled back) is its ``kinds.Kind``,
-which ``KINDS`` maps it to: ``setting_changes`` for branding, features, plugin_config, agent and policy,
-``problem_changes``, ``goal_changes``, ``opportunity_changes``, ``system_changes`` and ``plugin_changes`` for the
-others.
+What each kind does (where its change applies, how it is checked, applied and rolled back) is its
+``kinds.ProposalKind``, which ``KINDS`` maps it to: ``setting_changes`` for branding, features, plugin_config, agent
+and policy, ``problem_changes``, ``goal_changes``, ``opportunity_changes``, ``system_changes`` and ``plugin_changes``
+for the others.
 
 Proposing checks the change against the setting as it is now, as its route would, and keeps the setting's version
 (``base_version``): nothing is written to the setting. Approving applies the change as the setting's next version
@@ -98,7 +98,7 @@ from evo_agents.core_plugins.builder.kinds import (
     PROBLEM,
     SYSTEM,
     Change,
-    Kind,
+    ProposalKind,
     Target,
     Writing,
 )
@@ -369,7 +369,7 @@ def change_of(arguments: Mapping) -> Change:
 # What each kind does
 
 
-KINDS: dict[str, Kind] = {  # kind -> where its change applies, how it is checked, applied and rolled back
+KINDS: dict[str, ProposalKind] = {  # kind -> where its change applies, how it is checked, applied and rolled back
     BRANDING: setting_changes.SETTINGS,
     FEATURES: setting_changes.SETTINGS,
     PLUGIN_CONFIG: setting_changes.CONFIG,

@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from evo_agents.plugins.manifest import FORBIDDEN_TARGETS, MAX_ENVIRONMENT_MOUNTS, Manifest
-from evo_agents.plugins.runtimes import PLUGIN_RUNTIME, SEPARATOR
+from evo_agents.plugins.names import PluginDeclaration, PluginName
 
 HOST = "host"  # the worker's own machine: no container, as every run ran before environments
 PROVIDERS = ("host", "container")  # the providers of the core; an environment of a plugin is a container
@@ -27,7 +27,6 @@ NETWORKS = ("none", "outbound")
 MOUNT_TYPES = ("tmpfs", "volume")
 MAX_IMAGE_CHARS = 512
 MAX_SIZE_MB = 65536
-MAX_TITLE_CHARS = 200
 # [registry[:port]/]repository[:tag]@sha256:<64 hex>, as plugin.schema.json has it
 IMAGE = re.compile(
     r"[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]{1,5})?(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*"
@@ -35,17 +34,16 @@ IMAGE = re.compile(
 )
 TARGET = re.compile(r"/[^\x00-\x1f\x7f,:]{0,254}")
 VOLUME = re.compile(r"[a-z][a-z0-9_-]{0,62}")
-_LINE = re.compile(r"[^\x00-\x1f\x7f]+")
 
 
 def environment_name(plugin: str, name: str) -> str:
     """The name the hub registers environment ``name`` of plugin ``plugin`` under: ``sandbox/box``."""
-    return f"{plugin}{SEPARATOR}{name}"
+    return PluginName.of(plugin, name)
 
 
 def is_plugin_environment(name: object) -> bool:
     """Whether ``name`` is the name of a plugin's environment, ``<plugin>/<name>``, rather than ``host``."""
-    return isinstance(name, str) and PLUGIN_RUNTIME.fullmatch(name) is not None
+    return PluginName.matches(name)
 
 
 def is_environment(name: object) -> bool:
@@ -55,7 +53,7 @@ def is_environment(name: object) -> bool:
 
 def plugin_of(environment: str) -> str | None:
     """The id of the plugin whose environment ``environment`` is; None for ``host``."""
-    return environment.partition(SEPARATOR)[0] if is_plugin_environment(environment) else None
+    return PluginName.plugin_of(environment)
 
 
 def target_problem(target: object) -> str | None:
@@ -110,8 +108,12 @@ class Mount:
 
 
 @dataclass(frozen=True)
-class ContainerEnvironment:
+class ContainerEnvironment(PluginDeclaration):
     """An environment a plugin declared, at the version of the plugin the hub has installed: a container."""
+
+    KEY = "environment"
+    WHAT = "an environment's"
+    POINT = "environments"
 
     environment: str  # <plugin>/<name>, as the environment axis of a profile names it
     plugin: str
@@ -127,33 +129,18 @@ class ContainerEnvironment:
         """The engine's name of the volume ``mount`` names: ``evo-<plugin>-<name>``, so plugins never share one."""
         return f"evo-{self.plugin}-{mount.name}"
 
-    def to_json(self) -> dict:
-        return {
-            "environment": self.environment,
-            "plugin": self.plugin,
-            "version": self.version,
-            "title": self.title,
-            "provider": self.provider,
-            "image": self.image,
-            "network": self.network,
-            "mounts": [mount.to_json() for mount in self.mounts],
-        }
+    def own_json(self) -> dict:
+        mounts = [mount.to_json() for mount in self.mounts]
+        return {"provider": self.provider, "image": self.image, "network": self.network, "mounts": mounts}
 
     @classmethod
-    def from_json(cls, data: object) -> ContainerEnvironment:
-        """The declaration ``to_json`` gave, as the hub sends it; ValueError when it is not one."""
-        if not isinstance(data, Mapping):
-            raise ValueError("an environment's declaration is a JSON object")
-        environment, plugin, version = data.get("environment"), data.get("plugin"), data.get("version")
-        if not is_plugin_environment(environment) or plugin_of(environment) != plugin:
-            raise ValueError(f"{environment!r} is not <plugin>/<name> of plugin {plugin!r}")
-        if not isinstance(version, str) or not _LINE.fullmatch(version):
-            raise ValueError("an environment's declaration names the plugin's version")
+    def head_problem(cls, data: Mapping) -> str | None:
         if data.get("provider", cls.provider) != cls.provider:
-            raise ValueError(f"an environment of a plugin is a container, not {data.get('provider')!r}")
-        title = data.get("title") or environment
-        if not isinstance(title, str) or len(title) > MAX_TITLE_CHARS or not _LINE.fullmatch(title):
-            raise ValueError("an environment's title is one line of at most 200 characters")
+            return f"an environment of a plugin is a container, not {data.get('provider')!r}"
+        return None
+
+    @classmethod
+    def own_from_json(cls, data: Mapping) -> tuple:
         image = data.get("image")
         if not isinstance(image, str) or len(image) > MAX_IMAGE_CHARS or not IMAGE.fullmatch(image):
             raise ValueError(f"{image!r} is not an image pinned by its digest: [registry/]repository@sha256:<64 hex>")
@@ -167,20 +154,13 @@ class ContainerEnvironment:
         targets = [mount.target for mount in mounts]
         if len(set(targets)) != len(targets):
             raise ValueError("an environment mounts each target once")
-        return cls(environment, plugin, version, title, image, network, mounts)
+        return image, network, mounts
+
+    @classmethod
+    def own_of(cls, item: dict) -> tuple:
+        return item["image"], item["network"], tuple(Mount.from_json(mount) for mount in item.get("mounts") or ())
 
 
 def container_environments(manifest: Manifest) -> list[ContainerEnvironment]:
     """The environments ``manifest`` declares, in its order, as the hub registers them."""
-    return [
-        ContainerEnvironment(
-            environment=environment_name(manifest.id, item["name"]),
-            plugin=manifest.id,
-            version=manifest.version,
-            title=item.get("title") or environment_name(manifest.id, item["name"]),
-            image=item["image"],
-            network=item["network"],
-            mounts=tuple(Mount.from_json(mount) for mount in item.get("mounts") or ()),
-        )
-        for item in manifest.contributions("environments")
-    ]
+    return ContainerEnvironment.declared(manifest)

@@ -14,7 +14,7 @@ from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.chats.models.members import LOGIN_PATTERN
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.plugins.manifest import PLUGIN_ID
-from evo_agents.plugins.runtimes import CONTRIBUTION
+from evo_agents.plugins.names import CONTRIBUTION
 
 POINT = "agent_types"
 NOTHING = "nothing changed"

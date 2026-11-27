@@ -41,6 +41,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from evo_agents.infra.retry import RetryPolicy, Steps
 from evo_agents.plugins import environment
 from evo_agents.plugins import host as host_module
 from evo_agents.plugins import process as process_module
@@ -569,8 +570,7 @@ def _lingering_host(plugin_root, monkeypatch, kills: list[bool]) -> tuple[Host, 
     monkeypatch.setattr(host_module, "identity", lambda plugin_id: environment.Identity(user, user))
     monkeypatch.setattr(host_module, "kill_user", kill)
     monkeypatch.setattr(host_module, "processes_of", lambda uid: [4242, 4243])
-    monkeypatch.setattr(host_module, "BACKOFF", (0.05,))
-    monkeypatch.setattr(host_module, "MAX_BACKOFF", 0.05)
+    monkeypatch.setattr(host_module, "RESTARTS", RetryPolicy(Steps((0.05,), 0.05), tries=None))
     host = Host(plugin_root)
     host.place(manifest("sample"), bundle("sample"), init("sample", 21))
     return host, user
@@ -604,8 +604,7 @@ def test_plugin_crash_a_retired_plugins_user_is_killed_again_until_none_is_left_
 def test_plugin_crash_a_retired_plugins_lingering_user_never_holds_the_hosts_close(plugin_root, monkeypatch):
     """A retired plugin whose user keeps processes the host cannot kill: closing the host kills once more and ends."""
     host, _ = _lingering_host(plugin_root, monkeypatch, [False])
-    monkeypatch.setattr(host_module, "BACKOFF", (3600.0,))
-    monkeypatch.setattr(host_module, "MAX_BACKOFF", 3600.0)
+    monkeypatch.setattr(host_module, "RESTARTS", RetryPolicy(Steps((3600.0,), 3600.0), tries=None))
 
     async def run() -> list[dict]:
         stopping = host.retire("sample")
