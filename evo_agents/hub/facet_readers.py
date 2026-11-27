@@ -27,6 +27,7 @@ Standard library only.
 from __future__ import annotations
 
 import json
+from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 
@@ -82,18 +83,42 @@ def _result_chars(content) -> int:
 # A Claude Code session
 
 
-class ClaudeReader:
-    """The lines of a Claude Code session's transcript files, into ``tally``."""
+class FacetReader(ABC):
+    """What reads a session's transcript lines or a run's events into ``tally``, one at a time (``add``), and adds what
+    it kept back when the last is in (``close``). A line or an event that is not a JSON object is skipped."""
 
     def __init__(self, tally: Tally):
         self.tally = tally
+
+    def add(self, line, file: str = MAIN, number: int = 0) -> None:
+        """Read ``line``, line ``number`` of ``file`` (a run's events have neither)."""
+        if isinstance(line, dict):
+            self.read(line, file, number)
+
+    @abstractmethod
+    def read(self, line: dict, file: str, number: int) -> None: ...
+
+    def close(self) -> None:
+        """Add to the tally what the reader kept back until the last line: nothing, unless a reader keeps some."""
+        return
+
+    @staticmethod
+    def part(value: dict, key: str) -> dict:
+        """The object ``value`` holds at ``key``, empty when it holds something else."""
+        found = value.get(key)
+        return found if isinstance(found, dict) else {}
+
+
+class ClaudeReader(FacetReader):
+    """The lines of a Claude Code session's transcript files, into ``tally``."""
+
+    def __init__(self, tally: Tally):
+        super().__init__(tally)
         self.usage: dict[str, dict] = {}  # message id: the usage of its last line
         self.contexts: dict[str, int] = {}  # message id of the main thread: the tokens of its context
         self.skill_calls: dict[str, str] = {}  # id of a Skill call: the skill it loads
 
-    def add(self, file: str, number: int, line) -> None:
-        if not isinstance(line, dict):
-            return
+    def read(self, line: dict, file: str, number: int) -> None:
         kind = line.get("type")
         main = file == MAIN and not line.get("isSidechain")
         if main:
@@ -120,14 +145,14 @@ class ClaudeReader:
     def _system(self, line: dict, main: bool, where: str) -> None:
         subtype = line.get("subtype")
         if subtype == digest.COMPACT_BOUNDARY and main:
-            meta = line.get("compactMetadata") if isinstance(line.get("compactMetadata"), dict) else {}
+            meta = self.part(line, "compactMetadata")
             self.tally.compaction(str(line.get("uuid") or where), meta.get("trigger"), meta.get("preTokens"))
         elif subtype == "stop_hook_summary":
             for info in line.get("hookInfos") or []:
                 if isinstance(info, dict) and "durationMs" in info:
                     self.tally.hook("Stop", info.get("command"), info.get("durationMs"))
         elif subtype == "api_error":
-            error = line.get("error") if isinstance(line.get("error"), dict) else {}
+            error = self.part(line, "error")
             self.tally.api_error(error.get("formatted") or error.get("message") or "")
 
     def _attachment(self, found, main: bool) -> None:
@@ -189,7 +214,7 @@ class ClaudeReader:
             self.tally.result(str(item.get("tool_use_id")), at, failed, _result_text(content), chars, where)
 
     def _assistant(self, line: dict, at: datetime | None, main: bool, where: str) -> None:
-        message = line.get("message") if isinstance(line.get("message"), dict) else {}
+        message = self.part(line, "message")
         key = str(message.get("id") or line.get("uuid") or where)
         model = message.get("model")
         if key not in self.usage:
@@ -204,7 +229,7 @@ class ClaudeReader:
         for item in _items(line):
             if item.get("type") in ("tool_use", "server_tool_use"):
                 self.tally.call(str(item.get("id") or ""), item.get("name") or UNNAMED, item.get("input"), at, where)
-                given = item.get("input") if isinstance(item.get("input"), dict) else {}
+                given = self.part(item, "input")
                 if item.get("name") == "Skill" and item.get("id") and isinstance(given.get("skill"), str):
                     self.skill_calls[str(item["id"])] = given["skill"]
 
@@ -233,27 +258,26 @@ def _codex_text(content) -> str:
     return ""
 
 
-class CodexReader:
+class CodexReader(FacetReader):
     """The lines of one Codex rollout of a session (its own thread or a subagent's), into ``tally``. Its token counts
     are running totals: the largest of each is the thread's, added to the session's when the file ends."""
 
     def __init__(self, tally: Tally, file: str):
-        self.tally, self.file, self.main = tally, file, file == MAIN
+        super().__init__(tally)
+        self.file, self.main = file, file == MAIN
         self.totals = dict.fromkeys(USAGE_KEYS, 0)
 
-    def add(self, file: str, number: int, line) -> None:
-        if not isinstance(line, dict):
-            return
+    def read(self, line: dict, file: str, number: int) -> None:
         at = timestamp(line.get("timestamp"))
         self.tally.moment(at)
-        payload = line.get("payload") if isinstance(line.get("payload"), dict) else {}
+        payload = self.part(line, "payload")
         kind = line.get("type")
         if kind == "turn_context":
             self.tally.model(payload.get("model"))
         elif kind == "event_msg" and payload.get("type") == "token_count":
-            self._tokens(payload.get("info") if isinstance(payload.get("info"), dict) else {})
+            self._tokens(self.part(payload, "info"))
         elif kind == "event_msg" and payload.get("type") == "item_completed":
-            item = payload.get("item") if isinstance(payload.get("item"), dict) else {}
+            item = self.part(payload, "item")
             self._item(item, at, f"{file}:{number}")
 
     def _tokens(self, info: dict) -> None:
@@ -323,9 +347,9 @@ def session_facet(files: Iterable[tuple[str, Iterable[tuple[int, object]]]], run
             last = number
             if reader is None:
                 reader = CodexReader(tally, file) if digest.is_codex(line) else claude
-            reader.add(file, number, line)
-        if isinstance(reader, CodexReader):
-            reader.close()
+            reader.add(line, file, number)
+        if reader is not None and reader is not claude:
+            reader.close()  # a Codex rollout's thread ends with its file; the Claude Code threads add up to the end
         tally.files.append({"file": file, "lines": last})
     claude.close()
     return tally.body()
@@ -371,18 +395,18 @@ def run_usage(usage) -> dict:
     return found
 
 
-class RunReader:
+class RunReader(FacetReader):
     """The events of one run, in seq order, into ``tally``."""
 
     def __init__(self, tally: Tally, runtime: str | None):
-        self.tally, self.runtime = tally, runtime
+        super().__init__(tally)
+        self.runtime = runtime
         self.started: set[str] = set()
         self.ended: set[str] = set()
 
-    def add(self, event) -> None:
-        if not isinstance(event, dict):
-            return
-        body = event.get("body") if isinstance(event.get("body"), dict) else {}
+    def read(self, line: dict, file: str, number: int) -> None:
+        event = line
+        body = self.part(event, "body")
         at, seq, kind = timestamp(event.get("at")), count(event.get("seq")) or 0, event.get("kind")
         self.tally.moment(at)
         if kind in ("tool_call", "tool_call_update"):
@@ -393,7 +417,7 @@ class RunReader:
             self.tally.message(at)
             self.tally.turn(str(body.get("text") or ""))
         elif kind == "output":
-            self._raw(body.get("raw") if isinstance(body.get("raw"), dict) else {}, seq)
+            self._raw(self.part(body, "raw"), seq)
 
     def _tool(self, kind: str, body: dict, at: datetime | None, seq: int) -> None:
         call = str(body.get("toolCallId") or "")
