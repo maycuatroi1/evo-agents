@@ -12,10 +12,10 @@ request. Revoked, expired and unknown credentials all get the same 401, which na
 ``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
 closed: a route added later needs a credential unless it is listed there. Each public prefix checks a credential of
 its own. One serves the files of plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in
-the path is their credential (``evo_agents.hub.server.plugin_pages``). Another is the API of the hub for plugins,
+the path is their credential (``evo_agents.hub.server.plugins.service.pages``). Another is the API of the hub for plugins,
 whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). The
 third, HOOKS_PREFIX, holds the webhooks of core plugins, each under ``/v1/hooks/<its id>/``
-(``evo_agents.hub.server.plugin_routes``): a service outside the hub calls them with a secret of the plugin's, which
+(``evo_agents.hub.server.plugins.service.extension``): a service outside the hub calls them with a secret of the plugin's, which
 the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. The
 fourth, SELLER_PREFIX, is the API a seller's hub serves the hubs that buy its plugins
 (``evo_agents.hub.server.seller.service.api``): an order's secret or a licence the seller signed is the credential, which the
@@ -141,7 +141,7 @@ PUBLIC_PATHS = frozenset(
 )
 HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)
 SELLER_PREFIX = "/v1/seller-api/"  # what a seller's hub serves buying hubs (seller_api)
-# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), a
+# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugins.service.pages), a
 # plugin token (evo_agents.hub.server.task_dispatch), a core plugin's own secret (HOOKS_PREFIX), or an order's secret
 # or a licence (SELLER_PREFIX).
 PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX, SELLER_PREFIX)

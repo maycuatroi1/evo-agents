@@ -16,7 +16,7 @@ The tables of 0035 place plugins in projects. project_plugins holds each plugin 
 its manifest an admin of the project granted, who enabled it and when, who granted last and when; turning it off
 deletes the row. plugin_configs holds every version of each stored layer of a plugin's config
 (``evo_agents.plugins.config``): the hub's own (instance), a project's, an agent profile's (agent), never changed,
-its plain values and its secrets sealed (``evo_agents.hub.server.plugin_configs``). ``plugin_tables`` gives runs its
+its plain values and its secrets sealed (``evo_agents.hub.server.plugins.service.configs``). ``plugin_tables`` gives runs its
 own layer, ``plugin_config``, and run_plugins holds the version and the digest of the effective config of each plugin
 enabled on a run's project when a worker claimed it.
 

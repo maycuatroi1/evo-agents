@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_canvas import CELLS, STATUSES
 from evo_agents.plugins import config as plugin_config

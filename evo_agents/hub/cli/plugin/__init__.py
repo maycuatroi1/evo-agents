@@ -1,5 +1,5 @@
 """``evo-agents hub plugin publish|list|show|install|upgrade|remove``: the hub's store of plugins
-(``evo_agents.hub.server.plugin_store``), for hub admins.
+(``evo_agents.hub.server.plugins.service.store``), for hub admins.
 
 ``publish BUNDLE`` reads the bundle here first (``evo_agents.plugins.bundle``: a tar.gz with evo-plugin.json at its
 top), then uploads it to the blob store as the hub's own blob, commits it and asks the hub to publish it as the version

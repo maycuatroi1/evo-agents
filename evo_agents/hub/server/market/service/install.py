@@ -50,22 +50,19 @@ from evo_agents.hub.server.market.models.install import (
 from evo_agents.hub.server.market.repository import install as repository
 from evo_agents.hub.server.market.service.market import entry_of, source_row
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-from evo_agents.hub.server.plugin_grants import check_admin
-from evo_agents.hub.server.plugin_publishers import check_may_trust, trust
-from evo_agents.hub.server.plugin_store import (
-    PluginPublishIn,
+from evo_agents.hub.server.plugins.models.store import PluginPublishIn
+from evo_agents.hub.server.plugins.repository.store import find, version_rows
+from evo_agents.hub.server.plugins.service.grants import check_admin
+from evo_agents.hub.server.plugins.service.publishers import check_may_trust, trust
+from evo_agents.hub.server.plugins.service.store import (
     check_bundle,
     check_placeable,
-    find,
     hub_admin_ids,
     record_version,
     set_installed,
     trusted_publishers,
-    version_rows,
 )
-from evo_agents.hub.server.plugin_store import (
-    plugin as stored_plugin,
-)
+from evo_agents.hub.server.plugins.service.store import plugin as stored_plugin
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.bundle import BundleError, read_bundle

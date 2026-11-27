@@ -30,9 +30,9 @@ from pathlib import Path
 from sqlalchemy import func, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import plugin_ui
-from evo_agents.hub.server.plugin_bridge import PLUGIN_HEADER
-from evo_agents.hub.server.plugin_pages import ticket
+from evo_agents.hub.server.plugins.models.bridge import PLUGIN_HEADER
+from evo_agents.hub.server.plugins.service import ui as plugin_ui
+from evo_agents.hub.server.plugins.service.pages import ticket
 from evo_agents.hub.server.security import keyed_digest
 from evo_agents.plugins.bundle import pack
 from tests.hub.test_plugin_store import act, publish, started

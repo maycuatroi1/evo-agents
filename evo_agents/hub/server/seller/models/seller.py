@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import payments, tables_seller
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plugin_publishers import SIGNER
+from evo_agents.hub.server.plugins.models.publishers import SIGNER
 from evo_agents.hub.server.projects import PRINTABLE
 from evo_agents.plugins.bundle import MAX_BUNDLE
 from evo_agents.plugins.manifest import PLUGIN_ID

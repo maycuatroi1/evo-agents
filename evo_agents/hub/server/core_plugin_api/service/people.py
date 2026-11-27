@@ -19,7 +19,7 @@ from evo_agents.hub.server.core_plugin_api.models.types import Plugin, ProjectRe
 from evo_agents.hub.server.core_plugin_api.repository import people as rows_of
 from evo_agents.hub.server.core_plugin_api.service.handles import own_plugin
 from evo_agents.hub.server.core_plugin_api.service.reads import enabled_project
-from evo_agents.hub.server.plugin_routes import not_enabled
+from evo_agents.hub.server.plugins.service.extension import not_enabled
 
 # PROJECT_NAME: the pattern of a project's name, as the hub's routes take it in a path.
 

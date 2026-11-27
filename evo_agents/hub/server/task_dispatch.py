@@ -59,7 +59,7 @@ from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.org_store import ended_refusal
-from evo_agents.hub.server.plugin_tokens import plugin_of_token
+from evo_agents.hub.server.plugins.service.tokens import plugin_of_token
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_retry import next_attempt
 from evo_agents.hub.server.run_state import notify_queued, write_event

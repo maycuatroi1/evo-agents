@@ -36,7 +36,7 @@ from evo_agents.hub.seller_client import LICENSE_SCHEME
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.plugin_store import fetch_bundle
+from evo_agents.hub.server.plugins.service.store import fetch_bundle
 from evo_agents.hub.server.seller.models.api import (
     MAX_OPEN,
     MAX_OPEN_PER_BUYER,

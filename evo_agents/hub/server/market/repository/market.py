@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.plugin_store import IMAGE
+from evo_agents.hub.server.plugins.models.store import IMAGE
 
 
 async def installed_plugins(conn: AsyncConnection) -> dict[str, dict]:

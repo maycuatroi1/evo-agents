@@ -46,10 +46,11 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.invites import InviteCreated, InviteRequest
 from evo_agents.hub.server.market.models.install import NOTHING_INSTALLED, TAG, GitHubInstallIn, MarketInstalled
 from evo_agents.hub.server.market.service.install import Installing, install_github
-from evo_agents.hub.server.plugin_grants import check_admin
-from evo_agents.hub.server.plugin_publishers import SIGNER
-from evo_agents.hub.server.plugin_store import Plugin, find, from_image, plugin, set_removed, version_rows
-from evo_agents.hub.server.project_plugins import PluginName
+from evo_agents.hub.server.plugins.models.publishers import SIGNER
+from evo_agents.hub.server.plugins.models.store import Plugin, PluginName
+from evo_agents.hub.server.plugins.repository.store import find, version_rows
+from evo_agents.hub.server.plugins.service.grants import check_admin
+from evo_agents.hub.server.plugins.service.store import from_image, plugin, set_removed
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal, admin
 from evo_agents.plugins.market import REPO

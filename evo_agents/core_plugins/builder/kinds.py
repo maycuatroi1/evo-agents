@@ -13,7 +13,8 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
-from evo_agents.hub.server import hub_settings, plugin_configs
+from evo_agents.hub.server import hub_settings
+from evo_agents.hub.server.plugins.models.configs import Place
 from evo_agents.hub.server.profile_store import Profile
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
@@ -64,7 +65,7 @@ class Target:
     version: int
     held: dict = field(default_factory=dict)  # the values it sets now; a profile's fields for an agent
     settings: hub_settings.Place | None = None
-    config: plugin_configs.Place | None = None
+    config: Place | None = None
     schema: dict | None = None
     profile: Profile | None = None
     policy: dict | None = None  # the body of the policy's revision now, for a policy

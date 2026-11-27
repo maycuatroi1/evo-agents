@@ -292,7 +292,7 @@ CHAT_LABEL = "chat.label"
 # (evo_agents.hub.server.chats.service.bridges).
 CHAT_BRIDGE = "chat.bridge"
 CHAT_UNBRIDGE = "chat.unbridge"
-# The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
+# The hub's store of plugins (evo_agents.hub.server.plugins.service.store), outside any project; the target is
 # "plugin:<name>@<version>", never a manifest, a bundle or a signature.
 PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds
 PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or installed one again after the hub turned it off
@@ -332,7 +332,7 @@ MARKET_PAYOUT = "market.payout"  # a hub admin marked a publisher's share of a m
 MARKET_ORDER_PLACE = "market.order.place"
 MARKET_LICENSE_RECEIVE = "market.license.receive"
 MARKET_LICENSE_LAPSE = "market.license.lapse"
-# Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
+# Plugins in a project (evo_agents.hub.server.plugins.service.grants), in that project; the target is
 # "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it
 PLUGIN_GRANT = "plugin.grant"  # an admin granted the permissions the installed version asks for, enabling it or after
@@ -346,7 +346,7 @@ PLUGIN_NOTIFY = (
     "plugin.notify"  # the plugin, granted notifications:send, sent members a notice: who and how many, no text
 )
 TASK_DISPATCH = "task.dispatch"  # the plugin, granted runs:dispatch, handed it a task: a run of kind task
-# A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugin_configs): "plugin:<name> config
+# A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugins.service.configs): "plugin:<name> config
 # instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
 # <name> config agent v<n>" in the project, then " fields=<names>" or " rollback-to=v<n>"; never a value.
 PLUGIN_CONFIG = "plugin.config"

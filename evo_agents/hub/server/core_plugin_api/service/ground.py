@@ -43,8 +43,8 @@ from evo_agents.hub.server.core_plugin_api.service.handles import (
 )
 from evo_agents.hub.server.notifications.repository.channels import rules_of
 from evo_agents.hub.server.notifications.service.member_channels import kept_from
-from evo_agents.hub.server.plugin_routes import not_enabled
-from evo_agents.hub.server.plugin_tokens import layer_config
+from evo_agents.hub.server.plugins.service.extension import not_enabled
+from evo_agents.hub.server.plugins.service.tokens import layer_config
 from evo_agents.hub.server.sealing import Sealer
 
 NOT_INSTALLED = "plugin {plugin} is not installed on this hub, or a hub admin turned it off"

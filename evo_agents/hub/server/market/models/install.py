@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plugin_publishers import SIGNER
-from evo_agents.hub.server.plugin_store import Plugin
+from evo_agents.hub.server.plugins.models.publishers import SIGNER
+from evo_agents.hub.server.plugins.models.store import Plugin
 from evo_agents.plugins.market import REPO
 
 NOTICE = "market_install_request"  # evo_agents.hub.runs.NOTICE_KINDS

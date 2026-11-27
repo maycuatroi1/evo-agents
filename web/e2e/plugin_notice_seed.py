@@ -1,4 +1,4 @@
-"""A notice of an isolated plugin for the Playwright stack, as ``server.plugin_notify`` leaves it in the Inbox.
+"""A notice of an isolated plugin for the Playwright stack, as ``server.plugins.service.notify`` leaves it in the Inbox.
 
 POST /plugin-notice/seed {project, login, plugin, topic, title, body, link} writes one unread notification of kind
 notice, notice_kind ``plugin_notice``, whose details name the plugin, its version and the topic, for the member of

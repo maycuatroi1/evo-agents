@@ -74,7 +74,7 @@ PDF = "application/pdf"
 # does nothing; it holds when the bytes are opened as a page of their own or in a frame, which only the hub's pages may
 # hold (frame-ancestors 'self').
 OPAQUE_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'"
-HTML_POLICY = "; ".join(  # a page of its own, as a plugin's page is (evo_agents.hub.server.plugin_ui.UI_CSP)
+HTML_POLICY = "; ".join(  # a page of its own, as a plugin's page is (evo_agents.hub.server.plugins.models.ui.UI_CSP)
     (
         "default-src 'none'",
         "script-src 'unsafe-inline' 'unsafe-eval'",

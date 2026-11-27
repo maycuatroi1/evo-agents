@@ -1,5 +1,5 @@
 """The routes of the plugin canvas, under /v1/x/canvas/<project>/ for a member with a grant on a project that enabled
-it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
+it (the hub checks both first, ``evo_agents.hub.server.plugins.service.extension``; a project that did not enable it answers 404).
 
 Readers read the canvases, a canvas whole with its nine cells, a claim whole with every rev, its provenance and diff
 and its evidence, the diff of two revs, what judging runs of @strategist had for a claim with each verdict and why,

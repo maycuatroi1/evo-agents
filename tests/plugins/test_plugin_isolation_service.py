@@ -65,7 +65,7 @@ START_WITHIN = 180.0  # seconds for the three backends to run: three environment
 
 
 class Hub(BaseHTTPRequestHandler):
-    """The hub's routes for the plugin host (``evo_agents.hub.server.plugin_host``), serving the fixture plugins."""
+    """The hub's routes for the plugin host (``evo_agents.hub.server.plugins.service.host``), serving the fixture plugins."""
 
     minted: list[str] = []
     reports: list[list[dict]] = []

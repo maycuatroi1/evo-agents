@@ -24,14 +24,14 @@ from fastapi import APIRouter, Path, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_records import COLLECTION, KEY, MAX_PAGE
-from evo_agents.hub.server import plugin_delegation as delegation
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_api.models.records import RecordIn, RecordOut, RecordPage
 from evo_agents.hub.server.plugin_api.service import records
 from evo_agents.hub.server.plugin_api.service.records import Door
-from evo_agents.hub.server.plugin_delegation import Resolved
-from evo_agents.hub.server.plugin_routes import PluginName
+from evo_agents.hub.server.plugins.models.delegation import Resolved
+from evo_agents.hub.server.plugins.models.extension import PluginName
+from evo_agents.hub.server.plugins.service import delegation
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.hub.server.task_dispatch import plugin_of_request
 

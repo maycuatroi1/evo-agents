@@ -5,7 +5,7 @@ plugin_records holds a plugin's records in Postgres, by project, plugin, collect
 the level of the project's ladder it carries, whether its writer alone is its audience, who wrote it and when. They sit
 in the hub's pg_dump and nothing on the plugin host holds them. plugin_record_leases holds the SHA-256 of each
 delegation the hub hands a backend for one call it serves: who the call is for and the cap of what they may read, until
-the lease expires (``evo_agents.hub.server.plugin_delegation``).
+the lease expires (``evo_agents.hub.server.plugins.service.delegation``).
 """
 
 from __future__ import annotations

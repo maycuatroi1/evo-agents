@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.plans import service as plan_service
-from evo_agents.hub.server.plugin_configs import run_layer_of
+from evo_agents.hub.server.plugins.repository.configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_retry import next_attempt
 from evo_agents.hub.server.run_state import move_run, notify_queued

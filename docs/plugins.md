@@ -1531,7 +1531,7 @@ images and fonts from the bundle's `pages/` by relative URL, and may write them 
   such a call the web reads the plugin's grant again when its last read is over 5 seconds old, and refuses the call
   with `not_granted`, never reaching the hub, once the plugin lacks it or is no longer on in the project. Every call
   the bridge makes names the plugin in the header `X-Evo-Plugin`, and the hub checks it again as it arrives
-  (`evo_agents.hub.server.plugin_bridge`): such a call reaches only the reads below and the plugin's own routes, and a
+  (`evo_agents.hub.server.plugins.routes.bridge`): such a call reaches only the reads below and the plugin's own routes, and a
   read only while the plugin is installed, turned on, enabled in the project, with the permission in what the project
   granted that the installed version still asks for; anything else is a 403, which the page gets as `hub_refused`. A
   page left open after its plugin was disabled, removed, turned off or upgraded to ask for less gets nothing more:

@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_calls, plugin_records
 from evo_agents.hub.plugin_records import RecordError
-from evo_agents.hub.server import plugin_delegation as delegation
 from evo_agents.hub.server.plugin_api.models.records import RecordIn, RecordOut, RecordPage
-from evo_agents.hub.server.plugin_delegation import Resolved, may_write
-from evo_agents.hub.server.plugin_routes import enabled_for
+from evo_agents.hub.server.plugins.models.delegation import Resolved
+from evo_agents.hub.server.plugins.service import delegation
+from evo_agents.hub.server.plugins.service.delegation import may_write
+from evo_agents.hub.server.plugins.service.extension import enabled_for
 
 Door = Callable[[AsyncConnection], Awaitable[Resolved]]
 
@@ -30,7 +31,7 @@ async def direct(conn: AsyncConnection, user: Any, plugin: str, project: str) ->
     if delegation.PERMISSION not in plugin_calls.effective_grant(row):
         raise HTTPException(404, f"plugin {plugin} is not granted {delegation.PERMISSION} in project {project}")
     scope = user.scope
-    people = await delegation._people(
+    people = await delegation.people_of(
         conn, user.user_id, scope.run_id if scope else None, scope.kind if scope else None
     )
     project_id, plugin_id = row.project_id, row.id  # pyright: ignore[reportAttributeAccessIssue]

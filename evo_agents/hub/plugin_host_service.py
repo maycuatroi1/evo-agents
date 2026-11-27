@@ -50,7 +50,7 @@ STATUS_SECONDS = 20
 TICK_SECONDS = 5
 DEFAULT_PORT = 8090
 TOKEN_VARIABLE = "EVO_HUB_PLUGIN_HOST_TOKEN"
-HUB_ROUTES = "/internal/plugin-host"  # the api's routes for the host (evo_agents.hub.server.plugin_host.HOST_ROUTES)
+HUB_ROUTES = "/internal/plugin-host"  # the api's routes for the host (evo_agents.hub.server.plugins.models.host.HOST_ROUTES)
 CALLABLE = frozenset({"ping", *POINT_METHODS.values()})  # what the api may ask of a backend
 
 

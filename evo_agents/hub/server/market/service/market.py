@@ -46,7 +46,7 @@ from evo_agents.hub.server.market.models.market import (
 )
 from evo_agents.hub.server.market.repository import market as repository
 from evo_agents.hub.server.market.repository.market import installed_plugins, source_rows
-from evo_agents.hub.server.plugin_store import trusted_publishers
+from evo_agents.hub.server.plugins.service.store import trusted_publishers
 from evo_agents.hub.server.sealing import market_source_aad
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.compat import plugin_version_key
