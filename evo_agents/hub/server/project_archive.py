@@ -30,113 +30,30 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import APIRouter, Request
 
-from evo_agents.hub import runs, tables
-from evo_agents.hub.server import audit
-from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.projects import Project, project_access, project_view
-from evo_agents.hub.server.security import CurrentUser, Principal, holds
+from evo_agents.hub.server.project_registry.models.projects import Project
+from evo_agents.hub.server.project_registry.service import project_archive as service
+from evo_agents.hub.server.project_registry.service.project_archive import MAX_NAMED_RUNS as MAX_NAMED_RUNS
+from evo_agents.hub.server.project_registry.service.project_archive import Archived as Archived
+from evo_agents.hub.server.project_registry.service.project_archive import archived_name as archived_name
+from evo_agents.hub.server.project_registry.service.project_archive import refusal as refusal
+from evo_agents.hub.server.project_registry.service.project_archive import refuse_archived as refuse_archived
+from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-MAX_NAMED_RUNS = 20  # the active runs a refusal to archive names; it counts the rest
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"], responses={401: {"model": ErrorBody}})
-
-
-class Archived(autonomy_hold.Stopped):
-    """409: the project is archived, and what was asked of it starts nothing there."""
-
-    def __init__(self, detail: str) -> None:
-        HTTPException.__init__(self, 409, detail)
-
-
-def refusal(name: str, refused: str) -> str:
-    return (
-        f"project {name} is archived, so {refused}; an admin of the project unarchives it with `evo-agents hub "
-        f"project unarchive {name}`"
-    )
-
-
-async def archived_name(conn: AsyncConnection, project_id: int) -> str | None:
-    """The name of project ``project_id`` when it is archived, else None; its row held FOR KEY SHARE until the
-    transaction ends, so it cannot be archived meanwhile."""
-    p = tables.projects
-    held = select(p.c.name, p.c.archived_at).where(p.c.id == project_id).with_for_update(read=True, key_share=True)
-    row = (await conn.execute(held)).one_or_none()
-    return row.name if row is not None and row.archived_at is not None else None
-
-
-async def refuse_archived(conn: AsyncConnection, project_id: int, refused: str = "it takes no new run") -> None:
-    """``Archived`` when project ``project_id`` is archived; ``refused`` says what it does not take."""
-    name = await archived_name(conn, project_id)
-    if name is not None:
-        raise Archived(refusal(name, f"{refused}; nothing was queued"))
-
-
-async def _admin_of(conn: AsyncConnection, user: Principal, project: str, doing: str) -> int:
-    """The id of ``project``, its row locked FOR UPDATE, when ``user`` is an admin of it or a hub admin; 404 for a
-    project they do not see, 403 otherwise."""
-    access = await project_access(conn, user, project)
-    if user.acts_for_run is not None:
-        raise HTTPException(403, f"{doing} project {project} is for an admin of it, never for the agent of a run")
-    if not user.admin and not holds(access.role, "admin"):
-        raise HTTPException(403, f"{doing} project {project} needs the admin role on it, or a hub admin")
-    p = tables.projects
-    await conn.execute(select(p.c.id).where(p.c.id == access.project_id).with_for_update())
-    return access.project_id
-
-
-async def _active_runs(conn: AsyncConnection, project_id: int) -> list[int]:
-    r = tables.runs
-    query = select(r.c.id).where(r.c.project_id == project_id, r.c.state.in_(runs.ACTIVE_STATES), r.c.kind != "local")
-    return list(await conn.scalars(query.order_by(r.c.id)))
-
-
-def _busy(project: str, active: list[int]) -> str:
-    named = ", ".join(f"#{run_id}" for run_id in active[:MAX_NAMED_RUNS])
-    more = f" and {len(active) - MAX_NAMED_RUNS} more" if len(active) > MAX_NAMED_RUNS else ""
-    return (
-        f"project {project} has {len(active)} active run(s): {named}{more}. Cancel them first with `evo-agents hub "
-        "run cancel RUN`; nothing was archived"
-    )
-
-
-async def _set(conn: AsyncConnection, user: Principal, project: str, *, archive: bool) -> bool:
-    """Archive or unarchive ``project`` for ``user`` in ``conn``'s transaction; whether it changed."""
-    doing = "archiving" if archive else "unarchiving"
-    project_id = await _admin_of(conn, user, project, doing)
-    p = tables.projects
-    archived_at = await conn.scalar(select(p.c.archived_at).where(p.c.id == project_id))
-    if (archived_at is not None) == archive:
-        return False
-    if archive:
-        active = await _active_runs(conn, project_id)
-        if active:
-            raise HTTPException(409, _busy(project, active))
-        values = {"archived_at": func.now(), "archived_by": user.user_id}
-    else:
-        values = {"archived_at": None, "archived_by": None}
-    await conn.execute(update(p).where(p.c.id == project_id).values(**values))
-    action = audit.PROJECT_ARCHIVE if archive else audit.PROJECT_UNARCHIVE
-    await audit.record(
-        conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=project, project_id=project_id
-    )
-    return True
 
 
 @router.post("/{project}/archive", response_model=Project, responses=REFUSALS)
 async def archive(request: Request, project: ProjectName, user: CurrentUser) -> Project:
     """Archive the project: it takes no new run, kg push or build, and nothing the hub schedules runs for it."""
-    async with request.app.state.engine.begin() as conn:
-        changed = await _set(conn, user, project, archive=True)
-        found = await project_view(conn, user, project)
+    changed, found = await service.archive(request.app.state.engine, user, project, archive=True)
     log.info("project archived", extra={"project": project, "login": user.login, "changed": changed})
     return found
 
@@ -144,8 +61,6 @@ async def archive(request: Request, project: ProjectName, user: CurrentUser) -> 
 @router.post("/{project}/unarchive", response_model=Project, responses=REFUSALS)
 async def unarchive(request: Request, project: ProjectName, user: CurrentUser) -> Project:
     """Make the archived project live again: its night shift, Loop and plugins' jobs run again as they are set."""
-    async with request.app.state.engine.begin() as conn:
-        changed = await _set(conn, user, project, archive=False)
-        found = await project_view(conn, user, project)
+    changed, found = await service.archive(request.app.state.engine, user, project, archive=False)
     log.info("project unarchived", extra={"project": project, "login": user.login, "changed": changed})
     return found

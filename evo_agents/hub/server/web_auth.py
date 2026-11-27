@@ -29,8 +29,9 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.server.auth import NO_STORE, github_errors, sign_in, sign_out
 from evo_agents.hub.server.errors import ErrorBody, error_response
+from evo_agents.hub.server.identity.models.auth import NO_STORE
+from evo_agents.hub.server.identity.service.auth import github_errors, sign_out, web_sign_in
 from evo_agents.hub.server.security import (
     CSRF_HEADER,
     WEB,
@@ -159,8 +160,7 @@ async def web_callback(
             user = await github.user(github_token)
     except HTTPException as exc:
         return _refuse(request, exc.status_code, exc.detail)
-    async with request.app.state.engine.begin() as conn:
-        signed = await sign_in(conn, config, user, WEB, None)
+    signed = await web_sign_in(request.app.state.engine, config, user)
     response = RedirectResponse(return_path(saved.get("next")) or AFTER_LOGIN, status_code=303, headers=NO_STORE)
     set_session_cookie(response, signed.token)
     response.delete_cookie(LOGIN_COOKIE, path=CALLBACK, secure=True, httponly=True, samesite="lax")
@@ -181,7 +181,7 @@ async def web_logout(request: Request, config: WebConfig, user: CurrentUser) -> 
     """Revoke this web session and delete its cookie."""
     if user.kind != WEB:
         raise HTTPException(400, "this ends a web session; a machine token signs out with `evo-agents hub logout`")
-    await sign_out(request, user)
+    await sign_out(request.app.state.engine, user)
     response = Response(status_code=204)
     delete_session_cookie(response)
     return response

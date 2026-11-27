@@ -41,40 +41,37 @@ anything of a run, and answer 403 to a worker that is not a live pool node.
 
 from __future__ import annotations
 
-import asyncio
-import io
 import logging
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import Select, and_, func, insert, or_, select, true, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import APIRouter, Path, Query, Request
 
-from evo_agents.hub import tables
-from evo_agents.hub.blobs import BLOB_PREFIX, GET_TTL, BlobStoreUnavailable, blob_key
-from evo_agents.hub.server.audit import record
 from evo_agents.hub.server.base.models import PROJECT_NAME, ProjectName
-from evo_agents.hub.server.blobs import GLOBAL, blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.projects import PRINTABLE, project_access
-from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal, holds
-from evo_agents.hub.skills import MAX_BUNDLE, MAX_DESCRIPTION, BundleError, name_problem, read_bundle
+from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal
+from evo_agents.hub.server.skill_bundles.models.skills import ADMINS as ADMINS
+from evo_agents.hub.server.skill_bundles.models.skills import AUDIENCE as AUDIENCE
+from evo_agents.hub.server.skill_bundles.models.skills import AUDIENCE_TEXT as AUDIENCE_TEXT
+from evo_agents.hub.server.skill_bundles.models.skills import AUDIENCES as AUDIENCES
+from evo_agents.hub.server.skill_bundles.models.skills import EVERYONE as EVERYONE
+from evo_agents.hub.server.skill_bundles.models.skills import GLOBAL_PLACE as GLOBAL_PLACE
+from evo_agents.hub.server.skill_bundles.models.skills import MAX_SOURCE_REPO as MAX_SOURCE_REPO
+from evo_agents.hub.server.skill_bundles.models.skills import PUBLISH as PUBLISH
+from evo_agents.hub.server.skill_bundles.models.skills import SCOPES, SKILL_NAME, AudienceChange
+from evo_agents.hub.server.skill_bundles.models.skills import UNAVAILABLE as UNAVAILABLE
+from evo_agents.hub.server.skill_bundles.models.skills import BundleTicket as BundleTicket
+from evo_agents.hub.server.skill_bundles.models.skills import Place as Place
+from evo_agents.hub.server.skill_bundles.models.skills import Published as Published
+from evo_agents.hub.server.skill_bundles.models.skills import PublishRequest as PublishRequest
+from evo_agents.hub.server.skill_bundles.models.skills import Skill as Skill
+from evo_agents.hub.server.skill_bundles.models.skills import SkillAudience as SkillAudience
+from evo_agents.hub.server.skill_bundles.models.skills import SkillHistory as SkillHistory
+from evo_agents.hub.server.skill_bundles.models.skills import Version as Version
+from evo_agents.hub.server.skill_bundles.repository.skills import latest_skills as latest_skills
+from evo_agents.hub.server.skill_bundles.service import skills as service
 
 log = logging.getLogger(__name__)
-
-PUBLISH = "skill.publish"  # audit action; the target is skill:global/<name> or skill:project/<project>/<name>
-AUDIENCE = "skill.audience"  # audit action; the target is skill:global/<name> audience=<was>-><is>
-SCOPES = ("global", "project")
-AUDIENCES = ("everyone", "admins")  # who reads a global skill: every signed-in member, or hub admins alone
-EVERYONE, ADMINS = AUDIENCES
-MAX_SOURCE_REPO = 200
-SKILL_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # evo_agents.hub.skills.NAME
-UNAVAILABLE = "the blob store did not answer; no version was created, try again shortly"
 
 SkillName = Annotated[str, Path(pattern=SKILL_NAME, description="the skill's name, its directory in every runtime")]
 VersionNumber = Annotated[int | None, Query(ge=1, le=2**31 - 1, description="default: the latest")]
@@ -82,305 +79,35 @@ READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 PUBLISH_REFUSALS = {code: {"model": ErrorBody} for code in (403, 422, 503)}
 BUNDLE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 503)}
 AUDIENCE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
-AUDIENCE_TEXT = "who reads a global skill: every signed-in member, or hub admins alone; a project skill is everyone's"
 
 router = APIRouter(prefix="/v1/skills", tags=["skills"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker/skills", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
 
-class PublishRequest(BaseModel):
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$", description="the bundle, committed to the blob store already")
-    size: int = Field(ge=1, le=MAX_BUNDLE, description="bytes of the bundle")
-    source_repo: str | None = Field(None, min_length=1, max_length=MAX_SOURCE_REPO, pattern=PRINTABLE)
-    source_commit: str | None = Field(None, pattern=r"^[0-9a-f]{7,64}$", description="hex, abbreviated or whole")
-    audience: Literal[AUDIENCES] | None = Field(
-        None, description="a global skill's audience: default everyone for a new skill, unchanged for one that exists"
-    )
-
-    @model_validator(mode="after")
-    def _source_whole(self):
-        if (self.source_repo is None) != (self.source_commit is None):
-            raise ValueError("source_repo and source_commit go together")
-        return self
-
-
-class Version(BaseModel):
-    version: int
-    description: str = Field(description="from the frontmatter of SKILL.md")
-    sha256: str
-    size: int
-    source_repo: str | None
-    source_commit: str | None
-    published_by: str
-    published_at: datetime
-
-
-class Skill(BaseModel):
-    """A skill with its latest version."""
-
-    scope: Literal[SCOPES]
-    project: str | None
-    name: str
-    version: int
-    description: str
-    sha256: str
-    size: int
-    source_repo: str | None
-    source_commit: str | None
-    published_by: str
-    published_at: datetime
-    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
-
-
-class SkillHistory(BaseModel):
-    scope: Literal[SCOPES]
-    project: str | None
-    name: str
-    created_at: datetime
-    versions: list[Version] = Field(description="the latest first")
-    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
-
-
-class Published(BaseModel):
-    scope: Literal[SCOPES]
-    project: str | None
-    name: str
-    created: bool = Field(description="false when the latest version has this bundle already")
-    latest: Version
-    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
-
-
-class AudienceChange(BaseModel):
-    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
-
-
-class SkillAudience(BaseModel):
-    name: str
-    audience: Literal[AUDIENCES] = Field(description=AUDIENCE_TEXT)
-    changed: bool = Field(description="false when the skill had this audience already")
-
-
-class BundleTicket(BaseModel):
-    scope: Literal[SCOPES]
-    project: str | None
-    name: str
-    version: int
-    sha256: str = Field(description="what the downloaded bytes must hash to")
-    size: int
-    url: str = Field(description="presigned GET of the bundle; a bearer credential until it expires")
-    expires_at: datetime
-
-
-@dataclass(frozen=True)
-class Place:
-    """Where a skill lives: global, or a project the caller has a grant on; with the audiences the caller reads there."""
-
-    scope: str
-    project_id: int | None
-    project: str | None
-    audiences: tuple[str, ...] = AUDIENCES
-
-    def target(self, name: str) -> str:
-        """The skill ``name`` here, as audit rows name it."""
-        return f"skill:global/{name}" if self.project is None else f"skill:project/{self.project}/{name}"
-
-    def describe(self) -> str:
-        return "global skills" if self.project is None else f"skills of project {self.project}"
-
-
-GLOBAL_PLACE = Place("global", None, None)
+_writable = service.writable  # the place a caller publishes into, as tests/hub/test_mcp.py asks for it
 
 
 def audiences(request: Request, user: Principal) -> tuple[str, ...]:
-    """The audiences of the global skills ``user`` reads: every one for a hub admin and for the agent of a run whose
-    owner is one (the agent is never a hub admin itself, ``Principal.admin``, but reads what its owner reads);
-    everyone's alone for anyone else."""
-    if user.admin or (user.scope is not None and request.app.state.config.is_admin(user.admin_login)):
-        return AUDIENCES
-    return (EVERYONE,)
-
-
-def _no_grant(project: str) -> HTTPException:
-    return HTTPException(
-        403, f"skills of project {project} are for its members: ask an admin of the project for a grant"
-    )
-
-
-async def _readable(request: Request, conn: AsyncConnection, user: Principal, project: str | None) -> Place:
-    """The place of ``project``'s skills (global without one, with the audiences ``user`` reads) when ``user`` may read
-    them; 403 otherwise, the same for a project that does not exist."""
-    if project is None:
-        return Place("global", None, None, audiences(request, user))
-    if not user.reaches(project):  # the agent of a run reads the skills of the run's project alone
-        raise _no_grant(project)
-    projects, grants = tables.projects, tables.grants
-    granted = (
-        select(projects.c.id)
-        .join_from(projects, grants, and_(grants.c.project_id == projects.c.id, grants.c.user_id == user.user_id))
-        .where(projects.c.name == project)
-    )
-    row = (await conn.execute(granted)).first()
-    if row is None:
-        raise _no_grant(project)
-    return Place("project", row.id, project)
-
-
-async def _writable(conn: AsyncConnection, user: Principal, project: str | None) -> Place:
-    """The place ``user`` publishes into: global for a hub admin, a project under its write rule. 403 or 422
-    otherwise, before anything is written."""
-    if project is None:
-        if not user.admin:
-            raise HTTPException(403, "publishing a global skill needs a hub admin; a member publishes into a project")
-        return GLOBAL_PLACE
-    try:
-        access = await project_access(conn, user, project)
-    except HTTPException as exc:
-        if exc.status_code == 404:
-            raise _no_grant(project) from None
-        raise
-    if not holds(access.role, "writer"):
-        raise HTTPException(403, f"publishing skills of project {project} needs the writer role on it")
-    access.push_label()  # the write rule: a hub sink that clears the project's default label
-    return Place("project", access.project_id, project)
-
-
-def _checked_name(name: str) -> str:
-    problem = name_problem(name)
-    if problem:
-        raise HTTPException(422, problem)
-    return name
-
-
-def latest_skills(with_global: tuple[str, ...], project_ids: list[int]) -> Select:
-    """The skills of Skill, column by field name, each with its latest version: the global ones whose audience is in
-    ``with_global``, and those of the projects ``project_ids``."""
-    skills, projects, users, versions = tables.skills, tables.projects, tables.users, tables.skill_versions
-    latest = (
-        select(versions)
-        .where(versions.c.skill_id == skills.c.id)
-        .order_by(versions.c.version.desc())
-        .limit(1)
-        .lateral("v")
-    )
-    wanted = [and_(skills.c.scope == "project", skills.c.project_id.in_(project_ids))]
-    if with_global:
-        wanted.insert(0, and_(skills.c.scope == "global", skills.c.audience.in_(with_global)))
-    return (
-        select(
-            skills.c.scope,
-            projects.c.name.label("project"),
-            skills.c.name,
-            latest.c.version,
-            latest.c.description,
-            latest.c.sha256,
-            latest.c.size,
-            latest.c.source_repo,
-            latest.c.source_commit,
-            users.c.login.label("published_by"),
-            latest.c.published_at,
-            skills.c.audience,
-        )
-        .select_from(
-            skills.outerjoin(projects, projects.c.id == skills.c.project_id)
-            .join(latest, true())
-            .join(users, users.c.id == latest.c.published_by)
-        )
-        .where(or_(*wanted))
-        .order_by(skills.c.scope, projects.c.name.nulls_first(), func.lower(skills.c.name))
-    )
-
-
-def _granted(user: Principal) -> Select:
-    """The projects whose skills a caller lists: those it holds a grant on, the run's alone for the agent of a run."""
-    grants, projects = tables.grants, tables.projects
-    query = (
-        select(grants.c.project_id)
-        .join_from(grants, projects, projects.c.id == grants.c.project_id)
-        .where(grants.c.user_id == user.user_id)
-    )
-    if user.run_project is not None:
-        query = query.where(projects.c.name == user.run_project)
-    return query
+    """The audiences of the global skills ``user`` reads (``service.audiences``), under the hub's configuration."""
+    return service.audiences(request.app.state.config, user)
 
 
 @router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}, **PAGED})
 async def list_skills(
     request: Request,
     user: CurrentUser,
-    scope: Annotated[Literal[SCOPES] | None, Query(description="default: both")] = None,
+    scope: Annotated[Literal[SCOPES] | None, Query(description="default: both")] = None,  # pyright: ignore[reportInvalidTypeForm]
     project: Annotated[str | None, Query(pattern=PROJECT_NAME, description="only this project's skills")] = None,
     page: Paging = WHOLE,
 ) -> list[Skill]:
     """The skills the caller sees, each with its latest version: the global ones of an audience the caller is in and
     those of every project the caller has a grant on."""
-    if project is not None and scope == "global":
-        raise HTTPException(422, "a global skill belongs to no project: pass scope=project with a project, or neither")
-    async with request.app.state.engine.begin() as conn:
-        if project is not None:
-            projects = [(await _readable(request, conn, user, project)).project_id]
-        else:
-            projects = list((await conn.execute(_granted(user))).scalars())
-        with_global = audiences(request, user) if scope in (None, "global") and project is None else ()
-        rows = await page.rows(conn, latest_skills(with_global, projects if scope in (None, "project") else []))
-    return [Skill(**row._mapping) for row in rows]
-
-
-def _versions(skill_id: int) -> Select:
-    """The versions of skill ``skill_id`` with what Version shows, column by field name, the latest first."""
-    versions, users = tables.skill_versions, tables.users
-    return (
-        select(
-            versions.c.version,
-            versions.c.description,
-            versions.c.sha256,
-            versions.c.size,
-            versions.c.source_repo,
-            versions.c.source_commit,
-            users.c.login.label("published_by"),
-            versions.c.published_at,
-        )
-        .join_from(versions, users, users.c.id == versions.c.published_by)
-        .where(versions.c.skill_id == skill_id)
-        .order_by(versions.c.version.desc())
-    )
-
-
-async def _find(conn: AsyncConnection, place: Place, name: str, *, lock: bool = False):
-    """(id, name, created_at, audience) of skill ``name`` in ``place``, matched ignoring case; None when there is none
-    or it is for an audience the caller is not in."""
-    skills = tables.skills
-    query = select(skills.c.id, skills.c.name, skills.c.created_at, skills.c.audience).where(
-        skills.c.scope == place.scope,
-        skills.c.project_id.is_not_distinct_from(place.project_id),
-        func.lower(skills.c.name) == func.lower(name),
-        skills.c.audience.in_(place.audiences),
-    )
-    if lock:
-        query = query.with_for_update()
-    return (await conn.execute(query)).first()
-
-
-def _not_found(place: Place, name: str) -> HTTPException:
-    where = "global skill" if place.project is None else f"skill of project {place.project}"
-    return HTTPException(404, f"no {where} {name}: see `evo-agents hub skills list`")
+    state = request.app.state
+    return await service.list_skills(state.engine, state.config, user, scope, project, page)
 
 
 async def _history(request: Request, user: Principal, project: str | None, name: str) -> SkillHistory:
-    async with request.app.state.engine.begin() as conn:
-        place = await _readable(request, conn, user, project)
-        found = await _find(conn, place, name)
-        if found is None:
-            raise _not_found(place, name)
-        rows = (await conn.execute(_versions(found.id))).all()
-    versions = [Version(**row._mapping) for row in rows]
-    return SkillHistory(
-        scope=place.scope,
-        project=place.project,
-        name=found.name,
-        created_at=found.created_at,
-        versions=versions,
-        audience=found.audience,
-    )
+    return await service.history(request.app.state.engine, request.app.state.config, user, project, name)
 
 
 @router.get("/global/{name}", response_model=SkillHistory, responses=READ_REFUSALS)
@@ -398,133 +125,9 @@ async def project_skill(request: Request, project: ProjectName, name: SkillName,
 # Publishing
 
 
-def _latest_bundle(skill_id: int) -> Select:
-    """The number and SHA-256 of the latest version of skill ``skill_id``."""
-    versions = tables.skill_versions
-    query = select(versions.c.version, versions.c.sha256).where(versions.c.skill_id == skill_id)
-    return query.order_by(versions.c.version.desc()).limit(1)
-
-
-async def _committed(conn: AsyncConnection, place: Place, body: PublishRequest) -> None:
-    """422 unless the place's holder has committed the bundle with the declared size."""
-    holder = GLOBAL if place.project is None else f"project {place.project}"
-    blobs = tables.blobs
-    held = select(blobs.c.size).where(
-        blobs.c.project_id.is_not_distinct_from(place.project_id), blobs.c.sha256 == body.sha256
-    )
-    row = (await conn.execute(held)).first()
-    if row is None:
-        raise HTTPException(
-            422,
-            f"bundle {body.sha256} is not committed for {holder}: ask for an upload (POST /v1/blobs/uploads), PUT it "
-            "and commit it (POST /v1/blobs/commit) first; no version was created",
-        )
-    if row.size != body.size:
-        raise HTTPException(
-            422, f"bundle {body.sha256} has {row.size} bytes, not the {body.size} declared; no version was created"
-        )
-
-
-async def _latest(conn: AsyncConnection, skill_id: int) -> Version:
-    return Version(**(await conn.execute(_versions(skill_id).limit(1))).one()._mapping)
-
-
-async def _audience(conn: AsyncConnection, user: Principal, place: Place, found, wanted: str | None) -> str:
-    """The audience of skill ``found`` (a row of ``_find``) once set to ``wanted``, adding one audit row when that
-    changes it; unchanged without ``wanted``."""
-    if wanted is None or wanted == found.audience:
-        return found.audience
-    skills = tables.skills
-    await conn.execute(update(skills).where(skills.c.id == found.id).values(audience=wanted))
-    target = f"{place.target(found.name)} audience={found.audience}->{wanted}"
-    await record(conn, actor_id=user.user_id, token_id=user.token_id, action=AUDIENCE, target=target)
-    log.info("skill audience changed", extra={"skill": found.name, "audience": wanted})
-    return wanted
-
-
 async def _publish(request: Request, user: Principal, project: str | None, name: str, body: PublishRequest):
-    name = _checked_name(name)
-    if project is not None and body.audience not in (None, EVERYONE):
-        raise HTTPException(
-            422, f"a skill of a project is for its members: audience {body.audience} is a global skill's"
-        )
-    store = blob_store(request)
-    engine = request.app.state.engine
-    async with engine.begin() as conn:
-        place = await _writable(conn, user, project)
-        await _committed(conn, place, body)
-        found = await _find(conn, place, name, lock=body.audience is not None)
-        if found is not None:
-            if found.name != name:
-                raise HTTPException(422, f"the {place.describe()} have {found.name}, a name differing only in case")
-            latest = (await conn.execute(_latest_bundle(found.id))).first()
-            if latest is not None and latest.sha256 == body.sha256:
-                return Published(
-                    scope=place.scope,
-                    project=place.project,
-                    name=name,
-                    created=False,
-                    latest=await _latest(conn, found.id),
-                    audience=await _audience(conn, user, place, found, body.audience),
-                )
-    bundle = io.BytesIO()
-    try:
-        fetched = await asyncio.to_thread(store.fetch, blob_key(body.sha256), bundle, MAX_BUNDLE)
-    except BlobStoreUnavailable:
-        raise HTTPException(503, UNAVAILABLE) from None
-    if fetched != (body.sha256, body.size):  # None when missing; a size over MAX_BUNDLE when larger
-        log.error("a committed bundle is missing or altered in the blob store", extra={"sha256": body.sha256})
-        raise HTTPException(
-            503, "the blob store does not hold this bundle as committed; no version was created, tell a hub admin"
-        )
-    try:
-        contents = read_bundle(bundle.getvalue(), name)
-    except BundleError as exc:
-        raise HTTPException(422, f"bundle {body.sha256} is not a bundle of skill {name}: {exc}") from None
-    async with engine.begin() as conn:
-        place = await _writable(conn, user, project)  # the grant may have changed while the bundle was read
-        await _committed(conn, place, body)
-        skills = tables.skills
-        new_skill = pg_insert(skills).values(
-            scope=place.scope,
-            project_id=place.project_id,
-            name=name,
-            created_by=user.user_id,
-            audience=body.audience or EVERYONE,
-        )
-        await conn.execute(new_skill.on_conflict_do_nothing().returning(skills.c.id))
-        found = await _find(conn, place, name, lock=True)  # the version numbers follow one at a time
-        skill_id, held = found.id, found.name
-        if held != name:
-            raise HTTPException(422, f"the {place.describe()} have {held}, a name differing only in case")
-        audience = await _audience(conn, user, place, found, body.audience)
-        latest = (await conn.execute(_latest_bundle(skill_id))).first()
-        created = latest is None or latest.sha256 != body.sha256
-        if created:
-            await conn.execute(
-                insert(tables.skill_versions).values(
-                    skill_id=skill_id,
-                    version=(latest.version if latest else 0) + 1,
-                    name=contents.name,
-                    description=contents.description[:MAX_DESCRIPTION],
-                    sha256=body.sha256,
-                    size=body.size,
-                    r2_key=BLOB_PREFIX + body.sha256,
-                    source_repo=body.source_repo,
-                    source_commit=body.source_commit,
-                    published_by=user.user_id,
-                )
-            )
-            target = place.target(name)
-            await record(conn, actor_id=user.user_id, token_id=user.token_id, action=PUBLISH, target=target)
-        version = await _latest(conn, skill_id)
-    log.info(
-        "skill published" if created else "skill unchanged",
-        extra={"scope": place.scope, "project": place.project, "skill": name, "version": version.version},
-    )
-    return Published(
-        scope=place.scope, project=place.project, name=name, created=created, latest=version, audience=audience
-    )
+    state = request.app.state
+    return await service.publish(state.engine, state.blobs, state.config, user, project, name, body)
 
 
 @router.post("/global/{name}/versions", response_model=Published, responses=PUBLISH_REFUSALS)
@@ -545,54 +148,15 @@ async def publish_project(
 async def set_audience(request: Request, name: SkillName, body: AudienceChange, user: AdminUser) -> SkillAudience:
     """Who reads a global skill: every signed-in member, or hub admins alone (a hub admin only). A change adds one
     audit row; the audience it has already changes nothing."""
-    async with request.app.state.engine.begin() as conn:
-        found = await _find(conn, GLOBAL_PLACE, name, lock=True)
-        if found is None:
-            raise _not_found(GLOBAL_PLACE, name)
-        audience = await _audience(conn, user, GLOBAL_PLACE, found, body.audience)
-    return SkillAudience(name=found.name, audience=audience, changed=found.audience != audience)
+    return await service.set_audience(request.app.state.engine, user, name, body.audience)
 
 
 # Downloading
 
 
-def _bundle_of(skill_id: int, version: int | None) -> Select:
-    """The number, SHA-256 and size of version ``version`` of skill ``skill_id``, the latest without one."""
-    versions = tables.skill_versions
-    query = select(versions.c.version, versions.c.sha256, versions.c.size).where(versions.c.skill_id == skill_id)
-    if version is not None:
-        query = query.where(versions.c.version == version)
-    return query.order_by(versions.c.version.desc()).limit(1)
-
-
 async def _bundle(request: Request, user: Principal, project: str | None, name: str, version: int | None):
-    async with request.app.state.engine.begin() as conn:
-        place = await _readable(request, conn, user, project)
-        found = await _find(conn, place, name)
-        row = None if found is None else (await conn.execute(_bundle_of(found.id, version))).first()
-    if row is None:
-        if found is not None and version is not None:
-            raise HTTPException(404, f"{found.name} has no version {version}")
-        raise _not_found(place, name)
-    store = blob_store(request)  # after the read check: who may not read the skill learns nothing of the store
-    number, sha256, size = row
-    expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL
-    filename = f"{found.name}-v{number}.tar.gz"  # a skill name is [A-Za-z0-9._-], safe in a header as it is
-    url = await asyncio.to_thread(store.presign_get, sha256, filename=filename)
-    log.info(
-        "skill bundle handed out",
-        extra={"scope": place.scope, "project": place.project, "skill": found.name, "version": number},
-    )
-    return BundleTicket(
-        scope=place.scope,
-        project=place.project,
-        name=found.name,
-        version=number,
-        sha256=sha256,
-        size=size,
-        url=url,
-        expires_at=expires_at,
-    )
+    state = request.app.state
+    return await service.bundle(state.engine, state.blobs, state.config, user, project, name, version)
 
 
 @router.get("/global/{name}/bundle", response_model=BundleTicket, responses=BUNDLE_REFUSALS)
@@ -609,31 +173,16 @@ async def project_bundle(
     return await _bundle(request, user, project, name, version)
 
 
-async def _pool_node(request: Request, conn: AsyncConnection, user: Principal) -> Principal:
-    """The reader of the global skills for the worker whose token made the request: its owner, a hub admin when the
-    owner is one. 403 for a worker that is not a live node of a pool."""
-    w = tables.workers
-    query = select(w.c.pool_id).where(w.c.token_id == user.token_id, w.c.revoked_at.is_(None))
-    pool_id = (await conn.execute(query)).scalar_one_or_none()
-    if pool_id is None:
-        raise HTTPException(403, "the skills of the hub are synced on the nodes of a worker pool alone")
-    return replace(user, admin=request.app.state.config.is_admin(user.admin_login))
-
-
 @worker_router.get("", response_model=list[Skill], responses={403: {"model": ErrorBody}, **PAGED})
 async def worker_skills(request: Request, user: CurrentUser, page: Paging = WHOLE) -> list[Skill]:
     """The global skills the owner of the pool node whose token made the request reads, each with its latest
     version: what ``hub skills sync`` writes on a machine without a project."""
-    async with request.app.state.engine.begin() as conn:
-        owner = await _pool_node(request, conn, user)
-        rows = await page.rows(conn, latest_skills(audiences(request, owner), []))
-    return [Skill(**row._mapping) for row in rows]
+    return await service.worker_skills(request.app.state.engine, request.app.state.config, user, page)
 
 
 @worker_router.get("/global/{name}/bundle", response_model=BundleTicket, responses=BUNDLE_REFUSALS)
 async def worker_bundle(request: Request, name: SkillName, user: CurrentUser, version: VersionNumber = None):
     """A short-lived presigned GET of a global skill's bundle for a pool node, as GET /v1/skills/global/{name}/bundle
     answers its owner."""
-    async with request.app.state.engine.begin() as conn:
-        owner = await _pool_node(request, conn, user)
-    return await _bundle(request, owner, None, name, version)
+    state = request.app.state
+    return await service.worker_bundle(state.engine, state.blobs, state.config, user, name, version)
