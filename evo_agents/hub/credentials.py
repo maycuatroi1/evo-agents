@@ -119,7 +119,7 @@ def github_pull_requests(run_kind: str) -> bool:
 GITHUB_TOKEN_REFRESH_SECONDS = 600  # the daemon asks again for a GitHub token with less than this left
 
 MAX_SECRET_BYTES = 16384  # one secret's value, as UTF-8
-MAX_SECRETS_PER_OWNER = 200  # secrets one member keeps, deleted ones not counted
+MAX_SECRETS_PER_OWNER = 1000  # secrets one member keeps, deleted ones not counted
 MAX_SECRET_NAME_CHARS = 64
 SECRET_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 DEFAULT_GIT_USERNAME = "oauth2"  # what GitLab takes with a project or personal access token as password
