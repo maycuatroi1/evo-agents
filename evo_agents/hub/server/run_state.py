@@ -276,9 +276,11 @@ async def move_run(
         if closed.first() is not None:  # the channels that sent their messages edit them (notifications.queue_edits)
             await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)
     if new not in runs.HELD_STATES:  # no worker holds it now: the hub takes back what it leased the run
-        from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
+        from evo_agents.hub.server import (
+            lease_ending,  # its routes read runs through the routes that import this module
+        )
 
-        await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
+        await lease_ending.end_leases(conn, run_id=run_id, by=f"run-{new}")
     await browser_holds.follow(conn, run_id, new)
     await notify_events(conn, run_id)
     if not recorded:

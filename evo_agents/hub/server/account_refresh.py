@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from evo_agents.hub import claude_oauth, tables
 from evo_agents.hub.server.account_choice import mark_relogin
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR, OAuthTokens, open_tokens, seal_tokens, store_tokens
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, secret_aad
 
 log = logging.getLogger("evo_agents.hub.accounts")
 

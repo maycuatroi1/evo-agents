@@ -32,7 +32,7 @@ from evo_agents.hub import judge, merge_gate, runs, tables
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from tests.hub import test_credentials_api as leases_api
 from tests.hub.fake_gitlab import FakeGitLab, sha_of
 from tests.hub.live import sql

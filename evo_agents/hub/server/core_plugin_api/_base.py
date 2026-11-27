@@ -36,12 +36,12 @@ from evo_agents.hub.server.core_plugin_api._types import (
     own_session,
     session_principal,
 )
+from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.notifications.models import FROM_SESSION
 from evo_agents.hub.server.notifications.repository.channels import rules_of
 from evo_agents.hub.server.notifications.service.member_channels import kept_from
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.plugin_tokens import layer_config
-from evo_agents.hub.server.sealing import Sealer
 from evo_agents.hub.server.security import UNSAFE_METHODS, WEB, AdminUser, CurrentUser
 from evo_agents.hub.server.terminal import origin_of
 

@@ -1,21 +1,39 @@
-"""The answer bodies of the credential routes (``evo_agents.hub.server.credentials``), which imports them back."""
+"""The answer bodies of the leases of a run (``routes.leases``) and the constants of the leases: the reasons a repo
+gets nothing, the user git sends with a token of the App, the limit of credential_leases.target."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.credentials import HUB_KIND, HUB_TOKEN_ENV, LEASED_KINDS, PROVIDERS, RUN_ACCESS
+from evo_agents.hub.credentials import (
+    GITHUB_TOKEN_REFRESH_SECONDS,
+    HUB_KIND,
+    HUB_TOKEN_ENV,
+    LEASED_KINDS,
+    PROVIDERS,
+    RUN_ACCESS,
+)
+
+GITHUB_GIT_USERNAME = "x-access-token"  # the user git sends with an installation token, as GitHub documents it
+MAX_TARGET_CHARS = 2000  # credential_leases.target
+REFRESH = timedelta(seconds=GITHUB_TOKEN_REFRESH_SECONDS)
+NO_KEY = "this hub keeps no secrets and leases nothing: it needs {missing} (docs/credentials.md)"
+NO_APP = "no git secret covers it, and this hub has no GitHub App: {missing} not set (docs/credentials.md)"
+NO_CURATOR_APP = (
+    "a run of the Curator gets its GitHub token from the Curator's App alone, and this hub has none: {missing} not set"
+)
+RELEASE_OFF_GITHUB = "a release run gets no git secret: it pushes to GitHub alone, with the hub's App, not {origin}"
 
 
 class CredentialLease(BaseModel):
     """One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."""
 
     id: int = Field(description="the lease; the same id when it is asked for again")
-    kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")
-    provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
+    kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")  # pyright: ignore[reportInvalidTypeForm]
+    provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")  # pyright: ignore[reportInvalidTypeForm]
     name: str = Field(description="the secret's name, or github-app:<account>")
     env_var: str | None = Field(description="kind env: the variable it sets")
     url_prefix: str | None = Field(description="kind git: the https prefix of the origins it answers for")
@@ -49,10 +67,10 @@ class HubLease(BaseModel):
     hub, which calls the hub's API as the owner, and the hub's URL. A worker that knows no kind hub leaves it unused."""
 
     id: int = Field(description="the lease of the run's token; the same id, and token, when it is asked for again")
-    kind: Literal[HUB_KIND]
-    provider: Literal[RUN_ACCESS]
+    kind: Literal[HUB_KIND]  # pyright: ignore[reportInvalidTypeForm]
+    provider: Literal[RUN_ACCESS]  # pyright: ignore[reportInvalidTypeForm]
     name: str = Field(description="run-access:<owner>, the login the token acts as")
-    env_var: Literal[HUB_TOKEN_ENV] = Field(description="the variable that carries the token")
+    env_var: Literal[HUB_TOKEN_ENV] = Field(description="the variable that carries the token")  # pyright: ignore[reportInvalidTypeForm]
     url_prefix: None = None
     username: None = None
     value: str = Field(description="the run's token, evr_...: for memory only, never a file, a log line or an event")

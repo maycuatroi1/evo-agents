@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, ops_events, runs
 from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import credential_resolver, principals
+from evo_agents.hub.server import principals
 from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.credentials.service import resolver as credential_resolver
 from evo_agents.hub.server.decisions import repository
 from evo_agents.hub.server.decisions.models import Decision, DecisionAsk, OptionIn
 from evo_agents.hub.server.decisions.service.answers import answer_by_hub, card_moved

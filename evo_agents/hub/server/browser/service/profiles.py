@@ -42,7 +42,14 @@ from evo_agents.hub.server.browser.models.profiles import (
     SealedProfile,
 )
 from evo_agents.hub.server.browser.repository import profiles as repository
-from evo_agents.hub.server.sealing import KEY_BYTES, NONCE_BYTES, Sealed, Sealer, Unsealable, browser_identity_aad
+from evo_agents.hub.server.credentials.models.sealing import (
+    KEY_BYTES,
+    NONCE_BYTES,
+    Sealed,
+    Sealer,
+    Unsealable,
+    browser_identity_aad,
+)
 
 log = logging.getLogger(__name__)
 

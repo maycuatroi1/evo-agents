@@ -30,9 +30,9 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
+from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable
 from evo_agents.hub.server.plugin_configs import Place, stored_stacks, unseal
 from evo_agents.hub.server.plugin_grants import asked_for, enabled_query, project_grants
-from evo_agents.hub.server.sealing import Sealer, Unsealable
 from evo_agents.hub.server.security import b64, hash_token
 from evo_agents.plugins import config as plugin_config
 

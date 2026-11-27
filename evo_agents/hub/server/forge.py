@@ -30,8 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import FORGE_KIND, matches, normalize_origin
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, secret_aad
 from evo_agents.hub.server.gitlab import GitLab, GitLabProject, project_of
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, secret_aad
 
 log = logging.getLogger(__name__)
 

@@ -52,6 +52,9 @@ from evo_agents.hub.server import audit, gateway_sync
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, secret_aad
+from evo_agents.hub.server.credentials.repository.secrets import bind_secret, live_secrets, retire_secret
+from evo_agents.hub.server.credentials.service.secrets import own_workers, sealer_of, unique_names, writable_projects
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.provider_quota import ProviderQuota, refresh_for
 from evo_agents.hub.server.provider_store import (
@@ -74,16 +77,6 @@ from evo_agents.hub.server.provider_store import (
     store_endpoint,
     store_settings,
     view_of,
-)
-from evo_agents.hub.server.sealing import Sealed, Sealer, secret_aad
-from evo_agents.hub.server.secrets import (
-    bind_secret,
-    live_secrets,
-    own_workers,
-    retire_secret,
-    sealer_of,
-    unique_names,
-    writable_projects,
 )
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_views import shares_of

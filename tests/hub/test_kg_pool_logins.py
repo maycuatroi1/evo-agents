@@ -23,7 +23,7 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import leased, sample
 from tests.hub.test_curator import OWNER, PROJECT, charter_body, night, written  # noqa: F401 (night is a fixture)

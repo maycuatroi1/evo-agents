@@ -55,7 +55,7 @@ class Sealer(Protocol):
 
 
 def token_aad(source_id: int) -> bytes:
-    """The associated data of a source's sealed token (``evo_agents.hub.server.sealing.market_source_aad``)."""
+    """The associated data of a source's sealed token (``evo_agents.hub.server.credentials.models.sealing.market_source_aad``)."""
     return f"market-source:{source_id}".encode()
 
 

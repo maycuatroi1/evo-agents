@@ -12,7 +12,7 @@ next version, never changed after; a rollback makes the next version a copy of a
 (``rolled_back_to``). Values are checked against the schema of the installed version (``plugin_config.check_values``):
 each problem names its field, and none ever holds a secret's value.
 
-A secret field is sealed with the hub's key (``evo_agents.hub.server.sealing``), bound to its plugin, layer, project,
+A secret field is sealed with the hub's key (``evo_agents.hub.server.credentials.models.sealing``), bound to its plugin, layer, project,
 agent profile and field, and kept as ciphertext, nonce and key_id in base64; the hub never shows or logs it, and
 without EVO_HUB_SECRETS_KEY a write that sets one is a 503. The digest of an effective config counts a secret by a
 fingerprint of its sealed value (``fingerprint``), so it changes with the secret and tells nothing of it.
@@ -42,8 +42,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, plugin_config_aad
 from evo_agents.hub.server.plugin_grants import enabled_plugins
-from evo_agents.hub.server.sealing import Sealed, Sealer, plugin_config_aad
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import config as plugin_config
 from evo_agents.plugins.config import Layer

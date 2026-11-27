@@ -10,10 +10,13 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs
-from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals
+from evo_agents.hub.server import audit, principals
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, Unprocessable
 from evo_agents.hub.server.base.scope import Scope
+from evo_agents.hub.server.credentials.models.sealing import Sealer
+from evo_agents.hub.server.credentials.service import answers as credential_answers
+from evo_agents.hub.server.credentials.service import resolver as credential_resolver
 from evo_agents.hub.server.decisions import repository
 from evo_agents.hub.server.decisions.models import AnswerIn, Decision
 from evo_agents.hub.server.decisions.service import resume
@@ -27,7 +30,6 @@ from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.service import admin_acts
 from evo_agents.hub.server.runs.service.controls import web_only_steering
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
-from evo_agents.hub.server.sealing import Sealer
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger("evo_agents.hub.server.decisions")  # the name its log lines have always had

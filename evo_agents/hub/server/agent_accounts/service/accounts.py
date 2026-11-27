@@ -51,9 +51,10 @@ from evo_agents.hub.server.agent_accounts.service.shapes import (
 )
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.credentials.models.sealing import agent_secret_aad
+from evo_agents.hub.server.credentials.repository.secrets import bound_names
+from evo_agents.hub.server.credentials.service.secrets import sealer_of
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.sealing import agent_secret_aad
-from evo_agents.hub.server.secrets import bound_names, sealer_of
 from evo_agents.hub.server.security import Principal
 
 # Reading

@@ -17,8 +17,8 @@ from evo_agents.hub import webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.sealing import Sealer
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.webhooks import repository
 from evo_agents.hub.server.webhooks.models import (

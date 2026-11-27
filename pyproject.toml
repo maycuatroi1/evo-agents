@@ -59,7 +59,7 @@ hub-server = [
     # http2: APNs takes pushes over HTTP/2 alone (evo_agents.hub.server.push.service.native).
     "httpx[http2]>=0.27",
     "boto3==1.42.91",
-    # AES-256-GCM of the credentials the hub keeps for runs (evo_agents.hub.server.sealing).
+    # AES-256-GCM of the credentials the hub keeps for runs (evo_agents.hub.server.credentials.models.sealing).
     "cryptography>=44",
     # Pinned: migration 0004 creates the schema of exactly this release (evo_agents/hub/migrations/sql).
     "procrastinate==3.10.0",
@@ -252,7 +252,7 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.notifications.service.deliveries",
     "evo_agents.hub.worker -> evo_agents.hub.server.outcomes",
     "evo_agents.hub.worker -> evo_agents.hub.server.run_reaper",
-    "evo_agents.hub.worker -> evo_agents.hub.server.sealing",
+    "evo_agents.hub.worker -> evo_agents.hub.server.credentials.models.sealing",
     "evo_agents.hub.worker -> evo_agents.hub.server.seller",
     "evo_agents.hub.worker -> evo_agents.hub.server.webhooks.service.delivery",
 ]
@@ -975,6 +975,24 @@ codes, the refusal texts more than one layer gives) import none of them. Move th
 that needs it: a check or a message into the service, a query into the repository, a shape or a constant into the \
 models. Other modules import the service, the repository's placement and queries, and the models, never the routes. \
 A new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-credentials-layers"
+name = "The credentials go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.credentials"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.credentials a route handler keeps the special auth of its route (a worker token to lease and \
+give back a run's credentials, a member's session for the secrets and their shares), opens the transaction and \
+passes the request's parts to the service (leases, survey, secrets, shares, answers, resolver), which checks the \
+caller and decides; the repository holds the SQL of the leases, the secrets, their bindings and their shares; the \
+models (the API's shapes, the lease and refusal texts more than one layer gives, and sealing, the Sealer, whose sealed \
+format never changes) import none of them. Move the code that reaches up into the layer that needs it: a check or a \
+message into the service, a query into the repository, a shape or a constant into the models. Other modules import \
+the service, the repository and the models, never the routes but put_secret, which the Claude sign-in calls. A new \
+module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

@@ -55,7 +55,7 @@ trusted. The session secret also keys the hashes of pairing codes, which therefo
 Curator's replay suites (``evo_agents.hub.replay.split_of``), which no hub builds without it.
 
 Credentials of runs (``docs/credentials.md``) are optional configuration too. EVO_HUB_SECRETS_KEY is the AES-256-GCM
-key that seals them (``evo_agents.hub.server.sealing``), 32 bytes in base64url: without it a route that writes a
+key that seals them (``evo_agents.hub.server.credentials.models.sealing``), 32 bytes in base64url: without it a route that writes a
 secret answers 503 and a run asking for its leases gets none, with the reason. EVO_HUB_GITHUB_APP_ID (the App's ID
 or client ID) and EVO_HUB_GITHUB_APP_PRIVATE_KEY (its PEM, where ``\\n`` may stand for each line break, as one line
 of an environment file needs) go together or not at all: without them a run gets no GitHub token. The key and the
@@ -248,7 +248,7 @@ BLOB_STORE_FIELDS = (
     "s3_region",
     "s3_addressing_style",
 )
-SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
+SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.credentials.models.sealing
 SELLER_KEY_BYTES = 32  # the seed of an Ed25519 key
 SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.admin.PROJECT_NAME
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not

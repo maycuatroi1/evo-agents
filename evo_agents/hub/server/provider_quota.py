@@ -35,9 +35,9 @@ from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.log import register_secret
 from evo_agents.hub.quota import ZAI_PROVIDER, ZAI_QUOTA_PATH, zai_usage
 from evo_agents.hub.server.account_choice import cool
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, agent_provider_aad, secret_aad
 from evo_agents.hub.server.provider_probe import MAX_BODY_BYTES, TIMEOUT_S, call_pinned, pinned_url, sanitized
 from evo_agents.hub.server.public_endpoint import EndpointRefused, Resolver, base_url, public_addresses
-from evo_agents.hub.server.sealing import Sealed, Sealer, agent_provider_aad, secret_aad
 
 log = logging.getLogger(__name__)
 

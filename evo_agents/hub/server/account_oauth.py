@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
-from evo_agents.hub.server.sealing import Sealed, Sealer
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer
 
 OAUTH_ENV_VAR = "CLAUDE_CODE_OAUTH_TOKEN"  # the one variable an OAuth account sets
 MAX_IDENTITY_CHARS = 200

@@ -22,7 +22,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import org, tables
-from evo_agents.hub.server import audit, credentials
+from evo_agents.hub.server import audit, lease_ending
 from evo_agents.hub.server.org_store import load, lock, today
 
 log = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ async def take_back(
     seat ended in ``chart``; the runs, whose GitHub tokens ``revoke_taken`` revokes once the transaction commits."""
     run_ids = await _leased_runs(conn, org.out_of_office(chart, await today(conn)))
     for run_id in run_ids:
-        await credentials.end_leases(conn, run_id=run_id, actor_id=actor_id, token_id=token_id, by=by)
+        await lease_ending.end_leases(conn, run_id=run_id, actor_id=actor_id, token_id=token_id, by=by)
     return run_ids
 
 
@@ -65,7 +65,7 @@ async def take_back_now(conn: AsyncConnection, *, actor_id: int | None, token_id
 async def revoke_taken(engine: AsyncEngine, sealer, app, run_ids: list[int]) -> None:
     """Revoke at GitHub the tokens of the leases ``take_back`` gave back; GitHub failing leaves them to the reaper."""
     for run_id in run_ids:
-        await credentials.revoke_tokens(engine, sealer, app, run_id=run_id)
+        await lease_ending.revoke_tokens(engine, sealer, app, run_id=run_id)
 
 
 async def _end(conn: AsyncConnection, chart: org.Chart, seat: org.Seat, day) -> None:

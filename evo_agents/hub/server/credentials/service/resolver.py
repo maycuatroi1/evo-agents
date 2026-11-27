@@ -3,7 +3,7 @@ owner may hold the credential already (plan hub-attention-runtime, criterion a2;
 asks for a credential").
 
 ``look`` reads, for a request that names a variable, the owner's live secrets of kind env that set it, and what the
-lease of the run (``credentials.survey_run``: its project, its worker, its agent profile, the Curator's charter, K7 of
+lease of the run (``survey.survey_run``: its project, its worker, its agent profile, the Curator's charter, K7 of
 its principal) makes of each:
 
 - ``leased``: the run is leased it now, so the hub answers the request itself (``decisions.ask``): the decision is
@@ -13,7 +13,7 @@ its principal) makes of each:
 - ``bindable``: it is not bound to the run's project on the run's worker, and nothing else keeps it from the run. When
   K12 of the run's principal is auto (``k12``) the hub binds it there (``bind``, the audit row ``secret.bind``)
   and answers as above; else the decision goes to the owner, offering FOUND, which binds it when they choose it
-  (``credential_answers.give``);
+  (``answers.give``);
 - ``withheld``: the rest, which the run is not leased whatever it is bound to: the decision's context names them.
 
 A request that also asks for the owner's hub account is never answered by the hub: the account is the owner's to give.
@@ -23,43 +23,25 @@ Nothing here reads a secret's value: ``look`` and ``bind`` read and write names,
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 
 from fastapi import HTTPException
-from sqlalchemy import and_, exists, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import credential_requests, runs, tables
+from evo_agents.hub import credential_requests, runs
 from evo_agents.hub.autonomy_levels import Choice
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.autonomy.service import lease as lease_autonomy
 from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.autonomy.service.ledger import ALLOWED
-from evo_agents.hub.server.secrets import audit_target
+from evo_agents.hub.server.credentials.models.answers import KIND
+from evo_agents.hub.server.credentials.models.resolver import K12, Found
+from evo_agents.hub.server.credentials.repository import answers as answer_repository
+from evo_agents.hub.server.credentials.repository import resolver as repository
+from evo_agents.hub.server.credentials.service.secrets import audit_target
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.workers.repository.placement import bound_on
 
 log = logging.getLogger(__name__)
-
-KIND = "env"
-K12 = "K12"
-
-
-@dataclass
-class Found:
-    """The owner's secrets of kind env for a request's variable, by what the run's lease makes of them, each list in the
-    order the hub prefers them: the name the request proposes first, then by name."""
-
-    env_var: str
-    project: str
-    leased: list[str] = field(default_factory=list)
-    bindable: list[tuple[int, str]] = field(default_factory=list)  # (id, name)
-    withheld: list[str] = field(default_factory=list)
-
-    @property
-    def any(self) -> bool:
-        return bool(self.leased or self.bindable or self.withheld)
 
 
 def _preferred(proposed: str):
@@ -70,38 +52,16 @@ def _proposed(request: dict) -> str:
     return request.get("secret_name") or credential_requests.default_secret_name(request["env_var"])
 
 
-def _live_env(owner_id: int, env_var: str):
-    s = tables.secrets
-    return (
-        s.c.owner_id == owner_id,
-        s.c.kind == KIND,
-        s.c.env_var == env_var,
-        s.c.deleted_at.is_(None),
-        or_(s.c.expires_at.is_(None), s.c.expires_at > func.now()),
-    )
-
-
-def _bound_here(project_id: int, worker_id: int | None):
-    """A secret of ``tables.secrets`` is bound to the project on the worker (or on any worker of its owner)."""
-    s, b = tables.secrets, tables.secret_bindings
-    where = [b.c.secret_id == s.c.id, b.c.project_id == project_id]
-    if worker_id is None:
-        where.append(and_(b.c.worker_id.is_(None), b.c.pool_id.is_(None)))
-    else:
-        where.append(bound_on(b, worker_id))
-    return exists().where(*where)
-
-
 async def look(conn: AsyncConnection, user: Principal, run_id: int, request: dict | None) -> Found | None:
     """What the hub finds for credential request ``request`` of run ``run_id``, which the worker of ``user`` holds;
     None for a request that names no variable, and when the run would be leased nothing at all (its owner lost the
     writer role, say), which the decision then tells its owner as before."""
     if request is None or request.get("env_var") is None:
         return None
-    from evo_agents.hub.server import credentials  # it reads runs through routes that import the decisions
+    from evo_agents.hub.server.credentials.service import survey as lease_survey  # it reads runs through routes
 
     try:
-        worker_id, survey = await credentials.survey_run(conn, user, run_id, lock=False)
+        worker_id, survey = await lease_survey.survey_run(conn, user, run_id, lock=False)
     except HTTPException as exc:
         log.info("credential request not looked up", extra={"run_id": run_id, "status": exc.status_code})
         return None
@@ -121,25 +81,13 @@ async def look(conn: AsyncConnection, user: Principal, run_id: int, request: dic
         },
         key=order,
     )
-    s = tables.secrets
-    rows = (
-        await conn.execute(
-            select(
-                s.c.id,
-                s.c.name,
-                s.c.kind,
-                s.c.env_var,
-                s.c.environment,
-                _bound_here(run.project_id, worker_id).label("bound"),
-            ).where(*_live_env(run.owner_id, env_var))
-        )
-    ).all()
-    allowed = credentials._allowed(run.curator)
+    rows = await repository.env_secrets(conn, run.owner_id, env_var, run.project_id, worker_id)
+    allowed = lease_survey.allowed_secrets(run.curator)
     for row in sorted(rows, key=lambda row: order(row.name)):
         if row.name in found.leased:
             continue
-        takes = credentials._leasable(run, allowed, row) and lease_autonomy.secret_allowed(
-            survey.k7, *credentials.row_k7(row)
+        takes = lease_survey.leasable(run, allowed, row) and lease_autonomy.secret_allowed(
+            survey.k7, *lease_survey.row_k7(row)
         )
         if takes and not row.bound:
             found.bindable.append((row.id, row.name))
@@ -162,14 +110,8 @@ async def k12(conn: AsyncConnection, run_id: int) -> Choice | None:
 
 async def _run_worker(conn: AsyncConnection, owner_id: int, run_id: int) -> int | None:
     """The worker run ``run_id`` is on, when it is one of its owner's that is not revoked: a binding names it, as the
-    answer of a pasted value does (``credential_answers.keep_value``); else None, any worker of the owner."""
-    r, w = tables.runs, tables.workers
-    found = (
-        select(w.c.id)
-        .join_from(r, w, w.c.id == r.c.worker_id)
-        .where(r.c.id == run_id, w.c.owner_id == owner_id, w.c.revoked_at.is_(None))
-    )
-    return (await conn.execute(found)).scalar_one_or_none()
+    answer of a pasted value does (``answers.keep_value``); else None, any worker of the owner."""
+    return await answer_repository.own_worker(conn, owner_id, run_id)
 
 
 async def bind(
@@ -186,17 +128,8 @@ async def bind(
     """Bind secret ``secret_id`` of ``owner_id`` to project ``project_id`` on the worker of run ``run_id`` (its other
     bindings kept), for decision ``decision_id``: one audit row secret.bind naming the secret by id, the run, the
     decision and ``by`` (hub, or the owner's decision), never its name or value."""
-    b = tables.secret_bindings
     worker_id = await _run_worker(conn, owner_id, run_id)
-    there = select(b.c.secret_id).where(
-        b.c.secret_id == secret_id,
-        b.c.project_id == project_id,
-        b.c.worker_id.is_(None) if worker_id is None else b.c.worker_id == worker_id,
-        b.c.pool_id.is_(None),
-    )
-    if (await conn.execute(there)).first() is None:
-        row = {"secret_id": secret_id, "project_id": project_id, "worker_id": worker_id, "pool_id": None}
-        await conn.execute(insert(b).values(row))
+    await repository.add_binding(conn, secret_id, project_id, worker_id)
     target = f"{audit_target(secret_id)} run:{run_id} decision:{decision_id} by={by}"
     await audit.record(
         conn,
@@ -234,15 +167,7 @@ async def bind_chosen(
     the run's worker yet, the one the request proposes first (``bind``); its name. 409 when they hold none for it any
     more."""
     env_var = request["env_var"]
-    r, s = tables.runs, tables.secrets
-    worker_id = (await conn.execute(select(r.c.worker_id).where(r.c.id == run_id))).scalar_one()
-    rows = (
-        await conn.execute(
-            select(s.c.id, s.c.name, _bound_here(project_id, worker_id).label("bound")).where(
-                *_live_env(user.user_id, env_var)
-            )
-        )
-    ).all()
+    rows = await repository.chosen_secrets(conn, user.user_id, env_var, project_id, run_id)
     if not rows:
         raise HTTPException(
             409,

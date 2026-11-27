@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 from evo_agents.hub import claude_oauth
 from evo_agents.hub.server.claude_sign_in import FLOW_TTL, open_flow, seal_flow
-from evo_agents.hub.server.sealing import Sealer, new_key
+from evo_agents.hub.server.credentials.models.sealing import Sealer, new_key
 from tests.hub import pg
 from tests.hub.test_account_oauth_login import VAR, account_row, anthropic, sample  # noqa: F401 (a fixture)
 from tests.hub.test_secrets_cli import needs_pg

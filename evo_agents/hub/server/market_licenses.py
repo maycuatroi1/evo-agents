@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import tables, tables_seller
 from evo_agents.hub.seller_client import SellerClient, SellerUnavailable
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable, market_purchase_aad
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row, source_rows
 from evo_agents.hub.server.market_install import Installing, check_trust, install_checked
@@ -54,7 +55,6 @@ from evo_agents.hub.server.plugin_store import (
 )
 from evo_agents.hub.server.plugin_store import NOTICE as DISABLED_NOTICE
 from evo_agents.hub.server.plugin_tokens import revoke_tokens
-from evo_agents.hub.server.sealing import Sealer, Unsealable, market_purchase_aad
 from evo_agents.hub.server.security import AdminUser
 from evo_agents.hub.server.seller_api import Contact
 from evo_agents.plugins import license as lic

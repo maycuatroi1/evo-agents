@@ -29,9 +29,9 @@ from evo_agents.hub import model_catalog, tables
 from evo_agents.hub.accounts import ACCOUNT_STATES, MAX_PRIORITY, MAX_WEIGHT, account_state
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, PROVIDER_KIND
 from evo_agents.hub.provider_accounts import API_FORMATS, MAX_MODELS, PROVIDER_ID, model_refusal, unique_models
+from evo_agents.hub.server.credentials.repository.secrets import bound_names
 from evo_agents.hub.server.provider_probe import Probe, probe
 from evo_agents.hub.server.public_endpoint import EndpointRefused, base_url, public_addresses
-from evo_agents.hub.server.secrets import bound_names
 from evo_agents.hub.server.share_views import CredentialShare
 
 ModelsFrom = Literal["endpoint", "catalog"]

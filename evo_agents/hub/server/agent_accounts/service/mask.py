@@ -21,7 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.log import MIN_SECRET_LENGTH
 from evo_agents.hub.server.agent_accounts.repository import mask as repository
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import (
+    Sealed,
+    Sealer,
+    Unsealable,
+    agent_secret_aad,
+    lease_aad,
+    secret_aad,
+)
 
 MASK = "***"  # what the daemon writes for a lease value
 

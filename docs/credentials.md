@@ -11,9 +11,9 @@ long as it runs. The daemon keeps leases in memory, hands them to git and the ag
 ends; the hub revokes what it can. A machine set up this way keeps only its worker token, which works on
 `/v1/worker/*` alone.
 
-`evo_agents/hub/credentials.py` holds the model both ends share; `evo_agents/hub/server/sealing.py` seals values,
-`evo_agents/hub/server/secrets.py` holds the owner's routes, `evo_agents/hub/server/github_app.py` the GitHub App
-client, `evo_agents/hub/server/credentials.py` the worker's lease route, `evo_agents/worker/credentials.py` the
+`evo_agents/hub/credentials.py` holds the model both ends share; `evo_agents/hub/server/credentials/models/sealing.py` seals values,
+`evo_agents/hub/server/credentials/routes/secrets.py` holds the owner's routes, `evo_agents/hub/server/github_app.py` the GitHub App
+client, `evo_agents/hub/server/credentials/routes/leases.py` the worker's lease route, `evo_agents/worker/credentials.py` the
 daemon's side, and `evo_agents/worker/credential_commands.py` the commands a run calls on the daemon's socket (git's
 helper, `evo-agents worker env`).
 
@@ -85,7 +85,7 @@ not in its backups.
 
 ## The owner's routes
 
-`evo_agents/hub/server/secrets.py`, with a machine token or a web session; a write made with the session cookie needs
+`evo_agents/hub/server/credentials/routes/secrets.py`, with a machine token or a web session; a write made with the session cookie needs
 `X-Evo-CSRF`, as every write does. A worker token gets 403 here.
 
 | Route | What it does |
@@ -205,7 +205,7 @@ decision at a lease also writes `autonomy.decided` (the floor S1). An env secret
 (`secrets.environment`, schema 0114): none, or `test` with `hub secret set --environment test`; `hub secret list`
 shows it.
 
-`evo_agents/hub/server/credentials.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
+`evo_agents/hub/server/credentials/routes/leases.py`. `POST /v1/worker/runs/{id}/credentials`, with the worker's token and the
 protocol header, for a run the worker holds: one of the held states, `waiting` of a plan run among them. Any other run,
 another worker's or one that ended, is 404, as for a state report; a machine token or a web session gets 403, as on
 every worker route. The run's owner, the member who dispatched it, must still hold writer on the run's project: once
@@ -1190,7 +1190,7 @@ others of `env_name_refusal`), and gives the decision its own options, never the
 whoever the run's principal reports to, since what it asks for is the owner's alone to give.
 
 **What the hub answers itself.** Before the decision reaches anyone, the hub looks for a live secret of kind `env` of
-the run's owner that sets the variable (`evo_agents/hub/server/credential_resolver.py`), the one of the proposed name
+the run's owner that sets the variable (`evo_agents/hub/server/credentials/service/resolver.py`), the one of the proposed name
 first, under the same rules as a lease: the worker's profile, the Curator's charter and K7 of the run's principal.
 
 - When the run is leased one already (bound to the run's project, on any worker or on the run's), the hub answers the

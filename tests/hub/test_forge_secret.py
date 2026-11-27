@@ -25,9 +25,9 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES, Sealer
 from evo_agents.hub.server.forge import forge_token
 from evo_agents.hub.server.gitlab import GitLabProject
-from evo_agents.hub.server.sealing import KEY_BYTES, Sealer
 from tests.hub import test_credentials_api as leases_api
 from tests.hub.fake_gitlab import FakeGitLab
 from tests.hub.live import sql, table_dump

@@ -71,9 +71,10 @@ from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, P
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.credentials.repository.secrets import bound_names
+from evo_agents.hub.server.credentials.service.secrets import audit_target
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.secrets import audit_target, bound_names
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.server.share_leases import grantee_clause, live_share
 from evo_agents.hub.server.share_views import CredentialShare, shares_of

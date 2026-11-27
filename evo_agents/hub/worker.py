@@ -180,8 +180,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncEngine
 
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
     from evo_agents.hub.server.github_app import GitHubApp
-    from evo_agents.hub.server.sealing import Sealer
 
 log = logging.getLogger(__name__)
 
@@ -854,8 +854,8 @@ async def run(
     ``entity_key`` and ``hub_turn`` are the server's (``HubContext.release_pass``, ``HubContext.loop_tick``,
     ``HubContext.memory_upkeep``, ``HubContext.entity_key``, ``HubContext.hub_turn``), and so is ``cron_pass``
     (``HubContext.cron_pass``)."""
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
     from evo_agents.hub.server.github_app import GitHubApp
-    from evo_agents.hub.server.sealing import Sealer
 
     github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
     try:
