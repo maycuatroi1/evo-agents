@@ -34,7 +34,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
-    DateTime,
     Double,
     ForeignKeyConstraint,
     Identity,
@@ -52,13 +51,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
+from evo_agents.hub.columns import stamp, when
 
 
 def email_table(metadata: MetaData) -> Table:
@@ -69,7 +62,7 @@ def email_table(metadata: MetaData) -> Table:
         Column("id", BigInteger, Identity(always=True), nullable=False),
         Column("user_id", BigInteger, nullable=False),
         Column("email", Text, nullable=False),  # as it was written; compared in lower case
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="user_emails_user_id_fkey"),
         PrimaryKeyConstraint("id", name="user_emails_pkey"),
         Index("user_emails_user_idx", "user_id"),
@@ -87,19 +80,19 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Tabl
         Column("secret_id", BigInteger, nullable=False),
         Column("weight", Integer, nullable=False, server_default="1"),
         Column("priority", Integer, nullable=False, server_default="0"),
-        _when("paused_at"),
-        _when("cooldown_until"),
+        when("paused_at"),
+        when("cooldown_until"),
         Column("cooldown_reason", Text),
-        _when("last_leased_at"),
+        when("last_leased_at"),
         Column("rotation", Double, nullable=False, server_default="0"),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         Column("last_usage", JSONB),  # 0028: the last usage a run reported (rate_limits), never a value
-        _when("last_usage_at"),
+        when("last_usage_at"),
         Column("oauth_sealed", LargeBinary),  # 0066: the sealed set of an OAuth account's tokens
         Column("oauth_nonce", LargeBinary),
         Column("oauth_key_id", Text),
         Column("weekly_budget_usd", Numeric(12, 2)),  # 0258: the USD a model account without a quota API has a week
-        _when("weekly_reset_at"),  # 0258: an instant its weeks start from, every 7 days; null: Monday 00:00 UTC
+        when("weekly_reset_at"),  # 0258: an instant its weeks start from, every 7 days; null: Monday 00:00 UTC
         ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="accounts_secret_id_fkey"),
         PrimaryKeyConstraint("secret_id", name="accounts_pkey"),
     )
@@ -112,7 +105,7 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Tabl
         Column("cooldown_seconds", Integer, nullable=False, server_default="3600"),
         Column("failover", Boolean, nullable=False, server_default=true()),
         Column("max_failovers", SmallInteger, nullable=False, server_default="3"),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         Column("hard_reserve_pct", SmallInteger, nullable=False, server_default="10"),  # 0258: quota-pacing
         Column("five_hour_ceiling_pct", SmallInteger, nullable=False, server_default="90"),
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="account_policies_owner_id_fkey"),
@@ -128,7 +121,7 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Tabl
         Column("env_var", Text, nullable=False),
         Column("secret_id", BigInteger, nullable=False),
         Column("how", Text, nullable=False),
-        _stamp("chosen_at"),
+        stamp("chosen_at"),
         Column("failovers", SmallInteger, nullable=False, server_default="0"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_accounts_run_id_fkey"),
         ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="RESTRICT", name="run_accounts_secret_id_fkey"),
@@ -143,7 +136,7 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Tabl
         Column("base_url", Text, nullable=False),  # https://host[:port][/path], whose every address is public
         Column("api_format", Text, nullable=False),
         Column("models", JSONB, nullable=False, server_default="[]"),  # names, an array of strings
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["secret_id"], ["secrets.id"], ondelete="CASCADE", name="provider_accounts_secret_id_fkey"
         ),
@@ -171,11 +164,11 @@ def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, T
         Column("budget_usd", Numeric(12, 2)),
         Column("usage_ceiling_pct", SmallInteger),
         Column("max_running", Integer),
-        _when("expires_at"),
-        _when("terms_ack_at"),
+        when("expires_at"),
+        when("terms_ack_at"),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _when("revoked_at"),
+        stamp("created_at"),
+        when("revoked_at"),
         Column("revoked_by", BigInteger),
         Column("run_id", BigInteger),  # the one run it lends to, and those that resume it (0247); null for every run
         key("credential_shares", "secret_id", "secrets", "CASCADE"),

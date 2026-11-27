@@ -19,7 +19,6 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Date,
-    DateTime,
     ForeignKeyConstraint,
     Identity,
     Integer,
@@ -29,18 +28,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     column,
-    func,
     or_,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import fkey, stamp
 
 
 def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -53,8 +45,8 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("number", Integer, nullable=False),
         Column("alias", Text),
         Column("revision", Integer, nullable=False),
-        _stamp("created_at"),
-        _key("goals", "project_id", "projects", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("goals", "project_id", "projects", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="goals_pkey"),
         UniqueConstraint("project_id", "number", name="goals_number_key"),
         UniqueConstraint("project_id", "alias", name="goals_alias_key"),
@@ -79,9 +71,9 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("close_reason", Text),
         Column("note", Text),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _key(name, "goal_id", "goals", ondelete="CASCADE"),
-        _key(name, "canvas_id", "canvas_canvases", ondelete="RESTRICT"),
+        stamp("created_at"),
+        fkey(name, "goal_id", "goals", ondelete="CASCADE"),
+        fkey(name, "canvas_id", "canvas_canvases", ondelete="RESTRICT"),
         # NO ACTION, checked at the end of the statement: a project's goals and problems go with it in one delete.
         ForeignKeyConstraint(["problem_id"], ["problems.id"], name=f"{name}_problem_id_fkey"),
         ForeignKeyConstraint(["opportunity_id"], ["opportunities.id"], name=f"{name}_opportunity_id_fkey"),
@@ -93,8 +85,8 @@ def goal_tables(metadata: MetaData) -> tuple[Table, Table]:
             or_(column("srs_heading").is_(None), column("srs_document_id").is_not(None)),
             name=f"{name}_srs_heading_check",
         ),
-        _key(name, "owner_id", "users", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "owner_id", "users", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("goal_id", "revision", name="goal_revisions_pkey"),
     )
     return goals, revisions

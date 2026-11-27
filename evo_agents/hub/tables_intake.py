@@ -13,7 +13,6 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Integer,
     MetaData,
@@ -25,9 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
+from evo_agents.hub.columns import fkey
 
 
 def intake_table(metadata: MetaData) -> Table:
@@ -48,9 +45,9 @@ def intake_table(metadata: MetaData) -> Table:
         Column("outcome", JSONB),
         Column("put_by", BigInteger),
         Column("done_at", DateTime(timezone=True)),
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
-        _key(name, "requested_by", "users", ondelete="RESTRICT"),
-        _key(name, "put_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
+        fkey(name, "requested_by", "users", ondelete="RESTRICT"),
+        fkey(name, "put_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="intakes_pkey"),
         UniqueConstraint("project_id", "number", name="intakes_number_key"),
     )

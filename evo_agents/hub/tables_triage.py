@@ -24,7 +24,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     MetaData,
@@ -37,9 +36,7 @@ from sqlalchemy import (
     true,
 )
 
-
-def _fk(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey")
+from evo_agents.hub.columns import fkey
 
 
 def triage_tables(metadata: MetaData, projects: Table, runs: Table) -> tuple[Table, Table]:
@@ -54,8 +51,8 @@ def triage_tables(metadata: MetaData, projects: Table, runs: Table) -> tuple[Tab
         Column("plan_id", Text),
         Column("chat_id", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _fk("triage_chats", "project_id", "projects.id", ondelete="CASCADE"),
-        _fk("triage_chats", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("triage_chats", "project_id", "projects.id", ondelete="CASCADE"),
+        fkey("triage_chats", "chat_id", "chats.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="triage_chats_pkey"),
         UniqueConstraint("chat_id", name="triage_chats_chat_id_key"),
         UniqueConstraint("project_id", "plan_id", name="triage_chats_plan_key", postgresql_nulls_not_distinct=True),
@@ -73,10 +70,10 @@ def triage_tables(metadata: MetaData, projects: Table, runs: Table) -> tuple[Tab
         Column("chain_depth", SmallInteger, nullable=False, server_default="0"),
         Column("auto_reruns", SmallInteger, nullable=False, server_default="0"),
         Column("opened_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _fk("run_triage", "run_id", "runs.id", ondelete="CASCADE"),
-        _fk("run_triage", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("run_triage", "root_message_id", "chat_messages.id", ondelete="CASCADE"),
-        _fk("run_triage", "agent_run_id", "runs.id", ondelete="SET NULL"),
+        fkey("run_triage", "run_id", "runs.id", ondelete="CASCADE"),
+        fkey("run_triage", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("run_triage", "root_message_id", "chat_messages.id", ondelete="CASCADE"),
+        fkey("run_triage", "agent_run_id", "runs.id", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="run_triage_pkey"),
         UniqueConstraint("run_id", name="run_triage_run_id_key"),
     )
@@ -96,10 +93,10 @@ def proposal_thread_table(metadata: MetaData) -> Table:
         Column("agent_run_id", BigInteger),
         Column("opened_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("asked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _fk("proposal_threads", "proposal_id", "proposals.id", ondelete="CASCADE"),
-        _fk("proposal_threads", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("proposal_threads", "root_message_id", "chat_messages.id", ondelete="CASCADE"),
-        _fk("proposal_threads", "agent_run_id", "runs.id", ondelete="SET NULL"),
+        fkey("proposal_threads", "proposal_id", "proposals.id", ondelete="CASCADE"),
+        fkey("proposal_threads", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("proposal_threads", "root_message_id", "chat_messages.id", ondelete="CASCADE"),
+        fkey("proposal_threads", "agent_run_id", "runs.id", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="proposal_threads_pkey"),
         UniqueConstraint("proposal_id", name="proposal_threads_proposal_id_key"),
         UniqueConstraint("chat_id", "root_message_id", name="proposal_threads_root_key"),

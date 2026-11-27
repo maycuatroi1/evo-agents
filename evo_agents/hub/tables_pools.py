@@ -29,7 +29,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     MetaData,
     PrimaryKeyConstraint,
@@ -42,13 +41,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _id() -> Column:
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
+from evo_agents.hub.columns import id_column, stamp
 
 
 def _texts(name: str) -> Column:
@@ -59,7 +52,7 @@ def pools_table(metadata: MetaData) -> Table:
     pools = Table(
         "worker_pools",
         metadata,
-        _id(),
+        id_column(),
         Column("owner_id", BigInteger, nullable=False),
         Column("name", Text, nullable=False),
         Column("agent_id", BigInteger),  # since 0189: the agent whose pool it is, NULL for a member's
@@ -68,8 +61,8 @@ def pools_table(metadata: MetaData) -> Table:
         _texts("taints"),
         _texts("accepted_findings"),
         Column("reap_after_days", SmallInteger, nullable=False, server_default="7"),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column(
             "empty_notified_at", DateTime(timezone=True)
         ),  # since 0190: the admins heard that no node was ready; cleared when one is
@@ -106,11 +99,11 @@ def join_tokens_table(metadata: MetaData) -> Table:
     tokens = Table(
         "worker_join_tokens",
         metadata,
-        _id(),
+        id_column(),
         Column("pool_id", BigInteger, nullable=False),
         Column("token_hash", Text, nullable=False),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("expires_at", DateTime(timezone=True), nullable=False),
         Column("max_uses", SmallInteger, nullable=False),
         Column("uses", SmallInteger, nullable=False, server_default="0"),

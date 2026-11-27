@@ -33,17 +33,10 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import fkey, stamp
 
 
 def opportunity_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
@@ -55,8 +48,8 @@ def opportunity_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("number", Integer, nullable=False),
         Column("revision", Integer, nullable=False),
-        _stamp("created_at"),
-        _key("opportunities", "project_id", "projects", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("opportunities", "project_id", "projects", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="opportunities_pkey"),
         UniqueConstraint("project_id", "number", name="opportunities_number_key"),
     )
@@ -78,10 +71,10 @@ def opportunity_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("close_reason", Text),
         Column("note", Text),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _key(name, "opportunity_id", "opportunities", ondelete="CASCADE"),
-        _key(name, "owner_id", "users", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        stamp("created_at"),
+        fkey(name, "opportunity_id", "opportunities", ondelete="CASCADE"),
+        fkey(name, "owner_id", "users", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("opportunity_id", "revision", name="opportunity_revisions_pkey"),
     )
     name = "opportunity_answers"
@@ -98,7 +91,7 @@ def opportunity_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
             ondelete="CASCADE",
             name=f"{name}_revision_fkey",
         ),
-        _key(name, "problem_id", "problems", ondelete="CASCADE"),
+        fkey(name, "problem_id", "problems", ondelete="CASCADE"),
         PrimaryKeyConstraint("opportunity_id", "revision", "position", name=f"{name}_pkey"),
         UniqueConstraint("opportunity_id", "revision", "problem_id", name=f"{name}_problem_key"),
     )
@@ -126,14 +119,14 @@ def evidence_table(metadata: MetaData) -> Table:
         Column("signal", Text, nullable=False),
         Column("label", Text, nullable=False),
         Column("added_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("confirmed_by", BigInteger),
         Column("confirmed_at", DateTime(timezone=True)),
         Column("proposal_id", BigInteger),
-        _key(name, "opportunity_id", "opportunities", ondelete="CASCADE"),
-        _key(name, "added_by", "users", ondelete="RESTRICT"),
-        _key(name, "confirmed_by", "users", ondelete="RESTRICT"),
-        _key(name, "proposal_id", "builder_proposals", ondelete="SET NULL"),
+        fkey(name, "opportunity_id", "opportunities", ondelete="CASCADE"),
+        fkey(name, "added_by", "users", ondelete="RESTRICT"),
+        fkey(name, "confirmed_by", "users", ondelete="RESTRICT"),
+        fkey(name, "proposal_id", "builder_proposals", ondelete="SET NULL"),
         PrimaryKeyConstraint("opportunity_id", "number", name=f"{name}_pkey"),
     )
     Index(f"{name}_proposal_idx", table.c.proposal_id, postgresql_where=table.c.proposal_id.is_not(None))

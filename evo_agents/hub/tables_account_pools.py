@@ -16,7 +16,6 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Column,
-    DateTime,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -28,9 +27,7 @@ from sqlalchemy import (
     func,
 )
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def account_pool_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -42,7 +39,7 @@ def account_pool_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("name", Text, nullable=False),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("strategy", Text, nullable=False, server_default="round-robin"),  # 0258: the pool's own policy
         Column("hard_reserve_pct", SmallInteger, nullable=False, server_default="10"),
         Column("five_hour_ceiling_pct", SmallInteger, nullable=False, server_default="90"),
@@ -57,7 +54,7 @@ def account_pool_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("pool_id", BigInteger, nullable=False),
         Column("secret_id", BigInteger, nullable=False),
         Column("added_by", BigInteger, nullable=False),
-        _stamp("added_at"),
+        stamp("added_at"),
         ForeignKeyConstraint(
             ["pool_id"], ["account_pools.id"], ondelete="CASCADE", name="account_pool_members_pool_id_fkey"
         ),

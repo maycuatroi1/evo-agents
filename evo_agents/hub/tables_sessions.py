@@ -33,13 +33,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     column,
-    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def _count(name: str, kind=BigInteger) -> Column:
@@ -62,8 +59,8 @@ def session_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
         Column("started_at", DateTime(timezone=True)),
         Column("ended_at", DateTime(timezone=True)),
         Column("body", JSONB, nullable=False),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="session_digests_project_id_fkey"
         ),
@@ -93,8 +90,8 @@ def session_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
         Column("sha256", Text),
         Column("started_at", DateTime(timezone=True)),
         Column("ended_at", DateTime(timezone=True)),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("deleted_at", DateTime(timezone=True)),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="session_transcripts_project_id_fkey"
@@ -117,7 +114,7 @@ def session_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
         Column("sha256", Text, nullable=False),
         Column("size", BigInteger, nullable=False),
         Column("raw_size", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(
             ["transcript_id"],
             ["session_transcripts.id"],
@@ -154,8 +151,8 @@ def facet_table(metadata: MetaData) -> Table:
         _count("attempts", Integer),
         Column("error", Text),
         Column("retry_at", DateTime(timezone=True)),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("llm", JSONB),  # 0059: the facet a cheap model wrote, and how it went
         _count("llm_version", Integer),
         Column("llm_fingerprint", Text),
@@ -202,8 +199,8 @@ def history_tables(metadata: MetaData, runs: Table, active) -> tuple[Table, Tabl
         _count("failed", Integer),
         _count("stale", Integer),
         _count("named", Integer),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="history_runs_run_id_fkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="history_runs_project_id_fkey"),
         PrimaryKeyConstraint("run_id", name="history_runs_pkey"),
@@ -225,8 +222,8 @@ def history_tables(metadata: MetaData, runs: Table, active) -> tuple[Table, Tabl
         Column("named_run_id", BigInteger),
         Column("named_at", DateTime(timezone=True)),
         Column("counted_at", DateTime(timezone=True)),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="facet_clusters_project_id_fkey"
         ),
@@ -281,8 +278,8 @@ def search_tables(metadata: MetaData) -> tuple[Table, Table]:
         _count("attempts", Integer),
         Column("error", Text),
         Column("retry_at", DateTime(timezone=True)),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="history_indexed_project_id_fkey"
         ),

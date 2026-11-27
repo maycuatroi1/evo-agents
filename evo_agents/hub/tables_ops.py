@@ -20,7 +20,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     MetaData,
@@ -28,20 +27,9 @@ from sqlalchemy import (
     Table,
     Text,
     false,
-    func,
 )
 
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
+from evo_agents.hub.columns import fkey, stamp, when
 
 
 def _cursors(metadata: MetaData) -> Table:
@@ -51,8 +39,8 @@ def _cursors(metadata: MetaData) -> Table:
         metadata,
         Column("project_id", BigInteger, nullable=False),
         Column("cursor", BigInteger, nullable=False, server_default="0"),
-        _stamp("updated_at"),
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
+        stamp("updated_at"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
         PrimaryKeyConstraint("project_id", name="ops_cursors_pkey"),
     )
 
@@ -69,15 +57,15 @@ def _batches(metadata: MetaData) -> Table:
         Column("cause", Text, nullable=False),
         Column("subject", Text, nullable=False),
         Column("state", Text, nullable=False, server_default="open"),
-        _stamp("opened_at"),
+        stamp("opened_at"),
         Column("closes_at", DateTime(timezone=True), nullable=False),
-        _when("closed_at"),
+        when("closed_at"),
         Column("run_id", BigInteger),
         Column("thread_id", BigInteger),  # the ops thread opened for it (0241)
         Column("recurring", Boolean, nullable=False, server_default=false()),  # its cause key came back often (0241)
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "thread_id", "orchestrator_threads", ondelete="SET NULL"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "thread_id", "orchestrator_threads", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="ops_batches_pkey"),
     )
     Index(
@@ -104,11 +92,11 @@ def _items(metadata: MetaData) -> Table:
         Column("worker_id", BigInteger),
         Column("state", Text, nullable=False, server_default="pending"),
         Column("handled_by", Text),
-        _stamp("created_at"),
-        _when("handled_at"),
-        _key(name, "batch_id", "ops_batches", ondelete="CASCADE"),
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
-        _key(name, "event_id", "hub_events", ondelete="SET NULL"),
+        stamp("created_at"),
+        when("handled_at"),
+        fkey(name, "batch_id", "ops_batches", ondelete="CASCADE"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
+        fkey(name, "event_id", "hub_events", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="ops_items_pkey"),
     )
     Index("ops_items_event_key", table.c.event_id, unique=True)

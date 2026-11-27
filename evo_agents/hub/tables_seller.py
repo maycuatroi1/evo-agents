@@ -29,7 +29,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     Date,
-    DateTime,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -40,10 +39,11 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+
+from evo_agents.hub.columns import stamp, when
 
 HUB_ID = r"hub_[0-9a-f]{32}"
 ORDER_NUMBER = r"ORD-[0-9]{4}-[0-9]{4,}"
@@ -55,14 +55,6 @@ MAX_URL_CHARS = 500
 MAX_INVOICE_CHARS = 100
 MAX_NOTE_CHARS = 500
 MAX_ERROR_CHARS = 2000
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
 
 
 def _usd(name: str, digits: int = 12) -> Column:
@@ -90,7 +82,7 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         metadata,
         Column("singleton", Boolean, nullable=False, server_default=true()),
         Column("hub_id", Text, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         PrimaryKeyConstraint("singleton", name="hub_identity_pkey"),
     )
     listings = Table(
@@ -103,8 +95,8 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         Column("owner_id", BigInteger, nullable=False),
         _usd("usd_per_hub_month", 10),
         Column("state", Text, nullable=False, server_default="draft"),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         _user("market_listings", "owner_id"),
         PrimaryKeyConstraint("id", name="market_listings_pkey"),
         UniqueConstraint("plugin", name="market_listings_plugin_key"),
@@ -120,7 +112,7 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         Column("signature", JSONB, nullable=False),
         Column("signed_by", Text, nullable=False),
         Column("uploaded_by", BigInteger, nullable=False),
-        _stamp("uploaded_at"),
+        stamp("uploaded_at"),
         ForeignKeyConstraint(
             ["listing_id"], ["market_listings.id"], ondelete="CASCADE", name="market_bundles_listing_id_fkey"
         ),
@@ -145,12 +137,12 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         Column("secret_hash", Text, nullable=False),
         Column("state", Text, nullable=False, server_default="open"),
         Column("payment", JSONB, nullable=False, server_default="{}"),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("invoice", Text),
         Column("closed_by", BigInteger),
-        _when("closed_at"),
+        when("closed_at"),
         *_licence(),
-        _when("issued_at"),
+        when("issued_at"),
         ForeignKeyConstraint(
             ["listing_id"], ["market_listings.id"], ondelete="RESTRICT", name="market_orders_listing_id_fkey"
         ),
@@ -171,7 +163,7 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         _usd("publisher_usd"),
         _usd("platform_usd"),
         Column("paid_by", BigInteger, nullable=False),
-        _stamp("paid_at"),
+        stamp("paid_at"),
         Column("note", Text),
         _user("market_payouts", "paid_by"),
         PrimaryKeyConstraint("id", name="market_payouts_pkey"),
@@ -193,12 +185,12 @@ def seller_tables(metadata: MetaData) -> tuple[Table, ...]:
         Column("secret", JSONB, nullable=False),  # sealed
         Column("state", Text, nullable=False, server_default="open"),
         Column("placed_by", BigInteger, nullable=False),
-        _stamp("placed_at"),
-        _when("checked_at"),
+        stamp("placed_at"),
+        when("checked_at"),
         Column("last_error", Text),
         *_licence(),
-        _when("received_at"),
-        _when("reminded_at"),
+        when("received_at"),
+        when("reminded_at"),
         ForeignKeyConstraint(
             ["source_id"], ["market_sources.id"], ondelete="SET NULL", name="market_purchases_source_id_fkey"
         ),

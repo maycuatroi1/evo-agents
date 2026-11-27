@@ -23,13 +23,10 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def plugin_record_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -46,9 +43,9 @@ def plugin_record_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("audience_user_id", BigInteger),
         Column("body", JSONB, nullable=False),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("updated_by", BigInteger),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="RESTRICT", name="plugin_records_project_id_fkey"
         ),
@@ -72,7 +69,7 @@ def plugin_record_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("run_kind", Text),
         Column("sink", Text),
         Column("max_level", Text),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("expires_at", DateTime(timezone=True), nullable=False),
         ForeignKeyConstraint(
             ["plugin_id"], ["plugins.id"], ondelete="CASCADE", name="plugin_record_leases_plugin_id_fkey"

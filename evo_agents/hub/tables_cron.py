@@ -33,24 +33,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
-    func,
 )
+
+from evo_agents.hub.columns import fkey, stamp, when
 
 KINDS = ("agent", "plan", "command")
 OUTCOMES = ("started", "busy", "missed", "refused")
 NAME_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}$"
-
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
 
 
 def _jobs(metadata: MetaData) -> Table:
@@ -74,18 +63,18 @@ def _jobs(metadata: MetaData) -> Table:
         Column("owner_id", BigInteger, nullable=False),
         Column("revision", Integer, nullable=False, server_default="1"),
         Column("updated_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("paused_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("paused_at"),
         Column("paused_by", BigInteger),
         Column("paused_reason", Text),
-        _when("resumed_at"),
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
-        _key(name, "profile_id", "agent_profiles", ondelete="SET NULL"),
-        _key(name, "chat_id", "chats", ondelete="SET NULL"),
-        _key(name, "owner_id", "users", ondelete="CASCADE"),
-        _key(name, "updated_by", "users", ondelete="SET NULL"),
-        _key(name, "paused_by", "users", ondelete="SET NULL"),
+        when("resumed_at"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
+        fkey(name, "profile_id", "agent_profiles", ondelete="SET NULL"),
+        fkey(name, "chat_id", "chats", ondelete="SET NULL"),
+        fkey(name, "owner_id", "users", ondelete="CASCADE"),
+        fkey(name, "updated_by", "users", ondelete="SET NULL"),
+        fkey(name, "paused_by", "users", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         UniqueConstraint("project_id", "name", name=f"{name}_project_id_name_key"),
     )
@@ -104,11 +93,11 @@ def _fires(metadata: MetaData) -> Table:
         Column("outcome", Text),
         Column("reason", Text),
         Column("run_id", BigInteger),
-        _stamp("created_at"),
-        _when("handled_at"),
-        _key(name, "job_id", "cron_jobs", ondelete="CASCADE"),
-        _key(name, "actor_id", "users", ondelete="SET NULL"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
+        stamp("created_at"),
+        when("handled_at"),
+        fkey(name, "job_id", "cron_jobs", ondelete="CASCADE"),
+        fkey(name, "actor_id", "users", ondelete="SET NULL"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         UniqueConstraint("job_id", "scheduled_for", name=f"{name}_job_id_scheduled_for_key"),
     )

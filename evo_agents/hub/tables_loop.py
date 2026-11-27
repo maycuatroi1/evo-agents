@@ -24,8 +24,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
-    DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -35,23 +33,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from evo_agents.hub.columns import fkey, stamp, when
+
 FINISHED = ("done", "cancelled")  # loop.model.FINISHED: the states a work item never leaves
-
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
 
 
 def _states(metadata: MetaData) -> Table:
@@ -61,17 +48,17 @@ def _states(metadata: MetaData) -> Table:
         metadata,
         Column("project_id", BigInteger, nullable=False),
         Column("enabled", Boolean, nullable=False, server_default=false()),
-        _when("enabled_at"),
+        when("enabled_at"),
         Column("cursor", BigInteger, nullable=False, server_default="0"),
         Column("breaker", Text, nullable=False, server_default="armed"),
         Column("breaker_reason", Text),
-        _when("tripped_at"),
+        when("tripped_at"),
         Column("resumed_by", BigInteger),
-        _when("resumed_at"),
-        _when("ticked_at"),
-        _stamp("updated_at"),
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
-        _key(name, "resumed_by", "users", ondelete="SET NULL"),
+        when("resumed_at"),
+        when("ticked_at"),
+        stamp("updated_at"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
+        fkey(name, "resumed_by", "users", ondelete="SET NULL"),
         PrimaryKeyConstraint("project_id", name="loop_states_pkey"),
     )
 
@@ -103,21 +90,21 @@ def _items(metadata: MetaData) -> Table:
         Column("owner", Text),
         Column("engine", Text, nullable=False),
         Column("event_id", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("finished_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("finished_at"),
         Column("problem_id", BigInteger),  # 0136
         Column("opportunity_id", BigInteger),  # 0145
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
-        _key(name, "goal_id", "goals", ondelete="SET NULL"),
-        _key(name, "claim_id", "canvas_claims", ondelete="SET NULL"),
-        _key(name, "srs_document_id", "srs_documents", ondelete="SET NULL"),
-        _key(name, "task_id", "tasks_items", ondelete="SET NULL"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "parent_id", "loop_items", ondelete="SET NULL"),
-        _key(name, "event_id", "hub_events", ondelete="SET NULL"),
-        _key(name, "problem_id", "problems", ondelete="SET NULL"),
-        _key(name, "opportunity_id", "opportunities", ondelete="SET NULL"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
+        fkey(name, "goal_id", "goals", ondelete="SET NULL"),
+        fkey(name, "claim_id", "canvas_claims", ondelete="SET NULL"),
+        fkey(name, "srs_document_id", "srs_documents", ondelete="SET NULL"),
+        fkey(name, "task_id", "tasks_items", ondelete="SET NULL"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "parent_id", "loop_items", ondelete="SET NULL"),
+        fkey(name, "event_id", "hub_events", ondelete="SET NULL"),
+        fkey(name, "problem_id", "problems", ondelete="SET NULL"),
+        fkey(name, "opportunity_id", "opportunities", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="loop_items_pkey"),
         UniqueConstraint("project_id", "key", name="loop_items_key_key"),
     )
@@ -147,10 +134,10 @@ def _events(metadata: MetaData) -> Table:
         Column("run_id", BigInteger),
         Column("event_id", BigInteger),
         Column("detail", JSONB, nullable=False, server_default="{}"),
-        _stamp("at"),
-        _key(name, "item_id", "loop_items", ondelete="CASCADE"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "event_id", "hub_events", ondelete="SET NULL"),
+        stamp("at"),
+        fkey(name, "item_id", "loop_items", ondelete="CASCADE"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "event_id", "hub_events", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="loop_item_events_pkey"),
         Index("loop_item_events_item_idx", "item_id", "id"),
     )

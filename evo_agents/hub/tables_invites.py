@@ -25,11 +25,9 @@ from sqlalchemy import (
     func,
 )
 
+from evo_agents.hub.columns import when
+
 KINDS = ("join", "register")
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
 
 
 def invite_tables(metadata: MetaData) -> Table:
@@ -47,11 +45,11 @@ def invite_tables(metadata: MetaData) -> Table:
         Column("created_by", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("expires_at", DateTime(timezone=True), nullable=False),
-        _when("accepted_at"),
+        when("accepted_at"),
         Column("accepted_by", BigInteger),
-        _when("revoked_at"),
+        when("revoked_at"),
         Column("revoked_by", BigInteger),
-        _when("used_at"),  # register: when its right registered a project
+        when("used_at"),  # register: when its right registered a project
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="invites_project_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="invites_created_by_fkey"),
         ForeignKeyConstraint(["accepted_by"], ["users.id"], ondelete="RESTRICT", name="invites_accepted_by_fkey"),

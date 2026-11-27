@@ -31,7 +31,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     MetaData,
     PrimaryKeyConstraint,
@@ -44,20 +43,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-
-def _stamp(name: str) -> Column:
-    """A timestamptz column that defaults to now() and is never NULL."""
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    """A timestamptz column that is NULL until it happens."""
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    """``id bigint GENERATED ALWAYS AS IDENTITY``."""
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
+from evo_agents.hub.columns import id_column, stamp, when
 
 
 def workers_table(metadata: MetaData) -> Table:
@@ -65,7 +51,7 @@ def workers_table(metadata: MetaData) -> Table:
     workers = Table(
         "workers",
         metadata,
-        _id(),
+        id_column(),
         Column("owner_id", BigInteger, nullable=False),
         Column("token_id", BigInteger, nullable=False),
         Column("name", Text, nullable=False),
@@ -79,30 +65,30 @@ def workers_table(metadata: MetaData) -> Table:
         Column("checkouts", JSONB, nullable=False, server_default="{}"),
         Column("free_slots", SmallInteger),
         Column("allow_web_terminal", Boolean, nullable=False, server_default=false()),
-        _stamp("created_at"),
-        _when("last_heartbeat_at"),
-        _when("drained_at"),
-        _when("revoked_at"),
+        stamp("created_at"),
+        when("last_heartbeat_at"),
+        when("drained_at"),
+        when("revoked_at"),
         Column("dispatch_from", Text, nullable=False, server_default="any"),
         Column("run_kinds", ARRAY(Text)),
         Column("features", ARRAY(Text)),  # what its daemon says it does besides its kinds of run (0025)
-        _when("steady_since"),  # the first heartbeat of the worker's current run of them, none late (0023)
+        when("steady_since"),  # the first heartbeat of the worker's current run of them, none late (0023)
         Column("version_locked", Boolean, nullable=False, server_default=false()),  # 0048
         Column("agent_commit", Text),  # 0048
         Column("self_update", JSONB),  # 0048
-        _when("self_update_since"),  # 0048
+        when("self_update_since"),  # 0048
         Column("kg_sync", JSONB),  # 0053
         Column("shared", Boolean, nullable=False, server_default=false()),  # 0062
-        _when("update_requested_at"),  # 0065
-        _when("update_ended_at"),  # 0065
+        when("update_requested_at"),  # 0065
+        when("update_ended_at"),  # 0065
         Column("update_outcome", Text),  # 0065
         Column("update_reason", Text),  # 0065
         Column("browser", JSONB),  # 0119
-        _when("browser_install_requested_at"),  # 0146
-        _when("browser_install_ended_at"),  # 0146
+        when("browser_install_requested_at"),  # 0146
+        when("browser_install_ended_at"),  # 0146
         Column("browser_install_outcome", Text),  # 0146
         Column("browser_install_reason", Text),  # 0146
-        _when("doctor_at"),  # 0108
+        when("doctor_at"),  # 0108
         Column("doctor_high", SmallInteger),  # 0108
         Column("doctor_medium", SmallInteger),  # 0108
         Column("doctor_findings", JSONB),  # 0108
@@ -151,7 +137,7 @@ def worker_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
     worker_pairings = Table(
         "worker_pairings",
         metadata,
-        _id(),
+        id_column(),
         Column("code_selector", Text, nullable=False),
         Column("code_hash", Text, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
@@ -161,9 +147,9 @@ def worker_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
         Column("labels", ARRAY(Text), nullable=False, server_default="{}"),
         Column("allow_web_terminal", Boolean, nullable=False, server_default=false()),
         Column("attempts", SmallInteger, nullable=False, server_default="0"),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("expires_at", DateTime(timezone=True), nullable=False),
-        _when("used_at"),
+        when("used_at"),
         Column("worker_id", BigInteger),
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="CASCADE", name="worker_pairings_owner_id_fkey"),
         ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="worker_pairings_worker_id_fkey"),

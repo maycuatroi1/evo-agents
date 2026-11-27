@@ -370,7 +370,7 @@ def test_a_job_left_running_by_a_dead_worker_is_failed_and_frees_its_lock(hub_db
     builds aside, which their own recovery fails and builds again, and the jobs of a worker still alive."""
     from types import SimpleNamespace
 
-    from evo_agents.hub.worker import recover_kg_builds
+    from evo_agents.hub.worker.kg import RecoverKgBuilds
 
     migrate(hub_db.dsn)
     j = procrastinate_jobs.c
@@ -402,7 +402,7 @@ def test_a_job_left_running_by_a_dead_worker_is_failed_and_frees_its_lock(hub_db
             app=SimpleNamespace(job_manager=job_queue._manager),
             additional_context={"hub": SimpleNamespace(engine=make_engine(pool))},
         )
-        return await recover_kg_builds(context)
+        return await RecoverKgBuilds().run(context)
 
     assert asyncio.run(with_queue(hub_db, one_pass))["stalled"] == {jobs.RELEASE_SCHEDULES: 1}
     assert (job(hub_db, release)["status"], job(hub_db, live)["status"]) == ("failed", "doing")

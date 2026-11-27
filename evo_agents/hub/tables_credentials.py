@@ -12,9 +12,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Column,
-    DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     LargeBinary,
     MetaData,
@@ -26,20 +24,7 @@ from sqlalchemy import (
     or_,
 )
 
-
-def _stamp(name: str) -> Column:
-    """A timestamptz column that defaults to now() and is never NULL."""
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    """A timestamptz column that is NULL until it happens."""
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    """``id bigint GENERATED ALWAYS AS IDENTITY``."""
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
+from evo_agents.hub.columns import id_column, stamp, when
 
 
 def credential_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
@@ -47,7 +32,7 @@ def credential_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     secrets = Table(
         "secrets",
         metadata,
-        _id(),
+        id_column(),
         Column("owner_id", BigInteger),  # a member's secret; null for one an agent profile owns (0104)
         Column("name", Text, nullable=False),
         Column("kind", Text, nullable=False),
@@ -57,10 +42,10 @@ def credential_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("sealed", LargeBinary),
         Column("nonce", LargeBinary),
         Column("key_id", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("expires_at"),
-        _when("deleted_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("expires_at"),
+        when("deleted_at"),
         Column("profile_id", BigInteger),  # 0104: the agent profile that owns it, null for a member's
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="secrets_owner_id_fkey"),
         ForeignKeyConstraint(
@@ -123,16 +108,16 @@ def credential_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     credential_leases = Table(
         "credential_leases",
         metadata,
-        _id(),
+        id_column(),
         Column("run_id", BigInteger, nullable=False),
         Column("worker_id", BigInteger, nullable=False),
         Column("secret_id", BigInteger),
         Column("provider", Text, nullable=False),
         Column("target", Text, nullable=False),
         Column("external_id", Text),
-        _stamp("issued_at"),
-        _when("expires_at"),
-        _when("revoked_at"),
+        stamp("issued_at"),
+        when("expires_at"),
+        when("revoked_at"),
         Column("sealed_value", LargeBinary),
         Column("nonce", LargeBinary),
         Column("key_id", Text),

@@ -362,12 +362,11 @@ def test_graph_files_prunes_every_graph_file_of_a_project_whose_graph_the_tables
 
 
 def test_every_hash_the_restore_drill_reads_has_its_object_after_the_hourly_prune(hub, tmp_path):
-    from evo_agents.hub import jobs, worker
+    from evo_agents.hub import jobs
 
     periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
     assert periodic[jobs.PRUNE_KG_ARTIFACTS].cron == "31 * * * *"  # hourly
     assert queue.tasks[jobs.PRUNE_KG_ARTIFACTS].queueing_lock == jobs.PRUNE_KG_ARTIFACTS
-    assert worker.prune_kg_artifacts
 
     publish_bundle(hub, tmp_path)
     laptop = Machine(tmp_path, "laptop")

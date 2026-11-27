@@ -32,9 +32,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
-    DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     Integer,
     MetaData,
@@ -44,28 +42,17 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     column,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
+from evo_agents.hub.columns import id_column, stamp, when
 
 
 def _queue(metadata: MetaData) -> Table:
     table = Table(
         "merge_queue",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("repo", Text, nullable=False),
         Column("iid", Integer),  # null while the hub has not opened the merge request of its run
@@ -84,7 +71,7 @@ def _queue(metadata: MetaData) -> Table:
         Column("state", Text, nullable=False, server_default="gating"),
         Column("reason", Text),
         Column("head_sha", Text),
-        _when("head_at"),
+        when("head_at"),
         Column("fingerprint", Text),
         Column("verdict", JSONB),
         Column("risk", JSONB),
@@ -92,19 +79,19 @@ def _queue(metadata: MetaData) -> Table:
         Column("judge_key", Text),
         Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
         Column("commented", Text),  # the reason the hub last wrote on the merge request
-        _when("queued_at"),
-        _when("merged_at"),
+        when("queued_at"),
+        when("merged_at"),
         Column("before_sha", Text),
         Column("after_sha", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("rebases", SmallInteger, nullable=False, server_default="0"),  # since its gates last passed (0082)
         Column("reverts_id", BigInteger),  # a revert's: the merge request it undoes (0083)
         Column("uat_result", Text),  # its own UAT check: passed, failed or none (0083)
-        _when("uat_at"),  # its UAT check passed, or a later merge's cleared it (0083)
+        when("uat_at"),  # its UAT check passed, or a later merge's cleared it (0083)
         Column("prod_result", Text),  # its own PROD check (0083)
-        _when("prod_at"),
-        _when("waits_since"),  # the hub waits for the job or pipeline it watches since then (0083)
+        when("prod_at"),
+        when("waits_since"),  # the hub waits for the job or pipeline it watches since then (0083)
         Column("follow", JSONB, nullable=False, server_default="{}"),  # what the hub follows on GitLab (0083)
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_queue_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_queue_run_id_fkey"),
@@ -145,7 +132,7 @@ def _events(metadata: MetaData) -> Table:
     return Table(
         "merge_events",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("queue_id", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
@@ -155,7 +142,7 @@ def _events(metadata: MetaData) -> Table:
         Column("sha", Text),
         Column("run_id", BigInteger),
         Column("detail", JSONB, nullable=False, server_default="{}"),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_events_project_id_fkey"),
         ForeignKeyConstraint(["queue_id"], ["merge_queue.id"], ondelete="CASCADE", name="merge_events_queue_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_events_run_id_fkey"),
@@ -169,14 +156,14 @@ def _samples(metadata: MetaData) -> Table:
     return Table(
         "merge_samples",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("queue_id", BigInteger, nullable=False),
         Column("result", Text),  # null until an admin answers: ok or faulty
         Column("note", Text),
         Column("answered_by", BigInteger),
-        _when("answered_at"),
-        _stamp("created_at"),
+        when("answered_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_samples_project_id_fkey"),
         ForeignKeyConstraint(["queue_id"], ["merge_queue.id"], ondelete="CASCADE", name="merge_samples_queue_id_fkey"),
         ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="SET NULL", name="merge_samples_answered_by_fkey"),
@@ -190,19 +177,19 @@ def _breakers(metadata: MetaData) -> Table:
     return Table(
         "merge_breakers",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("repo", Text, nullable=False),
         Column("state", Text, nullable=False, server_default="armed"),
         Column("cause", Text),  # what tripped it last (merge_breaker.CAUSES)
         Column("reason", Text),  # why, each thing that tripped it
-        _when("tripped_at"),
+        when("tripped_at"),
         Column("trips", Integer, nullable=False, server_default="0"),
         Column("resumed_by", BigInteger),  # the admin who reset it last
-        _when("resumed_at"),  # what trips it counts from then
-        _when("red_since"),  # the hub saw the newest pipeline of its target branch fail then, none passing since
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        when("resumed_at"),  # what trips it counts from then
+        when("red_since"),  # the hub saw the newest pipeline of its target branch fail then, none passing since
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_breakers_project_id_fkey"
         ),
@@ -217,7 +204,7 @@ def check_table(metadata: MetaData) -> Table:
     return Table(
         "merge_checks",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("repo", Text, nullable=False),
         Column("number", Integer, nullable=False),
@@ -239,8 +226,8 @@ def check_table(metadata: MetaData) -> Table:
         Column("judge_key", Text),
         Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
         Column("decision_id", BigInteger),  # the asking run's wait, which the verdict answers
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="merge_checks_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="merge_checks_run_id_fkey"),
         ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="SET NULL", name="merge_checks_judge_run_id_fkey"),

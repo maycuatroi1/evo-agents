@@ -26,7 +26,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     Double,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -37,9 +36,10 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+
+from evo_agents.hub.columns import fkey, stamp
 
 KEY_NAME = r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,5}$"  # signal_keys.name: two to six dotted parts
 KINDS = ("number", "feedback")  # signal_keys.kind
@@ -53,14 +53,6 @@ MAX_LEVEL_CHARS = 100  # a level of the project's ladder, as projects.levels nam
 MAX_TEXT_BYTES = 4_096  # of a piece of feedback, in UTF-8
 MAX_TENANT_CHARS = 100
 MAX_EXTERNAL_ID_CHARS = 200
-
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 def _keys(metadata: MetaData) -> Table:
@@ -77,12 +69,12 @@ def _keys(metadata: MetaData) -> Table:
         Column("source", Text, nullable=False, server_default=""),
         Column("level", Text),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("archived_at", DateTime(timezone=True)),
         Column("archived_by", BigInteger),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
-        _key(name, "archived_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "archived_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="signal_keys_pkey"),
         UniqueConstraint("project_id", "name", name="signal_keys_name_key"),
     )
@@ -99,15 +91,15 @@ def _ingest_keys(metadata: MetaData) -> Table:
         Column("token_hash", Text, nullable=False),
         Column("max_level", Text, nullable=False),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("last_used_at", DateTime(timezone=True)),
         Column("window_started_at", DateTime(timezone=True)),
         Column("window_batches", Integer, nullable=False, server_default="0"),
         Column("revoked_at", DateTime(timezone=True)),
         Column("revoked_by", BigInteger),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
-        _key(name, "revoked_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "revoked_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="signal_ingest_keys_pkey"),
         UniqueConstraint("token_hash", name="signal_ingest_keys_token_hash_key"),
     )
@@ -137,12 +129,12 @@ def _signals(metadata: MetaData) -> Table:
         Column("user_id", BigInteger),
         Column("run_id", BigInteger),
         Column("batch_id", Uuid, nullable=False),
-        _stamp("received_at"),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "key_id", "signal_keys", ondelete="RESTRICT"),
-        _key(name, "ingest_key_id", "signal_ingest_keys", ondelete="RESTRICT"),
-        _key(name, "user_id", "users", ondelete="RESTRICT"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
+        stamp("received_at"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "key_id", "signal_keys", ondelete="RESTRICT"),
+        fkey(name, "ingest_key_id", "signal_ingest_keys", ondelete="RESTRICT"),
+        fkey(name, "user_id", "users", ondelete="RESTRICT"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="signals_pkey"),
         Index("signals_key_idx", "key_id", "measured_at"),
         Index("signals_received_idx", "project_id", "received_at"),
@@ -166,8 +158,8 @@ def _events(metadata: MetaData) -> Table:
         Column("project_id", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
         Column("payload", JSONB, nullable=False),
-        _stamp("created_at"),
-        _key(name, "project_id", "projects", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey(name, "project_id", "projects", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="hub_events_pkey"),
         Index("hub_events_project_idx", "project_id", "id"),
     )

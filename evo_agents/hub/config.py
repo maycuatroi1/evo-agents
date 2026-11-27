@@ -138,11 +138,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from evo_agents.hub import config_sections as sections
 from evo_agents.hub.config_env import ConfigError
 from evo_agents.hub.config_env import number as _number
 from evo_agents.hub.config_env import secret as _secret
 from evo_agents.hub.config_env import text as _text
 from evo_agents.hub.config_env import url as _url
+from evo_agents.hub.config_sections import APNS_VARIABLES as APNS_VARIABLES
+from evo_agents.hub.config_sections import CURATOR_APP_VARIABLES as CURATOR_APP_VARIABLES
+from evo_agents.hub.config_sections import FCM_VARIABLE as FCM_VARIABLE
+from evo_agents.hub.config_sections import GATEWAY_VARIABLES as GATEWAY_VARIABLES
+from evo_agents.hub.config_sections import GITHUB_APP_VARIABLES as GITHUB_APP_VARIABLES
+from evo_agents.hub.config_sections import PLUGIN_HOST_VARIABLES as PLUGIN_HOST_VARIABLES
+from evo_agents.hub.config_sections import S3_VARIABLES as S3_VARIABLES
+from evo_agents.hub.config_sections import TELEGRAM_VARIABLES as TELEGRAM_VARIABLES
+from evo_agents.hub.config_sections import VAPID_VARIABLES as VAPID_VARIABLES
 from evo_agents.hub.curator import MAX_TIME_ZONE_CHARS, TIME_ZONE
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
@@ -192,12 +202,9 @@ DEFAULT_GITHUB_API_URL = "https://api.github.com"
 DEFAULT_GITHUB_TIMEOUT = 10.0  # seconds for one call to GitHub, connecting included
 MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
 MIN_PLUGIN_HOST_TOKEN = MIN_HOST_TOKEN  # characters of the secret the api and the plugin host share
-PLUGIN_HOST_VARIABLES = ("EVO_HUB_PLUGIN_HOST_URL", "EVO_HUB_PLUGIN_HOST_TOKEN")
-GATEWAY_VARIABLES = ("EVO_HUB_GATEWAY_URL", "EVO_HUB_GATEWAY_SECRET")
 DEFAULT_GATEWAY_URL = "http://evo-agents-hub-gateway:20128"  # the gateway's alias on its compose network
 MIN_GATEWAY_SECRET = 32  # characters of the root secret the api and the gateway share
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
-S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
 S3_INTERNAL_ENDPOINT = "EVO_HUB_S3_INTERNAL_ENDPOINT"  # optional: where the hub itself reaches the store
 S3_PROVIDER = "EVO_HUB_S3_PROVIDER"  # optional: the service behind the S3 API, r2 when unset
 S3_REGION = "EVO_HUB_S3_REGION"  # optional: the region requests are signed for, the provider's when unset
@@ -252,24 +259,18 @@ SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.credentia
 SELLER_KEY_BYTES = 32  # the seed of an Ed25519 key
 SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.base.models.PROJECT_NAME
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
-GITHUB_APP_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
 GITHUB_APP_ID = re.compile(r"[0-9]{1,20}|Iv[0-9A-Za-z.]{1,40}")  # the App's ID, or its client ID; JWT's iss takes both
-CURATOR_APP_VARIABLES = ("EVO_HUB_CURATOR_APP_ID", "EVO_HUB_CURATOR_APP_PRIVATE_KEY")  # the Curator's own App
-TELEGRAM_VARIABLES = ("EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SECRET")
 DEFAULT_TELEGRAM_API_URL = "https://api.telegram.org"
 TELEGRAM_BOT_TOKEN = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")  # <bot id>:<secret>, as BotFather gives it
 TELEGRAM_WEBHOOK_SECRET = re.compile(r"[A-Za-z0-9_-]{1,256}")  # what setWebhook takes as secret_token
-VAPID_VARIABLES = ("EVO_HUB_VAPID_PRIVATE_KEY", "EVO_HUB_VAPID_SUBJECT")
 VAPID_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # the private scalar of a P-256 key: 32 bytes in base64url
 # The order of P-256's group: a private scalar lies in [1, n - 1] (SEC 2, section 2.4.2).
 P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 VAPID_SUBJECT = re.compile(r"mailto:[^\s@]+@[^\s@]+|https://[^\s]+")  # what RFC 8292's "sub" may be
-APNS_VARIABLES = ("EVO_HUB_APNS_KEY_ID", "EVO_HUB_APNS_TEAM_ID", "EVO_HUB_APNS_PRIVATE_KEY")
 APPLE_ID = re.compile(r"[A-Z0-9]{10}")  # a key ID or a team ID, as the Apple Developer account shows it
 # The DER of an elliptic-curve key on P-256 names both: id-ecPublicKey and prime256v1 (RFC 5480, section 2.1.1).
 EC_KEY_OID, P256_OID = bytes.fromhex("06072a8648ce3d0201"), bytes.fromhex("06082a8648ce3d030107")
 RSA_KEY_OID = bytes.fromhex("06092a864886f70d010101")  # rsaEncryption (RFC 8017, appendix C)
-FCM_VARIABLE = "EVO_HUB_FCM_SERVICE_ACCOUNT"
 GOOGLE_PROJECT_ID = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]")
 SERVICE_ACCOUNT_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 # The PEM GitHub gives an App (PKCS#1), or the same key as PKCS#8; the second group is its base64.
@@ -355,38 +356,46 @@ class HubConfig:
         never the GitHub login it signed in with, which another account can take."""
         return login is not None and login.lower() in self.admins
 
+    # The named sections of this configuration (``evo_agents.hub.config_sections``), each read off its fields.
+    database = sections.Part(sections.Database)
+    server = sections.Part(sections.Server)
+    web_login = sections.Part(sections.WebLogin)
+    blob_store = sections.Part(sections.BlobStoreSection)
+    knowledge_graph = sections.Part(sections.KnowledgeGraph)
+    retention = sections.Part(sections.Retention)
+    runs = sections.Part(sections.Runs)
+    credentials = sections.Part(sections.Credentials)
+    github_apps = sections.Part(sections.GitHubApps)
+    telegram = sections.Part(sections.Telegram)
+    push = sections.Part(sections.Push)
+    plugins = sections.Part(sections.Plugins)
+    gateway = sections.Part(sections.Gateway)
+    seller = sections.Part(sections.Seller)
+    bus = sections.Part(sections.Bus)
+
     def web_login_missing(self) -> list[str]:
         """The variables the web sign-in still needs; empty when it can run."""
-        needed = {
-            "EVO_HUB_GITHUB_CLIENT_ID": self.github_client_id,
-            "EVO_HUB_GITHUB_CLIENT_SECRET": self.github_client_secret,
-            "EVO_HUB_SESSION_SECRET": self.session_secret,
-            "EVO_HUB_PUBLIC_URL": self.public_url,
-        }
-        return [name for name, value in needed.items() if not value]
+        return self.web_login.missing()
 
     def blob_store_missing(self) -> list[str]:
         """The EVO_HUB_S3_* variables the blob store still needs; empty when it is configured."""
-        values = (self.s3_endpoint, self.s3_bucket, self.s3_access_key_id, self.s3_secret_access_key)
-        return [name for name, value in zip(S3_VARIABLES, values, strict=True) if not value]
+        return self.blob_store.missing()
 
     def credentials_missing(self) -> list[str]:
         """The variable the hub needs to keep secrets and lease credentials; empty when it can."""
-        return [] if self.secrets_key else ["EVO_HUB_SECRETS_KEY"]
+        return self.credentials.missing()
 
     def plugin_host_missing(self) -> list[str]:
         """The EVO_HUB_PLUGIN_HOST_* variables the backends of isolated plugins still need; empty when they run."""
-        values = (self.plugin_host_url, self.plugin_host_token)
-        return [name for name, value in zip(PLUGIN_HOST_VARIABLES, values, strict=True) if not value]
+        return self.plugins.missing()
 
     def gateway_missing(self) -> list[str]:
         """The variable the model gateway still needs; empty when it is on."""
-        return [] if self.gateway_secret else ["EVO_HUB_GATEWAY_SECRET"]
+        return self.gateway.missing()
 
     def telegram_missing(self) -> list[str]:
         """The EVO_HUB_TELEGRAM_* variables the Telegram channel still needs; empty when it is on."""
-        values = (self.telegram_bot_token, self.telegram_webhook_secret)
-        return [name for name, value in zip(TELEGRAM_VARIABLES, values, strict=True) if not value]
+        return self.telegram.missing()
 
     @property
     def push_subject(self) -> str | None:
@@ -395,27 +404,23 @@ class HubConfig:
 
     def webpush_missing(self) -> list[str]:
         """The variables Web Push still needs, the key and a subject (or the public URL); empty when it is on."""
-        missing = [] if self.vapid_private_key else [VAPID_VARIABLES[0]]
-        return missing + ([] if self.push_subject else [VAPID_VARIABLES[1]])
+        return self.push.webpush_missing(self.push_subject)
 
     def apns_missing(self) -> list[str]:
         """The EVO_HUB_APNS_* variables APNs still needs; empty when the hub sends to iPhones."""
-        values = (self.apns_key_id, self.apns_team_id, self.apns_private_key)
-        return [name for name, value in zip(APNS_VARIABLES, values, strict=True) if not value]
+        return self.push.apns_missing()
 
     def fcm_missing(self) -> list[str]:
         """The variable FCM still needs; empty when the hub sends to Android phones."""
-        return [] if self.fcm_private_key else [FCM_VARIABLE]
+        return self.push.fcm_missing()
 
     def github_app_missing(self) -> list[str]:
         """The EVO_HUB_GITHUB_APP_* variables the runs' GitHub tokens still need; empty when the App is configured."""
-        values = (self.github_app_id, self.github_app_private_key)
-        return [name for name, value in zip(GITHUB_APP_VARIABLES, values, strict=True) if not value]
+        return self.github_apps.missing()
 
     def curator_app_missing(self) -> list[str]:
         """The EVO_HUB_CURATOR_APP_* variables the Curator's runs still need; empty when its App is configured."""
-        values = (self.curator_app_id, self.curator_app_private_key)
-        return [name for name, value in zip(CURATOR_APP_VARIABLES, values, strict=True) if not value]
+        return self.github_apps.curator_missing()
 
 
 def _blob_concurrency(env: Mapping[str, str]) -> int:

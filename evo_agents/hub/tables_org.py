@@ -40,7 +40,6 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -54,13 +53,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _key(table: str, column: str, target: str, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
+from evo_agents.hub.columns import fkey, stamp
 
 
 def units_table(metadata: MetaData) -> Table:
@@ -76,10 +69,10 @@ def units_table(metadata: MetaData) -> Table:
         Column("archived_at", DateTime(timezone=True)),
         Column("revision", Integer, nullable=False, server_default="1"),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _key("org_units", "parent_id", "org_units", "RESTRICT"),
-        _key("org_units", "created_by", "users", "RESTRICT"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        fkey("org_units", "parent_id", "org_units", "RESTRICT"),
+        fkey("org_units", "created_by", "users", "RESTRICT"),
         PrimaryKeyConstraint("id", name="org_units_pkey"),
         UniqueConstraint("slug", name="org_units_slug_key"),
         Index("org_units_parent_idx", "parent_id"),
@@ -104,14 +97,14 @@ def seats_table(metadata: MetaData) -> Table:
         Column("ends_on", Date),
         Column("ended_at", DateTime(timezone=True)),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _key("org_seats", "unit_id", "org_units", "RESTRICT"),
-        _key("org_seats", "user_id", "users", "CASCADE"),
-        _key("org_seats", "profile_id", "agent_profiles", "CASCADE"),
-        _key("org_seats", "reports_to", "org_seats", "RESTRICT"),
-        _key("org_seats", "sponsor_id", "users", "RESTRICT"),
-        _key("org_seats", "created_by", "users", "RESTRICT"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        fkey("org_seats", "unit_id", "org_units", "RESTRICT"),
+        fkey("org_seats", "user_id", "users", "CASCADE"),
+        fkey("org_seats", "profile_id", "agent_profiles", "CASCADE"),
+        fkey("org_seats", "reports_to", "org_seats", "RESTRICT"),
+        fkey("org_seats", "sponsor_id", "users", "RESTRICT"),
+        fkey("org_seats", "created_by", "users", "RESTRICT"),
         PrimaryKeyConstraint("id", name="org_seats_pkey"),
         Index("org_seats_unit_idx", "unit_id"),
         Index("org_seats_user_idx", "user_id"),
@@ -142,11 +135,11 @@ def ceilings_table(metadata: MetaData) -> Table:
         Column("level", Text, nullable=False),
         Column("note", Text),
         Column("author_id", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("overrides", JSONB, nullable=False, server_default="{}"),
         Column("environments", ARRAY(Text), nullable=False, server_default="{}"),
         Column("workers", ARRAY(Text), nullable=False, server_default="{}"),
-        _key("autonomy_ceilings", "author_id", "users", "RESTRICT"),
+        fkey("autonomy_ceilings", "author_id", "users", "RESTRICT"),
         PrimaryKeyConstraint("scope", "scope_id", "revision", name="autonomy_ceilings_pkey"),
     )
 
@@ -159,8 +152,8 @@ def prefs_table(metadata: MetaData) -> Table:
         Column("revision", Integer, nullable=False),
         Column("level", Text, nullable=False),
         Column("overrides", JSONB, nullable=False, server_default="{}"),
-        _stamp("created_at"),
-        _key("autonomy_prefs", "user_id", "users", "CASCADE"),
+        stamp("created_at"),
+        fkey("autonomy_prefs", "user_id", "users", "CASCADE"),
         PrimaryKeyConstraint("user_id", "revision", name="autonomy_prefs_pkey"),
     )
 
@@ -175,13 +168,13 @@ def stops_table(metadata: MetaData) -> Table:
         Column("unit_id", BigInteger),
         Column("reason", Text),
         Column("stopped_by", BigInteger, nullable=False),
-        _stamp("stopped_at"),
+        stamp("stopped_at"),
         Column("lifted_by", BigInteger),
         Column("lifted_at", DateTime(timezone=True)),
-        _key("autonomy_stops", "user_id", "users", "CASCADE"),
-        _key("autonomy_stops", "unit_id", "org_units", "RESTRICT"),
-        _key("autonomy_stops", "stopped_by", "users", "RESTRICT"),
-        _key("autonomy_stops", "lifted_by", "users", "RESTRICT"),
+        fkey("autonomy_stops", "user_id", "users", "CASCADE"),
+        fkey("autonomy_stops", "unit_id", "org_units", "RESTRICT"),
+        fkey("autonomy_stops", "stopped_by", "users", "RESTRICT"),
+        fkey("autonomy_stops", "lifted_by", "users", "RESTRICT"),
         PrimaryKeyConstraint("id", name="autonomy_stops_pkey"),
     )
     Index("autonomy_stops_live_idx", stops.c.scope, postgresql_where=stops.c.lifted_at.is_(None))
@@ -192,7 +185,7 @@ def run_columns(runs: Table) -> None:
     """The principal of a run and the snapshot of its autonomy (0113)."""
     runs.append_column(Column("principal_id", BigInteger))
     runs.append_column(Column("autonomy", JSONB))
-    runs.append_constraint(_key("runs", "principal_id", "users", "RESTRICT"))
+    runs.append_constraint(fkey("runs", "principal_id", "users", "RESTRICT"))
 
 
 def secret_columns(secrets: Table) -> None:
@@ -207,10 +200,10 @@ def worker_shares_table(metadata: MetaData) -> Table:
         Column("worker_id", BigInteger, nullable=False),
         Column("unit_id", BigInteger, nullable=False),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _key("worker_shares", "worker_id", "workers", "CASCADE"),
-        _key("worker_shares", "unit_id", "org_units", "RESTRICT"),
-        _key("worker_shares", "created_by", "users", ondelete="SET NULL"),
+        stamp("created_at"),
+        fkey("worker_shares", "worker_id", "workers", "CASCADE"),
+        fkey("worker_shares", "unit_id", "org_units", "RESTRICT"),
+        fkey("worker_shares", "created_by", "users", ondelete="SET NULL"),
         PrimaryKeyConstraint("worker_id", "unit_id", name="worker_shares_pkey"),
         Index("worker_shares_unit_idx", "unit_id"),
     )

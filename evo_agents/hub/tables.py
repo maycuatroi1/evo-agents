@@ -16,7 +16,6 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     Integer,
     MetaData,
@@ -80,6 +79,7 @@ from evo_agents.hub import (
     tables_workers,
     tables_workspace,
 )
+from evo_agents.hub.columns import id_column, stamp, when
 from evo_agents.hub.tables_chats import bridge_tables, chat_tables, share_table
 
 metadata = MetaData()
@@ -89,30 +89,15 @@ RUN_ACTIVE = ("queued", "leased", "running", "interactive", "verifying", "waitin
 RUN_HELD = ("leased", "running", "interactive", "verifying", "waiting")
 
 
-def _stamp(name: str) -> Column:
-    """A timestamptz column that defaults to now() and is never NULL."""
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    """A timestamptz column that is NULL until it happens."""
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    """``id bigint GENERATED ALWAYS AS IDENTITY``."""
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
-
-
 # Accounts and access (0001)
 users = Table(
     "users",
     metadata,
-    _id(),
+    id_column(),
     Column("login", Text, nullable=False),
     Column("github_id", BigInteger),
-    _stamp("created_at"),
-    _when("last_seen_at"),
+    stamp("created_at"),
+    when("last_seen_at"),
     Column("run_reach", ARRAY(Text), nullable=False, server_default="{}"),  # 0193, 0208, 0209, 0223: REACH_GROUPS
     Column("admin_login", Text),  # 0203: the EVO_HUB_ADMINS login bound to this account (security.admin_login)
     PrimaryKeyConstraint("id", name="users_pkey"),
@@ -124,15 +109,15 @@ Index("users_admin_login_key", users.c.admin_login, unique=True)  # 0203: one ac
 tokens = Table(
     "tokens",
     metadata,
-    _id(),
+    id_column(),
     Column("user_id", BigInteger, nullable=False),
     Column("kind", Text, nullable=False),
     Column("token_hash", Text, nullable=False),
     Column("host", Text),
-    _stamp("created_at"),
-    _when("last_used_at"),
+    stamp("created_at"),
+    when("last_used_at"),
     Column("expires_at", DateTime(timezone=True), nullable=False),
-    _when("revoked_at"),
+    when("revoked_at"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="tokens_user_id_fkey"),
     PrimaryKeyConstraint("id", name="tokens_pkey"),
     UniqueConstraint("token_hash", name="tokens_token_hash_key"),
@@ -142,14 +127,14 @@ tokens = Table(
 projects = Table(
     "projects",
     metadata,
-    _id(),
+    id_column(),
     Column("name", Text, nullable=False),
     Column("levels", ARRAY(Text), nullable=False),
     Column("locations", ARRAY(Text), nullable=False),
     Column("default_label", JSONB, nullable=False),
     Column("created_by", BigInteger, nullable=False),
-    _stamp("created_at"),
-    _stamp("updated_at"),
+    stamp("created_at"),
+    stamp("updated_at"),
     Column("cluster", Text),
     Column("workspace", Text),
     Column("harness_path", Text),
@@ -202,7 +187,7 @@ grants = Table(
     Column("role", Text, nullable=False),
     Column("max_level", Text, nullable=False),
     Column("granted_by", BigInteger, nullable=False),
-    _stamp("granted_at"),
+    stamp("granted_at"),
     ForeignKeyConstraint(["granted_by"], ["users.id"], ondelete="RESTRICT", name="grants_granted_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="grants_project_id_fkey"),
     ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="grants_user_id_fkey"),
@@ -215,7 +200,7 @@ grants = Table(
 memories = Table(
     "memories",
     metadata,
-    _id(),
+    id_column(),
     Column("scope", Text, nullable=False),
     Column("project_id", BigInteger),
     Column("location", Text, nullable=False),
@@ -226,8 +211,8 @@ memories = Table(
     Column("body", Text, nullable=False),
     Column("revision", Integer, nullable=False, server_default="1"),
     Column("deleted", Boolean, nullable=False, server_default=false()),
-    _stamp("created_at"),
-    _stamp("updated_at"),
+    stamp("created_at"),
+    stamp("updated_at"),
     Column("updated_by", BigInteger, nullable=False),
     # Alembic compares a generated column's expression as text, warns at Postgres's casts and cannot alter it anyway
     Column(
@@ -264,7 +249,7 @@ memory_revisions = Table(
     Column("body", Text, nullable=False),
     Column("deleted", Boolean, nullable=False),
     Column("actor_id", BigInteger, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="memory_revisions_actor_id_fkey"),
     ForeignKeyConstraint(["memory_id"], ["memories.id"], ondelete="CASCADE", name="memory_revisions_memory_id_fkey"),
     PrimaryKeyConstraint("memory_id", "revision", name="memory_revisions_pkey"),
@@ -281,8 +266,8 @@ plans = Table(
     Column("body", JSONB, nullable=False),
     Column("revision", Integer, nullable=False, server_default="1"),
     Column("digest", Text, nullable=False),
-    _stamp("created_at"),
-    _stamp("updated_at"),
+    stamp("created_at"),
+    stamp("updated_at"),
     Column("updated_by", BigInteger, nullable=False),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="plans_project_id_fkey"),
     ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="RESTRICT", name="plans_updated_by_fkey"),
@@ -301,7 +286,7 @@ plan_revisions = Table(
     Column("digest", Text, nullable=False),
     Column("summary", Text, nullable=False, server_default=""),
     Column("actor_id", BigInteger, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     Column("run_id", BigInteger),  # the author run that wrote the revision, NULL for any other write (0021)
     ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="plan_revisions_actor_id_fkey"),
     ForeignKeyConstraint(  # runs name a revision of their plan too: created after both tables
@@ -319,12 +304,12 @@ plan_revisions = Table(
 skills = Table(
     "skills",
     metadata,
-    _id(),
+    id_column(),
     Column("scope", Text, nullable=False),
     Column("project_id", BigInteger),
     Column("name", Text, nullable=False),
     Column("created_by", BigInteger, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     Column("audience", Text, nullable=False, server_default="everyone"),  # or "admins", a global skill only
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="skills_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
@@ -352,7 +337,7 @@ skill_versions = Table(
     Column("source_repo", Text),
     Column("source_commit", Text),
     Column("published_by", BigInteger, nullable=False),
-    _stamp("published_at"),
+    stamp("published_at"),
     ForeignKeyConstraint(["published_by"], ["users.id"], ondelete="RESTRICT", name="skill_versions_published_by_fkey"),
     ForeignKeyConstraint(["skill_id"], ["skills.id"], ondelete="CASCADE", name="skill_versions_skill_id_fkey"),
     PrimaryKeyConstraint("skill_id", "version", name="skill_versions_pkey"),
@@ -363,8 +348,8 @@ skill_versions = Table(
 audit = Table(
     "audit",
     metadata,
-    _id(),
-    _stamp("at"),
+    id_column(),
+    stamp("at"),
     Column("actor_id", BigInteger),
     Column("token_id", BigInteger),
     Column("action", Text, nullable=False),
@@ -395,7 +380,7 @@ blobs = Table(
     Column("size", BigInteger, nullable=False),
     Column("kind", Text, nullable=False),
     Column("created_by", BigInteger),
-    _stamp("verified_at"),
+    stamp("verified_at"),
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="blobs_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="blobs_project_id_fkey"),
     UniqueConstraint("project_id", "sha256", name="blobs_holder_key", postgresql_nulls_not_distinct=True),
@@ -411,7 +396,7 @@ blob_uploads = Table(
     Column("size", BigInteger, nullable=False),
     Column("kind", Text, nullable=False),
     Column("created_by", BigInteger, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="CASCADE", name="blob_uploads_created_by_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="blob_uploads_project_id_fkey"),
     PrimaryKeyConstraint("upload_id", name="blob_uploads_pkey"),
@@ -424,8 +409,8 @@ blob_deletions = Table(
     Column("sha256", Text, nullable=False),
     Column("size", BigInteger, nullable=False),
     Column("kind", Text, nullable=False),
-    _stamp("requested_at"),
-    _when("deleted_at"),
+    stamp("requested_at"),
+    when("deleted_at"),
     PrimaryKeyConstraint("sha256", name="blob_deletions_pkey"),
 )
 Index(
@@ -442,7 +427,7 @@ worker_pools, worker_pool_projects, worker_join_tokens = tables_pools.pool_table
 runs = Table(
     "runs",
     metadata,
-    _id(),
+    id_column(),
     Column("project_id", BigInteger, nullable=False),
     Column("plan_id", Text),  # NULL for a review run, on no plan (0014), and an author run of a new one (0020)
     Column("step_key", Text),
@@ -460,7 +445,7 @@ runs = Table(
     Column("max_attempts", SmallInteger, nullable=False, server_default="3"),
     Column("parent_run_id", BigInteger),
     Column("state", Text, nullable=False, server_default="queued"),
-    _when("lease_expires_at"),
+    when("lease_expires_at"),
     Column("session_id", Text),
     Column("repo", Text),
     Column("branch", Text),
@@ -474,29 +459,29 @@ runs = Table(
     Column("diff_sha256", Text),
     Column("event_seq", Integer, nullable=False, server_default="0"),
     Column("events_acked", Integer, nullable=False, server_default="0"),
-    _when("cancel_requested_at"),
-    _when("takeover_requested_at"),
-    _when("handback_requested_at"),
-    _stamp("queued_at"),
-    _when("leased_at"),
-    _when("started_at"),
-    _when("finished_at"),
+    when("cancel_requested_at"),
+    when("takeover_requested_at"),
+    when("handback_requested_at"),
+    stamp("queued_at"),
+    when("leased_at"),
+    when("started_at"),
+    when("finished_at"),
     Column("kind", Text, nullable=False, server_default="step"),
     Column("repos", JSONB),
     Column("model", Text),
     Column("model_used", Text),  # the model its runtime ran it on, as its worker reported it (0185)
     Column("routing", JSONB),  # what the routing by difficulty did: model_router.record (0185); NULL: it did not
     Column("run_seconds", Integer, nullable=False, server_default="0"),
-    _when("counted_at"),
-    _when("waiting_since"),
-    _when("parked_at"),
+    when("counted_at"),
+    when("waiting_since"),
+    when("parked_at"),
     Column("resume_of_run_id", BigInteger),
     Column("dispatched_via", Text),
     Column("schedule_id", BigInteger),
     Column("schedule_night", Date),
     Column("budget", JSONB),
     Column("request", Text),  # the member's request of an author run, NULL for any other kind (0020)
-    _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
+    when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
     Column("browser", Boolean, nullable=False, server_default=false()),  # its agent gets a Chromium of its own (0118)
@@ -504,17 +489,17 @@ runs = Table(
     Column("browser_identities", ARRAY(BigInteger), nullable=False, server_default="{}"),
     # Its owner let it call the hub's API as them, secrets, tokens and workers aside (0166, server/run_access.py).
     Column("as_owner", Boolean, nullable=False, server_default=false()),
-    _when("as_owner_since"),  # when it was let; NULL while it does not run as its owner (0168)
+    when("as_owner_since"),  # when it was let; NULL while it does not run as its owner (0168)
     # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
     # Claude Code session id, and its worker_id stays NULL.
     Column("machine", Text),
     Column("cwd", Text),
     Column("claude_email", Text),  # the Claude account that ran the session; 'unknown' when it could not be read
     Column("claude_profile", Text),  # the claude-profiles profile, when it could be read
-    _when("last_activity_at"),
+    when("last_activity_at"),
     # The proof of each acceptance criterion its step names, as the worker of a run of one step reported it (0186).
     Column("proofs", JSONB(none_as_null=True)),
-    _when("spend_at"),  # when run_spend last took in its usage reports; NULL: never yet (0210)
+    when("spend_at"),  # when run_spend last took in its usage reports; NULL: never yet (0210)
     Column("spend_transcripts", Text),  # a local run's: the transcripts its run_spend was read from (0211)
     Column("priority", Text, nullable=False, server_default="medium"),  # runs.PRIORITIES: the claim's order (0255)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
@@ -586,7 +571,7 @@ run_events = Table(
     metadata,
     Column("run_id", BigInteger, nullable=False),
     Column("seq", Integer, nullable=False),
-    _stamp("at"),
+    stamp("at"),
     Column("kind", Text, nullable=False),
     Column("body", JSONB, nullable=False),
     Column("truncated", Boolean, nullable=False, server_default=false()),
@@ -649,7 +634,7 @@ run_spend = Table(
     Column("estimated_usd", Numeric(14, 6, asdecimal=False)),  # NULL: nothing to price, or no price for the model
     Column("reports", Integer, nullable=False),
     Column("ends", JSONB, nullable=False),  # the totals it reported last: where the session stands for its next run
-    _stamp("updated_at"),
+    stamp("updated_at"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_spend_run_id_fkey"),
     PrimaryKeyConstraint("run_id", "session", "model", name="run_spend_pkey"),
 )
@@ -665,7 +650,7 @@ Index(  # the spend of the latest earlier run of a session (spend_store.bases)
 curator_figures = Table(
     "curator_figures",
     metadata,
-    _id(),
+    id_column(),
     Column("project_id", BigInteger, nullable=False),
     Column("schedule_id", BigInteger, nullable=False),
     Column("night", Date, nullable=False),
@@ -673,7 +658,7 @@ curator_figures = Table(
     Column("until", DateTime(timezone=True), nullable=False),
     Column("figures", JSONB, nullable=False),
     Column("run_id", BigInteger),
-    _stamp("created_at"),
+    stamp("created_at"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_figures_project_id_fkey"),
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_figures_run_id_fkey"),
     ForeignKeyConstraint(
@@ -686,7 +671,7 @@ curator_figures = Table(
 findings = Table(
     "findings",
     metadata,
-    _id(),
+    id_column(),
     Column("project_id", BigInteger, nullable=False),
     Column("run_id", BigInteger, nullable=False),
     Column("lens", Text, nullable=False),
@@ -695,7 +680,7 @@ findings = Table(
     Column("body", Text),
     Column("evidence", JSONB, nullable=False),
     Column("label", JSONB, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     Column("fix_of", BigInteger),  # the change a review run was asked to fix and wrote this finding for instead (0133)
     ForeignKeyConstraint(["fix_of"], ["curator_changes.id"], ondelete="SET NULL", name="findings_fix_of_fkey"),
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="findings_project_id_fkey"),
@@ -708,7 +693,7 @@ Index("findings_project_idx", findings.c.project_id, findings.c.id.desc())
 proposals = Table(
     "proposals",
     metadata,
-    _id(),
+    id_column(),
     Column("project_id", BigInteger, nullable=False),
     Column("run_id", BigInteger, nullable=False),
     Column("lens", Text, nullable=False),
@@ -727,12 +712,12 @@ proposals = Table(
     Column("state", Text, nullable=False, server_default="open"),
     Column("duplicate_of", BigInteger),
     Column("answered_by", BigInteger),
-    _when("answered_at"),
+    when("answered_at"),
     Column("note", Text),
-    _when("deferred_until"),
-    _when("inbox_at"),
+    when("deferred_until"),
+    when("inbox_at"),
     Column("label", JSONB, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
     Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0103)
     Column("fix_of", BigInteger),  # the merged change whose probe recurred two weeks in a row, that it fixes (0133)
@@ -775,12 +760,12 @@ curator_briefs = tables_curator.briefs_table(metadata)  # the Curator's morning 
 channel_link_codes = Table(  # the one-time codes that link a member's channel: telegram_links until 0063
     "channel_link_codes",
     metadata,
-    _id(),
+    id_column(),
     Column("user_id", BigInteger, nullable=False),
     Column("code_hash", Text, nullable=False),
-    _stamp("created_at"),
+    stamp("created_at"),
     Column("expires_at", DateTime(timezone=True), nullable=False),
-    _when("used_at"),
+    when("used_at"),
     Column("token_id", BigInteger),  # the web session that made the code (0016)
     Column("kind", Text, nullable=False),  # the kind of members' channel it links (0063)
     ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="CASCADE", name="channel_link_codes_token_id_fkey"),
