@@ -53,6 +53,13 @@ CONNECT_BACKOFF = (1.0, 30.0)  # seconds between tries to reach the broker, or t
 PUBLISH_TIMEOUT = 5.0  # seconds for the broker to confirm one message
 
 
+def _stopping() -> bool:
+    """Whether the current task is being cancelled: an error raised while its CancelledError unwinds (a rollback that
+    fails, a close that fails) replaces it, and a loop that tries again on that error would never end."""
+    task = asyncio.current_task()
+    return task is not None and task.cancelling() > 0
+
+
 class Broker:
     """The connection to the broker, which reconnects on its own once it was made, a channel with publisher confirms
     on the exchange, and a channel of its own for each queue consumed."""
@@ -193,6 +200,8 @@ class Deliverer:
                 if when is not None:
                     wait = min(wait, max(0.05, (when - datetime.now(UTC)).total_seconds()))
             except Exception:  # Postgres away: the next sweep tries again
+                if _stopping():
+                    raise
                 log.exception("deliver: the relay failed; it tries again")
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self.wake.wait(), wait)
@@ -251,6 +260,8 @@ class Deliverer:
             try:
                 await self.broker.connect()
             except Exception as exc:
+                if _stopping():
+                    raise
                 log.warning(
                     "deliver cannot reach the broker; the jobs deliver meanwhile",
                     extra={"error": type(exc).__name__, "retry_s": backoff},
@@ -263,6 +274,8 @@ class Deliverer:
             try:
                 await self.consume_all()
             except Exception as exc:
+                if _stopping():
+                    raise
                 log.warning("deliver cannot consume every queue yet", extra={"error": type(exc).__name__})
             await asyncio.sleep(PLUGINS_SECONDS)
 
