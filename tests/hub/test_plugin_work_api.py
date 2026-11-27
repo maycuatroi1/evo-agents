@@ -1,5 +1,5 @@
 """What an isolated plugin writes and reads through the plugin API with its token, in a project that granted it
-(``evo_agents.hub.server.plugin_tasks_api``, ``plugin_docs_api``, ``plugin_runs_api`` and ``plugin_srs_api``), and
+(``evo_agents.hub.server.plugin_api.routes``: ``tasks``, ``docs``, ``runs`` and ``srs``), and
 the repos and base a task names (``task_dispatch``).
 
 Granted tasks:write, a plugin creates tasks under keys of its own, finds one by its key, changes and comments on the

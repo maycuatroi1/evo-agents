@@ -11,7 +11,7 @@ none, ``listing`` leaves it out, and ``put`` over it cannot tell its key from on
 of a record not counted.
 
 The rules are ``evo_agents.hub.access.ProjectRules`` over the label ``{level, projects: [project]}`` of each record, as for
-every other object of a project; nothing here chooses who a call is for, which ``evo_agents.hub.server.plugin_records_api``
+every other object of a project; nothing here chooses who a call is for, which ``evo_agents.hub.server.plugin_api.routes.records``
 and ``plugin_delegation`` decide from the request. No module of the server is imported: the job worker could use it.
 """
 

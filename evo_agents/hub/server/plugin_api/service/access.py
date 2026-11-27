@@ -1,6 +1,5 @@
 """Who a call of the plugin API acts as when it writes or reads what a member would (``docs/plugins.md``, section
-Permissions): the routes of ``plugin_tasks_api``, ``plugin_docs_api``, ``plugin_runs_api`` and
-``plugin_chats_api``.
+Permissions): the routes of tasks, docs, runs, srs and chats of the package.
 
 A route under /v1/plugin-api/ takes the token of a plugin's backend and no other credential (``task_dispatch``). Each
 of these routes acts in a project that enabled the plugin and granted it the permission the route needs, among what
@@ -15,33 +14,20 @@ routes of chats, a feature of the whole hub, answer 404 while the hub has it off
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import plugin_calls, tables
+from evo_agents.hub import plugin_calls
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server.projects import ProjectAccess, access_of
-
-
-@dataclass(frozen=True)
-class Acting:
-    """A call of plugin ``plugin`` (its id and name) in a project, in the name of ``login`` with ``access``."""
-
-    plugin_id: int
-    plugin: str
-    user_id: int
-    login: str
-    access: ProjectAccess
+from evo_agents.hub.server.plugin_api.models.access import Acting
+from evo_agents.hub.server.plugin_api.repository import access as store
+from evo_agents.hub.server.projects import access_of
 
 
 async def granted(conn: AsyncConnection, plugin_id: int, project: str, permission: str):
     """The row of ``plugin_calls.enabled_query`` of plugin ``plugin_id`` in ``project``, granted ``permission``; 403
     otherwise, the same for a project that does not exist."""
-    query = plugin_calls.enabled_query().where(tables.plugins.c.id == plugin_id, tables.projects.c.name == project)
-    enabled = (await conn.execute(query)).first()
+    enabled = await store.enabled(conn, plugin_id, project)
     if enabled is None or permission not in plugin_calls.effective_grant(enabled):
         raise HTTPException(
             403,
@@ -54,13 +40,7 @@ async def granted(conn: AsyncConnection, plugin_id: int, project: str, permissio
 async def acting(conn: AsyncConnection, enabled, *, writes: bool = True) -> Acting:
     """The admin who granted the plugin of ``enabled`` (a row of ``granted``) its permissions, with their access to
     its project now; 403 when they hold no grant there, or less than writer when the call ``writes``."""
-    pp, u = tables.project_plugins, tables.users
-    query = (
-        select(u.c.id, u.c.login)
-        .join_from(pp, u, u.c.id == pp.c.granted_by)
-        .where(pp.c.project_id == enabled.project_id, pp.c.plugin_id == enabled.id)
-    )
-    found = (await conn.execute(query)).first()
+    found = await store.granter(conn, enabled)
     access = await access_of(conn, found.id, enabled.project) if found is not None else None
     needs = "writer" if writes else "reader"
     if found is None or access is None or not has_role(access.role, needs):
@@ -83,4 +63,4 @@ async def feature_on(conn: AsyncConnection, feature: str, enabled) -> None:
         )
 
 
-__all__ = ["Acting", "acting", "feature_on", "granted"]
+__all__ = ["acting", "feature_on", "granted"]

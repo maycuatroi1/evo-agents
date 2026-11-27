@@ -10224,40 +10224,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/plugin_records_api.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 106,
-                    "endColumn": 114,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 30,
-                    "endColumn": 37,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/plugin_routes.py": [
             {
                 "code": "reportArgumentType",

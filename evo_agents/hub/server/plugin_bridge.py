@@ -9,7 +9,7 @@ the header PLUGIN_HEADER, and the hub checks that call again, as it arrives, on 
 - a read of ``bridge_reads`` needs the plugin installed on the hub, turned on, enabled in the project the route names,
   and the permission it needs in what the project granted that the installed version still asks for
   (``plugin_calls.effective_grant``, as the extension points check it);
-- the records of the plugin itself (``plugin_records_api.members``), read or written, need the permission ``records:use``
+- the records of the plugin itself (``plugin_api.routes.records.members``), read or written, need the permission ``records:use``
   as a read does, and only under the plugin's own name: a page reaches no other plugin's records;
 - anything else is a 403, before the route runs.
 
@@ -57,7 +57,7 @@ def bridge_reads() -> dict[Callable, str]:
 @cache
 def bridge_records() -> dict[Callable, str]:
     """The routes of a plugin's own records, which a page reads and writes with any method, and the permission they need."""
-    from evo_agents.hub.server import plugin_records_api as api
+    from evo_agents.hub.server.plugin_api.routes import records as api
 
     handlers = (api.member_list, api.member_show, api.member_put, api.member_delete)
     return dict.fromkeys(handlers, "records:use")

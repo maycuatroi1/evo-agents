@@ -298,7 +298,7 @@ def _task(row) -> dict:
     }
 
 
-task_select, task_view = _task_select, _task  # a task run with its names, and its fields of ``Task``: plugin_runs_api
+task_select, task_view = _task_select, _task  # a task run with its names, and its fields of ``Task``: plugin_api runs
 
 
 async def type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[int, str] | None:
