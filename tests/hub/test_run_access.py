@@ -623,7 +623,7 @@ RAISING = (
     ("org chart", lambda user, access: org_routes.actor(user)),
     ("autonomy preference", lambda user, access: autonomy_store.write_pref(None, user, None)),
     ("autonomy stop", lambda user, access: autonomy_stops._subject(None, None, user)),
-    ("worker shares", lambda user, access: worker_shares._writer(user)),
+    ("worker shares", lambda user, access: worker_shares.writer(user)),
 )
 
 

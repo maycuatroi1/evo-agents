@@ -9,7 +9,7 @@ findings. ``GET /v1/org/workers`` and ``hub org worker list`` show the first thr
 
 What a report decides:
 
-- Narrowing a worker to a unit (``worker_shares``) is refused with 409 when its newest report is older than
+- Narrowing a worker to a unit (``shares``) is refused with 409 when its newest report is older than
   ``runs.DOCTOR_FRESH_SECONDS`` (48 hours), when there is none (a daemon of an older release sends none), or when it
   has a high finding (``share_refusal``).
 - A worker narrowed to units takes the runs of their members only while its newest report has no high finding
@@ -23,49 +23,18 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import runs
 from evo_agents.hub.redact import redact
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.base.errors import Forbidden
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.workers.models.doctor import NOT_LIVE, NOTICE, DoctorAnswer, DoctorFinding, DoctorReport
+from evo_agents.hub.server.workers.repository import doctor as store
 
 log = logging.getLogger(__name__)
-
-NOTICE = "worker_doctor"  # runs.NOTICE_KINDS
-MAX_FINDINGS = 100
-MAX_DETAIL_CHARS = 2000
-CODE_PATTERN = r"^[a-z][a-z0-9-]{0,62}$"
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-
-
-class DoctorFinding(BaseModel):
-    code: str = Field(pattern=CODE_PATTERN, description="what the doctor found, as `worker doctor --json` names it")
-    severity: Literal["high", "medium", "low"]
-    detail: str = Field(max_length=MAX_DETAIL_CHARS, description="what it found, as the doctor prints it")
-
-
-class DoctorReport(BaseModel):
-    findings: list[DoctorFinding] = Field(max_length=MAX_FINDINGS)
-
-
-class DoctorAnswer(BaseModel):
-    worker_id: int
-    doctor_at: datetime = Field(description="when the hub took the report")
-    doctor_high: int
-    doctor_medium: int
-
-
-def doctor_fresh(doctor_at):
-    """Whether a report taken at ``doctor_at`` (a column) is fresh enough to narrow its worker, as a condition."""
-    return doctor_at >= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, runs.DOCTOR_FRESH_SECONDS)
 
 
 def share_refusal(doctor_at: datetime | None, doctor_high: int | None, fresh: bool | None) -> str | None:
@@ -87,14 +56,7 @@ def share_refusal(doctor_at: datetime | None, doctor_high: int | None, fresh: bo
     return None
 
 
-async def _narrowed_and_shared(conn: AsyncConnection, worker_id: int) -> bool:
-    ws, w = tables.worker_shares, tables.workers
-    narrowed = exists().where(ws.c.worker_id == worker_id)
-    query = select(w.c.shared & narrowed).where(w.c.id == worker_id)
-    return bool((await conn.execute(query)).scalar_one())
-
-
-async def _notify_owner(conn: AsyncConnection, row, findings: list[DoctorFinding]) -> None:
+async def notify_owner(conn: AsyncConnection, row, findings: list[DoctorFinding]) -> None:
     codes = sorted({f.code for f in findings if f.severity == "high"})
     body = (
         f"The doctor of worker {row.name} found {', '.join(codes)} (high). It takes no run of the members of the units "
@@ -113,29 +75,17 @@ async def _notify_owner(conn: AsyncConnection, row, findings: list[DoctorFinding
     )
 
 
-@worker_router.post("/doctor", response_model=DoctorAnswer, responses={403: {"model": ErrorBody}})
-async def report_doctor(request: Request, report: DoctorReport, user: CurrentUser) -> DoctorAnswer:
-    """Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
-    high finding stops it taking the runs of the units it is shared with."""
-    w = tables.workers
+async def keep(conn: AsyncConnection, user: Principal, report: DoctorReport) -> DoctorAnswer:
+    """Keep ``report`` as the newest of the worker whose token ``user`` holds, each detail redacted; 403 for a token
+    of no live worker. Notify its owner when a high finding stops it taking the runs of the units it is shared with."""
     findings = [{**f.model_dump(), "detail": redact(f.detail)} for f in report.findings]
     high = sum(1 for f in report.findings if f.severity == "high")
     medium = sum(1 for f in report.findings if f.severity == "medium")
-    async with request.app.state.engine.begin() as conn:
-        query = select(w.c.id, w.c.owner_id, w.c.name, w.c.doctor_high, w.c.revoked_at).where(
-            w.c.token_id == user.token_id
-        )
-        row = (await conn.execute(query.with_for_update())).one_or_none()
-        if row is None or row.revoked_at is not None:
-            raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
-        taken = await conn.execute(
-            update(w)
-            .where(w.c.id == row.id)
-            .values(doctor_at=func.now(), doctor_high=high, doctor_medium=medium, doctor_findings=findings)
-            .returning(w.c.doctor_at)
-        )
-        doctor_at = taken.scalar_one()
-        if high and not row.doctor_high and await _narrowed_and_shared(conn, row.id):
-            await _notify_owner(conn, row, report.findings)
+    row = await store.worker_of_token(conn, user.token_id)
+    if row is None or row.revoked_at is not None:
+        raise Forbidden(NOT_LIVE)
+    doctor_at = await store.keep_report(conn, row.id, high, medium, findings)
+    if high and not row.doctor_high and await store.narrowed_and_shared(conn, row.id):
+        await notify_owner(conn, row, report.findings)
     log.info("doctor report", extra={"worker_id": row.id, "high": high, "medium": medium})
     return DoctorAnswer(worker_id=row.id, doctor_at=doctor_at, doctor_high=high, doctor_medium=medium)

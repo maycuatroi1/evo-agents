@@ -15,17 +15,13 @@ other settings and its secret bindings, which name the worker and not a project.
 
 from __future__ import annotations
 
-from fastapi import HTTPException
-from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.server.base.errors import Conflict, Forbidden
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.runs.service.kg_duties import kept_by
 from evo_agents.hub.server.security import Principal
-
-NIGHT_SHIFT = "night_shift"  # the kind of schedule the charter of a project's Curator keeps on one worker
+from evo_agents.hub.server.workers.repository import projects as store
 
 
 async def writable(conn, user: Principal, names: list[str]) -> list[int]:
@@ -35,21 +31,9 @@ async def writable(conn, user: Principal, names: list[str]) -> list[int]:
         access = await project_access(conn, user, name)
         if not has_role(access.role, "writer"):
             role = access.role or "no role"
-            raise HTTPException(403, f"a worker of project {name} needs the writer role on it; you hold {role}")
+            raise Forbidden(f"a worker of project {name} needs the writer role on it; you hold {role}")
         ids.append(access.project_id)
     return ids
-
-
-async def served(conn: AsyncConnection, worker_id: int) -> dict[str, int]:
-    """The projects the worker serves, name -> id, by name."""
-    wp, projects = tables.worker_projects, tables.projects
-    names = (
-        select(projects.c.name, projects.c.id)
-        .join_from(wp, projects, projects.c.id == wp.c.project_id)
-        .where(wp.c.worker_id == worker_id)
-        .order_by(projects.c.name)
-    )
-    return dict((await conn.execute(names)).all())
 
 
 async def still_needed(conn: AsyncConnection, worker_id: int, name: str, dropped: dict[str, int]) -> None:
@@ -57,22 +41,11 @@ async def still_needed(conn: AsyncConnection, worker_id: int, name: str, dropped
     held by or pinned to the worker, or its night shift, which it keeps as the first node of the pool of the project's default agent."""
     if not dropped:
         return
-    r, s = tables.runs, tables.schedules
     by_id = {project_id: project for project, project_id in dropped.items()}
-    active = (
-        select(r.c.project_id, r.c.id)
-        .where(
-            r.c.project_id.in_(list(by_id)),
-            r.c.state.in_(runs.ACTIVE_STATES),
-            or_(r.c.worker_id == worker_id, r.c.pinned_worker_id == worker_id),
-        )
-        .order_by(r.c.id)
-    )
     held: dict[str, list[str]] = {}
-    for project_id, run_id in await conn.execute(active):
+    for project_id, run_id in await store.active_runs(conn, worker_id, list(by_id)):
         held.setdefault(by_id[project_id], []).append(str(run_id))
-    duty = select(s.c.project_id).where(s.c.project_id.in_(list(by_id)), s.c.kind == NIGHT_SHIFT, kept_by(s, worker_id))
-    on_duty = {by_id[project_id] for project_id in (await conn.execute(duty)).scalars()}
+    on_duty = {by_id[project_id] for project_id in await store.night_shifts(conn, worker_id, list(by_id))}
     why = [
         f"{project} has active runs held by it or pinned to it ({', '.join(held[project])}): let them end or cancel "
         "them"
@@ -84,10 +57,9 @@ async def still_needed(conn: AsyncConnection, worker_id: int, name: str, dropped
         for project in sorted(on_duty)
     ]
     if why:
-        raise HTTPException(
-            409,
+        raise Conflict(
             f"worker {name} cannot stop serving {', '.join(sorted({*held, *on_duty}))}: "
-            f"{'; '.join(why)}; nothing was changed",
+            f"{'; '.join(why)}; nothing was changed"
         )
 
 
@@ -102,8 +74,7 @@ async def serve(
     dropped = {project: project_id for project, project_id in served.items() if project not in projects}
     added_ids = await writable(conn, user, added)
     await still_needed(conn, worker_id, name, dropped)
-    wp = tables.worker_projects
     if dropped:
-        await conn.execute(delete(wp).where(wp.c.worker_id == worker_id, wp.c.project_id.in_(list(dropped.values()))))
+        await store.drop(conn, worker_id, list(dropped.values()))
     if added_ids:
-        await conn.execute(insert(wp), [{"worker_id": worker_id, "project_id": project_id} for project_id in added_ids])
+        await store.add(conn, worker_id, added_ids)

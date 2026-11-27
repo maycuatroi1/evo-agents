@@ -7,7 +7,7 @@ seller is on (404 otherwise) and that the hub can sell (503 without EVO_HUB_SELL
 - POST /v1/seller-api/orders: a buying hub orders a listed plugin for a number of months, naming its stable id
   (``hub_`` and 32 hex digits), its address and a contact. The answer is the order's number, ``ORD-YYYY-NNNN``, its
   secret, which this hub keeps only the SHA-256 of, the total, and how to pay it (``evo_agents.hub.payments``). The
-  address an order came from (``workers.client_address``), not the hub id it names, has at most MAX_OPEN_PER_BUYER
+  address an order came from (``codes.client_address``), not the hub id it names, has at most MAX_OPEN_PER_BUYER
   orders open, and the seller MAX_OPEN in all, counted before and again under the order lock; an order left open
   ``seller.ORDER_TTL`` is cancelled;
 - GET /v1/seller-api/orders/{number}: with the secret in X-Evo-Order-Secret, the order's state and, once a seller admin
@@ -42,7 +42,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_store import fetch_bundle
 from evo_agents.hub.server.projects import PRINTABLE
 from evo_agents.hub.server.seller import NOT_SELLING, expire_orders, own_keys, seller_key, selling
-from evo_agents.hub.server.workers.routes.workers import client_address
+from evo_agents.hub.server.workers.service.codes import client_address
 from evo_agents.plugins import compat
 from evo_agents.plugins import license as lic
 from evo_agents.plugins.manifest import PLUGIN_ID

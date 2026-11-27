@@ -809,6 +809,24 @@ service and the models, never the routes. A new module of the package goes into 
 docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-workers-layers"
+name = "The workers go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.workers"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.workers a route handler keeps the special auth of its route (a machine token to register, a \
+web session to set dispatch_from, no auth to join, a worker token for the doctor), opens the transaction and passes \
+the request's parts to the service (workers, pairings, join, pools, pool_tokens, doctor, shares, reaper), which \
+checks the caller and decides; the repository holds the SQL of the workers, their pairings, projects, pools, join \
+tokens, units and doctor reports, and the placement every claim reads; the models (the API's shapes, the pairing \
+codes, the refusal texts more than one layer gives) import none of them. Move the code that reaches up into the layer \
+that needs it: a check or a message into the service, a query into the repository, a shape or a constant into the \
+models. Other modules import the service, the repository's placement and queries, and the models, never the routes. \
+A new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

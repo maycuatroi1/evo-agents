@@ -1,12 +1,12 @@
-"""POST /v1/worker/join, the one public worker route: a machine trades a pairing code (``workers``) or a pool's join
-token (``worker_pools``) for the ``evw_`` token of a new worker, shown once.
+"""POST /v1/worker/join, the one public worker route: a machine trades a pairing code (``pairings``) or a pool's join
+token (``pool_tokens``) for the ``evw_`` token of a new worker, shown once.
 
 Both refuse alike: an unknown, wrong, expired, used or locked code and an unknown, expired, revoked or used-up token
 get 403, whose message names none of these, and every refusal counts against the address in the app's sliding window
 (``request.app.state.join_limit``: on Redis when the cache is shared, else the process's ``RefusalLimit``), so an
 address refused JOIN_REFUSALS times within JOIN_WINDOW
 gets 429 with Retry-After, whichever it sent. A code joins the worker its pairing describes; a token joins a new node
-of its pool, named by ``worker_pools.node_name``, with the pool's slots and projects. Either way the owner must still
+of its pool, named by ``pool_tokens.node_name``, with the pool's slots and projects. Either way the owner must still
 hold the writer role on every project the worker serves (409 otherwise), and the join adds an audit row naming the
 worker and the pairing, or the pool and the join token's id, never the code or the token.
 """
@@ -15,35 +15,28 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import BigInteger, any_, func, literal, select, update
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import cache, tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.security import same
-from evo_agents.hub.server.workers.models.workers import JoinRequest, WorkerCredential
-from evo_agents.hub.server.workers.routes.workers import (
+from evo_agents.hub.server.workers.models.codes import (
     CODE_LENGTH,
     MAX_WRONG_TRIES,
     REFUSED_CODE,
     SELECTOR_LENGTH,
-    WRITER_ROLES,
-    client_address,
-    code_hash,
-    create_worker,
-    credential_of,
     normal_code,
-    pairing_secret,
 )
-from evo_agents.hub.server.workers.service import pools as worker_pools
+from evo_agents.hub.server.workers.models.pools import REFUSED_TOKEN
+from evo_agents.hub.server.workers.models.workers import JoinRequest, WorkerCredential
+from evo_agents.hub.server.workers.repository import pairings
+from evo_agents.hub.server.workers.repository import projects as project_store
+from evo_agents.hub.server.workers.service import pool_tokens
+from evo_agents.hub.server.workers.service.codes import code_hash
+from evo_agents.hub.server.workers.service.views import credential_of
+from evo_agents.hub.server.workers.service.workers import create_worker
 
 log = logging.getLogger(__name__)
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"])
 
 
 class Refused(Exception):
@@ -54,106 +47,43 @@ class Refused(Exception):
         self.message = message
 
 
-def _find_pairing(selector: str):
-    """The unused pairing that holds ``selector``, its row locked, and whether it has not expired."""
-    wp = tables.worker_pairings
-    return (
-        select(
-            wp.c.id,
-            wp.c.code_hash,
-            wp.c.owner_id,
-            wp.c.name,
-            wp.c.projects,
-            wp.c.slots,
-            wp.c.labels,
-            wp.c.allow_web_terminal,
-            wp.c.attempts,
-            (wp.c.expires_at > func.now()).label("live"),
-        )
-        .where(wp.c.code_selector == selector, wp.c.used_at.is_(None))
-        .with_for_update()
-    )
-
-
-@worker_router.post(
-    "/join",
-    status_code=201,
-    response_model=WorkerCredential,
-    responses={
-        403: {"model": ErrorBody},
-        409: {"model": ErrorBody},
-        422: {"model": ErrorBody},
-        429: {"model": ErrorBody, "description": "too many refused codes from this address; see Retry-After"},
-        503: {"model": ErrorBody},
-    },
-)
-async def join(request: Request, body: JoinRequest, response: Response) -> WorkerCredential:
-    """Trade a pairing code, or a pool's join token, for the token of a new worker; the token is shown once."""
-    limit: cache.Window = request.app.state.join_limit
-    client = client_address(request)
-    wait = await limit.retry_after(client)
-    if wait is not None:
-        raise HTTPException(
-            429,
-            f"too many refused pairing codes from this address: try again in {wait} seconds",
-            headers={"Retry-After": str(wait)},
-        )
-    try:
-        if body.token is not None:
-            credential = await _join_pool(request, body)
-        else:
-            credential = await _join_pairing(request, body)
-    except Refused as refused:
-        await limit.hit(client)
-        if await limit.retry_after(client) is not None:
-            log.warning("pairing joins limited", extra={"refusals": limit.limit, "window_s": limit.window})
-        raise HTTPException(403, refused.message) from None
-    response.headers.update(NO_STORE)
-    return credential
-
-
-async def _join_pairing(request: Request, body: JoinRequest) -> WorkerCredential:
-    code = normal_code(body.code)
+def pairing_code(text: str) -> str:
+    """The code ``text`` names (``normal_code``); 422 when it is none."""
+    code = normal_code(text)
     if code is None:
-        raise HTTPException(422, f"a pairing code is {CODE_LENGTH} characters of Crockford base32, written XXXX-XXXX")
-    secret = pairing_secret(request)
-    async with request.app.state.engine.begin() as conn:
-        row = (await conn.execute(_find_pairing(code[:SELECTOR_LENGTH]))).one_or_none()
+        raise Unprocessable(f"a pairing code is {CODE_LENGTH} characters of Crockford base32, written XXXX-XXXX")
+    return code
+
+
+async def join_pairing(engine: AsyncEngine, secret: str, code: str, body: JoinRequest) -> WorkerCredential:
+    """The worker the pairing of ``code`` describes, made in a transaction of its own; Refused for a code that is
+    unknown, wrong, expired, used or locked, after a wrong try against a live pairing is counted and committed."""
+    async with engine.begin() as conn:
+        row = await pairings.find(conn, code[:SELECTOR_LENGTH])
         live = row is not None and row.attempts < MAX_WRONG_TRIES and row.live
-        if live and same(code_hash(secret, code), row.code_hash):
-            return await _join(conn, row, body)
-        if live:  # counted in this transaction, which commits: a refusal must not roll the wrong try back
-            wp = tables.worker_pairings
-            await conn.execute(update(wp).values(attempts=wp.c.attempts + 1).where(wp.c.id == row.id))
+        if row is not None and live and same(code_hash(secret, code), row.code_hash):
+            return await join(conn, row, body)
+        if (
+            live and row is not None
+        ):  # counted in this transaction, which commits: a refusal must not roll the wrong try back
+            await pairings.count_wrong_try(conn, row.id)
             tries_left = MAX_WRONG_TRIES - row.attempts - 1
             log.warning("wrong pairing code", extra={"pairing_id": row.id, "tries_left": tries_left})
     raise Refused(REFUSED_CODE)  # after the commit: the wrong try counted stays
 
 
-async def _check_writes(conn: AsyncConnection, owner_id: int, project_ids, whose: str, remedy: str) -> None:
+async def check_writes(conn: AsyncConnection, owner_id: int, project_ids, whose: str, remedy: str) -> None:
     """409 unless ``owner_id`` holds the writer role on every project of ``project_ids`` still."""
-    grants = tables.grants
-    owner_writes = (
-        select(func.count())
-        .select_from(grants)
-        .where(
-            grants.c.user_id == owner_id,
-            grants.c.project_id == any_(literal(list(project_ids), ARRAY(BigInteger))),
-            grants.c.role.in_(WRITER_ROLES),
-        )
-    )
-    writes = (await conn.execute(owner_writes)).scalar_one()
-    if writes != len(set(project_ids)):
-        raise HTTPException(
-            409,
+    if await project_store.writer_count(conn, owner_id, project_ids) != len(set(project_ids)):
+        raise Conflict(
             f"the member who made this {whose} no longer holds the writer role on every project it names: "
-            f"they need to {remedy}",
+            f"they need to {remedy}"
         )
 
 
-async def _join(conn: AsyncConnection, pairing, host: JoinRequest) -> WorkerCredential:
+async def join(conn: AsyncConnection, pairing, host: JoinRequest) -> WorkerCredential:
     pairing_id, owner_id, name, project_ids = pairing.id, pairing.owner_id, pairing.name, pairing.projects
-    await _check_writes(conn, owner_id, project_ids, "pairing", "create a new pairing")
+    await check_writes(conn, owner_id, project_ids, "pairing", "create a new pairing")
     issued, worker_id = await create_worker(
         conn,
         owner_id,
@@ -164,22 +94,24 @@ async def _join(conn: AsyncConnection, pairing, host: JoinRequest) -> WorkerCred
         project_ids=project_ids,
         host=host,
     )
-    wp = tables.worker_pairings
-    await conn.execute(update(wp).values(used_at=func.now(), worker_id=worker_id).where(wp.c.id == pairing_id))
+    await pairings.mark_used(conn, pairing_id, worker_id)
     target = f"worker:{worker_id} name={name} pairing:{pairing_id}"
+    # the actor is the pairing's owner, the token the one the join issued: no Principal made the request
     await audit.record(conn, actor_id=owner_id, token_id=issued.token_id, action=audit.WORKER_JOIN, target=target)
     log.info("worker joined", extra={"worker_id": worker_id, "pairing_id": pairing_id, "token_id": issued.token_id})
     return await credential_of(conn, issued, worker_id)
 
 
-async def _join_pool(request: Request, body: JoinRequest) -> WorkerCredential:
-    async with request.app.state.engine.begin() as conn:
-        joining = await worker_pools.take_token(conn, body.token)
+async def join_pool(engine: AsyncEngine, token: str, body: JoinRequest) -> WorkerCredential:
+    """A new node of the pool whose join token is ``token``; Refused for a token that is unknown, expired, revoked or
+    used up."""
+    async with engine.begin() as conn:
+        joining = await pool_tokens.take_token(conn, token)
         if joining is None:
-            raise Refused(worker_pools.REFUSED_TOKEN)
+            raise Refused(REFUSED_TOKEN)
         remedy = "get the writer role back, or drop the project from the pool (`evo-agents worker pool set`)"
-        await _check_writes(conn, joining.owner_id, joining.project_ids, "pool", remedy)
-        name = await worker_pools.node_name(conn, joining, body.hostname)
+        await check_writes(conn, joining.owner_id, joining.project_ids, "pool", remedy)
+        name = await pool_tokens.node_name(conn, joining, body.hostname)
         issued, worker_id = await create_worker(
             conn,
             joining.owner_id,

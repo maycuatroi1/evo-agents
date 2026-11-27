@@ -68,40 +68,18 @@ a log line.
 
 from __future__ import annotations
 
-import logging
-import secrets
-import time
-from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
-import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from sqlalchemy import BigInteger, Text, any_, delete, exists, func, insert, literal, or_, select, update
-from sqlalchemy import exc as sa_exc
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import cache, runs, tables
-from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.server import audit, browser_install, credentials, update_now
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.run_reaper import release_runs
-from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
-from evo_agents.hub.server.security import (
-    MACHINE,
-    WEB,
-    WORKER,
-    CurrentUser,
-    Principal,
-    issue_token,
-    keyed_digest,
-)
+from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser
 from evo_agents.hub.server.workers.models.workers import (
+    DISPATCH_FROM_SESSION,
+    MAX_ID,
     DispatchFrom,
-    HostFacts,
     Pairing,
     PairingRequest,
     PairingState,
@@ -110,352 +88,20 @@ from evo_agents.hub.server.workers.models.workers import (
     WorkerRegistration,
     WorkerUpdate,
 )
-from evo_agents.hub.server.workers.repository.placement import Placement, all_labels, pool_name
-from evo_agents.hub.server.workers.repository.placement import columns as placement_columns
-from evo_agents.hub.server.workers.service.projects import serve, served
-from evo_agents.hub.server.workers.service.projects import writable as _writable
-
-log = logging.getLogger(__name__)
-
-MAX_ID = 2**63 - 1  # bigint
-CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"  # Crockford base32: no I, L, O or U
-_READ_AS = str.maketrans({"O": "0", "I": "1", "L": "1"})  # what Crockford base32 reads the look-alikes as
-CODE_LENGTH = 8
-SELECTOR_LENGTH = 4  # the start of a code, kept in clear so a wrong try finds the pairing it is against
-PAIRING_TTL = timedelta(minutes=10)
-PAIRING_KEPT = timedelta(days=1)  # an unused pairing is deleted once its expiry is this far behind
-MAX_LIVE_PAIRINGS = 5  # per member: neither used nor expired, locked ones included
-MAX_WRONG_TRIES = 5
-PAIRING_PURPOSE = "pairing-code"  # keeps the HMAC of a code apart from every other HMAC of the session secret
-JOIN_REFUSALS = 10  # refused joins from one address within JOIN_WINDOW, before the next join gets 429
-JOIN_WINDOW = 600.0  # seconds
-MAX_JOIN_CLIENTS = 10_000  # addresses RefusalLimit tracks at once; past that it forgets the least recently refused
-DRAWS = 20  # codes drawn before giving up on a selector no unused pairing holds
-WRITER_ROLES = [role for role in ROLES if has_role(role, "writer")]
-REFUSED_CODE = (
-    "the pairing code is wrong, expired, used already or locked after 5 wrong tries: create a new one on the web"
-)
-NO_WORKER = "you have no worker {id} on this hub: see GET /v1/workers"
-NO_SECRET = "pairing codes need EVO_HUB_SESSION_SECRET, which this hub does not have: ask its operator to set it"
+from evo_agents.hub.server.workers.service import pairings, workers
+from evo_agents.hub.server.workers.service.codes import pairing_secret
 
 router = APIRouter(prefix="/v1/workers", tags=["workers"], responses={401: {"model": ErrorBody}})
 
 WorkerId = Annotated[int, Path(ge=1, le=MAX_ID)]
-REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
-
-
-# Codes
-
-
-def new_code() -> str:
-    """A pairing code in its stored form: CODE_LENGTH characters of Crockford base32, without the hyphen."""
-    return "".join(secrets.choice(CROCKFORD) for _ in range(CODE_LENGTH))
-
-
-def normal_code(text: str) -> str | None:
-    """The code ``text`` names, read as Crockford base32 does: any case, hyphens and spaces left out, O read as 0 and
-    I and L as 1. None when that is not CODE_LENGTH characters of the alphabet."""
-    code = "".join(text.split()).replace("-", "").upper().translate(_READ_AS)
-    if len(code) != CODE_LENGTH or any(char not in CROCKFORD for char in code):
-        return None
-    return code
-
-
-def shown_code(code: str) -> str:
-    return f"{code[:SELECTOR_LENGTH]}-{code[SELECTOR_LENGTH:]}"
-
-
-def code_hash(secret: str, code: str) -> str:
-    """How the hub keeps a code: its HMAC under the session secret. A plain hash next to the selector in clear would
-    let whoever reads worker_pairings try the 32**4 rests of the code offline."""
-    return keyed_digest(secret, PAIRING_PURPOSE, code)
-
-
-def pairing_secret(request: Request) -> str:
-    secret = request.app.state.config.session_secret
-    if not secret:
-        raise HTTPException(503, NO_SECRET)
-    return secret
-
-
-# Refused joins
-
-
-class RefusalLimit(cache.LocalWindow):
-    """Refused joins per client address in a sliding window, in this process's memory (``cache.LocalWindow``): an
-    address refused JOIN_REFUSALS times within JOIN_WINDOW waits until the oldest of those refusals leaves the window.
-    The app counts on Redis instead when the cache is shared (``app.state.join_limit``, a ``cache.Window`` over it)."""
-
-    def __init__(
-        self,
-        limit: int = JOIN_REFUSALS,
-        window: float = JOIN_WINDOW,
-        max_clients: int = MAX_JOIN_CLIENTS,
-        clock=time.monotonic,
-    ):
-        super().__init__(limit, window, max_clients, clock)
-
-    def refuse(self, client: str) -> None:
-        """Count one refusal of ``client``."""
-        self.hit(client)
-
-
-def client_address(request: Request) -> str:
-    """Where a request came from: the peer's address, or the client's that a trusted proxy forwarded (uvicorn's
-    forwarded_allow_ips, set by EVO_HUB_FORWARDED_ALLOW_IPS)."""
-    return request.client.host if request.client else "unknown"
-
-
-# Reading workers
-
-
-def _listed(*where):
-    """The workers that match ``where``, newest first, with what a Worker shows of each and the database's now."""
-    w, users, wp, projects = tables.workers, tables.users, tables.worker_projects, tables.projects
-    names = (
-        select(projects.c.name)
-        .join_from(wp, projects, projects.c.id == wp.c.project_id)
-        .where(wp.c.worker_id == w.c.id)
-        .order_by(projects.c.name)
-    )
-    held_runs = (
-        select(func.count())
-        .select_from(tables.runs)
-        .where(tables.runs.c.worker_id == w.c.id, tables.runs.c.state.in_(runs.HELD_STATES))
-        .scalar_subquery()
-    )
-    return (
-        select(
-            w.c.id,
-            w.c.name,
-            users.c.login.label("owner"),
-            w.c.hostname,
-            w.c.os,
-            w.c.arch,
-            w.c.agent_version,
-            w.c.agent_commit,
-            w.c.slots,
-            all_labels(w).label("labels"),
-            pool_name(w).label("pool"),
-            w.c.plugins,
-            w.c.version_locked,
-            w.c.shared,
-            w.c.self_update,
-            w.c.self_update_since,
-            w.c.kg_sync,
-            w.c.browser,
-            *update_now.update_columns(),
-            *browser_install.columns(),
-            *update_now.nightly_columns(),
-            func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
-            w.c.runtimes,
-            w.c.checkouts,
-            w.c.free_slots,
-            w.c.health,
-            w.c.allow_web_terminal,
-            w.c.dispatch_from,
-            held_runs.label("held_runs"),
-            w.c.features,
-            w.c.created_at,
-            w.c.last_heartbeat_at,
-            w.c.drained_at,
-            w.c.revoked_at,
-            func.now().label("now"),
-            *placement_columns(w),
-        )
-        .join_from(w, users, users.c.id == w.c.owner_id)
-        .where(*where)
-        .order_by(w.c.created_at.desc(), w.c.id.desc())
-    )
-
-
-def _worker(row) -> Worker:
-    placed = Placement.of(row)
-    fields = {key: value for key, value in row._mapping.items() if not key.startswith("place_")}
-    fields |= {"taints": list(placed.taints), "auto_labels": list(placed.auto)}
-    fields |= {"ready": placed.ready, "ready_reason": placed.unready}
-    now = fields.pop("now")
-    fields["features"] = list(fields["features"] or ())  # NULL: its daemon said none
-    fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's
-    report, since = fields.pop("self_update"), fields.pop("self_update_since")
-    fields["self_update"] = None if report is None else {**report, "since": since}
-    update_now.shown(fields)
-    browser_install.shown(fields)
-    status = runs.worker_status(
-        last_heartbeat_at=fields["last_heartbeat_at"],
-        drained_at=fields["drained_at"],
-        revoked_at=fields["revoked_at"],
-        now=now,
-    )
-    return Worker(**fields, status=status)
-
-
-async def _workers(conn: AsyncConnection, *where) -> list[Worker]:
-    return [_worker(row) for row in await conn.execute(_listed(*where))]
-
-
-async def _one_worker(conn: AsyncConnection, worker_id: int) -> Worker:
-    (found,) = await _workers(conn, tables.workers.c.id == worker_id)
-    return found
-
-
-def _shared_with(user_id: int):
-    """Whether the worker of the row is one another member shares with ``user_id``: shared, serving a project on which
-    both its owner and ``user_id`` hold writer now, and, when narrowed to units, one ``user_id`` is seated in
-    (``worker_fit.unit_admits``; ``docs/workers.md``, Shared workers)."""
-    w, wp = tables.workers, tables.worker_projects
-    both = exists().where(
-        wp.c.worker_id == w.c.id, writes(user_id, wp.c.project_id), writes(w.c.owner_id, wp.c.project_id)
-    )
-    return (w.c.owner_id != user_id) & w.c.shared & both & unit_admits(w.c.id, user_id)
-
-
-async def _seen_by(conn: AsyncConnection, user: Principal, found: list[Worker]) -> list[Worker]:
-    """``found`` as ``user`` sees them: a worker another member shares shows only the projects of it on which ``user``
-    holds a grant, and none of what its daemon did for the night shifts of projects (``kg_sync``); a hub admin and the
-    owner see a worker whole."""
-    if user.admin or all(worker.owner == user.login for worker in found):
-        return found
-    p, g = tables.projects, tables.grants
-    names = select(p.c.name).join_from(g, p, p.c.id == g.c.project_id).where(g.c.user_id == user.user_id)
-    mine = set((await conn.execute(names)).scalars())
-    return [
-        worker
-        if worker.owner == user.login
-        else worker.model_copy(update={"projects": [name for name in worker.projects if name in mine], "kg_sync": None})
-        for worker in found
-    ]
-
-
-async def _owned(conn: AsyncConnection, user: Principal, worker_id: int, *, lock: bool = False):
-    """(owner_id, owner login, name, token_id, drained_at, revoked_at) of a worker ``user`` owns, or any worker for a
-    hub admin; 404 otherwise, the same as for an id the hub never gave out."""
-    w, users = tables.workers, tables.users
-    statement = (
-        select(w.c.owner_id, users.c.login, w.c.name, w.c.token_id, w.c.drained_at, w.c.revoked_at)
-        .join_from(w, users, users.c.id == w.c.owner_id)
-        .where(w.c.id == worker_id)
-    )
-    if lock:
-        statement = statement.with_for_update(of=w)
-    row = (await conn.execute(statement)).one_or_none()
-    if row is None or (row.owner_id != user.user_id and not user.admin):
-        raise HTTPException(404, NO_WORKER.format(id=worker_id))
-    return row
-
-
-# Creating workers
-
-
-async def _name_taken(conn: AsyncConnection, owner_id: int, name: str, *, besides: int | None = None) -> bool:
-    """Whether a worker of ``owner_id`` that is not revoked, other than worker ``besides``, is named ``name`` in any
-    case."""
-    w = tables.workers
-    taken = exists().where(w.c.owner_id == owner_id, func.lower(w.c.name) == func.lower(name), w.c.revoked_at.is_(None))
-    if besides is not None:
-        taken = taken.where(w.c.id != besides)
-    return (await conn.execute(select(taken))).scalar_one()
-
-
-def _name_conflict(name: str) -> HTTPException:
-    return HTTPException(409, f"there is a worker named {name} already: revoke it first, or choose another name")
-
-
-async def create_worker(
-    conn: AsyncConnection,
-    owner_id: int,
-    *,
-    name: str,
-    slots: int,
-    labels: list[str],
-    allow_web_terminal: bool,
-    project_ids,
-    host: HostFacts,
-    pool_id: int | None = None,
-):
-    """A new worker of ``owner_id`` and its token, in the caller's transaction, a node of pool ``pool_id`` if one is
-    given; (Issued, worker id)."""
-    if await _name_taken(conn, owner_id, name):
-        raise _name_conflict(name)
-    issued = await issue_token(conn, owner_id, WORKER, host.hostname)
-    w = tables.workers
-    statement = (
-        insert(w)
-        .values(
-            owner_id=owner_id,
-            token_id=issued.token_id,
-            name=name,
-            slots=slots,
-            labels=labels,
-            allow_web_terminal=allow_web_terminal,
-            pool_id=pool_id,
-            **host.model_dump(include={"hostname", "os", "arch", "agent_version"}),
-        )
-        .returning(w.c.id)
-    )
-    try:
-        worker_id = (await conn.execute(statement)).scalar_one()
-    except sa_exc.IntegrityError as exc:  # another registration took the name meanwhile
-        if not isinstance(exc.orig, psycopg.errors.UniqueViolation):
-            raise
-        raise _name_conflict(name) from None
-    wp = tables.worker_projects
-    projects = literal(list(project_ids), ARRAY(BigInteger))
-    await conn.execute(
-        insert(wp).from_select(
-            ["worker_id", "project_id"], select(literal(worker_id, BigInteger), func.unnest(projects))
-        )
-    )
-    return issued, worker_id
-
-
-def _unique(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(values))
-
-
-async def credential_of(conn: AsyncConnection, issued, worker_id: int) -> WorkerCredential:
-    worker = await _one_worker(conn, worker_id)
-    return WorkerCredential(token=issued.token, token_id=issued.token_id, expires_at=issued.expires_at, worker=worker)
+REFUSALS: dict[int | str, dict[str, Any]] = {
+    403: {"model": ErrorBody},
+    404: {"model": ErrorBody},
+    409: {"model": ErrorBody},
+}
 
 
 # Pairings
-
-
-async def _prune_pairings(conn: AsyncConnection) -> None:
-    """Delete the unused pairings whose expiry is PAIRING_KEPT behind."""
-    wp = tables.worker_pairings
-    await conn.execute(delete(wp).where(wp.c.used_at.is_(None), wp.c.expires_at < func.now() - PAIRING_KEPT))
-
-
-async def _live_pairings(conn: AsyncConnection, owner_id: int) -> int:
-    """The pairings of ``owner_id`` neither used nor expired. A locked code holds its selector until it is pruned, so
-    it counts as live until it expires: a member cannot take more selectors by locking codes with wrong tries."""
-    wp = tables.worker_pairings
-    live = (
-        select(func.count())
-        .select_from(wp)
-        .where(wp.c.owner_id == owner_id, wp.c.used_at.is_(None), wp.c.expires_at > func.now())
-    )
-    return (await conn.execute(live)).scalar_one()
-
-
-def _insert_pairing(code: str, secret: str, owner_id: int, body: PairingRequest, project_ids, labels):
-    """A pairing of ``code``, unless an unused pairing holds its selector already: then it returns no row."""
-    wp = tables.worker_pairings
-    statement = pg_insert(wp).values(
-        code_selector=code[:SELECTOR_LENGTH],
-        code_hash=code_hash(secret, code),
-        owner_id=owner_id,
-        name=body.name,
-        projects=project_ids,
-        slots=body.slots,
-        labels=labels,
-        allow_web_terminal=body.allow_web_terminal,
-        expires_at=func.now() + PAIRING_TTL,
-    )
-    return statement.on_conflict_do_nothing(
-        index_elements=[wp.c.code_selector], index_where=wp.c.used_at.is_(None)
-    ).returning(wp.c.id, wp.c.expires_at)
 
 
 @router.post(
@@ -466,101 +112,20 @@ def _insert_pairing(code: str, secret: str, owner_id: int, body: PairingRequest,
 )
 async def create_pairing(request: Request, body: PairingRequest, user: CurrentUser, response: Response) -> Pairing:
     """A code a machine joins with as a worker of the caller; shown once."""
-    projects, labels = _unique(body.projects), _unique(body.labels)
     secret = pairing_secret(request)
     async with request.app.state.engine.begin() as conn:
-        project_ids = await _writable(conn, user, projects)
-        # One pairing of a member at a time, so two of them cannot both pass the count.
-        users = tables.users
-        await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
-        await _prune_pairings(conn)
-        live = await _live_pairings(conn, user.user_id)
-        if live >= MAX_LIVE_PAIRINGS:
-            raise HTTPException(
-                409,
-                f"you have {MAX_LIVE_PAIRINGS} pairing codes waiting or locked already: join with one of them, or "
-                f"wait until one expires ({int(PAIRING_TTL.total_seconds() // 60)} minutes after it was made)",
-            )
-        if await _name_taken(conn, user.user_id, body.name):
-            raise _name_conflict(body.name)
-        for _ in range(DRAWS):
-            code = new_code()
-            statement = _insert_pairing(code, secret, user.user_id, body, project_ids, labels)
-            row = (await conn.execute(statement)).one_or_none()
-            if row is not None:
-                break
-        else:
-            raise HTTPException(503, "no free pairing code was found; try again shortly")
-        pairing_id, expires_at = row
-        target = f"pairing:{pairing_id} name={body.name}"
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.WORKER_PAIR, target=target)
-    log.info("worker pairing created", extra={"pairing_id": pairing_id, "login": user.login, "worker_name": body.name})
+        pairing = await pairings.create(conn, user, body, secret)
     response.headers.update(NO_STORE)
-    return Pairing(
-        id=pairing_id,
-        code=shown_code(code),
-        expires_at=expires_at,
-        name=body.name,
-        projects=projects,
-        slots=body.slots,
-        labels=labels,
-        allow_web_terminal=body.allow_web_terminal,
-    )
-
-
-async def _project_names(conn: AsyncConnection, project_ids: list[int]) -> list[str]:
-    projects = tables.projects
-    ids = literal(list(project_ids), ARRAY(BigInteger))
-    names = select(projects.c.name).where(projects.c.id == any_(ids)).order_by(func.array_position(ids, projects.c.id))
-    return list((await conn.execute(names)).scalars())
+    return pairing
 
 
 @router.get("/pairings/{pairing_id}", response_model=PairingState, responses={404: {"model": ErrorBody}})
 async def pairing_state(request: Request, pairing_id: WorkerId, user: CurrentUser, response: Response) -> PairingState:
     """Whether a machine has joined with one of the caller's pairings yet."""
-    wp = tables.worker_pairings
-    statement = select(
-        wp.c.owner_id,
-        wp.c.name,
-        wp.c.projects,
-        wp.c.slots,
-        wp.c.labels,
-        wp.c.allow_web_terminal,
-        wp.c.attempts,
-        wp.c.created_at,
-        wp.c.expires_at,
-        wp.c.used_at,
-        wp.c.worker_id,
-        (wp.c.expires_at <= func.now()).label("expired"),
-    ).where(wp.c.id == pairing_id)
     async with request.app.state.engine.begin() as conn:
-        row = (await conn.execute(statement)).one_or_none()
-        if row is None or row.owner_id != user.user_id:
-            raise HTTPException(404, f"you have no pairing {pairing_id} on this hub")
-        projects = await _project_names(conn, row.projects)
-    if row.used_at is not None:
-        status = "joined"
-    elif row.attempts >= MAX_WRONG_TRIES:
-        status = "locked"
-    elif row.expired:
-        status = "expired"
-    else:
-        status = "waiting"
+        state = await pairings.state(conn, user, pairing_id)
     response.headers.update(NO_STORE)
-    return PairingState(
-        id=pairing_id,
-        status=status,
-        name=row.name,
-        projects=projects,
-        slots=row.slots,
-        labels=row.labels,
-        allow_web_terminal=row.allow_web_terminal,
-        tries_left=max(MAX_WRONG_TRIES - row.attempts, 0),
-        created_at=row.created_at,
-        expires_at=row.expires_at,
-        used_at=row.used_at,
-        worker_id=row.worker_id,
-    )
+    return state
 
 
 # Registering with a machine token
@@ -578,24 +143,8 @@ async def register(
             "registering a worker directly takes the machine token of that machine (`evo-agents hub login` on it); "
             "on the web, create a pairing code instead",
         )
-    projects = _unique(body.projects)
     async with request.app.state.engine.begin() as conn:
-        project_ids = await _writable(conn, user, projects)
-        issued, worker_id = await create_worker(
-            conn,
-            user.user_id,
-            name=body.name,
-            slots=body.slots,
-            labels=_unique(body.labels),
-            allow_web_terminal=body.allow_web_terminal,
-            project_ids=project_ids,
-            host=body,
-        )
-        target = f"worker:{worker_id} name={body.name}"
-        action = audit.WORKER_REGISTER
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
-        credential = await credential_of(conn, issued, worker_id)
-    log.info("worker registered", extra={"worker_id": worker_id, "login": user.login, "token_id": issued.token_id})
+        credential = await workers.register(conn, user, body)
     response.headers.update(NO_STORE)
     return credential
 
@@ -612,91 +161,44 @@ async def list_workers(
 ) -> list[Worker]:
     """The caller's workers and the live ones other members share with the caller in a project both write to, newest
     first; every worker for a hub admin."""
-    w = tables.workers
-    where = []
-    if not user.admin:
-        where.append(or_(w.c.owner_id == user.user_id, _shared_with(user.user_id) & w.c.revoked_at.is_(None)))
-    if not revoked:
-        where.append(w.c.revoked_at.is_(None))
     async with request.app.state.engine.begin() as conn:
-        return await _seen_by(conn, user, [_worker(row) for row in await page.rows(conn, _listed(*where))])
+        return await workers.listed(conn, user, revoked, page)
 
 
 @router.get("/{worker_id}", response_model=Worker, responses={404: {"model": ErrorBody}})
 async def show_worker(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """One worker of the caller's, or one another member shares with them; any worker for a hub admin."""
-    w = tables.workers
     async with request.app.state.engine.begin() as conn:
-        shared = select(exists().where(w.c.id == worker_id, w.c.revoked_at.is_(None), _shared_with(user.user_id)))
-        if not (await conn.execute(shared)).scalar_one():
-            await _owned(conn, user, worker_id)  # 404 for a worker the caller neither owns nor is shared, as for none
-        return (await _seen_by(conn, user, [await _one_worker(conn, worker_id)]))[0]
-
-
-def _target(worker_id: int, name: str, owner: str) -> str:
-    return f"worker:{worker_id} name={name} owner={owner}"
-
-
-async def _set_drain(request: Request, user: Principal, worker_id: int, drain: bool) -> Worker:
-    async with request.app.state.engine.begin() as conn:
-        owner_id, owner, name, _, drained_at, revoked_at = await _owned(conn, user, worker_id, lock=True)
-        if not drain and owner_id != user.user_id:  # a hub admin may stop a worker, never set one going again
-            raise HTTPException(
-                403, f"only {owner}, who owns worker {worker_id}, may undrain it; a hub admin may drain or revoke it"
-            )
-        if revoked_at is not None:
-            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        if (drained_at is not None) != drain:  # drained already, or not drained: nothing changes, nothing is audited
-            w = tables.workers
-            await conn.execute(update(w).values(drained_at=func.now() if drain else None).where(w.c.id == worker_id))
-            action = audit.WORKER_DRAIN if drain else audit.WORKER_UNDRAIN
-            target = _target(worker_id, name, owner)
-            await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
-            log.info("worker drained" if drain else "worker undrained", extra={"worker_id": worker_id})
-        return await _one_worker(conn, worker_id)
+        return await workers.shown_worker(conn, user, worker_id)
 
 
 @router.post("/{worker_id}/drain", response_model=Worker, responses=REFUSALS)
 async def drain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Stop new claims; the worker finishes the runs it holds."""
-    return await _set_drain(request, user, worker_id, True)
+    async with request.app.state.engine.begin() as conn:
+        return await workers.set_drain(conn, user, worker_id, True)
 
 
 @router.post("/{worker_id}/undrain", response_model=Worker, responses=REFUSALS)
 async def undrain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Let a drained worker claim runs again; its owner only."""
-    return await _set_drain(request, user, worker_id, False)
-
-
-async def _set_update_now(request: Request, user: Principal, worker_id: int, open_it: bool) -> Worker:
     async with request.app.state.engine.begin() as conn:
-        _, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
-        if revoked_at is not None:
-            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        await update_now.set_request(conn, user, worker_id, _target(worker_id, name, owner), open_it=open_it)
-        return await _one_worker(conn, worker_id)
+        return await workers.set_drain(conn, user, worker_id, False)
 
 
 @router.post("/{worker_id}/update-now", response_model=Worker, responses=REFUSALS)
 async def ask_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates
     and claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already."""
-    return await _set_update_now(request, user, worker_id, True)
+    async with request.app.state.engine.begin() as conn:
+        return await workers.set_update_now(conn, user, worker_id, True)
 
 
 @router.post("/{worker_id}/update-now/cancel", response_model=Worker, responses=REFUSALS)
 async def cancel_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Withdraw the worker's open Update now; the daemon claims runs again."""
-    return await _set_update_now(request, user, worker_id, False)
-
-
-async def _set_browser_install(request: Request, user: Principal, worker_id: int, open_it: bool) -> Worker:
     async with request.app.state.engine.begin() as conn:
-        _, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
-        if revoked_at is not None:
-            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        await browser_install.set_request(conn, user, worker_id, _target(worker_id, name, owner), open_it=open_it)
-        return await _one_worker(conn, worker_id)
+        return await workers.set_update_now(conn, user, worker_id, False)
 
 
 @router.post("/{worker_id}/browser-install", response_model=Worker, responses=REFUSALS)
@@ -704,19 +206,15 @@ async def ask_browser_install(request: Request, worker_id: WorkerId, user: Curre
     """Ask the worker's daemon to install Chromium for the runs dispatched with a browser, as `evo-agents worker
     browser install` does on the machine; its runs and claims go on meanwhile. 409 with why when its daemon is too old
     or has Chromium already."""
-    return await _set_browser_install(request, user, worker_id, True)
+    async with request.app.state.engine.begin() as conn:
+        return await workers.set_browser_install(conn, user, worker_id, True)
 
 
 @router.post("/{worker_id}/browser-install/cancel", response_model=Worker, responses=REFUSALS)
 async def cancel_browser_install(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Withdraw the worker's open Install browser; an install the daemon began goes on to its end."""
-    return await _set_browser_install(request, user, worker_id, False)
-
-
-DISPATCH_FROM_SESSION = (
-    "who may dispatch to a worker is set from a web session only, so a token that leaked cannot open the worker "
-    "again: sign in on the web"
-)
+    async with request.app.state.engine.begin() as conn:
+        return await workers.set_browser_install(conn, user, worker_id, False)
 
 
 @router.post("/{worker_id}/dispatch-from", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
@@ -725,141 +223,21 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
     if user.kind != WEB:
         raise HTTPException(403, DISPATCH_FROM_SESSION)
     async with request.app.state.engine.begin() as conn:
-        owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
-        if owner_id != user.user_id:
-            raise HTTPException(403, f"only {owner}, who owns worker {worker_id}, may set who dispatches to it")
-        if revoked_at is not None:
-            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        w = tables.workers
-        value = (await conn.execute(select(w.c.dispatch_from).where(w.c.id == worker_id))).scalar_one()
-        if value != body.value:  # the value it has already: nothing changes, nothing is audited
-            await conn.execute(update(w).values(dispatch_from=body.value).where(w.c.id == worker_id))
-            target = f"{_target(worker_id, name, owner)} dispatch_from={body.value}"
-            action = audit.WORKER_DISPATCH_FROM
-            await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
-            log.info("worker dispatch_from set", extra={"worker_id": worker_id, "dispatch_from": body.value})
-        return await _one_worker(conn, worker_id)
-
-
-def _shown(value) -> str:
-    """A setting as an audit target shows it: labels in brackets, comma separated, and true or false as JSON does."""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return f"[{','.join(value)}]" if isinstance(value, list) else str(value)
+        return await workers.set_dispatch_from(conn, user, worker_id, body.value)
 
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
     """Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its
     owner only, from a web session or with their machine token."""
-    wanted = body.model_dump(exclude_none=True)
-    for field in ("labels", "taints", "plugins"):
-        if field in wanted:
-            wanted[field] = _unique(wanted[field])
-    if "projects" in wanted:  # the projects a worker serves are a set: their order says nothing
-        wanted["projects"] = sorted(set(wanted["projects"]))
     async with request.app.state.engine.begin() as conn:
-        owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
-        if owner_id != user.user_id:
-            raise HTTPException(403, f"only {owner}, who owns worker {worker_id}, may change its settings")
-        if revoked_at is not None:
-            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
-        w = tables.workers
-        held = select(w.c.slots, w.c.labels, w.c.taints, w.c.name, w.c.plugins, w.c.version_locked, w.c.shared)
-        row = (await conn.execute(held.where(w.c.id == worker_id))).one()
-        projects = await served(conn, worker_id)
-        now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins), "projects": list(projects)}
-        now["taints"] = list(row.taints)
-        changed = {field: value for field, value in wanted.items() if value != now[field]}
-        if changed:  # the values it has already: nothing changes, nothing is audited
-            if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):
-                raise _name_conflict(changed["name"])
-            if "projects" in changed:
-                await serve(conn, user, worker_id, name, projects, changed["projects"])
-            columns = {field: value for field, value in changed.items() if field != "projects"}
-            try:
-                if columns:
-                    await conn.execute(update(w).values(**columns).where(w.c.id == worker_id))
-            except sa_exc.IntegrityError as exc:  # another worker took the name meanwhile
-                if not isinstance(exc.orig, psycopg.errors.UniqueViolation):
-                    raise
-                raise _name_conflict(changed["name"]) from None
-            changes = " ".join(f"{field}={_shown(now[field])}->{_shown(value)}" for field, value in changed.items())
-            target, action = f"{_target(worker_id, name, owner)} {changes}", audit.WORKER_UPDATE
-            await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
-            log.info("worker settings changed", extra={"worker_id": worker_id, "fields": sorted(changed)})
-        return await _one_worker(conn, worker_id)
+        return await workers.update(conn, user, worker_id, body)
 
 
 @router.post("/{worker_id}/revoke", response_model=Worker, responses=REFUSALS)
 async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """End the worker and its token at once, and release the runs it holds."""
     async with request.app.state.engine.begin() as conn:
-        _, owner, name, token_id, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
-        if revoked_at is not None:
-            raise HTTPException(409, f"worker {worker_id} was revoked already, at {revoked_at.isoformat()}")
-        released = await end_worker(conn, user, worker_id, name, owner, token_id)
-        worker = await _one_worker(conn, worker_id)
-    log.info("worker revoked", extra={"worker_id": worker_id, "by": user.login, "runs_released": released})
-    await revoke_leased_tokens(request.app.state, worker_id)
+        worker = await workers.revoke(conn, user, worker_id)
+    await workers.revoke_leased_tokens(request.app.state, worker_id)
     return worker
-
-
-async def lock_worker_of_token(
-    conn: AsyncConnection, token_id: int, owner_id: int | None = None
-) -> tuple[int, str, str] | None:
-    """(id, name, owner login) of the live worker whose token is ``token_id``, of ``owner_id`` when given, with its
-    row locked; None for any other token. Called before the token's row is changed, so a token revocation locks the
-    two rows in the order POST /v1/workers/{id}/revoke does, and neither waits on the other in the opposite order."""
-    w, users = tables.workers, tables.users
-    statement = (
-        select(w.c.id, w.c.name, users.c.login)
-        .join_from(w, users, users.c.id == w.c.owner_id)
-        .where(w.c.token_id == token_id, w.c.revoked_at.is_(None))
-    )
-    if owner_id is not None:
-        statement = statement.where(w.c.owner_id == owner_id)
-    row = (await conn.execute(statement.with_for_update(of=w))).one_or_none()
-    return None if row is None else tuple(row)
-
-
-async def end_worker(
-    conn: AsyncConnection,
-    actor: Principal | None,
-    worker_id: int,
-    name: str,
-    owner: str,
-    token_id: int,
-    *,
-    why: str = "was revoked",
-    by: str | None = None,
-) -> int:
-    """Revoke a live worker whose row the caller holds locked, and its token, release the runs it holds, give back
-    every lease it still has and add the worker.revoke audit row, all in the caller's transaction; the caller revokes
-    their GitHub tokens once it commits (``revoke_leased_tokens``). Returns how many runs were released. ``actor``
-    None is the hub itself (the pool node reaper): the audit row has no actor and its target ends ``by=<by>``, and
-    ``why`` is what the released runs' events say happened to the worker."""
-    w, tokens = tables.workers, tables.tokens
-    actor_id, actor_token = (None, None) if actor is None else (actor.user_id, actor.token_id)
-    await conn.execute(update(w).values(revoked_at=func.now()).where(w.c.id == worker_id))
-    await conn.execute(
-        update(tokens).values(revoked_at=func.now()).where(tokens.c.id == token_id, tokens.c.revoked_at.is_(None))
-    )
-    released = await release_runs(conn, worker_id, f"its worker {name} {why}")
-    # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
-    await credentials.end_leases(
-        conn, worker_id=worker_id, actor_id=actor_id, token_id=actor_token, by="worker-revoked"
-    )
-    target, action = _target(worker_id, name, owner), audit.WORKER_REVOKE
-    if by is not None:
-        target = f"{target} by={by}"
-    await audit.record(conn, actor_id=actor_id, token_id=actor_token, action=action, target=target)
-    return released
-
-
-async def revoke_leased_tokens(app_state, worker_id: int) -> None:
-    """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
-    to the reaper's next pass."""
-    await credentials.revoke_tokens(
-        app_state.engine, app_state.sealer, credentials.revoker(app_state), worker_id=worker_id
-    )
