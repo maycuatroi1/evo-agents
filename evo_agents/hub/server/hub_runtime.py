@@ -9,7 +9,7 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
 2. A system whose hub agents spent its ``limits.daily_usd`` today (``daily_problem``) takes no turn: the agent says so
    and the system's owner gets the notice ``system_daily_cap`` once a day.
 3. The model is the run's (the profile's model axis, as ``chats.service.runs._start`` picked it), through the provider accounts
-   the run may use (``gateway_accounts.usable_accounts``), with a key of the gateway made for the turn alone and
+   the run may use (``gateway.service.accounts.usable_accounts``), with a key of the gateway made for the turn alone and
    revoked at its end.
 4. The prompt is the worker's (``chats.service.prompts.chat_prompt``, the same rules), the profile's instructions and ON_HUB, and
    the messages of the run's inbox, which the turn takes. The model calls the tools of ``hub_tools`` for at most
@@ -45,16 +45,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from evo_agents.hub import runs, system_context, system_spec, tables
 from evo_agents.hub.server import (
     dlp_policy,
-    gateway_accounts,
-    gateway_sync,
     hub_run_events,
     hub_tools,
 )
 from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
 from evo_agents.hub.server.chats.service.prompts import chat_prompt
 from evo_agents.hub.server.chats.service.runs import agent_reply, chat_run
-from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
-from evo_agents.hub.server.gateway_leases import used_with
+from evo_agents.hub.server.gateway.client.omniroute import GatewayClient, GatewayError, GatewayOff
+from evo_agents.hub.server.gateway.models.accounts import Asker
+from evo_agents.hub.server.gateway.models.sync import NAME as GATEWAY_CONNECTION
+from evo_agents.hub.server.gateway.service import accounts as gateway_accounts
+from evo_agents.hub.server.gateway.service.leases import used_with
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.profile_store import by_id, version_rules
@@ -318,7 +319,7 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
         assert profile is not None  # _hold holds a run of an agent alone
         rules = await version_rules(conn, held.profile_id, held.profile_version) if held.profile_version else None
         permissions = (rules or {}).get("permissions") or profile.permissions
-        asker = gateway_accounts.Asker(
+        asker = Asker(
             held.run_id,
             held.dispatched_by,
             held.principal,
@@ -333,7 +334,7 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
         return [], usable.why(held.prefix)
     found = {}
     for connection in await client.connections():
-        match = gateway_sync.NAME.fullmatch(connection.name)
+        match = GATEWAY_CONNECTION.fullmatch(connection.name)
         if match and connection.active:
             found[int(match.group(1))] = connection.id
     reach = [found[account.secret_id] for account in usable.accounts if account.secret_id in found]

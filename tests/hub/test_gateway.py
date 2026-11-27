@@ -1,4 +1,4 @@
-"""The model gateway (``evo_agents.hub.server.gateway_client`` and ``gateway_sync``), plan model-providers, criteria a8
+"""The model gateway (``evo_agents.hub.server.gateway.client.omniroute`` and ``gateway.service.sync``), plan model-providers, criteria a8
 and a4: the hub is the source of truth of the gateway's connections, made at start, after each write of a provider
 account and on a timer; /v1/health reports it; its credentials and the providers' keys reach it and nothing else.
 
@@ -27,9 +27,8 @@ from sqlalchemy import update
 
 from evo_agents.hub import model_catalog, tables
 from evo_agents.hub.config import load_config
-from evo_agents.hub.server import gateway_sync
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.gateway_client import (
+from evo_agents.hub.server.gateway.client.omniroute import (
     GATEWAY_DIGEST,
     GATEWAY_IMAGE,
     GatewayClient,
@@ -37,6 +36,7 @@ from evo_agents.hub.server.gateway_client import (
     GatewayOff,
     derive,
 )
+from evo_agents.hub.server.gateway.service import sync as gateway_sync
 from tests.hub.live import sql
 from tests.hub.test_compose import compose
 from tests.hub.test_provider_accounts import (

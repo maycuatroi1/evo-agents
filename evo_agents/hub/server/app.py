@@ -51,7 +51,6 @@ from evo_agents.hub.server import (
     auth,
     blobs,
     errors,
-    gateway_sync,
     health,
     invites,
     projects,
@@ -63,6 +62,7 @@ from evo_agents.hub.server import (
 from evo_agents.hub.server.cron.service.fire import (
     cron_pass as cron_pass,  # handed down to the hub worker, as those below
 )
+from evo_agents.hub.server.gateway.service import sync as gateway_sync
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
@@ -613,7 +613,6 @@ def _include_member_routes(app: FastAPI) -> None:
         credential_shares,
         credentials,
         features,
-        gateway_proxy,
         kg_shared_pool_api,
         market,
         market_install,
@@ -678,6 +677,7 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import read as chat_read
     from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
+    from evo_agents.hub.server.gateway.routes import proxy as gateway_proxy
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities

@@ -109,7 +109,7 @@ compose network, http://evo-agents-hub-plugins:8090) and EVO_HUB_PLUGIN_HOST_TOK
 /internal/plugin-host/ routes, which the reverse proxy does not forward, and the api to the host. Without both the api
 runs no backend: those routes answer 503, and so does a call to a plugin.
 
-The model gateway (OmniRoute, ``evo_agents.hub.server.gateway_client``) is optional too. EVO_HUB_GATEWAY_SECRET, at
+The model gateway (OmniRoute, ``evo_agents.hub.server.gateway.client.omniroute``) is optional too. EVO_HUB_GATEWAY_SECRET, at
 least 32 characters and registered as a secret, is the one root secret the api and the gateway's service share: the
 gateway derives its own secrets and its dashboard password from it, and the api derives the same password to manage
 it. EVO_HUB_GATEWAY_URL is where the api reaches it, http://evo-agents-hub-gateway:20128 on the compose network by

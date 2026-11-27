@@ -57,7 +57,7 @@ it unless its owner's run reach holds ``runs``; its principal acts for the run (
 the routes open to it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The
 token of a KG run (``kg_run_access``, host ``kg-run:<run id>``) lives the same way without its run running as its
 owner, is never a hub admin, and reaches the routes of ``kg_run_access.ROUTES`` on its run's project alone. The
-gateway route's token of a run (``gateway_leases``) shares the prefix and is a credential of those routes alone: here
+gateway route's token of a run (``gateway.service.leases``) shares the prefix and is a credential of those routes alone: here
 it is unknown.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
@@ -132,7 +132,7 @@ PUBLIC_PATHS = frozenset(
         "/v1/branding/logo",
         "/v1/branding/favicon",
         "/v1/push/config",  # the public VAPID key a browser subscribes with, and which push senders are on
-        # the gateway route of runs on a provider account's model: a run's token is the credential (gateway_proxy)
+        # the gateway route of runs on a provider account's model: a run's token is the credential (gateway.routes.proxy)
         "/v1/messages",
         "/v1/chat/completions",
         "/v1/responses",

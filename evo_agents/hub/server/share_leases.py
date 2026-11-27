@@ -236,7 +236,7 @@ async def shared_secrets(
 ) -> tuple[list, list[Refusal]]:
     """(the rows of the secrets shared with the principal of ``run`` that the hub lends it now, each with its
     share_id; the refusals of the shares that lend nothing), as the module says; of ``kinds``, the provider accounts
-    of a gateway run among them (``gateway_accounts``). With ``lock`` the rows of the secrets and of their shares are
+    of a gateway run among them (``gateway.service.accounts``). With ``lock`` the rows of the secrets and of their shares are
     shared-locked, so a share revoked meanwhile waits for these leases and ends them."""
     s, b, cs, csp, a = (
         tables.secrets,
@@ -427,7 +427,8 @@ async def end_unlent(conn: AsyncConnection, run_id: int, worker_id: int, lent: s
         .where(
             cl.c.run_id == run_id,
             cl.c.worker_id == worker_id,
-            cl.c.provider != "gateway",  # the accounts a gateway key reaches end with the key (``gateway_leases``)
+            cl.c.provider
+            != "gateway",  # the accounts a gateway key reaches end with the key (``gateway.service.leases``)
             cl.c.share_id.not_in(lent) if lent else cl.c.share_id.is_not(None),
             cl.c.revoked_at.is_(None),
         )

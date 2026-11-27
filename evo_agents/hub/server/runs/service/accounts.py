@@ -11,7 +11,7 @@ run's leases: while it lends nothing (``share_leases._refusal``), the run takes 
 transaction that queues the run, and ``account_choice.choose_accounts`` keeps it on every ask for the run's leases;
 an account picked by hand never fails over to another one. A provider account picked is written for the variable
 ``gateway:<prefix>`` (``gateway_runs.PICK_PREFIX``): the run's model must be one of its prefix, and its gateway key
-reaches that account alone (``gateway_accounts``). Audit rows name it by its secret's id, never its name.
+reaches that account alone (``gateway.service.accounts``). Audit rows name it by its secret's id, never its name.
 """
 
 from __future__ import annotations

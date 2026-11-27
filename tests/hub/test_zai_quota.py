@@ -84,7 +84,7 @@ if pg.DSN:
 
     from evo_agents.hub import tables
     from evo_agents.hub.server.app import create_app
-    from evo_agents.hub.server.gateway_sync import GatewaySync
+    from evo_agents.hub.server.gateway.service.sync import GatewaySync
     from evo_agents.hub.server.provider_quota import ZAI_REASON
     from evo_agents.hub.server.sealing import Sealer
     from tests.hub import live
@@ -223,7 +223,8 @@ def test_an_agents_zai_account_is_read_by_any_member_of_the_project(client, hub,
 
 @needs_db
 def test_gateway_sync_reads_the_quotas_every_interval_and_after_a_sweep(client, hub, hub_db, endpoint, monkeypatch):
-    from evo_agents.hub.server import gateway_leases, gateway_sync
+    from evo_agents.hub.server.gateway.service import leases as gateway_leases
+    from evo_agents.hub.server.gateway.service import sync as gateway_sync
 
     key = sample("zai-")
     written(client, hub["owner"], "zai-main", zai(key))

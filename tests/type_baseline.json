@@ -6254,64 +6254,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/gateway_accounts.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 48,
-                    "endColumn": 72,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/gateway_client.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/gateway_leases.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 27,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/gateway_proxy.py": [
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 53,
-                    "endColumn": 66,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/gateway_sync.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 48,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 88,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/github.py": [
             {
                 "code": "reportCallIssue",

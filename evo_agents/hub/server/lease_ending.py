@@ -141,7 +141,7 @@ def _pending_tokens(run_id: int | None, worker_id: int | None, batch: int):
     ``run_id`` and of worker ``worker_id`` when given."""
     cl = tables.credential_leases
     statement = select(cl.c.id).where(
-        cl.c.provider == "github-app",  # a gateway key is the gateway's to revoke (``gateway_leases.sweep``)
+        cl.c.provider == "github-app",  # a gateway key is the gateway's to revoke (``gateway.service.leases.sweep``)
         cl.c.sealed_value.is_not(None),
         cl.c.revoked_at.is_not(None),
         cl.c.expires_at > func.now(),

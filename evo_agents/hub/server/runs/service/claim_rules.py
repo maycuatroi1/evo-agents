@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_events, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import gateway_accounts, kg_shared_pool, pool_accounts
+from evo_agents.hub.server import kg_shared_pool, pool_accounts
 from evo_agents.hub.server.agents.repository import placement as agent_placement
+from evo_agents.hub.server.gateway.repository.accounts import claim_gate
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.priority import claim_order
@@ -366,7 +367,7 @@ def _gates(at: ClaimShape) -> list[Condition]:
     return [
         ("profile", clause),
         ("browser", browsers.claim_gate(at.worker_id, at.features)),
-        ("gateway", gateway_accounts.claim_gate(at.agent_version)),
+        ("gateway", claim_gate(at.agent_version)),
         ("merge_judge", merge_judge_gate(at.features)),
         ("repoless_review", repoless_review_gate(at.features)),
         ("probe_change_arms", probe_gate(at.features)),

@@ -16,7 +16,7 @@ the gateway never shows a key back; the connection is then updated in place and 
 override goes, which the gateway cannot unset: it is made again. A paused or
 expired account's connection is inactive. A connection or node of a deleted account, or one the hub does not know, is
 deleted. The key is opened only here, in the api's memory, and goes to the gateway alone: a log line names the account
-by its secret id, and an error of the gateway by the call and the status (``gateway_client.GatewayError``).
+by its secret id, and an error of the gateway by the call and the status (``client.omniroute.GatewayError``).
 """
 
 from __future__ import annotations
@@ -24,58 +24,29 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
-import re
 import time
 from dataclasses import dataclass
 
 from fastapi import FastAPI
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import model_catalog, tables
+from evo_agents.hub import model_catalog
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.log import register_secret
-from evo_agents.hub.server.gateway_client import Connection, GatewayClient, GatewayError, GatewayOff, Node, derive
+from evo_agents.hub.server.gateway.client.omniroute import (
+    Connection,
+    GatewayClient,
+    GatewayError,
+    GatewayOff,
+    Node,
+    derive,
+)
+from evo_agents.hub.server.gateway.models.sync import DEBOUNCE, INTERVAL, NAME, QUOTA_INTERVAL, Wanted
+from evo_agents.hub.server.gateway.repository import sync as repo
 from evo_agents.hub.server.sealing import Sealed, Sealer, agent_provider_aad, secret_aad
 
 log = logging.getLogger(__name__)
-
-INTERVAL = 60.0  # seconds between two rounds when nothing pokes
-QUOTA_INTERVAL = 300.0  # seconds between two reads of the Z.ai accounts' quotas (provider_quota)
-DEBOUNCE = 0.2  # seconds a poke waits for the writes that follow it
-NAME = re.compile(r"evo-(\d+)-([0-9a-f]{16})")  # a connection the hub made
-NODE_KINDS = {"custom-openai": "openai-compatible", "custom-anthropic": "anthropic-compatible"}
-
-
-@dataclass(frozen=True)
-class Wanted:
-    """What one provider account makes of the gateway."""
-
-    secret_id: int
-    provider: str  # the catalog's id
-    base_url: str
-    api_format: str
-    key: str
-    active: bool
-    fingerprint: str
-    override: str | None = None  # the base URL the connection is told, when not the registry's (module docstring)
-
-    @property
-    def name(self) -> str:
-        return f"evo-{self.secret_id}-{self.fingerprint}"
-
-    @property
-    def node_name(self) -> str:
-        return f"evo-{self.secret_id}"
-
-    @property
-    def node_kind(self) -> str | None:
-        return NODE_KINDS.get(self.provider)
-
-    @property
-    def api_type(self) -> str:
-        return "responses" if self.api_format == "openai-responses" else "chat"
 
 
 def fingerprint(fingerprint_key: str, provider: str, base_url: str, api_format: str, key: str) -> str:
@@ -85,17 +56,7 @@ def fingerprint(fingerprint_key: str, provider: str, base_url: str, api_format: 
 
 async def wanted(engine: AsyncEngine, sealer: Sealer, fingerprint_key: str) -> dict[int, Wanted]:
     """The live provider accounts the gateway serves, by secret id, each with its key opened."""
-    s, p, a = tables.secrets, tables.provider_accounts, tables.accounts
-    statement = (
-        select(s.c.id, s.c.owner_id, s.c.profile_id, s.c.name, s.c.sealed, s.c.nonce, s.c.key_id, s.c.expires_at)
-        .add_columns(p.c.provider, p.c.base_url, p.c.api_format, a.c.paused_at, func.now().label("now"))
-        .join_from(s, p, p.c.secret_id == s.c.id)
-        .outerjoin(a, a.c.secret_id == s.c.id)
-        .where(s.c.kind == PROVIDER_KIND, s.c.deleted_at.is_(None))
-        .order_by(s.c.id)
-    )
-    async with engine.connect() as conn:
-        rows = (await conn.execute(statement)).all()
+    rows = await repo.provider_accounts(engine)
     found = {}
     for row in rows:
         entry = model_catalog.find(row.provider)
@@ -139,7 +100,11 @@ async def _nodes(client: GatewayClient, wanting: dict[int, Wanted]) -> dict[int,
     for want in by_name.values():
         if want.secret_id not in kept:
             made = await client.create_node(
-                want.node_name, want.node_name, want.node_kind, want.api_type, want.base_url
+                want.node_name,
+                want.node_name,
+                want.node_kind,  # pyright: ignore[reportArgumentType]
+                want.api_type,
+                want.base_url,
             )
             kept[want.secret_id] = made.id
     return kept
@@ -277,12 +242,12 @@ class GatewaySync:
         log.debug("gateway: reconciled", extra={"changes": changes})
 
     async def _sweep(self) -> int:
-        """Take back the keys of the runs that ended (``gateway_leases.sweep``), how many; a failure waits for the next
+        """Take back the keys of the runs that ended (``service.leases.sweep``), how many; a failure waits for the next
         round."""
-        from evo_agents.hub.server import gateway_leases  # it reads the gateway's connections through this module
+        from evo_agents.hub.server.gateway.service import leases  # it reads the gateway's client through this module
 
         try:
-            return await gateway_leases.sweep(self.client, self.engine)
+            return await leases.sweep(self.client, self.engine)
         except Exception as exc:  # the loop must not die
             log.exception("gateway: the sweep of run keys failed", extra={"error": type(exc).__name__})
             return 0
@@ -338,7 +303,7 @@ async def start(app: FastAPI, config: HubConfig) -> Running:
         log.warning("model gateway: no provider account syncs without EVO_HUB_SECRETS_KEY")
         return Running(app)
     interval = getattr(app.state, "gateway_interval", INTERVAL)
-    sync = GatewaySync(client, app.state.engine, app.state.sealer, config.gateway_secret, interval)
+    sync = GatewaySync(client, app.state.engine, app.state.sealer, config.gateway_secret, interval)  # pyright: ignore[reportArgumentType]
     state = app.state
     sync.quota_hooks = (getattr(state, "provider_transport", None), getattr(state, "provider_resolver", None))
     sync.quota_interval = getattr(state, "quota_interval", QUOTA_INTERVAL)

@@ -40,8 +40,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import gateway_accounts, pool_accounts
+from evo_agents.hub.server import pool_accounts
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.gateway.models.accounts import Asker
+from evo_agents.hub.server.gateway.service import accounts as gateway_accounts
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
@@ -58,7 +60,7 @@ class Chosen:
 
     profile: Profile
     model: str | None
-    gateway: str | None = None  # the prefix of a model the run takes through the gateway (``gateway_accounts``)
+    gateway: str | None = None  # the prefix of a model the run takes through the gateway (``gateway.service.accounts``)
 
     def columns(self) -> dict:
         return {
@@ -261,8 +263,8 @@ async def choose(
 
 
 async def _gateway(conn, user: Principal, access: ProjectAccess, profile: Profile, asked: Asked, model) -> str | None:
-    """The prefix of the run's model when it goes through the gateway, checked (``gateway_accounts.check_dispatch``)."""
-    asker = gateway_accounts.Asker(
+    """The prefix of the run's model when it goes through the gateway, checked (``gateway.service.accounts.check_dispatch``)."""
+    asker = Asker(
         0,
         user.user_id,
         user.user_id,

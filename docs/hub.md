@@ -5390,7 +5390,7 @@ lets every client do that. The default trusts nobody new.
 ### Model gateway
 
 The `gateway` service runs OmniRoute, pinned by digest to the version the model catalog was generated from
-(`GATEWAY_VERSION` in `evo_agents/hub/model_catalog.py`, the client in `evo_agents/hub/server/gateway_client.py`).
+(`GATEWAY_VERSION` in `evo_agents/hub/model_catalog.py`, the client in `evo_agents/hub/server/gateway/client/omniroute.py`).
 Only the api calls it. It publishes no port and has no domain, so neither its dashboard nor its management API is on
 the internet, and it sits on the network `gateway` alone, which the api joins: it has no route to Postgres (the
 platform's network) nor to web. `EVO_HUB_GATEWAY_SECRET` turns it on. The service derives from it OmniRoute's JWT
@@ -5400,7 +5400,7 @@ no credential is copied by hand and none is stored by the hub. Without the secre
 runs as before, and whatever needs the gateway says it is not configured. Every request needs a gateway key, request
 logs are off, and each key the hub makes is noLog: the gateway keeps no prompt or response body.
 
-The hub is the source of truth (`evo_agents/hub/server/gateway_sync.py`). When the api starts, shortly after each write
+The hub is the source of truth (`evo_agents/hub/server/gateway/service/sync.py`). When the api starts, shortly after each write
 of a provider account and every minute, it makes each live provider account a connection of the gateway, named
 `evo-<secret id>-<fingerprint>`: of the catalog's provider at the account's base URL, or of a provider node of its own
 for a custom endpoint. The key is opened in the api's memory only and sent to the gateway alone. A paused or expired

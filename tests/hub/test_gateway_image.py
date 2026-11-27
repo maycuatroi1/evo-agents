@@ -18,7 +18,7 @@ import pytest
 
 pytest.importorskip("pydantic", reason="needs the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub.server.gateway_client import GATEWAY_IMAGE, GatewayClient, GatewayError
+from evo_agents.hub.server.gateway.client.omniroute import GATEWAY_IMAGE, GatewayClient, GatewayError
 from tests.hub.test_compose import compose
 
 

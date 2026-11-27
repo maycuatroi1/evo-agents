@@ -977,6 +977,26 @@ models. Other modules import the service, the repository's placement and queries
 A new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-gateway-layers"
+name = "The model gateway goes from its routes to its service to its repository or its client to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.gateway"]
+layers = ["routes", "service", "repository | client", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.gateway the route handlers of the gateway route (/v1/messages and the like) read the run's \
+token and the headers they pass and build the streamed answer; the service (accounts, the rules of which provider \
+accounts a run may use and the check of a dispatch; leases, a run's key of the gateway, its record and its sweep; \
+tokens; sync, the reconcile loop and the app's client; proxy, the checks of a model call) decides; the repository \
+holds the SQL of the accounts, the leases, the key row a token is of, and the provider accounts the sync reads; the \
+client, next to the repository, is the HTTP client to OmniRoute and imports neither the repository nor the service; \
+the models (the asker, the accounts, a prepared lease, the wanted connection, the constants) import none of them. \
+Move the code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
+repository, a call to the gateway into the client, a shape or a constant into the models. Other modules import the \
+service, the client, the repository's claim_gate and the models, never the routes. A new module of the package goes \
+into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"
