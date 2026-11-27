@@ -5,8 +5,8 @@ the one the hub has always sent; the host backs off under a ``RetryPolicy``."""
 
 from __future__ import annotations
 
-from evo_agents.core_plugins.builder import proposals
-from evo_agents.core_plugins.builder.kinds import ProposalKind
+import pytest
+
 from evo_agents.infra.retry import RetryPolicy
 from evo_agents.plugins import host
 from evo_agents.plugins.agent_packs import split_pack
@@ -35,6 +35,10 @@ def test_plugin_classes_each_extension_point_has_one_validator_in_the_registry()
 
 
 def test_plugin_classes_each_kind_of_builder_proposal_is_a_proposal_kind():
+    pytest.importorskip("fastapi")  # proposals holds routes: macOS and Windows install no hub-server extra
+    from evo_agents.core_plugins.builder import proposals
+    from evo_agents.core_plugins.builder.kinds import ProposalKind
+
     assert set(proposals.KINDS) == set(proposals.PROPOSAL_KINDS)
     for kind in proposals.KINDS.values():
         assert isinstance(kind, ProposalKind)
