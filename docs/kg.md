@@ -356,6 +356,16 @@ agent of a run of the project, opens one from main, applies operations to it, re
 pages read main, checks it, then merges it into main or drops it (`evo_agents/hub/kg_branches.py`, plan
 kg-centralized-on-hub criterion a5). Main does not change until the merge.
 
+An apply, a diff, a check and a merge read only the part of main the branch's operations reach
+(`evo_agents/hub/kg_branch_scope.py`): the nodes they name with their full-text rows, every edge at those nodes and
+the node at its other end, the edges of the ontology's acyclic relations reachable from them, and the nodes of a kind
+with keys that they name or make. The rest of the graph is the same on main and on the branch, so the diff, the rule
+violations the branch adds and what a merge writes are those of the whole graph; `check` lists the violations within
+that reach. A merge writes only the rows that changed and the readers apply them to the snapshot they hold. A kg tool
+or a web page that reads a branch gets main's snapshot with the branch's changes applied, and answers "loading" while
+main's snapshot is not in memory. Reading main whole once took the api past its memory on a graph of 127k nodes and
+524k edges.
+
 ```
 evo-agents hub kg branch create billing-links --project northwind
 evo-agents hub kg branch apply billing-links --project northwind --ops ops.json

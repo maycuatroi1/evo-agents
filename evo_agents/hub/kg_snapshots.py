@@ -31,7 +31,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import db, kg_branches, kg_graph_delta, tables
+from evo_agents.hub import db, kg_branch_scope, kg_branches, kg_graph_delta, tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, assemble_graph, fetch_graph
 from evo_agents.kg import pacing as kg_pacing
 from evo_agents.kg import settings as kg_settings
@@ -344,10 +344,15 @@ async def _branch_key(conn: AsyncConnection, project_id: int, name: str) -> tupl
     kg_branches.BranchError 404 for a branch the project lacks."""
     branch = await kg_branches.get(conn, project_id, name)
     heads = tables.kg_graph_heads
-    head = await conn.scalar(
-        select(heads.c.content_hash).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
-    )
-    return branch.id, branch.status, branch.ops, head
+    head = (
+        await conn.execute(
+            select(heads.c.content_hash, heads.c.build_id).where(
+                heads.c.project_id == project_id, heads.c.branch_id == MAIN
+            )
+        )
+    ).one_or_none()
+    content_hash, build_id = (None, None) if head is None else tuple(head)
+    return branch.id, branch.status, branch.ops, content_hash, build_id
 
 
 class SnapshotCoordinator:
@@ -515,28 +520,42 @@ class SnapshotCoordinator:
         return task
 
     async def branch(self, project_id: int, name: str) -> Held:
-        """The snapshot of draft branch ``name``: main's rows with its operations applied (``kg_branches.graph``),
-        made again once it or main changed. Reads on connections of its own, given back before the snapshot is made,
-        as ``load`` does: the caller holds none meanwhile. Raises kg_branches.BranchError 404 for a branch the
-        project lacks."""
+        """The snapshot of draft branch ``name``: main's snapshot with what the branch's operations change of the rows
+        within their reach applied (``kg_branches.changes``, ``kg_branch_scope.delta``), made again once it or main
+        changed. Reads on connections of its own, given back before the snapshot is made, as ``load`` does: the caller
+        holds none meanwhile. Raises kg_branches.BranchError: 404 for a branch the project lacks, 503 while main's
+        snapshot of the graph main has now is not in memory (its load is then under way)."""
         assert self.engine is not None
         async with self.engine.connect() as conn:
             key = await _branch_key(conn, project_id, name)
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
-            heads = tables.kg_graph_heads
-            with uncollected(), pacing(tend, requests_waiting):
-                async with read_slot(), self.engine.connect() as conn:
-                    build_id = await conn.scalar(
-                        select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
-                    )
-                    _, _, rows = await kg_branches.graph(conn, project_id, name)
-                if found is not None:
-                    self._watch(found[1].snapshot)
-                found = key, await _made(build_id, rows)
+            main = await self.ready(project_id, key[4] or 0)
+            if main is None or main.snapshot.content_hash != key[3]:
+                raise kg_branches.BranchError(503, self.unready(project_id))
+            async with read_slot(), self.engine.connect() as conn:
+                before, rows = await kg_branches.changes(conn, project_id, name)
+            if before.content_hash != main.snapshot.content_hash:
+                raise kg_branches.BranchError(503, "main's graph changed meanwhile: call this tool again")
+            snapshot = main.snapshot
+            if rows is not before:
+                change = kg_branch_scope.delta(before, rows, main.build_id)
+                try:
+                    with uncollected():
+                        snapshot = await asyncio.to_thread(main.snapshot.apply_changes, change)
+                except ValueError as exc:  # snapshot_delta.DeltaError
+                    log.warning("kg branch changes not applied", extra={"project_id": project_id, "branch": name})
+                    raise kg_branches.BranchError(
+                        503, f"the branch's changes did not apply to main's graph: {exc}"
+                    ) from exc
+            if found is not None and found[1].snapshot is not main.snapshot:
+                self._watch(found[1].snapshot)
+            found = key, Held(main.build_id, snapshot)
         self._branches[(project_id, name)] = found
         while len(self._branches) > HELD_BRANCHES:
-            self._watch(self._branches.pop(next(iter(self._branches)))[1].snapshot)
+            dropped = self._branches.pop(next(iter(self._branches)))[1].snapshot
+            if all(dropped is not held.snapshot for held in self._held.values()):  # a branch with no change is main's
+                self._watch(dropped)
         return found[1]
 
     def _load(self, project_id: int, fresh: bool = False, changes: str | None = None) -> asyncio.Task:

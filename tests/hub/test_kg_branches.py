@@ -498,3 +498,107 @@ def test_a_branch_refuses_with_403_an_operation_that_lowers_a_label(hub, tmp_pat
     refused = _post(hub, f"{_base('lower')}/ops", {"ops": [op]})
     assert refused.status_code == 403, refused.text
     assert hub.client.get(_base("lower"), headers=hub.alice).json()["ops"] == 0
+
+
+def _ontology(hub, ontology: dict) -> None:
+    configs = tables.kg_configs
+    sql(hub.db, update(configs).where(configs.c.project_id == project_id(hub)).values(ontology=ontology))
+
+
+def _merged(hub, name: str, ops: list[dict]) -> None:
+    assert _post(hub, _base(), {"name": name}).status_code == 201
+    applied = _post(hub, f"{_base(name)}/ops", {"ops": ops})
+    assert applied.status_code == 200, applied.text
+    merged = _post(hub, f"{_base(name)}/merge")
+    assert merged.status_code == 200, merged.text
+
+
+@needs_db
+def test_apply_diff_check_and_merge_read_only_the_branch_s_reach_not_main_whole(hub, tmp_path, caplog, monkeypatch):
+    from evo_agents.hub import kg_graph_rows
+
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."), doc("notes", "Notes on the lime app."))
+    guide = _guide(hub)
+    before = {r[0]: r for r in read_back(hub.db, project_id(hub)).nodes}
+
+    async def whole(*args, **kwargs):
+        raise AssertionError("a branch's apply, diff, check or merge read a table of main whole")
+
+    for reader in ("read_table_rows", "_read"):  # what read_graph and write_graph read every row with
+        monkeypatch.setattr(kg_graph_rows, reader, whole)
+    assert _post(hub, _base(), {"name": "reach"}).status_code == 201
+    ops = [
+        {"op": "node.put", "id": "concept:mango", "kind": "Concept", "name": "Mango pipeline"},
+        {"op": "edge.put", "src": guide, "rel": "mentions", "dst": "concept:mango"},
+    ]
+    applied = _post(hub, f"{_base('reach')}/ops", {"ops": ops})
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["nodes"] == len(before) + 1, "the counts are main's whole, the branch's change added"
+    diff = hub.client.get(f"{_base('reach')}/diff", headers=hub.alice).json()
+    assert diff["counts"]["nodes_added"] == 1 and diff["counts"]["edges_added"] == 1
+    assert hub.client.get(f"{_base('reach')}/check", headers=hub.alice).json()["mergeable"]
+    merged = _post(hub, f"{_base('reach')}/merge")
+    assert merged.status_code == 200, merged.text
+    assert merged.json()["changed"]["kg_nodes"] == {"new": 1, "changed": 0, "deleted": 0}
+    monkeypatch.undo()
+    after = {r[0]: r for r in read_back(hub.db, project_id(hub)).nodes}
+    assert after.keys() == before.keys() | {"concept:mango"}
+    assert all(after[k] == row for k, row in before.items()), "a merge leaves the rows it does not change"
+
+
+@needs_db
+def test_a_cycle_closed_through_nodes_the_operations_do_not_name_is_found(hub, tmp_path, caplog):
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    _ontology(hub, {"relations": [{"name": "part_of", "acyclic": True}]})
+    nodes = [{"op": "node.put", "id": f"concept:{n}", "kind": "Concept", "name": n.title()} for n in ("a", "b", "c")]
+    chain = [
+        {"op": "edge.put", "src": "concept:a", "rel": "part_of", "dst": "concept:b"},
+        {"op": "edge.put", "src": "concept:b", "rel": "part_of", "dst": "concept:c"},
+    ]
+    _merged(hub, "chain", [*nodes, *chain])
+    assert _post(hub, _base(), {"name": "loop"}).status_code == 201
+    close = [{"op": "edge.put", "src": "concept:c", "rel": "part_of", "dst": "concept:a"}]
+    assert _post(hub, f"{_base('loop')}/ops", {"ops": close}).status_code == 200
+    check = hub.client.get(f"{_base('loop')}/check", headers=hub.alice).json()
+    assert [(v["rule"], v["nodes"]) for v in check["hard"]] == [("cycle", ["concept:a", "concept:b", "concept:c"])], (
+        "concept:b is in reach though no operation names it"
+    )
+    assert not check["mergeable"]
+    assert _post(hub, f"{_base('loop')}/merge").status_code == 409
+
+
+@needs_db
+def test_a_key_a_branch_shares_with_a_node_it_does_not_name_is_a_duplicate(hub, tmp_path, caplog):
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    _ontology(hub, {"node_kinds": [{"name": "PullRequest", "keys": [["repo", "number"]]}]})
+    first = {
+        "op": "node.put",
+        "id": "pr:1",
+        "kind": "PullRequest",
+        "name": "One",
+        "props": {"repo": "kiwi", "number": 7},
+    }
+    _merged(hub, "first", [first])
+    assert _post(hub, _base(), {"name": "again"}).status_code == 201
+    again = {**first, "id": "pr:2", "name": "Two"}
+    assert _post(hub, f"{_base('again')}/ops", {"ops": [again]}).status_code == 200
+    check = hub.client.get(f"{_base('again')}/check", headers=hub.alice).json()
+    assert [(v["rule"], v["nodes"]) for v in check["hard"]] == [("duplicate_key", ["pr:1", "pr:2"])]
+
+
+@needs_db
+def test_a_merged_delete_takes_away_the_node_s_full_text_rows(hub, tmp_path, caplog):
+    from sqlalchemy import func
+
+    from evo_agents.kg.search import PASSAGE_MARK
+
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    guide = _guide(hub)
+    text = tables.kg_text_rows
+    owned = select(text.c.row_key).where(
+        text.c.project_id == project_id(hub), func.split_part(text.c.node_id, PASSAGE_MARK, 1) == guide
+    )
+    assert sql(hub.db, owned), "the guide has full-text rows on main"
+    _merged(hub, "gone", [{"op": "node.delete", "id": guide}])
+    assert sql(hub.db, owned) == []
+    assert guide not in {r[0] for r in read_back(hub.db, project_id(hub)).nodes}
