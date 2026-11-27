@@ -46,7 +46,7 @@ from evo_agents.hub.server import plugin_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.posting import insert_message
-from evo_agents.hub.server.core_plugin_api import _acts
+from evo_agents.hub.server.core_plugin_api.service import acts as plugin_acts
 from evo_agents.hub.server.notifications.service import channels as notice_channels
 from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
@@ -369,7 +369,7 @@ def test_a_reply_to_a_decisions_message_answers_it_in_words(northwind, caplog):
     caplog.set_level(logging.DEBUG)
     assert said(client, text(f"Use PASSWORD={leaked} for it", reply_to=sent.message["id"])) == "refused"
     told = northwind.fake.last()["text"]
-    assert told == f"The hub did not take that: {_acts.HOLDS_SECRET}" and leaked not in told
+    assert told == f"The hub did not take that: {plugin_acts.HOLDS_SECRET}" and leaked not in told
     assert leaked not in caplog.text
     shown = client.get(url, headers=northwind.headers["owner"]).json()
     assert (shown["state"], shown["answer_text"], shown["answered_via"]) == ("open", None, None)
@@ -607,7 +607,7 @@ def test_a_member_handle_session_or_plugin_the_api_did_not_make_is_refused(north
 
 
 def test_a_plugins_audit_row_is_of_its_own_family_and_one_line(northwind):
-    from evo_agents.hub.server.core_plugin_api._types import issue_session
+    from evo_agents.hub.server.core_plugin_api.service.handles import issue_session
 
     mine, actor = hub.plugin("northwind_chat"), issue_session(1, OWNER, 1, True)
     refused = (

@@ -10,14 +10,13 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from types import MappingProxyType
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals as hub_goals
 from evo_agents.hub import plans as hub_plans
-from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.core_plugin_api._types import (
+from evo_agents.hub.server.core_plugin_api.models.reads import MAX_ROWS, NO_DOCUMENT, NO_PLAN
+from evo_agents.hub.server.core_plugin_api.models.types import (
     ClaimRef,
     DecisionRef,
     GoalRef,
@@ -34,15 +33,11 @@ from evo_agents.hub.server.core_plugin_api._types import (
     TaskLinkRef,
     TaskRef,
     UserRef,
-    own_plugin,
 )
+from evo_agents.hub.server.core_plugin_api.repository import reads as rows_of
+from evo_agents.hub.server.core_plugin_api.repository.ground import project_id_of
+from evo_agents.hub.server.core_plugin_api.service.handles import own_plugin
 from evo_agents.hub.server.plugin_routes import not_enabled
-
-MAX_ROWS = 5000  # the most rows one read returns
-NO_PLAN = "project {project} has no plan {plan}"
-NO_DOCUMENT = "project {project} has no SRS document {document}"
-
-_T = tables.metadata.tables
 
 
 def _frozen(value) -> MappingProxyType:
@@ -58,8 +53,7 @@ def _limit(limit: int) -> int:
 async def enabled_project(conn: AsyncConnection, plugin: Plugin, project: str) -> int:
     """The id of ``project``, which must enable the plugin: 404 otherwise."""
     own_plugin(plugin)
-    p = tables.projects
-    project_id = (await conn.execute(select(p.c.id).where(p.c.name == project))).scalar_one_or_none()
+    project_id = await project_id_of(conn, project)
     if project_id is None or await enabled_in(conn, plugin.id, project_id) is None:
         failed = not_enabled(plugin.id, project)
         raise Refused(failed.status_code, failed.detail)
@@ -76,9 +70,7 @@ async def read_users(conn: AsyncConnection, plugin: Plugin, *, ids: Iterable[int
     ids, logins = list(ids), list(logins)
     if not ids and not logins:
         return ()
-    u = tables.users
-    query = select(u.c.id, u.c.login, u.c.created_at, u.c.last_seen_at).where(u.c.id.in_(ids) | u.c.login.in_(logins))
-    rows = (await conn.execute(query.order_by(u.c.id).limit(MAX_ROWS))).all()
+    rows = await rows_of.users(conn, ids, logins)
     return tuple(UserRef(r.id, r.login, r.created_at, r.last_seen_at) for r in rows)
 
 
@@ -93,17 +85,7 @@ async def read_runs(
 ) -> tuple[RunRef, ...]:
     """The runs of ``project``, newest first: those queued at or after ``since``, of one of ``kinds``."""
     project_id = await enabled_project(conn, plugin, project)
-    r, u = tables.runs, tables.users
-    query = (
-        select(r, u.c.login.label("dispatcher"))
-        .join_from(r, u, u.c.id == r.c.dispatched_by, isouter=True)
-        .where(r.c.project_id == project_id)
-    )
-    if since is not None:
-        query = query.where(r.c.queued_at >= since)
-    if kinds:
-        query = query.where(r.c.kind.in_(list(kinds)))
-    rows = (await conn.execute(query.order_by(r.c.id.desc()).limit(_limit(limit)))).all()
+    rows = await rows_of.runs(conn, project_id, since, kinds, _limit(limit))
     return tuple(
         RunRef(
             row.id,
@@ -124,14 +106,7 @@ async def read_runs(
 async def read_grants(conn: AsyncConnection, plugin: Plugin, project: str) -> tuple[GrantRef, ...]:
     """The members holding a grant on ``project``, by login."""
     project_id = await enabled_project(conn, plugin, project)
-    g, u = tables.grants, tables.users
-    query = (
-        select(u.c.login, g.c.user_id, g.c.role, g.c.max_level, g.c.granted_at)
-        .join_from(g, u, u.c.id == g.c.user_id)
-        .where(g.c.project_id == project_id)
-        .order_by(u.c.login)
-    )
-    rows = (await conn.execute(query)).all()
+    rows = await rows_of.grants(conn, project_id)
     return tuple(GrantRef(r.login, r.user_id, r.role, r.max_level, r.granted_at) for r in rows)
 
 
@@ -156,18 +131,14 @@ async def read_plans(
 ) -> tuple[PlanRef, ...]:
     """The plans of ``project``, last updated first; with ``statuses``, those whose body's status is one of them."""
     project_id = await enabled_project(conn, plugin, project)
-    p = tables.plans
-    query = select(p).where(p.c.project_id == project_id).order_by(p.c.updated_at.desc()).limit(MAX_ROWS)
-    found = tuple(_plan(row) for row in (await conn.execute(query)).all())
+    found = tuple(_plan(row) for row in await rows_of.plans(conn, project_id))
     return tuple(plan for plan in found if plan.status in statuses) if statuses else found
 
 
 async def read_plan_steps(conn: AsyncConnection, plugin: Plugin, project: str, plan: str) -> tuple[StepRef, ...]:
     """The steps of plan ``plan`` of ``project``, in its order; 404 when it has no such plan."""
     project_id = await enabled_project(conn, plugin, project)
-    p = tables.plans
-    query = select(p.c.body).where(p.c.project_id == project_id, p.c.plan_id == plan)
-    body = (await conn.execute(query)).scalar_one_or_none()
+    body = await rows_of.plan_body(conn, project_id, plan)
     if body is None:
         raise Refused(404, NO_PLAN.format(project=project, plan=plan))
     steps = body.get("steps") if isinstance(body, dict) else None
@@ -205,13 +176,7 @@ async def read_decisions(
 ) -> tuple[DecisionRef, ...]:
     """The decisions of ``project``'s runs, newest first: asked at or after ``since``, in one of ``states``."""
     project_id = await enabled_project(conn, plugin, project)
-    d = tables.decisions
-    query = select(d).where(d.c.project_id == project_id)
-    if since is not None:
-        query = query.where(d.c.asked_at >= since)
-    if states:
-        query = query.where(d.c.state.in_(list(states)))
-    rows = (await conn.execute(query.order_by(d.c.id.desc()).limit(_limit(limit)))).all()
+    rows = await rows_of.decisions(conn, project_id, since, states, _limit(limit))
     return tuple(
         DecisionRef(
             r.id,
@@ -244,15 +209,7 @@ async def read_signals(
     """The values of ``project``'s signal ``key``, last measured first: those measured at or after ``since``. None
     when the project has no such key."""
     project_id = await enabled_project(conn, plugin, project)
-    s, k = tables.signals, tables.signal_keys
-    query = (
-        select(s, k.c.name.label("key"))
-        .join_from(s, k, k.c.id == s.c.key_id)
-        .where(s.c.project_id == project_id, k.c.name == key)
-    )
-    if since is not None:
-        query = query.where(s.c.measured_at >= since)
-    rows = (await conn.execute(query.order_by(s.c.measured_at.desc(), s.c.id.desc()).limit(_limit(limit)))).all()
+    rows = await rows_of.signal_values(conn, project_id, key, since, _limit(limit))
     return tuple(
         SignalValue(
             r.id,
@@ -271,15 +228,7 @@ async def read_signals(
 async def read_goals(conn: AsyncConnection, plugin: Plugin, project: str) -> tuple[GoalRef, ...]:
     """The goals of ``project`` at their current revision, by number."""
     project_id = await enabled_project(conn, plugin, project)
-    g, rev, u = tables.goals, tables.goal_revisions, tables.users
-    query = (
-        select(g.c.id, g.c.number, g.c.alias, g.c.revision, rev, u.c.login.label("owner"))
-        .join_from(g, rev, (rev.c.goal_id == g.c.id) & (rev.c.revision == g.c.revision))
-        .join(u, u.c.id == rev.c.owner_id, isouter=True)
-        .where(g.c.project_id == project_id)
-        .order_by(g.c.number)
-    )
-    rows = (await conn.execute(query)).all()
+    rows = await rows_of.goals(conn, project_id)
     return tuple(
         GoalRef(
             r.id,
@@ -308,13 +257,7 @@ async def read_claims(
     """The claims of ``project``'s canvases that are not archived, by canvas, cell and position: of canvas id
     ``canvas`` only, in one of ``statuses``."""
     project_id = await enabled_project(conn, plugin, project)
-    c = _T["canvas_claims"]
-    query = select(c).where(c.c.project_id == project_id, c.c.archived_at.is_(None))
-    if canvas is not None:
-        query = query.where(c.c.canvas_id == canvas)
-    if statuses:
-        query = query.where(c.c.status.in_(list(statuses)))
-    rows = (await conn.execute(query.order_by(c.c.canvas_id, c.c.cell, c.c.position).limit(MAX_ROWS))).all()
+    rows = await rows_of.claims(conn, project_id, canvas, statuses)
     return tuple(
         ClaimRef(
             r.id, r.canvas_id, r.number, r.cell, r.text, r.status, r.confidence, r.rev, _frozen(r.label), r.updated_at
@@ -337,13 +280,7 @@ async def read_tasks(
 ) -> tuple[TaskRef, ...]:
     """The tasks of ``project``, last updated first: in sprint id ``sprint``, with one of ``statuses``."""
     project_id = await enabled_project(conn, plugin, project)
-    t = _T["tasks_items"]
-    query = select(t).where(t.c.project_id == project_id)
-    if sprint is not None:
-        query = query.where(t.c.sprint_id == sprint)
-    if statuses:
-        query = query.where(t.c.status.in_(list(statuses)))
-    rows = (await conn.execute(query.order_by(t.c.updated_at.desc(), t.c.id.desc()).limit(_limit(limit)))).all()
+    rows = await rows_of.tasks(conn, project_id, sprint, statuses, _limit(limit))
     return tuple(
         TaskRef(
             r.id,
@@ -365,8 +302,7 @@ async def read_tasks(
 async def read_sprints(conn: AsyncConnection, plugin: Plugin, project: str) -> tuple[SprintRef, ...]:
     """The sprints of ``project``, newest first."""
     project_id = await enabled_project(conn, plugin, project)
-    s = _T["tasks_sprints"]
-    rows = (await conn.execute(select(s).where(s.c.project_id == project_id).order_by(s.c.id.desc()))).all()
+    rows = await rows_of.sprints(conn, project_id)
     return tuple(SprintRef(r.id, r.name, r.goal, r.state, r.starts_on, r.ends_on) for r in rows)
 
 
@@ -378,15 +314,7 @@ async def read_task_links(
     ids = list(task_ids)
     if not ids:
         return ()
-    t, link = _T["tasks_items"], _T["tasks_links"]
-    query = (
-        select(link)
-        .join_from(link, t, t.c.id == link.c.task_id)
-        .where(t.c.project_id == project_id, link.c.task_id.in_(ids))
-        .order_by(link.c.task_id, link.c.id)
-        .limit(MAX_ROWS)
-    )
-    rows = (await conn.execute(query)).all()
+    rows = await rows_of.task_links(conn, project_id, ids)
     return tuple(TaskLinkRef(r.task_id, r.kind, r.srs_item_id, r.plan_id, r.step_id, r.run_id, r.url) for r in rows)
 
 
@@ -394,10 +322,7 @@ async def read_task_links(
 
 
 async def _document(conn: AsyncConnection, project_id: int, project: str, slug: str) -> int:
-    d = _T["srs_documents"]
-    found = (
-        await conn.execute(select(d.c.id).where(d.c.project_id == project_id, d.c.slug == slug))
-    ).scalar_one_or_none()
+    found = await rows_of.document_id(conn, project_id, slug)
     if found is None:
         raise Refused(404, NO_DOCUMENT.format(project=project, document=slug))
     return found
@@ -408,11 +333,8 @@ async def read_srs_items(
 ) -> tuple[SrsItemRef, ...]:
     """The items of ``project``'s SRS documents, of the document of slug ``document`` only, by document and key."""
     project_id = await enabled_project(conn, plugin, project)
-    i, d = _T["srs_items"], _T["srs_documents"]
-    query = select(i, d.c.slug).join_from(i, d, d.c.id == i.c.document_id).where(i.c.project_id == project_id)
-    if document is not None:
-        query = query.where(i.c.document_id == await _document(conn, project_id, project, document))
-    rows = (await conn.execute(query.order_by(d.c.slug, i.c.key).limit(MAX_ROWS))).all()
+    document_id = None if document is None else await _document(conn, project_id, project, document)
+    rows = await rows_of.srs_items(conn, project_id, document_id)
     return tuple(SrsItemRef(r.id, r.slug, r.key, r.kind, r.code, r.created_in, r.retired_in) for r in rows)
 
 
@@ -422,6 +344,5 @@ async def read_srs_versions(
     """The versions of SRS document ``document`` of ``project``, newest first; 404 without it."""
     project_id = await enabled_project(conn, plugin, project)
     document_id = await _document(conn, project_id, project, document)
-    v = _T["srs_versions"]
-    rows = (await conn.execute(select(v).where(v.c.document_id == document_id).order_by(v.c.number.desc()))).all()
+    rows = await rows_of.srs_versions(conn, document_id)
     return tuple(SrsVersionRef(document, r.number, r.state, r.summary, r.created_at, r.decided_at) for r in rows)

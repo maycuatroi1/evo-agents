@@ -1,6 +1,6 @@
-"""The ground of the API of core plugins: the plugin's handle, the callers of its routes, transactions, the hub's
-config, the plugin's own config and environment, its grants and audit rows, and what a clearance keeps out. Private to
-``core_plugin_api``."""
+"""The ground of the API of core plugins: the plugin's handle, transactions, the hub's config, the plugin's own config
+and environment, its grants and audit rows, and what a clearance keeps out (``routes.callers`` holds the callers of its
+routes)."""
 
 from __future__ import annotations
 
@@ -11,15 +11,13 @@ from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from types import MappingProxyType
 
-from fastapi import Request
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables, telegram
+from evo_agents.hub import telegram
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.plugin_calls import ApiContext, core_registry, effective_grant, enabled_in, enabled_query
+from evo_agents.hub.plugin_calls import ApiContext, core_registry, effective_grant, enabled_in
 from evo_agents.hub.server import audit as audit_log
-from evo_agents.hub.server.core_plugin_api._types import (
+from evo_agents.hub.server.core_plugin_api.models.types import (
     Clearance,
     EgressSink,
     NotACorePlugin,
@@ -29,28 +27,27 @@ from evo_agents.hub.server.core_plugin_api._types import (
     ProjectRef,
     Refused,
     Session,
+)
+from evo_agents.hub.server.core_plugin_api.repository.ground import (
+    config_versions,
+    enabling_projects,
+    project_id_of,
+)
+from evo_agents.hub.server.core_plugin_api.repository.ground import installed as installed_plugin
+from evo_agents.hub.server.core_plugin_api.service.handles import (
     issue_plugin,
-    issue_session,
     own_clearance,
     own_plugin,
     own_session,
     session_principal,
 )
-from evo_agents.hub.server.notifications.models import FROM_SESSION
 from evo_agents.hub.server.notifications.repository.channels import rules_of
 from evo_agents.hub.server.notifications.service.member_channels import kept_from
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.plugin_tokens import layer_config
 from evo_agents.hub.server.sealing import Sealer
-from evo_agents.hub.server.security import UNSAFE_METHODS, WEB, AdminUser, CurrentUser
-from evo_agents.hub.server.terminal import origin_of
 
 NOT_INSTALLED = "plugin {plugin} is not installed on this hub, or a hub admin turned it off"
-NOT_FROM_THIS_HUB = (
-    "a write made with a web session comes from a page of this hub: its Origin header must be {origin}, the origin of "
-    "EVO_HUB_PUBLIC_URL"
-)
-NO_PUBLIC_URL = "this hub has no EVO_HUB_PUBLIC_URL, so it cannot tell its own pages' writes from another site's"
 AUDIT_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}")  # what follows the family of a plugin's audit action
 MAX_AUDIT_TARGET = 1024
 HUB_FAMILIES = audit_log.NAMED_FAMILIES | {"memory", "skill"}  # families whose target names a project or a memory
@@ -82,54 +79,6 @@ def plugin(module: str) -> Plugin:
     return issue_plugin(manifest.id, tuple(item["name"] for item in manifest.contributions("channels")), egress)
 
 
-# The callers of a plugin's routes
-
-
-def _from_this_hub(request: Request, user: CurrentUser) -> None:
-    """403 unless a write carries the Origin of the hub's public URL. An app session passes: it arrives only as
-    ``Authorization: Bearer``, which a browser never adds to another site's request, and its app is no page of this hub
-    (``security.Principal.app_session``)."""
-    if request.method not in UNSAFE_METHODS or user.app_session:
-        return
-    expected = origin_of(request.app.state.config.public_url)
-    if expected is None:
-        raise Refused(403, NO_PUBLIC_URL)
-    if origin_of(request.headers.get("origin")) != expected:
-        raise Refused(403, NOT_FROM_THIS_HUB.format(origin=expected))
-
-
-def web_session(request: Request, user: CurrentUser) -> Session:
-    """The caller's web session: 403 for any other credential, and for a write whose Origin is not the hub's."""
-    if user.kind != WEB:
-        raise Refused(403, FROM_SESSION)
-    _from_this_hub(request, user)
-    return issue_session(user.user_id, user.login, user.token_id, True, principal=user)
-
-
-def caller(user: CurrentUser) -> Session:
-    """The caller, a member signed in with any credential the hub's own routes take: ``web`` for a web session, which
-    alone links a channel. The hub's middleware has checked a web session's write for its CSRF header."""
-    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB, principal=user)
-
-
-def hub_admin(request: Request, user: AdminUser) -> Session:
-    """The caller, a hub admin (403 otherwise, as the hub's admin routes answer), with a web session or a machine
-    token; a write made with a web session carries the Origin of the hub's public URL."""
-    if user.kind == WEB:
-        _from_this_hub(request, user)
-    return issue_session(user.user_id, user.login, user.token_id, user.kind == WEB, admin=True, principal=user)
-
-
-def begin(request: Request) -> AbstractAsyncContextManager[AsyncConnection]:
-    """A transaction on the hub's engine, for a route of the plugin."""
-    return request.app.state.engine.begin()
-
-
-def hub_config(request: Request) -> HubConfig:
-    """The hub's config, which a plugin hands the API and never reads."""
-    return request.app.state.config
-
-
 def web_url(config: HubConfig, link: str | None) -> str | None:
     """The absolute URL of the hub's page a notification links to, when the hub knows its public URL."""
     return telegram.web_url(getattr(config, "public_url", None), link)
@@ -155,21 +104,6 @@ def plugin_environment(plugin: Plugin) -> Mapping[str, str]:
 # The plugin's config and grants
 
 
-async def _installed(conn: AsyncConnection, name: str):
-    p, v = tables.plugins, tables.plugin_versions
-    query = (
-        select(p.c.id, v.c.manifest)
-        .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
-        .where(p.c.name == name, p.c.disabled_reason.is_(None))
-    )
-    return (await conn.execute(query)).one_or_none()
-
-
-async def _project_id(conn: AsyncConnection, project: str) -> int | None:
-    p = tables.projects
-    return (await conn.execute(select(p.c.id).where(p.c.name == project))).scalar_one_or_none()
-
-
 async def plugin_config(
     conn: AsyncConnection, plugin: Plugin, config: HubConfig, *, project: str | None = None
 ) -> PluginConfig:
@@ -177,12 +111,12 @@ async def plugin_config(
     its x-secret fields unsealed with the hub's key, those this process cannot open named in ``missing_secrets``. 404
     when the plugin is not installed and on, or ``project`` does not enable it."""
     own_plugin(plugin)
-    installed = await _installed(conn, plugin.id)
+    installed = await installed_plugin(conn, plugin.id)
     if installed is None:
         raise Refused(404, NOT_INSTALLED.format(plugin=plugin.id))
     project_id = None
     if project is not None:
-        project_id = await _project_id(conn, project)
+        project_id = await project_id_of(conn, project)
         if project_id is None or await enabled_in(conn, plugin.id, project_id) is None:
             failed = not_enabled(plugin.id, project)
             raise Refused(failed.status_code, failed.detail)
@@ -196,24 +130,14 @@ async def project_configs(conn: AsyncConnection, plugin: Plugin, config: HubConf
     """The plugin's effective config in each project that enables it, by project name: what a job that works across
     projects reads once. Empty when the plugin is not installed and on."""
     own_plugin(plugin)
-    installed = await _installed(conn, plugin.id)
+    installed = await installed_plugin(conn, plugin.id)
     if installed is None:
         return []
     sealer = Sealer.from_config(config) if config is not None else None
     schema = installed.manifest.get("config")
-    query = enabled_query().where(tables.plugins.c.name == plugin.id).order_by(tables.projects.c.name)
-    c = tables.plugin_configs.c
-    versions = dict(
-        (
-            await conn.execute(
-                select(c.project_id, func.max(c.version))
-                .where(c.plugin_id == installed.id, c.layer == "project", c.profile_id.is_(None))
-                .group_by(c.project_id)
-            )
-        ).all()
-    )
+    versions = await config_versions(conn, installed.id)
     found = []
-    for row in (await conn.execute(query)).all():
+    for row in await enabling_projects(conn, plugin.id):
         values, missing = await layer_config(conn, sealer, installed.id, plugin.id, schema, row.project_id, row.project)
         found.append(
             ProjectConfig(row.project, MappingProxyType(dict(values)), versions.get(row.project_id), tuple(missing))
@@ -229,7 +153,7 @@ async def granted(conn: AsyncConnection, plugin: Plugin, project: str, permissio
 
 
 async def project_grants(conn: AsyncConnection, plugin_id: str, project: str, permission: str) -> bool:
-    project_id = await _project_id(conn, project)
+    project_id = await project_id_of(conn, project)
     row = None if project_id is None else await enabled_in(conn, plugin_id, project_id)
     return row is not None and permission in effective_grant(row)
 

@@ -10,14 +10,9 @@ from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import task_dispatch
 from evo_agents.hub.server.agents.service import agent_types
 from evo_agents.hub.server.chats.service.runs import hub_reply
-from evo_agents.hub.server.core_plugin_api._reads import enabled_project
-from evo_agents.hub.server.core_plugin_api._types import (
-    AgentTypeRef,
-    ChatRunRef,
-    Plugin,
-    TaskHanded,
-    own_plugin,
-)
+from evo_agents.hub.server.core_plugin_api.models.types import AgentTypeRef, ChatRunRef, Plugin, TaskHanded
+from evo_agents.hub.server.core_plugin_api.service.handles import own_plugin
+from evo_agents.hub.server.core_plugin_api.service.reads import enabled_project
 
 MAX_REPLY_CHARS = 16_000
 MAX_TASK_MINUTES = task_runs.MAX_MINUTES  # (1.4) the most agent time a task handed to an agent type asks for
@@ -27,7 +22,7 @@ async def enabled_agent_type(conn: AsyncConnection, plugin: Plugin, project: str
     """The plugin's agent type ``name`` as ``project`` enabled it, or None when the project never did."""
     project_id = await enabled_project(conn, plugin, project)
     enabled = await enabled_in(conn, plugin.id, project_id)
-    row = await agent_types.enabled_type(conn, project_id, enabled.id, name)
+    row = await agent_types.enabled_type(conn, project_id, enabled.id, name)  # pyright: ignore[reportOptionalMemberAccess]
     if row is None:
         return None
     on = row.disabled_at is None and row.profile_deleted_at is None

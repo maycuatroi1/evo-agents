@@ -23,15 +23,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
-from sqlalchemy import func, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import kg_decisions, kg_snapshots, runs, tables
+from evo_agents.hub import kg_decisions, kg_snapshots, runs
 from evo_agents.hub.access import ProjectRules
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.jobs import JobQueue
@@ -40,8 +36,33 @@ from evo_agents.hub.kg_graph import GraphUnavailable
 from evo_agents.hub.kg_web import GraphProblem, WebSession, read
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server import audit as audit_log
-from evo_agents.hub.server.core_plugin_api._reads import enabled_project
-from evo_agents.hub.server.core_plugin_api._types import EgressSink, Plugin, Refused, own_plugin
+from evo_agents.hub.server.core_plugin_api.models.decision import (
+    DECISION_KINDS,
+    MAX_EVENT_CHARS,
+    MAX_EVENT_TAIL,
+    MAX_FACETS,
+    MAX_READ_ITEMS,
+    MAX_REASON_CHARS,
+    MAX_TAIL_BYTES,
+    MAX_TEXT_CHARS,
+    NO_GRAPH,
+    NO_RUN,
+    NO_SINK,
+    AcceptedRule,
+    CauseClassified,
+    Cleared,
+    CorrectionText,
+    DecisionTaken,
+    DismissedItem,
+    ReviewItemText,
+    ReviewNodeText,
+    RunEventText,
+    RunFailure,
+)
+from evo_agents.hub.server.core_plugin_api.models.types import EgressSink, Plugin, Refused
+from evo_agents.hub.server.core_plugin_api.repository import decision as rows_of
+from evo_agents.hub.server.core_plugin_api.service.handles import own_plugin
+from evo_agents.hub.server.core_plugin_api.service.reads import enabled_project
 from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs
 from evo_agents.hub.server.kg_health import snapshot_of
 from evo_agents.hub.server.run_cause import CAUSE_KEY, CLASSIFIED, classified
@@ -49,133 +70,6 @@ from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.signals import project_rules
 from evo_agents.kg.review import RULES as REVIEW_RULES
 from evo_agents.kg.schema import known_relations
-
-MAX_TEXT_CHARS = 2000  # a sanitized text of one item: an error, a turn, a summary, a snippet
-MAX_EVENT_TAIL = 20  # the events of a run's log a failure's detail carries, the last ones
-MAX_EVENT_CHARS = 400  # the text of one of them
-MAX_TAIL_BYTES = 8 * 1024  # all of them together
-MAX_READ_ITEMS = 500  # the most items one read returns
-MAX_FACETS = 2000  # the sessions of the time range a read of corrections looks through
-MAX_REASON_CHARS = kg_decisions.MAX_REASON_CHARS
-NO_SINK = "project {project} declares no sink {sink} in its policy, or it clears no level its ladder knows"
-NO_RUN = "project {project} has no run {run}"
-NO_GRAPH = "project {project} has no graph on the hub yet"
-
-DECISION_KINDS = kg_decisions.KINDS
-
-
-# What the reads return
-
-
-@dataclass(frozen=True)
-class Cleared:
-    """What a text read returns: ``items``, those whose label ``sink`` may read, how many ``withheld`` the label (or the
-    sink's absence) kept out, and ``reason`` when there are none to give: the project's policy declares no such sink,
-    or the read found nothing at all."""
-
-    sink: str
-    items: tuple[Any, ...]
-    withheld: int = 0
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class RunEventText:
-    """One event of a run's log, redacted and cut."""
-
-    seq: int
-    at: datetime
-    kind: str
-    text: str
-
-
-@dataclass(frozen=True)
-class RunFailure:
-    """Why a run failed: its ``error`` redacted and cut, ``failure_cause`` (None while it has none), ``inferred``
-    (true when the hub guessed the cause from the error, so a plugin may classify it), and the last of its events."""
-
-    run_id: int
-    project: str
-    kind: str
-    state: str
-    error: str | None
-    failure_cause: str | None
-    inferred: bool
-    events: tuple[RunEventText, ...]
-
-
-@dataclass(frozen=True)
-class ReviewNodeText:
-    id: str
-    kind: str
-    name: str | None
-
-
-@dataclass(frozen=True)
-class ReviewItemText:
-    """An open item of the review queue: its ``fingerprint`` (what a dismissal names), the ``rule`` that found it, what
-    the rule suggests (``action``), the nodes it is about that the sink may read, and a ``snippet`` of their text."""
-
-    fingerprint: str
-    rule: str
-    action: str
-    nodes: tuple[ReviewNodeText, ...]
-    snippet: str
-
-
-@dataclass(frozen=True)
-class CorrectionText:
-    """A turn of a person that read as a correction: its ``text``, the ``evidence`` that names it
-    (``session:<id>:user_turns:<n>``) and the time of its session."""
-
-    text: str
-    evidence: str
-    at: datetime
-
-
-@dataclass(frozen=True)
-class AcceptedRule:
-    """A proposal of the Curator the project accepted (``kind`` proposal), or its change once it merged (``change``)."""
-
-    kind: str
-    id: int
-    title: str
-    summary: str
-    at: datetime | None
-
-
-# What the writes return
-
-
-@dataclass(frozen=True)
-class CauseClassified:
-    """The cause of a failed run the plugin set: the ``cause`` now, the ``previous`` one and the ``seq`` of the event
-    of the run that says so. The cause is still a guess (``failure_cause_inferred``)."""
-
-    run_id: int
-    cause: str
-    previous: str | None
-    seq: int
-
-
-@dataclass(frozen=True)
-class DecisionTaken:
-    """A decision on the graph the plugin took (``state`` active) or proposed (``proposed``), its ``number`` in the
-    project and the project's decision ``rev`` it made."""
-
-    number: int
-    kind: str
-    state: str
-    rev: int
-
-
-@dataclass(frozen=True)
-class DismissedItem:
-    """A review item the plugin dismissed, which stays dismissed in later builds that find it."""
-
-    fingerprint: str
-    rule: str
-
 
 # The sink and the label
 
@@ -189,7 +83,7 @@ def _sink(plugin: Plugin, sink: str | None) -> EgressSink:
     if sink is None:
         if len(plugin.egress) > 1:
             raise ValueError(f"plugin {plugin.id} declares several sinks: name one of {[s.id for s in plugin.egress]}")
-        return plugin.egress[0]
+        return plugin.egress[0]  # pyright: ignore[reportGeneralTypeIssues]
     found = next((item for item in plugin.egress if item.id == sink), None)
     if found is None:
         raise ValueError(f"{sink!r} is no egress sink of plugin {plugin.id}")
@@ -250,14 +144,6 @@ def _rules(rules: Sequence[str] | None) -> frozenset[str] | None:
 # Why a run failed
 
 
-async def _inferred(conn: AsyncConnection, run_id: int) -> bool:
-    e = tables.run_events
-    guessed = e.c.body["failure_cause_inferred"].astext == "true"
-    return bool(
-        (await conn.execute(select(func.count()).where(e.c.run_id == run_id, e.c.kind == "system", guessed))).scalar()
-    )
-
-
 def _event_text(body: object) -> str:
     if isinstance(body, Mapping):
         for key in ("message", "text", "reason", "error", "line", "content"):
@@ -276,29 +162,13 @@ async def read_run_failure(
     project_id, rules, chosen, why = await _gate(conn, plugin, project, sink)
     if why is not None:
         return Cleared(chosen, (), 0, why)
-    r, p, e = tables.runs, tables.plans, tables.run_events
-    row = (
-        await conn.execute(
-            select(
-                r.c.id, r.c.kind, r.c.state, r.c.error, r.c.failure_cause, r.c.plan_id, p.c.label.label("plan_label")
-            )
-            .select_from(r.outerjoin(p, (p.c.project_id == r.c.project_id) & (p.c.plan_id == r.c.plan_id)))
-            .where(r.c.id == run_id, r.c.project_id == project_id)
-        )
-    ).one_or_none()
+    row = await rows_of.failed_run(conn, project_id, run_id)
     if row is None:
         raise Refused(404, NO_RUN.format(project=project, run=run_id))
     label = row.plan_label if row.plan_id is not None and row.plan_label is not None else rules.default_label
     if not _clears(rules, label, chosen):
         return Cleared(chosen, (), 1, "the run's label is above the sink's clearance")
-    tail = (
-        await conn.execute(
-            select(e.c.seq, e.c.at, e.c.kind, e.c.body)
-            .where(e.c.run_id == run_id)
-            .order_by(e.c.seq.desc())
-            .limit(MAX_EVENT_TAIL)
-        )
-    ).all()
+    tail = await rows_of.event_tail(conn, run_id, MAX_EVENT_TAIL)
     events, used = [], 0
     for item in tail:  # the newest first, so the cap keeps the last events
         text = _event_text(item.body)
@@ -313,7 +183,7 @@ async def read_run_failure(
         state=row.state,
         error=None if row.error is None else _text(row.error),
         failure_cause=row.failure_cause,
-        inferred=await _inferred(conn, run_id),
+        inferred=await rows_of.inferred(conn, run_id),
         events=tuple(reversed(events)),
     )
     return Cleared(chosen, (failure,))
@@ -345,21 +215,16 @@ async def classify_run_failure(
         raise ValueError("a model is a name of 1 to 100 characters")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
         raise ValueError("a confidence is a number from 0 to 1")
-    r = tables.runs
-    row = (
-        await conn.execute(
-            select(r.c.state, r.c.failure_cause).where(r.c.id == run_id, r.c.project_id == project_id).with_for_update()
-        )
-    ).one_or_none()
+    row = await rows_of.locked_run(conn, project_id, run_id)
     if row is None:
         raise Refused(404, NO_RUN.format(project=project, run=run_id))
     if row.state != "failed":
         raise Refused(409, f"run {run_id} is {row.state}: only a run that failed has a cause to classify")
-    if not await _inferred(conn, run_id):
+    if not await rows_of.inferred(conn, run_id):
         raise Refused(409, f"the cause of run {run_id} came from its worker: the hub keeps it")
     if await classified(conn, run_id) is not None:
         raise Refused(409, f"the cause of run {run_id} was classified already: a writer restores it first")
-    await conn.execute(r.update().values(failure_cause=cause).where(r.c.id == run_id))
+    await rows_of.set_cause(conn, run_id, cause)
     seq = await write_event(
         conn,
         run_id,
@@ -411,27 +276,21 @@ async def read_corrections(
     project_id, rules, chosen, why = await _gate(conn, plugin, project, sink)
     if why is not None:
         return Cleared(chosen, (), 0, why)
-    f = tables.session_facets
-    query = select(f.c.session_id, f.c.at, f.c.label, f.c.body).where(
-        f.c.project_id == project_id, f.c.kind == "session", f.c.at >= since, f.c.body.is_not(None)
-    )
-    if until is not None:
-        query = query.where(f.c.at < until)
-    rows = (await conn.execute(query.order_by(f.c.at.desc(), f.c.id.desc()).limit(MAX_FACETS))).all()
+    rows = await rows_of.session_facets(conn, project_id, since, until, MAX_FACETS)
     items, withheld = [], 0
     for row in rows:
         body = row.body if isinstance(row.body, dict) else {}
         turns = body.get("user_turns") if isinstance(body.get("user_turns"), list) else []
-        indexes = [i for i in body.get("corrections") or [] if isinstance(i, int) and 0 <= i < len(turns)]
+        indexes = [i for i in body.get("corrections") or [] if isinstance(i, int) and 0 <= i < len(turns)]  # pyright: ignore[reportArgumentType]
         if not indexes:
             continue
         if not _clears(rules, row.label, chosen):
             withheld += len(indexes)
             continue
         for index in indexes:
-            if isinstance(turns[index], str) and len(items) < limit:
+            if isinstance(turns[index], str) and len(items) < limit:  # pyright: ignore[reportOptionalSubscript]
                 items.append(
-                    CorrectionText(_text(turns[index]), f"session:{row.session_id}:user_turns:{index}", row.at)
+                    CorrectionText(_text(turns[index]), f"session:{row.session_id}:user_turns:{index}", row.at)  # pyright: ignore[reportOptionalSubscript]
                 )
     reason = None if items else ("every correction is above the sink's clearance" if withheld else "nothing to read")
     return Cleared(chosen, tuple(items), withheld, reason)
@@ -446,25 +305,7 @@ async def read_accepted_rules(
     project_id, rules, chosen, why = await _gate(conn, plugin, project, sink)
     if why is not None:
         return Cleared(chosen, (), 0, why)
-    p, c = tables.proposals, tables.curator_changes
-    merged = c.c.merged_at.is_not(None)
-    rows = (
-        await conn.execute(
-            select(
-                p.c.id.label("proposal_id"),
-                p.c.title,
-                p.c.summary,
-                p.c.label,
-                p.c.answered_at,
-                c.c.id.label("change_id"),
-                c.c.merged_at,
-            )
-            .select_from(p.outerjoin(c, (c.c.proposal_id == p.c.id) & merged))
-            .where(p.c.project_id == project_id, or_(p.c.state == "accepted", c.c.id.is_not(None)))
-            .order_by(func.coalesce(c.c.merged_at, p.c.answered_at).desc().nulls_last(), p.c.id.desc())
-            .limit(MAX_READ_ITEMS * 2)
-        )
-    ).all()
+    rows = await rows_of.accepted_rules(conn, project_id, MAX_READ_ITEMS * 2)
 
     def make(row) -> AcceptedRule:
         kind, ident, at = (
@@ -540,16 +381,15 @@ async def read_review_queue(
     (``hub_config(request)`` or ``Context.config``)."""
     limit = _limit(limit)
     kept = _rules(rules)
-    project_id, rules, chosen, why = await _gate(conn, plugin, project, sink)
+    project_id, rules, chosen, why = await _gate(conn, plugin, project, sink)  # pyright: ignore[reportAssignmentType]
     if why is not None:
         return Cleared(chosen, (), 0, why)
-    data, build = await _graph(conn, config, project_id, project, rules, chosen, _queue)
+    data, build = await _graph(conn, config, project_id, project, rules, chosen, _queue)  # pyright: ignore[reportArgumentType]
     if data is None:
         return Cleared(chosen, (), 0, NO_GRAPH.format(project=project))
     if not data.get("computed"):
         return Cleared(chosen, (), 0, data.get("reason"))
-    d = tables.kg_review_dismissals
-    dismissed = set((await conn.execute(select(d.c.fingerprint).where(d.c.project_id == project_id))).scalars())
+    dismissed = await rows_of.dismissed(conn, project_id)
     props = data.get("props") or {}
     items = [
         ReviewItemText(
@@ -591,29 +431,7 @@ async def dismiss_review_item(
         raise Refused(
             404, f"no review item with that fingerprint is visible to plugin {plugin.id} in project {project}"
         )
-    d = tables.kg_review_dismissals
-    saved = pg_insert(d).values(
-        project_id=project_id,
-        fingerprint=fingerprint,
-        rule=item["rule"],
-        reason=reason,
-        dismissed_by=None,
-        dismissed_by_plugin=plugin.id,
-        build_id=build,
-    )
-    await conn.execute(
-        saved.on_conflict_do_update(
-            index_elements=[d.c.project_id, d.c.fingerprint],
-            set_={
-                "rule": saved.excluded.rule,
-                "reason": saved.excluded.reason,
-                "dismissed_by": None,
-                "dismissed_by_plugin": plugin.id,
-                "build_id": saved.excluded.build_id,
-                "dismissed_at": func.now(),
-            },
-        )
-    )
+    await rows_of.dismiss(conn, project_id, fingerprint, item["rule"], reason, plugin.id, build)
     await audit_log.record(
         conn,
         actor_id=None,
@@ -687,45 +505,18 @@ async def decide_graph(
         what = " ".join(missing[0]) if isinstance(missing[0], tuple) else missing[0]
         raise Refused(404, f"{what} is not visible to plugin {plugin.id} in the latest graph of project {project}")
     if kind == "link":
-        configs = tables.kg_configs
-        ontology = await conn.scalar(select(configs.c.ontology).where(configs.c.project_id == project_id))
+        ontology = await rows_of.ontology(conn, project_id)
         if rel not in known_relations(ontology):
             raise Refused(422, f"the ontology of project {project} has no relation {rel}")
-    d, e, p = tables.kg_decisions, tables.kg_decision_events, tables.projects
-    await conn.execute(select(p.c.id).where(p.c.id == project_id).with_for_update())
-    rev = await conn.scalar(select(func.coalesce(func.max(e.c.rev), 0)).where(e.c.project_id == project_id))
-    same = select(d.c.number).where(
-        d.c.project_id == project_id,
-        d.c.kind == kind,
-        d.c.src == src,
-        d.c.rel.is_not_distinct_from(rel),
-        d.c.dst.is_not_distinct_from(dst),
-        d.c.state.in_(("proposed", "active")),
-    )
-    taken = await conn.scalar(same.limit(1))
+    await rows_of.lock_project(conn, project_id)
+    rev = await rows_of.decision_rev(conn, project_id)
+    taken = await rows_of.same_decision(conn, project_id, kind, src, rel, dst)
     if taken is not None:
         raise Refused(409, f"decision {taken} of project {project} already says that")
-    number = await conn.scalar(select(func.coalesce(func.max(d.c.number), 0) + 1).where(d.c.project_id == project_id))
+    number = await rows_of.next_number(conn, project_id)
     state, action = ("proposed", "propose") if propose else ("active", "decide")
-    row = (
-        await conn.execute(
-            d.insert()
-            .values(project_id=project_id, number=number, kind=kind, state=state, src=src, rel=rel, dst=dst)
-            .returning(d.c.id)
-        )
-    ).one()
-    await conn.execute(
-        e.insert().values(
-            project_id=project_id,
-            rev=rev + 1,
-            decision_id=row.id,
-            action=action,
-            actor_id=None,
-            actor_plugin=plugin.id,
-            reason=reason,
-            build_id=build,
-        )
-    )
+    decision_id = await rows_of.add_decision(conn, project_id, number, kind, state, src, rel, dst)
+    await rows_of.add_decision_event(conn, project_id, rev + 1, decision_id, action, plugin.id, reason, build)
     await audit_log.record(
         conn,
         actor_id=None,

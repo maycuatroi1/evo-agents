@@ -7,115 +7,43 @@ to ``core_plugin_api``, which exports each name of ``__all__``."""
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals as hub_goals
-from evo_agents.hub import signals, tables
-from evo_agents.hub.plugin_calls import enabled_query
+from evo_agents.hub import signals
 from evo_agents.hub.server import audit as audit_log
-from evo_agents.hub.server.agents.repository import agent_types
-from evo_agents.hub.server.core_plugin_api._base import AUDIT_WORD, HUB_FAMILIES, MAX_AUDIT_TARGET
-from evo_agents.hub.server.core_plugin_api._reads import MAX_ROWS, enabled_project
-from evo_agents.hub.server.core_plugin_api._types import (
-    Plugin,
-    Refused,
-    Session,
+from evo_agents.hub.server.core_plugin_api.models.loop import (
+    ACTIVE,
+    MAX_POINTS,
+    PLUGIN_NOTICE,
+    ClaimCardRef,
+    GoalMeasure,
+    ProjectAgentTypeRef,
+    SignalPoint,
+    SignalsPushed,
+    WorkItemRef,
+)
+from evo_agents.hub.server.core_plugin_api.models.reads import MAX_ROWS
+from evo_agents.hub.server.core_plugin_api.models.types import Plugin, Refused, Session
+from evo_agents.hub.server.core_plugin_api.repository import loop as rows_of
+from evo_agents.hub.server.core_plugin_api.service.ground import AUDIT_WORD, HUB_FAMILIES, MAX_AUDIT_TARGET
+from evo_agents.hub.server.core_plugin_api.service.handles import (
     issue_session,
     own_plugin,
     own_session,
     refusing,
     session_principal,
 )
-from evo_agents.hub.server.core_plugin_api._writes import SIGNAL_DAYS, plugin_pusher
+from evo_agents.hub.server.core_plugin_api.service.reads import enabled_project
+from evo_agents.hub.server.core_plugin_api.service.writes import SIGNAL_DAYS, plugin_pusher
 from evo_agents.hub.server.loop import view
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.security import MACHINE, Principal
 from evo_agents.hub.server.signals.models import SignalIn
-
-PLUGIN_NOTICE = "plugin_notice"  # the hub's notice kind of what a plugin tells a project's admins
-ACTIVE = "active"
-MAX_POINTS = 1000  # the most values one push takes
-
-_T = tables.metadata.tables
-
-
-@dataclass(frozen=True)
-class GoalMeasure:
-    """An active goal of a project with a metric, and the value of its signal at a time: ``reached`` is None when
-    nothing measured it."""
-
-    code: str  # G-<number>
-    statement: str
-    metric: Mapping[str, Any]
-    metric_text: str
-    value: float | None
-    target: float | None
-    reached: bool | None
-
-
-@dataclass(frozen=True)
-class ClaimCardRef:
-    """A claim of a project's canvas with its test card and the signal keys that measure it."""
-
-    id: int
-    number: int
-    cell: str
-    text: str
-    test_card: Mapping[str, Any] | None
-    signal_keys: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class WorkItemRef:
-    """A work item of the plugin's on a project's Loop: ``key`` as the plugin's rules gave it, without the prefix the
-    hub stores it with (``<plugin>:``)."""
-
-    id: int
-    kind: str
-    key: str
-    state: str
-    created_at: datetime
-
-
-@dataclass(frozen=True)
-class ProjectAgentTypeRef:
-    """An agent type of a plugin a project enables, as that project enabled it: ``enabled`` while it is not
-    disabled and its profile is not deleted."""
-
-    plugin: str
-    name: str
-    handle: str
-    profile_id: int
-    enabled: bool
-
-
-@dataclass(frozen=True)
-class SignalPoint:
-    """One value of a signal for ``push_signals``, as ``push_signal`` takes it."""
-
-    key: str
-    value: float | None = None
-    text: str | None = None
-    measured_at: datetime | None = None
-    tenant: str | None = None
-    external_id: str | None = None
-
-
-@dataclass(frozen=True)
-class SignalsPushed:
-    """What ``push_signals`` did with a batch: how many values it stored, how many it found stored already, and why
-    it refused each of the others."""
-
-    accepted: int
-    duplicates: int
-    rejected: tuple[str, ...]
-
 
 # The audit
 
@@ -173,14 +101,6 @@ def session_run(session: Session) -> int | None:
 # Notices to the admins
 
 
-async def _admins(conn: AsyncConnection, project_id: int) -> list[int]:
-    g = tables.grants.c
-    found = await conn.execute(
-        select(g.user_id).where(g.project_id == project_id, g.role == "admin").order_by(g.user_id)
-    )
-    return [row.user_id for row in found]
-
-
 async def notify_admins(
     conn: AsyncConnection,
     plugin: Plugin,
@@ -201,7 +121,7 @@ async def notify_admins(
     if {"plugin", "project"} & set(more):
         raise ValueError("a notice's details name the plugin and the project already")
     found = []
-    for user_id in await _admins(conn, project_id):
+    for user_id in await rows_of.admins(conn, project_id):
         found.append(
             await NOTIFIER.notify(
                 conn,
@@ -225,18 +145,7 @@ async def admins_notified(conn: AsyncConnection, plugin: Plugin, project: str, k
     project_id = await enabled_project(conn, plugin, project)
     if not isinstance(key, str) or not key or key in ("plugin", "project"):
         raise ValueError("a key of a notice's details is a name the plugin gave")
-    n = tables.notifications.c
-    told = await conn.scalar(
-        select(n.id)
-        .where(
-            n.project_id == project_id,
-            n.notice_kind == PLUGIN_NOTICE,
-            n.details["plugin"].astext == plugin.id,
-            n.details[key].astext == str(value),
-        )
-        .limit(1)
-    )
-    return told is not None
+    return await rows_of.notice_told(conn, project_id, PLUGIN_NOTICE, plugin.id, key, str(value))
 
 
 # Goals and the canvas
@@ -246,15 +155,8 @@ async def measure_goals(conn: AsyncConnection, plugin: Plugin, project: str, at:
     """The active goals of ``project`` that have a metric, by rank then number, each with the value of its signal at
     ``at`` and whether it reached its target, as the Loop measures them."""
     project_id = await enabled_project(conn, plugin, project)
-    g, r = tables.goals, tables.goal_revisions
-    query = (
-        select(g.c.id, g.c.number, r.c.statement, r.c.metric)
-        .join_from(g, r, (r.c.goal_id == g.c.id) & (r.c.revision == g.c.revision))
-        .where(g.c.project_id == project_id, r.c.status == ACTIVE, r.c.metric.is_not(None))
-        .order_by(r.c.rank, g.c.number)
-    )
     found = []
-    for row in (await conn.execute(query)).all():
+    for row in await rows_of.measured_goals(conn, project_id, ACTIVE):
         value = await view.measure(conn, project_id, row.metric, at, goal_id=row.id)
         target, comparator = row.metric.get("target"), row.metric.get("comparator")
         hit = None if value is None or comparator not in view.COMPARE else view.COMPARE[comparator](value, target)
@@ -284,12 +186,7 @@ async def read_claim_cards(
         return ()
     if len(by_id) + len(by_number) > MAX_ROWS:
         raise ValueError(f"a read names at most {MAX_ROWS} claims")
-    c = _T["canvas_claims"].c
-    rows = await conn.execute(
-        select(c.id, c.number, c.cell, c.text, c.test_card, c.signal_keys)
-        .where(c.project_id == project_id, c.id.in_(by_id) | c.number.in_(by_number))
-        .order_by(c.id)
-    )
+    rows = await rows_of.claim_cards(conn, project_id, by_id, by_number)
     return tuple(
         ClaimCardRef(
             r.id,
@@ -319,22 +216,14 @@ async def read_work_items(
     starts with ``key_prefix``, made at ``since`` or after, each when given."""
     project_id = await enabled_project(conn, plugin, project)
     own = f"{plugin.id}:"
-    i = tables.loop_items.c
-    query = select(i.id, i.kind, i.key, i.state, i.created_at).where(
-        i.project_id == project_id, i.key.startswith(own, autoescape=True)
-    )
+    wanted = None
     if keys is not None:
         wanted = sorted({key for key in keys if isinstance(key, str)})
         if not wanted:
             return ()
         if len(wanted) > MAX_ROWS:
             raise ValueError(f"a read names at most {MAX_ROWS} keys")
-        query = query.where(i.key.in_([own + key for key in wanted]))
-    if key_prefix is not None:
-        query = query.where(i.key.startswith(own + key_prefix, autoescape=True))
-    if since is not None:
-        query = query.where(i.created_at >= since)
-    rows = await conn.execute(query.order_by(i.id).limit(MAX_ROWS))
+    rows = await rows_of.work_items(conn, project_id, own, wanted, key_prefix, since)
     return tuple(WorkItemRef(r.id, r.kind, r.key.removeprefix(own), r.state, r.created_at) for r in rows)
 
 
@@ -347,13 +236,7 @@ async def read_agent_types(
     """The agent types ``project`` enabled, of every plugin it enables now, by plugin and name: of the agent profile
     ``profile_id`` alone when given."""
     project_id = await enabled_project(conn, plugin, project)
-    enabled = {
-        row.id: row.name
-        for row in (await conn.execute(enabled_query().where(tables.projects.c.id == project_id))).all()
-    }
-    query = agent_types.rows(project_id)
-    if profile_id is not None:
-        query = query.where(tables.project_agent_types.c.profile_id == profile_id)
+    enabled = await rows_of.enabled_plugins(conn, project_id)
     found = [
         ProjectAgentTypeRef(
             enabled[row.plugin_id],
@@ -362,7 +245,7 @@ async def read_agent_types(
             row.profile_id,
             row.disabled_at is None and row.profile_deleted_at is None,
         )
-        for row in (await conn.execute(query)).all()
+        for row in await rows_of.agent_type_rows(conn, project_id, profile_id)
         if row.plugin_id in enabled
     ]
     return tuple(sorted(found, key=lambda t: (t.plugin, t.name)))
@@ -375,17 +258,10 @@ async def run_member(conn: AsyncConnection, plugin: Plugin, project: str, run_id
     project_id = await enabled_project(conn, plugin, project)
     if run_id is None:
         return None
-    r, u = tables.runs, tables.users
-    row = (
-        await conn.execute(
-            select(r.c.dispatched_by, u.c.login)
-            .join_from(r, u, u.c.id == r.c.dispatched_by)
-            .where(r.c.id == run_id, r.c.project_id == project_id)
-        )
-    ).one_or_none()
+    row = await rows_of.run_dispatcher(conn, project_id, run_id)
     if row is None:
         return None
-    principal = Principal(row.dispatched_by, row.login, False, None, MACHINE, "")
+    principal = Principal(row.dispatched_by, row.login, False, None, MACHINE, "")  # pyright: ignore[reportArgumentType]
     return issue_session(row.dispatched_by, row.login, 0, False, principal=principal)
 
 

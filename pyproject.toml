@@ -876,6 +876,24 @@ repository, a shape into the models. Other modules import the service and the mo
 module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-core-plugin-api-layers"
+name = "The core plugins' API goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.core_plugin_api"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+exhaustive_ignores = ["__main__"]
+broken_contract_guidance = """\
+In evo_agents.hub.server.core_plugin_api the routes (callers) give a core plugin's route its caller, its web session \
+or its hub admin and open a transaction; the service (reads, writes, tasks, decision, loop, acts and the others, \
+with handles, the registries of the handles the API issues) checks the plugin, the project and the caller and \
+decides; the repository holds every query the API makes on the hub's tables; the models (the API's dataclasses, \
+errors and constants) import none of them, nor a module of the hub that reaches the service. Move the code that \
+reaches up into the layer that needs it: a check or a message into the service, a query into the repository, a shape \
+into the models. The package's __init__ exports what the core plugins import; __main__ prints the API's surface. A \
+new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "hub-agents-layers"
 name = "The agents go from their routes to their service to their repository to their models, never back"
 type = "layers"

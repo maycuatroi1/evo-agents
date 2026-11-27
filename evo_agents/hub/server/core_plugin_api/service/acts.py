@@ -8,10 +8,9 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import access, features, tables, telegram
+from evo_agents.hub import access, features, telegram
 from evo_agents.hub.kg_sources import source_id
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server import hub_settings
@@ -22,8 +21,7 @@ from evo_agents.hub.server.chats.service import graph as chat_graph
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.direct import direct_chat
 from evo_agents.hub.server.chats.service.messages import deliver_message, visible_message
-from evo_agents.hub.server.core_plugin_api._base import project_grants
-from evo_agents.hub.server.core_plugin_api._types import (
+from evo_agents.hub.server.core_plugin_api.models.types import (
     AgentRef,
     ChatMessage,
     Clearance,
@@ -35,6 +33,11 @@ from evo_agents.hub.server.core_plugin_api._types import (
     ProposalAnswer,
     Refused,
     SentMessage,
+)
+from evo_agents.hub.server.core_plugin_api.repository.acts import agents_of, holds_grant
+from evo_agents.hub.server.core_plugin_api.repository.ground import project_id_of
+from evo_agents.hub.server.core_plugin_api.service.ground import project_grants
+from evo_agents.hub.server.core_plugin_api.service.handles import (
     own_clearance,
     own_member,
     own_plugin,
@@ -185,16 +188,10 @@ async def open_direct_chat(conn: AsyncConnection, member: Member, handle: str) -
     with refusing():
         await feature_on(conn, user, "chats")
         profile = await by_handle(conn, handle) if isinstance(handle, str) else None
-        if profile is not None and await _holds_grant(conn, member.user_id, profile.project_id):
+        if profile is not None and await holds_grant(conn, member.user_id, profile.project_id):
             await granting(conn, member.plugin, profile.project, WRITES)
         chat_id, made = await direct_chat(conn, user, handle)
     return DirectChat(chat_id, made)
-
-
-async def _holds_grant(conn: AsyncConnection, user_id: int, project_id: int) -> bool:
-    g = tables.grants
-    query = select(g.c.role).where(g.c.user_id == user_id, g.c.project_id == project_id)
-    return (await conn.execute(query)).first() is not None
 
 
 async def send_message(
@@ -261,16 +258,8 @@ async def agents(conn: AsyncConnection, member: Member) -> list[AgentRef]:
     own_member(member)
     with refusing():
         await feature_on(conn, principal_of(member), "chats")
-    ap, p, g = tables.agent_profiles, tables.projects, tables.grants
     writers = [role for role in access.ROLES if access.has_role(role, "writer")]
-    query = (
-        select(ap.c.handle, ap.c.name, p.c.name.label("project"))
-        .join_from(ap, p, p.c.id == ap.c.project_id)
-        .join(g, and_(g.c.project_id == ap.c.project_id, g.c.user_id == member.user_id))
-        .where(ap.c.deleted_at.is_(None), g.c.role.in_(writers))
-        .order_by(p.c.name, ap.c.is_default.desc(), ap.c.handle)
-    )
-    return [AgentRef(row.handle, row.name, row.project) for row in await conn.execute(query)]
+    return [AgentRef(row.handle, row.name, row.project) for row in await agents_of(conn, member.user_id, writers)]
 
 
 async def chat_history_items(conn: AsyncConnection, plugin: Plugin, project: str) -> KgSourceAnswer:
@@ -278,8 +267,7 @@ async def chat_history_items(conn: AsyncConnection, plugin: Plugin, project: str
     whose label holds a part of the project, with their threads and chats, labels and audiences, as the hub makes them
     (``evo_agents.hub.server.chats.service.graph``); nothing while the project does not grant the plugin chats:read."""
     own_plugin(plugin)
-    p = tables.projects
-    project_id = (await conn.execute(select(p.c.id).where(p.c.name == project))).scalar_one_or_none()
+    project_id = await project_id_of(conn, project)
     if project_id is None:
         return {"items": [], "identifiers": []}
-    return await chat_graph.read(conn, plugin.id, source_id(plugin.id), project_id, project)
+    return await chat_graph.read(conn, plugin.id, source_id(plugin.id), project_id, project)  # pyright: ignore[reportReturnType]

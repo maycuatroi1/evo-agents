@@ -29,9 +29,7 @@ from evo_agents.hub.server.chats.service.access import agent_projects, channel_c
 from evo_agents.hub.server.chats.service.messages import deliver_message
 from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import hub_access
-from evo_agents.hub.server.core_plugin_api._acts import NO_PROJECT, READS, WRITES, chat_grants, feature_on, granting
-from evo_agents.hub.server.core_plugin_api._base import Context, transaction
-from evo_agents.hub.server.core_plugin_api._types import (
+from evo_agents.hub.server.core_plugin_api.models.types import (
     Bridge,
     BridgeFile,
     BridgeMessage,
@@ -41,6 +39,17 @@ from evo_agents.hub.server.core_plugin_api._types import (
     Refused,
     SentMessage,
     Session,
+)
+from evo_agents.hub.server.core_plugin_api.service.acts import (
+    NO_PROJECT,
+    READS,
+    WRITES,
+    chat_grants,
+    feature_on,
+    granting,
+)
+from evo_agents.hub.server.core_plugin_api.service.ground import Context, transaction
+from evo_agents.hub.server.core_plugin_api.service.handles import (
     admin_session,
     own_kind,
     own_member,
@@ -254,7 +263,7 @@ async def bridge_file(context: Context, plugin: Plugin, bridge_id: int, message_
     wanted = next((f for f in found[1] if f.id == file_id), None)
     if wanted is None:
         return None
-    store = BlobStore.from_config(context.config) if context.config is not None else None
+    store = BlobStore.from_config(context.config) if context.config is not None else None  # pyright: ignore[reportArgumentType]
     if store is None:
         raise Refused(503, NO_STORE)
     try:

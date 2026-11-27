@@ -3,18 +3,14 @@ own routes make, and the member a run of the plugin acts for. Private to ``core_
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import access, tables
+from evo_agents.hub import access
 from evo_agents.hub.server import projects
 from evo_agents.hub.server.chats.service.runs import chat_run
-from evo_agents.hub.server.core_plugin_api._types import (
-    ChatRunRef,
-    Plugin,
-    ProjectRef,
-    Refused,
-    Session,
+from evo_agents.hub.server.core_plugin_api.models.types import ChatRunRef, Plugin, ProjectRef, Refused, Session
+from evo_agents.hub.server.core_plugin_api.repository.access import user_login
+from evo_agents.hub.server.core_plugin_api.service.handles import (
     issue_session,
     own_plugin,
     own_session,
@@ -72,9 +68,8 @@ async def run_session(conn: AsyncConnection, plugin: Plugin, run_id: int | None)
     found = await chat_run_of(conn, plugin, run_id)
     if found is None:
         return None
-    u = tables.users
-    login = (await conn.execute(select(u.c.login).where(u.c.id == found.dispatcher_id))).scalar_one_or_none()
+    login = await user_login(conn, found.dispatcher_id)
     if login is None:
         return None
-    principal = Principal(found.dispatcher_id, login, False, None, MACHINE, "")
+    principal = Principal(found.dispatcher_id, login, False, None, MACHINE, "")  # pyright: ignore[reportArgumentType]
     return issue_session(found.dispatcher_id, login, 0, False, principal=principal)
