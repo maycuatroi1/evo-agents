@@ -49,50 +49,56 @@ import logging
 from collections.abc import AsyncIterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
-from uuid import UUID
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.routing import APIRoute
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from pydantic import UUID4, AwareDatetime, BaseModel, Field, model_validator
-from sqlalchemy import DateTime, and_, bindparam, func, insert, select, update
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, runs, spend_store, tables
+from evo_agents.hub import runs
 from evo_agents.hub.blobs import GET_TTL
-from evo_agents.hub.server import audit, tool_stats
-from evo_agents.hub.server.agent_accounts.service.mask import masked, run_values
-from evo_agents.hub.server.attachments.service import messages as attachment_store
+from evo_agents.hub.server import tool_stats
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
-from evo_agents.hub.server.chats.repository.store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.plans import models as plan_models
-from evo_agents.hub.server.run_state import EVENTS_CHANNEL, next_seq, notify_events
-from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, REFUSALS, RunId
-from evo_agents.hub.server.runs.models.attachment_parts import Attachment, AttachmentIds, as_event
-from evo_agents.hub.server.runs.service.audits import audit_run, run_target
-from evo_agents.hub.server.runs.service.controls import owned_run, web_only_steering
-from evo_agents.hub.server.runs.service.views import readable_run
-from evo_agents.hub.server.security import CurrentUser, Principal, still_live
+from evo_agents.hub.server.run_state import EVENTS_CHANNEL
+from evo_agents.hub.server.runs.models import REFUSALS, RunId
+from evo_agents.hub.server.runs.models.run_events import (
+    BATCH_TOO_LARGE,
+    MAX_EVENTS_PAGE,
+    MAX_SEQ,
+    RUN_BLOB_KINDS,
+    RunFull,
+)
+from evo_agents.hub.server.runs.models.run_events import DiffLink as DiffLink
+from evo_agents.hub.server.runs.models.run_events import EventBatch as EventBatch
+from evo_agents.hub.server.runs.models.run_events import EventIn as EventIn
+from evo_agents.hub.server.runs.models.run_events import EventsAck as EventsAck
+from evo_agents.hub.server.runs.models.run_events import Inbox as Inbox
+from evo_agents.hub.server.runs.models.run_events import InboxAck as InboxAck
+from evo_agents.hub.server.runs.models.run_events import InboxMessage as InboxMessage
+from evo_agents.hub.server.runs.models.run_events import Message as Message
+from evo_agents.hub.server.runs.models.run_events import MessageIn as MessageIn
+from evo_agents.hub.server.runs.models.run_events import RunBlobCommit as RunBlobCommit
+from evo_agents.hub.server.runs.models.run_events import RunBlobs as RunBlobs
+from evo_agents.hub.server.runs.models.run_events import RunEvent as RunEvent
+from evo_agents.hub.server.runs.models.run_events import RunEvents as RunEvents
+from evo_agents.hub.server.runs.repository.run_events import deliver, undelivered  # noqa: F401 (local_runs)
+from evo_agents.hub.server.runs.service import run_events as service
+from evo_agents.hub.server.runs.service.run_events import (  # noqa: F401 (attachments, autonomy, outputs, merge, chats, decisions)
+    claimed_run,
+    write_user_message,
+)
+from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
 
-MAX_SEQ = 2**31 - 1  # run_events.seq and runs.events_acked are integers
 STREAM_POLL_SECONDS = 5.0  # a stream looks again this often, notification or not
-STREAM_BATCH = 500  # events a stream reads at a time
-MAX_EVENTS_PAGE = 1000
-MAX_INBOX = 100  # messages one POST of the worker's inbox hands out
-RUN_BLOB_KINDS = ("run-log", "run-diff")
-BLOB_COLUMNS = {"run-log": "log_sha256", "run-diff": "diff_sha256"}
 EVENT_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 413, 422)}
-BATCH_TOO_LARGE = f"a batch of events is at most {runs.MAX_BATCH_BYTES} bytes of request; send fewer at a time"
-RUN_FULL = (
-    "run {id} has {count} events, and a run keeps at most {limit} of them: nothing of this batch was stored, and "
-    "the worker should send no more of this run's events"
-)
 
 
 STREAM_CACHE_CONTROL = "no-cache, no-transform"  # FastAPI's own is no-cache
@@ -150,90 +156,7 @@ worker_router = APIRouter(
     prefix="/v1/worker", tags=["worker protocol"], route_class=BatchRoute, responses={401: {"model": ErrorBody}}
 )
 
-
-# Models
-
-
-class EventIn(BaseModel):
-    seq: int = Field(ge=1, le=MAX_SEQ, description="the worker's number of the event: 1 for the run's first")
-    at: AwareDatetime = Field(description="when the worker saw it; a time after the hub's now is taken as now")
-    kind: Literal[runs.WORKER_EVENT_KINDS] = Field(description="user_message and state are the hub's own")
-    body: dict[str, Any] = Field(description="a JSON object; over 64 KiB of JSON, the hub cuts it")
-
-
-class EventBatch(BaseModel):
-    events: list[EventIn] = Field(max_length=runs.MAX_BATCH_EVENTS)
-
-
-class EventsAck(BaseModel):
-    ack_seq: int = Field(description="the worker's highest seq stored with none missing below: drop the spool to it")
-    stored: int = Field(description="events of this batch stored now; the others were resends or after a gap")
-
-
-class RunEvent(BaseModel):
-    seq: int = Field(description="the hub's number of the event in the run: events?after= and Last-Event-ID take it")
-    at: datetime
-    kind: Literal[runs.EVENT_KINDS]
-    body: dict[str, Any]
-    truncated: bool = Field(description="the hub cut the body to 64 KiB of JSON")
-
-
-class RunEvents(BaseModel):
-    run_id: int
-    state: Literal[runs.SHOWN_STATES]
-    last_seq: int = Field(description="the seq of the run's latest event")
-    events: list[RunEvent] = Field(description="in seq order")
-    more: bool = Field(description="more events follow the last one here: ask again after it")
-
-
-class MessageIn(BaseModel):
-    text: str = Field(
-        max_length=runs.MAX_MESSAGE_BYTES, description="at most 8 KiB of UTF-8; empty only with attachment_ids"
-    )
-    attachment_ids: AttachmentIds = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _bounded(self):
-        if not self.text.strip() and not self.attachment_ids:
-            raise ValueError("a message needs some text")
-        if len(self.text.encode()) > runs.MAX_MESSAGE_BYTES:
-            raise ValueError(f"a message is at most {runs.MAX_MESSAGE_BYTES} bytes of UTF-8")
-        return self
-
-
-class Message(BaseModel):
-    id: int
-    run_id: int = Field(
-        description="the run whose inbox took it: the run messaged, or the run that resumes a parked author run"
-    )
-    seq: int = Field(description="its user_message event in the run's log")
-    text: str
-    sent_by: str
-    created_at: datetime
-    delivered_at: datetime | None = Field(description="when the worker took it for the agent")
-    attachments: list[Attachment] = Field(default_factory=list, description="the files it carries")
-
-
-class InboxAck(BaseModel):
-    ack: int | None = Field(
-        None, ge=1, le=MAX_ID, description="the last message handed to the agent: it and the ones before are delivered"
-    )
-
-
-class InboxMessage(BaseModel):
-    id: int
-    text: str
-    sent_by: str
-    created_at: datetime
-    decision_id: int | None = Field(None, description="the decision this message answers; null for any other message")
-    attachments: list[Attachment] = Field(
-        default_factory=list,
-        description="the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves",
-    )
-
-
-class Inbox(BaseModel):
-    messages: list[InboxMessage] = Field(description="the messages not delivered yet, oldest first")
+# Models of the uploads (the others are in runs.models.run_events; these extend the blob store's UploadItem)
 
 
 class RunBlobItem(UploadItem):
@@ -242,22 +165,6 @@ class RunBlobItem(UploadItem):
 
 class RunUploadRequest(BaseModel):
     items: list[RunBlobItem] = Field(min_length=1, max_length=len(RUN_BLOB_KINDS), description="one blob per kind")
-
-
-class RunBlobCommit(BaseModel):
-    upload_ids: list[UUID4] = Field(min_length=1, max_length=len(RUN_BLOB_KINDS))
-
-
-class RunBlobs(BaseModel):
-    log_sha256: str | None
-    diff_sha256: str | None
-
-
-class DiffLink(BaseModel):
-    sha256: str
-    size: int | None
-    url: str = Field(description="a presigned GET of the diff, working until expires_at")
-    expires_at: datetime
 
 
 # Streams
@@ -323,38 +230,11 @@ class RunStreams:
 # The worker's side
 
 
-async def claimed_run(conn: AsyncConnection, user: Principal, run_id: int):
-    """(worker name, state, event_seq, events_acked, project) of run ``run_id``, its row locked, when the worker of
-    ``user`` claimed it; 403 for a token of no live worker, 404 for another worker's run or none."""
-    w, r, p = tables.workers, tables.runs, tables.projects
-    live = select(w.c.id, w.c.name).where(w.c.token_id == user.token_id, w.c.revoked_at.is_(None))
-    worker = (await conn.execute(live)).one_or_none()
-    if worker is None:
-        raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
-    claimed = (
-        select(r.c.worker_id, r.c.state, r.c.event_seq, r.c.events_acked, p.c.name.label("project"))
-        .join_from(r, p, p.c.id == r.c.project_id)
-        .where(r.c.id == run_id)
-        .with_for_update(of=r)
-    )
-    row = (await conn.execute(claimed)).one_or_none()
-    if row is None or row.worker_id != worker.id:
-        raise HTTPException(404, f"this worker did not claim run {run_id}")
-    return (worker.name, row.state, row.event_seq, row.events_acked, row.project)
-
-
-def _fresh(events: list[EventIn], acked: int) -> list[EventIn]:
-    """The events of a batch that come next after ``acked``, in seq order: resends are skipped, and the first gap
-    ends what is taken."""
-    taken, expected = [], acked + 1
-    for event in sorted(events, key=lambda item: item.seq):
-        if event.seq < expected:
-            continue
-        if event.seq > expected:
-            break
-        taken.append(event)
-        expected += 1
-    return taken
+def refused(request: Request, answer):
+    """``answer`` of the service, or the 413 answer of a run past its limit (``RunFull``)."""
+    if isinstance(answer, RunFull):
+        return error_response(request, 413, answer.message, detail=answer.detail)
+    return answer
 
 
 async def store_events(
@@ -364,96 +244,24 @@ async def store_events(
     the caller, ``last_seq`` the hub's last number), in the caller's transaction: an ``EventsAck``, or the 413 answer
     for a run that would pass its limit. The worker's route and the local run's route (``local_runs``) both store
     through it."""
-    fresh = _fresh(events, acked)
-    if not fresh:
-        return EventsAck(ack_seq=acked, stored=0)
-    if last_seq + len(fresh) > runs.MAX_RUN_EVENTS:
-        message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
-        detail = [{"limit": "events_per_run", "max": runs.MAX_RUN_EVENTS, "ack_seq": acked}]
-        return error_response(request, 413, message, detail=detail)
-    rows = []
-    leased = await run_values(conn, request.app.state.sealer, run_id)  # the floor S3, whatever the daemon did
-    for number, event in enumerate(fresh, start=last_seq + 1):
-        stored, cut = runs.fit_event_body(runs.without_nul(masked(event.body, leased)))
-        rows.append(
-            {
-                "run_id": run_id,
-                "seq": number,
-                "seen_at": event.at,
-                "kind": event.kind,
-                "body": stored,
-                "truncated": cut,
-            }
-        )
-    e, r = tables.run_events, tables.runs
-    # A time after the hub's now is taken as now.
-    stored_at = func.least(bindparam("seen_at", type_=DateTime(timezone=True)), func.now())
-    await conn.execute(insert(e).values(at=stored_at), rows)
-    count = update(r).values(event_seq=r.c.event_seq + len(fresh), events_acked=r.c.events_acked + len(fresh))
-    await conn.execute(count.where(r.c.id == run_id))
-    if state in runs.TERMINAL_STATES:  # the spool's last events, after the end: the figures take them in
-        await tool_stats.record(conn, run_id)
-    if any(event.kind == "usage_update" for event in fresh):  # what the run spent so far, whatever its state
-        await spend_store.record_safely(conn, run_id)
-    if any(event.kind == "system" and chat_runs.SETUP_FIELD in event.body for event in fresh):
-        await wake_run_chat(conn, run_id)  # a step of a chat run's setup: its thread shows it (chat_progress)
-    await notify_events(conn, run_id)
-    cut = sum(1 for row in rows if row["truncated"])
-    log.debug("run events stored", extra={"run_id": run_id, "stored": len(fresh), "truncated": cut})
-    return EventsAck(ack_seq=acked + len(fresh), stored=len(fresh))
+    sealer = request.app.state.sealer
+    stored = await service.store_events(conn, sealer, run_id, state, last_seq, acked, events, tool_stats.record)
+    return refused(request, stored)
 
 
 @worker_router.post("/runs/{run_id}/events", response_model=EventsAck, responses=EVENT_REFUSALS)
 async def post_events(request: Request, run_id: RunId, body: EventBatch, user: CurrentUser):
     """Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go."""
-    async with request.app.state.engine.begin() as conn:
-        _, state, last_seq, acked, _ = await claimed_run(conn, user, run_id)
-        return await store_events(request, conn, run_id, state, last_seq, acked, body.events)
-
-
-def deliver(run_id: int, ack: int):
-    """Mark the messages of run ``run_id`` up to ``ack`` delivered, and the decisions they answer, which reached the
-    agent with them: one statement, the update of the inbox a data-modifying CTE of the update of decisions."""
-    i, d = tables.run_inbox, tables.decisions
-    taken = (
-        update(i)
-        .values(delivered_at=func.now())
-        .where(i.c.run_id == run_id, i.c.id <= ack, i.c.delivered_at.is_(None))
-        .returning(i.c.decision_id)
-        .cte("taken")
-    )
-    return (
-        update(d)
-        .values(delivered_at=func.now())
-        .where(d.c.id.in_(select(taken.c.decision_id)), d.c.state == "answered", d.c.delivered_at.is_(None))
-    )
-
-
-def undelivered(run_id: int):
-    i, u = tables.run_inbox, tables.users
-    return (
-        select(i.c.id, i.c.body.label("text"), u.c.login.label("sent_by"), i.c.created_at, i.c.decision_id)
-        .join_from(i, u, u.c.id == i.c.sent_by)
-        .where(i.c.run_id == run_id, i.c.delivered_at.is_(None))
-        .order_by(i.c.id)
-        .limit(MAX_INBOX)
+    state = request.app.state
+    return refused(
+        request, await service.post_events(state.engine, state.sealer, user, run_id, body.events, tool_stats.record)
     )
 
 
 @worker_router.post("/runs/{run_id}/inbox", response_model=Inbox, responses=REFUSALS)
 async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: InboxAck | None = None) -> Inbox:
     """Mark the messages up to ``ack`` delivered, and hand out the ones that still wait, for a run the worker holds."""
-    ack = (body or InboxAck()).ack
-    async with request.app.state.engine.begin() as conn:
-        _, state, *_ = await claimed_run(conn, user, run_id)
-        if state not in runs.HELD_STATES:
-            raise HTTPException(404, NOT_HELD.format(id=run_id))
-        if ack is not None:
-            await conn.execute(deliver(run_id, ack))
-            await wake_run_chat(conn, run_id)  # a chat message the agent took leaves step inbox (chat_progress)
-        rows = (await conn.execute(undelivered(run_id))).all()
-        files = await attachment_store.of_inbox(conn, [row.id for row in rows])
-    return Inbox(messages=[InboxMessage(**row._mapping, attachments=files.get(row.id, [])) for row in rows])
+    return await service.take_inbox(request.app.state.engine, user, run_id, (body or InboxAck()).ack)  # pyright: ignore[reportCallIssue]
 
 
 @worker_router.post(
@@ -466,8 +274,7 @@ async def request_run_uploads(request: Request, run_id: RunId, body: RunUploadRe
     kinds = [item.kind for item in body.items]
     if len(set(kinds)) != len(kinds):
         raise HTTPException(422, "a run has one log and one diff: name each kind once")
-    async with request.app.state.engine.begin() as conn:
-        project = (await claimed_run(conn, user, run_id))[4]
+    project = await service.claimed_project(request.app.state.engine, user, run_id)
     return await issue_uploads(request, user, project, list(body.items))
 
 
@@ -479,13 +286,7 @@ async def request_run_uploads(request: Request, run_id: RunId, body: RunUploadRe
 async def commit_run_blobs(request: Request, run_id: RunId, body: RunBlobCommit, user: CurrentUser):
     """Commit the uploads of a run's log and diff, and record them on the run."""
     ids = sorted({str(upload_id) for upload_id in body.upload_ids})
-    async with request.app.state.engine.begin() as conn:
-        project = (await claimed_run(conn, user, run_id))[4]
-        uploads = tables.blob_uploads
-        query = select(uploads.c.kind).where(uploads.c.upload_id.in_([UUID(upload_id) for upload_id in ids]))
-        kinds = (await conn.execute(query)).scalars().all()
-    if len(set(kinds)) != len(kinds):
-        raise HTTPException(422, "a run has one log and one diff: commit one upload of each kind")
+    project, _ = await service.committed_kinds(request.app.state.engine, user, run_id, ids)
     try:
         committed = await commit_uploads(request, user, project, ids, kinds=frozenset(RUN_BLOB_KINDS))
     except Mismatch as exc:
@@ -494,44 +295,10 @@ async def commit_run_blobs(request: Request, run_id: RunId, body: RunBlobCommit,
             f"{exc.problems[0]['problem']}. Nothing was committed and the uploads were discarded; ask for new ones"
         )
         return error_response(request, 422, message, detail=exc.problems)
-    found = {BLOB_COLUMNS[blob.kind]: blob.sha256 for blob in committed.blobs}
-    r = tables.runs
-    record = (
-        update(r)
-        .values(
-            log_sha256=func.coalesce(found.get("log_sha256"), r.c.log_sha256),
-            diff_sha256=func.coalesce(found.get("diff_sha256"), r.c.diff_sha256),
-        )
-        .where(r.c.id == run_id)
-        .returning(r.c.log_sha256, r.c.diff_sha256)
-    )
-    async with request.app.state.engine.begin() as conn:
-        await claimed_run(conn, user, run_id)  # the worker may have been revoked while the bytes were read
-        row = (await conn.execute(record)).one()
-    log.info("run blobs recorded", extra={"run_id": run_id, "kinds": sorted(blob.kind for blob in committed.blobs)})
-    return RunBlobs(**row._mapping)
+    return await service.record_blobs(request.app.state.engine, user, run_id, committed.blobs)
 
 
 # The readers' side
-
-
-def _events_after(run_id: int, after: int, kinds: list[str], limit: int):
-    """The events of run ``run_id`` after seq ``after``, of ``kinds`` (any kind when empty), in seq order."""
-    e = tables.run_events
-    query = select(e.c.seq, e.c.at, e.c.kind, e.c.body, e.c.truncated).where(e.c.run_id == run_id, e.c.seq > after)
-    if kinds:
-        query = query.where(e.c.kind.in_(kinds))
-    return query.order_by(e.c.seq).limit(limit)
-
-
-async def _progress(conn: AsyncConnection, run_id: int):
-    """(state, event_seq) of run ``run_id``."""
-    r = tables.runs
-    return (await conn.execute(select(r.c.state, r.c.event_seq).where(r.c.id == run_id))).one()
-
-
-def _events(rows) -> list[RunEvent]:
-    return [RunEvent(**row._mapping) for row in rows]
 
 
 @router.get(
@@ -550,13 +317,8 @@ async def list_events(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> RunEvents:
     """The run's events after ``after``, in seq order."""
-    query = _events_after(run_id, after, list(dict.fromkeys(kind)), limit + 1)
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
-        state, last_seq = await _progress(conn, run_id)
-        rows = (await conn.execute(query)).all()
-    events = _events(rows[:limit])
-    return RunEvents(run_id=run_id, state=state, last_seq=last_seq, events=events, more=len(rows) > limit)
+    engine, kinds = request.app.state.engine, list(dict.fromkeys(kind))
+    return await service.list_events(engine, user, project, run_id, after=after, kinds=kinds, limit=limit, sink=sink)
 
 
 async def _streamed_run(
@@ -567,8 +329,7 @@ async def _streamed_run(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> int:
     """The run a stream follows, checked before the stream starts so a refusal is an ordinary error answer."""
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
+    await service.check_readable(request.app.state.engine, user, project, run_id, sink)
     return run_id
 
 
@@ -592,45 +353,12 @@ async def stream(
     client that connects again is answered 401."""
     streams: RunStreams = request.app.state.run_streams
     streams.start()
-    engine = request.app.state.engine
     seen = last_event_id if last_event_id is not None else after
-    with streams.subscribe(followed) as wakeup:
-        while True:
-            async with engine.begin() as conn:
-                if not await still_live(conn, user):
-                    return
-                # The state first: when it is final, the move's own event is committed already and read below.
-                state, _ = await _progress(conn, followed)
-                rows = (await conn.execute(_events_after(followed, seen, [], STREAM_BATCH))).all()
-            for event in _events(rows):
-                seen = event.seq
-                yield ServerSentEvent(data=event, id=str(event.seq))
-            if len(rows) == STREAM_BATCH:
-                continue
-            if state in runs.TERMINAL_STATES or state == "ended":  # ended: a local run's end
-                yield ServerSentEvent(event="end", data={"state": state, "last_seq": seen})
-                return
-            await wakeup.wait(STREAM_POLL_SECONDS)
+    async for event in service.follow(request.app.state.engine, streams, user, followed, seen, STREAM_POLL_SECONDS):
+        yield event
 
 
 # The owner's messages
-
-
-async def _chat_ended(conn: AsyncConnection, run_id: int) -> bool:
-    """Whether the owner ended the chat of author run ``run_id``, which its worker holds still."""
-    r = tables.runs
-    query = select(r.c.finish_requested_at.is_not(None)).where(r.c.id == run_id)
-    return bool((await conn.execute(query)).scalar_one())
-
-
-async def write_user_message(conn: AsyncConnection, run_id: int, body: dict) -> int:
-    """Write the ``user_message`` event of a message of the owner into the log of run ``run_id``, whose row the
-    caller holds locked, and wake its streams; its seq."""
-    seq = await next_seq(conn, run_id)
-    values = {"run_id": run_id, "seq": seq, "kind": "user_message", "body": runs.without_nul(body)}
-    await conn.execute(insert(tables.run_events).values(**values))
-    await notify_events(conn, run_id)
-    return seq
 
 
 @router.post(
@@ -642,63 +370,7 @@ async def write_user_message(conn: AsyncConnection, run_id: int, body: dict) -> 
 async def send_message(request: Request, project: ProjectName, run_id: RunId, body: MessageIn, user: CurrentUser):
     """Leave a message for the run's agent in its inbox, which the worker hands to the agent; a reply to a parked
     author run queues the run that resumes it, whose inbox takes the message."""
-    async with request.app.state.engine.begin() as conn:
-        access, row = await owned_run(conn, user, project, run_id, "send a message to")
-        state, plan_id, key, kind = row[2], row[3], row[4], row[11]
-        resumes = kind in ("author", "chat") and state == "parked"
-        if state not in runs.MESSAGE_STATES and not resumes:
-            if kind == "author":
-                raise HTTPException(
-                    409, f"run {run_id} is {state}: its chat is over; dispatch a new author run to go on"
-                )
-            raise HTTPException(
-                409, f"run {run_id} is {state}: a message goes to a run that is queued or held by its worker"
-            )
-        if kind == "author" and await _chat_ended(conn, run_id):
-            raise HTTPException(
-                409, f"run {run_id}: you ended its chat, and the run ends done once its worker hears of it"
-            )
-        await web_only_steering(conn, user, run_id, "send its agent a message", "send it from the web", "sent")
-        _, last_seq = await _progress(conn, run_id)
-        if last_seq >= runs.MAX_RUN_EVENTS:
-            message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
-            return error_response(request, 413, message, detail=[{"limit": "events_per_run"}])
-        files = await attachment_store.take(conn, body.attachment_ids, user.user_id, run_id=run_id)
-        inbox_run = run_id
-        if resumes:
-            # it moves runs through this module
-            from evo_agents.hub.server.decisions.service.resume import resume_parked
-
-            why = f"as {user.login} replied in its chat"
-            inbox_run = await resume_parked(conn, user, run_id, why, woken_by=body.text)
-        inbox = tables.run_inbox
-        left = (
-            insert(inbox)
-            .values(run_id=inbox_run, sent_by=user.user_id, body=body.text)
-            .returning(inbox.c.id, inbox.c.created_at)
-        )
-        message_id, created_at = (await conn.execute(left)).one()
-        await attachment_store.hold_in_inbox(conn, message_id, files)
-        event = {"text": body.text, "from": user.login, "message_id": message_id}
-        seq = await write_user_message(conn, inbox_run, event | ({"attachments": as_event(files)} if files else {}))
-        target = f"{run_target(project, plan_id, key, run_id)} message:{message_id}"
-        if inbox_run != run_id:
-            target += f" resumed as run:{inbox_run}"
-        await audit_run(conn, user, access, audit.RUN_MESSAGE, target)
-    log.info(
-        "run message sent",
-        extra={"run_id": run_id, "inbox_run": inbox_run, "message_id": message_id, "login": user.login},
-    )
-    return Message(
-        id=message_id,
-        run_id=inbox_run,
-        seq=seq,
-        text=body.text,
-        sent_by=user.login,
-        created_at=created_at,
-        delivered_at=None,
-        attachments=files,
-    )
+    return refused(request, await service.send_message(request.app.state.engine, user, project, run_id, body))
 
 
 # The diff
@@ -719,17 +391,7 @@ async def diff(
 ) -> DiffLink:
     """A presigned GET of the diff the run's worker uploaded when the run ended."""
     store = blob_store(request)
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
-        r, b = tables.runs, tables.blobs
-        query = (
-            select(r.c.diff_sha256, b.c.size)
-            .select_from(r.outerjoin(b, and_(b.c.project_id == r.c.project_id, b.c.sha256 == r.c.diff_sha256)))
-            .where(r.c.id == run_id)
-        )
-        sha256, size = (await conn.execute(query)).one()
-    if sha256 is None:
-        raise HTTPException(404, f"run {run_id} has no diff: its worker uploads one when the run ends")
+    sha256, size = await service.diff_of(request.app.state.engine, user, project, run_id, sink)
     expires_at = datetime.now(UTC) + GET_TTL  # taken before signing, so never later than the URL
     filename = f"run-{run_id}.diff" if download else None
     url = await asyncio.to_thread(store.presign_get, sha256, filename=filename)
