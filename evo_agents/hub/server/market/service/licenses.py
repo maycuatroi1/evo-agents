@@ -25,24 +25,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-import secrets
-from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables, tables_seller
 from evo_agents.hub.seller_client import SellerClient, SellerUnavailable
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row, source_rows
-from evo_agents.hub.server.market_install import Installing, check_trust, install_checked
+from evo_agents.hub.server.base.errors import Conflict
+from evo_agents.hub.server.market.models.licenses import (
+    LAPSED,
+    MARKET_PAGE,
+    NO_SEALER,
+    NOTICE,
+    ORDER_NUMBER,
+    Bought,
+    BuyIn,
+    Checked,
+    HubIdentity,
+    Placer,
+    Purchase,
+    Purchases,
+)
+from evo_agents.hub.server.market.repository import licenses as repository
+from evo_agents.hub.server.market.repository.licenses import hub_id
+from evo_agents.hub.server.market.repository.market import source_rows
+from evo_agents.hub.server.market.service.install import Installing, check_trust, install_checked
+from evo_agents.hub.server.market.service.market import entry_of, source_row
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugin_publishers import trust
 from evo_agents.hub.server.plugin_store import (
@@ -55,89 +64,13 @@ from evo_agents.hub.server.plugin_store import (
 from evo_agents.hub.server.plugin_store import NOTICE as DISABLED_NOTICE
 from evo_agents.hub.server.plugin_tokens import revoke_tokens
 from evo_agents.hub.server.sealing import Sealer, Unsealable, market_purchase_aad
-from evo_agents.hub.server.security import AdminUser
-from evo_agents.hub.server.seller_api import Contact
+from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import license as lic
 from evo_agents.plugins.bundle import BundleError, read_bundle
 from evo_agents.plugins.market import CheckedRelease, signer_publisher
 from evo_agents.plugins.signing import SignatureError, SignatureUnavailable, verify
 
 log = logging.getLogger(__name__)
-
-NOTICE = "market_license_expiring"  # evo_agents.hub.runs.NOTICE_KINDS
-ORDER_NUMBER = re.compile(tables_seller.ORDER_NUMBER)
-LAPSED = "licence lapsed"  # how plugins.disabled_reason of a plugin turned off by its licence starts
-MARKET_PAGE = "/admin/market"
-NO_SEALER = (
-    "buying a plugin needs EVO_HUB_SECRETS_KEY: the hub seals the order's secret with it; an operator sets it "
-    "(`evo-agents hub secrets-key`)"
-)
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 502, 503)}
-
-router = APIRouter(prefix="/v1/market", tags=["market"], responses={401: {"model": ErrorBody}})
-
-
-class HubIdentity(BaseModel):
-    hub: str = Field(description="the hub's stable id, which a seller's licence names")
-    url: str | None = Field(None, description="EVO_HUB_PUBLIC_URL, which an order carries")
-
-
-class BuyIn(BaseModel):
-    months: Annotated[int, Field(ge=1, le=tables_seller.MAX_MONTHS)]
-    contact: Contact
-    trust_publisher: bool = Field(
-        False, description="trust the signer for the publisher from now on, when the hub does not yet"
-    )
-
-
-class Purchase(BaseModel):
-    id: int
-    seller: str
-    seller_url: str
-    plugin: str
-    publisher: str
-    number: str
-    months: int
-    usd_total: float
-    state: str = Field(description="open until the seller marks it paid, paid, or cancelled")
-    placed_by: str | None = None
-    placed_at: datetime
-    checked_at: datetime | None = None
-    last_error: str | None = None
-    license_id: str | None = None
-    valid_from: date | None = None
-    valid_until: date | None = Field(None, description="the first day the licence no longer covers")
-    license_state: str | None = Field(None, description="pending, active, grace or lapsed, today")
-
-
-class Bought(BaseModel):
-    purchase: Purchase
-    instructions: str = Field(description="how to pay the order, as the seller says")
-    trusted_publisher: bool
-
-
-class Purchases(BaseModel):
-    hub: str
-    purchases: list[Purchase]
-
-
-class Checked(BaseModel):
-    checked: int = Field(description="the open orders the hub asked their sellers about")
-    received: list[str] = Field(description="the licences received")
-    installed: list[str] = Field(description="the plugins installed or turned on again")
-    reminded: list[str]
-    lapsed: list[str] = Field(description="the plugins turned off")
-    errors: list[str]
-
-
-@dataclass(frozen=True)
-class Placer:
-    """The admin who ordered a plugin, as whom the hub installs it from the worker."""
-
-    user_id: int
-    login: str
-    token_id: int | None = None
-    admin: bool = True
 
 
 def today_utc() -> date:
@@ -148,19 +81,9 @@ def today_utc() -> date:
 # The hub's id
 
 
-async def hub_id(conn: AsyncConnection) -> str:
-    """The hub's stable id, made the first time it is asked for."""
-    h = tables.hub_identity
-    await conn.execute(pg_insert(h).values(hub_id=f"hub_{secrets.token_hex(16)}").on_conflict_do_nothing())
-    return await conn.scalar(select(h.c.hub_id))
-
-
-@router.get("/hub", response_model=HubIdentity)
-async def hub_identity(request: Request, user: AdminUser) -> HubIdentity:
-    """The hub's stable id, which a seller's licence names."""
-    async with request.app.state.engine.begin() as conn:
-        found = await hub_id(conn)
-    return HubIdentity(hub=found, url=request.app.state.config.public_url)
+async def hub_identity(conn: AsyncConnection, public_url: str | None) -> HubIdentity:
+    """The hub's stable id, made the first time it is asked for, and its address."""
+    return HubIdentity(hub=await hub_id(conn), url=public_url)
 
 
 # Buying
@@ -169,10 +92,10 @@ async def hub_identity(request: Request, user: AdminUser) -> HubIdentity:
 def _seller_of(index: dict, item: dict) -> dict:
     price = item.get("price") or {}
     if price.get("kind") == "free":
-        raise HTTPException(409, f"{item['id']} is free: install it with `evo-agents hub market install`")
+        raise Conflict(f"{item['id']} is free: install it with `evo-agents hub market install`")
     seller = next((s for s in index.get("sellers") or () if s["id"] == price.get("seller")), None)
     if seller is None:
-        raise HTTPException(409, f"the market lists no seller {price.get('seller')} for {item['id']}")
+        raise Conflict(f"the market lists no seller {price.get('seller')} for {item['id']}")
     return seller
 
 
@@ -212,30 +135,25 @@ def _purchase_model(row, today: date) -> Purchase:
     )
 
 
-def _purchases_query():
-    p, users = tables.market_purchases, tables.users
-    return select(p, users.c.login).join_from(p, users, users.c.id == p.c.placed_by, isouter=True)
-
-
-def _sealer(request: Request) -> Sealer:
+def sealer_of(request: Request) -> Sealer:
+    """The hub's sealer; 503 without EVO_HUB_SECRETS_KEY."""
     sealer = request.app.state.sealer
     if sealer is None:
         raise HTTPException(503, NO_SEALER)
     return sealer
 
 
-@router.post("/{source}/{plugin}/buy", response_model=Bought, status_code=201, responses=REFUSALS)
-async def buy(request: Request, source: SourceId, plugin: PluginId, body: BuyIn, user: AdminUser) -> Bought:
-    """Order a paid plugin of a market from its seller; the hub shows the order's number and how to pay it."""
+async def buy(request: Request, source: int, plugin: str, body: BuyIn, user: Principal) -> Bought:
+    """Order paid plugin ``plugin`` of market ``source`` from its seller, and keep the order with its secret sealed."""
     state = request.app.state
-    sealer = _sealer(request)
+    sealer = sealer_of(request)
     async with state.engine.begin() as conn:
         row = await source_row(conn, source)
         item = entry_of(row, plugin)
         seller = _seller_of(row.index, item)
         hub = await hub_id(conn)
     if item["tier"] != "isolated":
-        raise HTTPException(409, f"{plugin} is a core plugin: it ships in the hub's image")
+        raise Conflict(f"{plugin} is a core plugin: it ships in the hub's image")
     publisher, signer = item["publisher"]["id"], item["publisher"]["signer"]
     _, new = await check_trust(state.engine, state.config, publisher, signer, body.trust_publisher)
     client = SellerClient(seller["url"], transport=getattr(state, "seller_transport", None))
@@ -250,56 +168,39 @@ async def buy(request: Request, source: SourceId, plugin: PluginId, body: BuyIn,
     number = str(placed.get("number") or "")
     if not ORDER_NUMBER.fullmatch(number) or not isinstance(placed.get("secret"), str):
         raise HTTPException(502, f"the seller at {seller['url']} answered no order number; nothing was ordered")
-    p = tables.market_purchases
     async with state.engine.begin() as conn:
         if new:
             await trust(conn, user, state.config, publisher, signer, f"buying {plugin}")
-        made = await conn.execute(
-            insert(p)
-            .values(
-                source_id=source,
-                seller=seller["id"],
-                seller_url=seller["url"],
-                plugin=plugin,
-                publisher=publisher,
-                signer=signer,
-                number=number,
-                months=body.months,
-                usd_total=placed.get("usd_total") or 0,
-                secret=sealer.seal_stored(placed["secret"], market_purchase_aad(seller["url"], number)),
-                placed_by=user.user_id,
-            )
-            .returning(p.c.id)
+        purchase_id = await repository.add_purchase(
+            conn,
+            source_id=source,
+            seller=seller["id"],
+            seller_url=seller["url"],
+            plugin=plugin,
+            publisher=publisher,
+            signer=signer,
+            number=number,
+            months=body.months,
+            usd_total=placed.get("usd_total") or 0,
+            secret=sealer.seal_stored(placed["secret"], market_purchase_aad(seller["url"], number)),
+            placed_by=user.user_id,
         )
-        purchase_id = made.scalar_one()
         target = f"order:{number} seller:{seller['id']} plugin={plugin} months={body.months}"
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.MARKET_ORDER_PLACE, target=target
         )
-        found = (await conn.execute(_purchases_query().where(p.c.id == purchase_id))).one()
+        found = await repository.purchase(conn, purchase_id)
     log.info("paid plugin ordered", extra={"plugin": plugin, "order": number})
     instructions = str(placed.get("instructions") or "")[:2000]
     return Bought(purchase=_purchase_model(found, today_utc()), instructions=instructions, trusted_publisher=new)
 
 
-@router.get("/licenses", response_model=Purchases)
-async def purchases(request: Request, user: AdminUser) -> Purchases:
+async def purchases(conn: AsyncConnection) -> Purchases:
     """The hub's orders of paid plugins and their licences, the newest first."""
-    p = tables.market_purchases
-    async with request.app.state.engine.begin() as conn:
-        hub = await hub_id(conn)
-        rows = (await conn.execute(_purchases_query().order_by(p.c.id.desc()))).all()
+    hub = await hub_id(conn)
+    rows = await repository.purchases(conn)
     today = today_utc()
     return Purchases(hub=hub, purchases=[_purchase_model(row, today) for row in rows])
-
-
-@router.post("/licenses/check", response_model=Checked, responses=REFUSALS)
-async def check_now(request: Request, user: AdminUser) -> Checked:
-    """Ask the sellers about the open orders now, install what a licence covers, and turn off what lapsed."""
-    state = request.app.state
-    return await check_licenses(
-        Installing.of(request), _sealer(request), transport=getattr(state, "seller_transport", None)
-    )
 
 
 # Checking
@@ -312,8 +213,7 @@ def covers(row, today: date) -> bool:
 
 async def licence_problem(conn: AsyncConnection, plugin: str, today: date | None = None) -> str | None:
     """Why the store cannot install plugin ``plugin``: the hub bought it and no licence covers today; None otherwise."""
-    p = tables.market_purchases
-    rows = (await conn.execute(select(p).where(p.c.plugin == plugin, p.c.state == "paid"))).all()
+    rows = await repository.paid_of(conn, plugin)
     if not rows:
         return None
     today = today or today_utc()
@@ -343,22 +243,16 @@ def _download(client: SellerClient, row, token: str, hub: str, sigstore) -> Chec
         raise SellerUnavailable(f"the seller sent {manifest.id} of {manifest.publisher}, not {row.plugin}")
     signature = found.get("signature")
     signed = verify(data, signature, row.publisher, (signer_publisher(row.publisher, row.signer),), sigstore)
-    return CheckedRelease(tag=manifest.version, manifest=manifest, data=data, signature=signature, signed=signed)
+    return CheckedRelease(tag=manifest.version, manifest=manifest, data=data, signature=signature, signed=signed)  # pyright: ignore[reportArgumentType]
 
 
 async def _note(engine: AsyncEngine, purchase_id: int, error: str | None) -> None:
-    p = tables.market_purchases
     async with engine.begin() as conn:
-        await conn.execute(
-            update(p)
-            .where(p.c.id == purchase_id)
-            .values(checked_at=func.now(), last_error=None if error is None else error[: tables_seller.MAX_ERROR_CHARS])
-        )
+        await repository.note(conn, purchase_id, error)
 
 
 async def _poll(hub: Installing, sealer: Sealer, transport, hub_ref: str, row, done: Checked) -> None:
     """Ask the seller about open order ``row``; keep its licence once paid and checked."""
-    p = tables.market_purchases
     try:
         secret = sealer.open_stored(row.secret, market_purchase_aad(row.seller_url, row.number))
     except Unsealable:
@@ -375,9 +269,7 @@ async def _poll(hub: Installing, sealer: Sealer, transport, hub_ref: str, row, d
         client.close()
     if answer.get("state") == "cancelled":
         async with hub.engine.begin() as conn:
-            await conn.execute(
-                update(p).where(p.c.id == row.id).values(state="cancelled", checked_at=func.now(), last_error=None)
-            )
+            await repository.cancel(conn, row.id)
         return
     token = answer.get("license")
     if answer.get("state") != "paid" or not isinstance(token, str):
@@ -393,23 +285,9 @@ async def _poll(hub: Installing, sealer: Sealer, transport, hub_ref: str, row, d
             reason = getattr(exc, "reason", "unavailable")
             error = f"the licence of order {row.number} is refused ({reason}): {exc}"
             done.errors.append(error)
-            await conn.execute(update(p).where(p.c.id == row.id).values(checked_at=func.now(), last_error=error))
+            await repository.refuse(conn, row.id, error)
             return
-        await conn.execute(
-            update(p)
-            .where(p.c.id == row.id)
-            .values(
-                state="paid",
-                license_id=granted.license,
-                valid_from=granted.valid_from,
-                valid_until=granted.valid_until,
-                key_id=granted.key,
-                token=token,
-                received_at=func.now(),
-                checked_at=func.now(),
-                last_error=None,
-            )
-        )
+        await repository.keep_licence(conn, row.id, granted, token)
         target = (
             f"license:{granted.license} order:{row.number} plugin={row.plugin} from={granted.valid_from} "
             f"until={granted.valid_until}"
@@ -426,7 +304,7 @@ async def _install(hub: Installing, transport, hub_ref: str, row, done: Checked)
             if plugin.disabled_reason is None or not plugin.disabled_reason.startswith(LAPSED):
                 return  # running, or turned off for another reason that a hub admin settles
             placer = await _placer(conn, row)
-            await set_installed(conn, placer, plugin, plugin.installed_version, upgrade=False)
+            await set_installed(conn, placer, plugin, plugin.installed_version, upgrade=False)  # pyright: ignore[reportArgumentType]
             done.installed.append(row.plugin)
             return
         placer = await _placer(conn, row)
@@ -450,14 +328,12 @@ async def _install(hub: Installing, transport, hub_ref: str, row, done: Checked)
 
 
 async def _placer(conn: AsyncConnection, row) -> Placer:
-    users = tables.users
-    login = await conn.scalar(select(users.c.login).where(users.c.id == row.placed_by))
+    login = await repository.login_of(conn, row.placed_by)
     return Placer(row.placed_by, login or "")
 
 
 async def _remind(conn: AsyncConnection, row, admins: list[int]) -> None:
-    p = tables.market_purchases
-    await conn.execute(update(p).where(p.c.id == row.id).values(reminded_at=func.now()))
+    await repository.mark_reminded(conn, row.id)
     body = (
         f"The licence of {row.plugin} (order {row.number} with {row.seller}) ends on {row.valid_until.isoformat()}. "
         f"The hub keeps it on for {lic.GRACE_DAYS} days more, then turns it off; renew it in the market."
@@ -476,13 +352,8 @@ async def _remind(conn: AsyncConnection, row, admins: list[int]) -> None:
 
 
 async def _lapse(conn: AsyncConnection, plugin, last, admins: list[int]) -> None:
-    plugins = tables.plugins
     reason = f"{LAPSED}: the last licence of {plugin.name} ended on {last.valid_until.isoformat()}"
-    await conn.execute(
-        update(plugins)
-        .where(plugins.c.id == plugin.id)
-        .values(disabled_reason=reason[:MAX_REASON_CHARS], disabled_at=func.now())
-    )
+    await repository.turn_off(conn, plugin.id, reason[:MAX_REASON_CHARS])
     await revoke_tokens(conn, plugin.id)
     target = f"license:{last.license_id} plugin={plugin.name} until={last.valid_until.isoformat()}"
     await audit.record(conn, actor_id=None, token_id=None, action=audit.MARKET_LICENSE_LAPSE, target=target)
@@ -504,9 +375,8 @@ async def _lapse(conn: AsyncConnection, plugin, last, admins: list[int]) -> None
 
 async def _follow_up(hub: Installing, transport, hub_ref: str, today: date, done: Checked) -> None:
     """Install what a licence covers, remind of what ends soon and turn off what lapsed, plugin by plugin."""
-    p = tables.market_purchases
     async with hub.engine.begin() as conn:
-        rows = (await conn.execute(select(p).where(p.c.state == "paid").order_by(p.c.plugin, p.c.valid_until))).all()
+        rows = await repository.paid(conn)
     by_plugin: dict[str, list] = {}
     for row in rows:
         by_plugin.setdefault(row.plugin, []).append(row)
@@ -536,10 +406,9 @@ async def check_licenses(
     remind the hub admins of a licence that ends soon, and turn off a plugin whose licence lapsed."""
     today = today or today_utc()
     done = Checked(checked=0, received=[], installed=[], reminded=[], lapsed=[], errors=[])
-    p = tables.market_purchases
     async with hub.engine.begin() as conn:
         hub_ref = await hub_id(conn)
-        open_rows = (await conn.execute(select(p).where(p.c.state == "open").order_by(p.c.id))).all()
+        open_rows = await repository.open_purchases(conn)
     if sealer is not None:
         for row in open_rows:
             done.checked += 1
@@ -551,3 +420,11 @@ async def check_licenses(
             extra={"received": len(done.received), "installed": len(done.installed), "lapsed": len(done.lapsed)},
         )
     return done
+
+
+async def check_now(request: Request) -> Checked:
+    """``check_licenses`` with what the request's app holds."""
+    state = request.app.state
+    return await check_licenses(
+        Installing.of(request), sealer_of(request), transport=getattr(state, "seller_transport", None)
+    )

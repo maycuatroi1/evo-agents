@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.market_licenses import licence_problem
+from evo_agents.hub.server.market.service.licenses import licence_problem
 from evo_agents.hub.server.plugin_configs import (
     Place,
     PluginConfigLayer,

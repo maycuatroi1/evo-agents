@@ -461,7 +461,7 @@ NOTICE_KINDS = (
     PROBE_REPORT_NOTICE,
     "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
-    "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market_licenses``)
+    "market_license_expiring",  # a paid plugin's licence ends in 7 days (``server.market.service.licenses``)
     "today",  # Today's summary push, to the member's devices alone, once a day (``server.digests.service.today``)
     "kg_optimize",  # the report of a project's KG optimize run, to its night shift's owner (``server.kg_optimize``)
     "agent_pool_empty",  # a run of an agent in pool mode queued with no node of its pool ready (``agent_placement``)

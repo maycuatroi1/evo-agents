@@ -319,8 +319,8 @@ async def market_refresh(context: JobContext, timestamp: int | None = None) -> d
 @queue.task(name=jobs.MARKET_LICENSES, pass_context=True, queueing_lock=jobs.MARKET_LICENSES)
 async def market_licenses(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents import __version__
-    from evo_agents.hub.server.market_install import Installing
-    from evo_agents.hub.server.market_licenses import check_licenses
+    from evo_agents.hub.server.market.service.install import Installing
+    from evo_agents.hub.server.market.service.licenses import check_licenses
     from evo_agents.plugins.signing import default_sigstore
 
     found = hub(context)
@@ -339,7 +339,7 @@ async def market_licenses(context: JobContext, timestamp: int | None = None) -> 
 @queue.periodic(cron="17 3 * * *")
 @queue.task(name=jobs.MARKET_SIGNALS, pass_context=True, queueing_lock=jobs.MARKET_SIGNALS)
 async def market_signals(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.seller import push_signals
+    from evo_agents.hub.server.seller.service.signals import push_signals
 
     found = hub(context)
     return await push_signals(found.engine, found.config)

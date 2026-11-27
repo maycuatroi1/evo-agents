@@ -1,5 +1,5 @@
 """``evo-agents hub market``: the plugin markets the hub reads (``evo_agents.hub.server.market``), and installing
-from them or from a GitHub release (``evo_agents.hub.server.market_install``); docs/market.md.
+from them or from a GitHub release (``evo_agents.hub.server.market.service.install``); docs/market.md.
 
 - ``market list [--search WORDS] [--industry I] [--category C] [--source ID]`` prints the plugins of every market with
   their status on the hub; ``market show NAME [--source ID]`` one plugin with its publisher and signer, what its latest
@@ -8,7 +8,7 @@ from them or from a GitHub release (``evo_agents.hub.server.market_install``); d
   its GitHub release; a signer the hub does not trust yet is asked about at a terminal, or trusted with ``--trust``;
 - ``market request NAME --project P [--source ID]`` (a project's admins) asks the hub admins to install one;
 - ``market source list|add REPO [--ref] [--path] [--token-stdin]|remove ID|refresh ID`` (hub admins): the markets;
-- buying a paid plugin (``evo_agents.hub.server.market_licenses``): ``market buy NAME --months N --name --email
+- buying a paid plugin (``evo_agents.hub.server.market.service.licenses``): ``market buy NAME --months N --name --email
   [--trust]`` orders it from its seller and prints how to pay; ``market licenses [--check]`` the hub's orders and
   licences; ``market hub-id`` the id a licence names;
 - selling them, the hub feature ``seller`` (``evo_agents.hub.server.seller``): ``market seller-key FILE`` writes a
