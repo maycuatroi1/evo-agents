@@ -4,7 +4,7 @@ Revision ID: 0267
 Revises: 0266
 Create Date: 2026-11-24
 
-Who reads a node or an edge of a project's graph is now a disjunction of labels (``evo_agents.kg.policy.PolicyDNF``),
+Who reads a node or an edge of a project's graph is now a disjunction of labels (``evo_agents.schema.policy.PolicyDNF``),
 one for each independent way the sources reveal it. A row keeps its first atom in label_lvl, label_loc, label_int and
 label_aud as before, so a reader that knows no other still reads it only when that atom lets it; an element of more
 than one atom also keeps all of them in label_guards, a JSON list of objects (lvl, loc, int, aud when it has one, and

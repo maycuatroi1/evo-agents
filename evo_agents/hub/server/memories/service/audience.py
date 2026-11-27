@@ -1,4 +1,4 @@
-"""The audience of memories (``evo_agents.kg.policy``): a memory derived from chat messages carries the audience of
+"""The audience of memories (``evo_agents.schema.policy``): a memory derived from chat messages carries the audience of
 those chats, and every read of memories gives one only to a reader whose audience holds it (criterion a6 of plan
 chat-history-in-kg).
 
@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.server import run_audience
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_of
+from evo_agents.schema.policy import TOP_AUDIENCE, audience_below, audience_of
 
 
 def label_audience(label) -> frozenset[str]:

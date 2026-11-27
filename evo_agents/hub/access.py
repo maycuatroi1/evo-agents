@@ -1,4 +1,4 @@
-"""Who may read and who may push what in a hub project, on the label lattice of ``evo_agents.kg.policy`` (D8).
+"""Who may read and who may push what in a hub project, on the label lattice of ``evo_agents.schema.policy`` (D8).
 
 A project on the hub keeps the ladder (levels, locations) and the sinks of its knowledge.yaml, and every object in
 it carries a label by names, ``{level, location, integrity, projects}``. Two rules decide everything:
@@ -14,7 +14,7 @@ from the first rule: L must be below the label of M, with L.projects a subset of
 the hub's one grant-only rule: the memory pages apply ``visible_by_grant``, and the knowledge graph pages read the
 graph with ``grant_label`` as the ceiling, the same label ``ceiling`` meets with a sink's clearance.
 
-A knowledge graph's label also has an audience (``evo_agents.kg.policy``). The reader's, which the hub computes from
+A knowledge graph's label also has an audience (``evo_agents.schema.policy``). The reader's, which the hub computes from
 the database at each read (``evo_agents.hub.server.kg_audience``), goes into the grant's label; a sink's clearance
 holds the highest audience, so the meet keeps the reader's, and a push may carry items with an audience.
 
@@ -22,7 +22,7 @@ All of them fail closed. When reading, a level or location the ladder lacks coun
 be read hides its object, and a max level or sink the project lacks lets nothing through. When pushing, a name the
 ladder lacks is refused. The lattice itself (meet, below) is ``Label``'s; this module maps names onto it.
 
-Standard library only, besides ``evo_agents.kg.policy``: the server enforces the rules, and the client can say
+Standard library only, besides ``evo_agents.schema.policy``: the server enforces the rules, and the client can say
 before a push what would be refused.
 """
 
@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from evo_agents.kg.policy import TOP_AUDIENCE, Clearance, Label, Policy
+from evo_agents.schema.policy import TOP_AUDIENCE, Clearance, Label, Policy
 
 ROLES = ("reader", "writer", "admin")  # each role may do what the ones before it may
 HUB_KIND = "hub"

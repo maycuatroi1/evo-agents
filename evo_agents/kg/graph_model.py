@@ -9,8 +9,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from evo_agents.kg import search as text_search
-from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 from evo_agents.kg.protocol import canonical_json, sha256
+from evo_agents.schema.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 
 # the version of the tables a build's rows fill, part of every content hash: 4: units, nodes and edges gained
 # label_aud, node_fts_aud came; 3: node_fts kind and path

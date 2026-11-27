@@ -12,7 +12,7 @@ A link code is LINK_CODE_CHARS characters of ``A-Z``, ``a-z``, ``0-9``, ``_`` an
 parameter allows), which lives LINK_SECONDS; the hub keeps only its SHA-256 (``code_hash``).
 
 A project is restricted when its hub sink is cleared at or above the level ``customer`` or the location
-``domestic-only`` on the project's own ladder, as ``evo_agents.kg.policy`` reads a clearance (``restricted``), and it
+``domestic-only`` on the project's own ladder, as ``evo_agents.schema.policy`` reads a clearance (``restricted``), and it
 fails closed: a level or location the ladder lacks, a clearance without a level, a ladder without the rung, or no hub
 sink at all is restricted too. A restricted project gets messages with its name, the kind of thing that waits and the
 link, nothing else (``what_waits`` names the kind). ``restricted_for`` reads a channel of any clearance the same way.
@@ -85,7 +85,7 @@ def _mark(ladder: Sequence[str], name: str) -> int:
 def restricted(clearance, levels: Sequence[str] | None, locations: Sequence[str] | None) -> bool:
     """Whether a project whose hub sink has ``clearance``, on the project's ladder of ``levels`` and ``locations``,
     gets minimal messages: cleared at or above the level customer or the location domestic-only, read as
-    ``evo_agents.kg.policy`` reads a clearance (one without a location may receive any, so it sits at the top of the
+    ``evo_agents.schema.policy`` reads a clearance (one without a location may receive any, so it sits at the top of the
     locations). It fails closed: no hub sink, no level, a level or location the ladder lacks, or a ladder without
     customer (or domestic-only) and a clearance above its lowest rung is restricted."""
     return restricted_for(clearance, levels, locations, RESTRICTED_LEVEL, RESTRICTED_LOCATION, below=True)
@@ -120,7 +120,7 @@ def restricted_for(
     the project's ladder, in level or in location. The ladder is read as ``restricted`` reads it, failing closed: no
     hub sink, a sink without a level, or a level or location (the sink's or the channel's) the ladder lacks is
     restricted. A location of None, the sink's or the channel's, sits at the top of the locations, as
-    ``evo_agents.kg.policy`` reads a clearance that names none: the channel then receives any location.
+    ``evo_agents.schema.policy`` reads a clearance that names none: the channel then receives any location.
 
     With ``below`` the channel takes what sits under its level and its location, not at them, and on a ladder that
     lacks its level or location, only the lowest rung there: ``restricted`` is the clearance customer, domestic-only,

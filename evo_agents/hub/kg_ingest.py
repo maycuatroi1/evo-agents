@@ -29,8 +29,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS, Label, Policy
 from evo_agents.kg.protocol import canonical_json, sha256, source_of
+from evo_agents.schema.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS, Label, Policy
 
 SOURCE_FIELDS = ("id", "connector", "label", "code", "repo", "ref")  # what the build and the health measure read
 NAMED_FIELDS = ("repo", "ref")  # names, not paths; an older hub refuses them and a push resends without
@@ -170,7 +170,7 @@ def _identifier_problems(knowledge: dict) -> list[str]:
 
 def _ontology_problems(knowledge: dict, ontology) -> list[str]:
     """Why ``ontology`` and the file ``knowledge`` names for it do not go together, and its errors."""
-    from evo_agents.kg.schema import validate_ontology
+    from evo_agents.schema.ontology import validate_ontology
 
     if (ontology is None) != (knowledge.get("ontology") is None):
         return ["knowledge.ontology and the ontology must be given together"]

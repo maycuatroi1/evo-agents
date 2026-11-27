@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from evo_agents.kg.protocol import PRINCIPAL
+from evo_agents.schema.canonical import PRINCIPAL
 
 DEFAULT_LEVELS = ["public", "internal", "customer", "secret"]
 DEFAULT_LOCATIONS = ["any"]

@@ -15,10 +15,10 @@ from evo_agents.kg.build import verify_rows
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.graph_model import Graph, edge_id, label_columns
 from evo_agents.kg.memo import Memo
-from evo_agents.kg.policy import Label
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.policy import Label
 from tests.kg.built import build, rows_of, view_of
 from tests.kg.conftest import doc
 from tests.kg.hub_graph import hub_session, hub_status

@@ -16,7 +16,7 @@ A list of chats in ``audience`` narrows the document: a reader must be a member 
 
 The project's ontology decides what may be declared: ``type`` is a node kind it adds (a hub kind is refused, in any case,
 since a document is no commit or plan step), and a relation of ``links`` one it knows, its own or the hub's
-(``evo_agents.kg.schema.known_relations``). A project without an ontology takes no type. A declared type makes the
+(``evo_agents.schema.ontology.known_relations``). A project without an ontology takes no type. A declared type makes the
 node ``plugin.docs:<kind in lower case>:<slug>`` of that kind, named by the document's title, which the document
 ``defines``; each link is an edge from it (from the document itself without a type) to the typed node of the target
 document, or to the target's document node when it declares no type. A link to a slug no document has is dropped by
@@ -44,8 +44,8 @@ from dataclasses import dataclass
 import yaml
 
 from evo_agents.hub.tables_docs import SLUG
-from evo_agents.kg.policy import DEFAULT_LEVELS
-from evo_agents.kg.schema import HUB_KINDS, entry_name, known_relations
+from evo_agents.schema.ontology import HUB_KINDS, entry_name, known_relations
+from evo_agents.schema.policy import DEFAULT_LEVELS
 
 FRONT = re.compile(r"\A﻿?---[ \t]*\r?\n(.*?)^---[ \t]*(?:\r?\n|\Z)", re.S | re.M)
 KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")

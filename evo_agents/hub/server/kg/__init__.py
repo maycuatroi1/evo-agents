@@ -117,7 +117,7 @@ from evo_agents.hub.server.kg.service.tools import unknown_refs as unknown_refs
 from evo_agents.hub.server.kg.service.tools import visible_nodes as visible_nodes
 from evo_agents.hub.server.kg_audience import reader_audience as reader_audience
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.kg.policy import Label, Policy
+from evo_agents.schema.policy import Label, Policy
 
 log = logging.getLogger(__name__)
 

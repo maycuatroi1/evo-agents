@@ -11,10 +11,10 @@ from evo_agents.harness import Harness, plan_digest
 from evo_agents.kg.connectors import _files, gitcli
 from evo_agents.kg.connectors import git as git_connector
 from evo_agents.kg.connectors import github as github_api
+from evo_agents.kg.connectors.conformance import run_conformance
+from evo_agents.kg.connectors.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.protocol.conformance import run_conformance
-from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.sync import accept_removals, sync_project
 from tests.kg import built
 from tests.kg.hub_graph import hub_session

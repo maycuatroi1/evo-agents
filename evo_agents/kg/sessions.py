@@ -6,7 +6,7 @@
     v, session_id, level, location, integrity, projects, audience, results_read, last_updated
 
 ``audience`` is there once a result revealed one: the principals ``chat:<id>`` and ``grant:<project>:<level>`` of the
-elements read (``evo_agents.kg.policy``), so the record names the ids of the chats whose items the session read.
+elements read (``evo_agents.schema.policy``), so the record names the ids of the chats whose items the session read.
 The record only rises: a join never lowers the level or the location, never turns integrity U back into T,
 and never drops a project or a principal; a record that exists but cannot be read is left as it is, and the join fails
 rather than start the record again from one result. Besides those chat ids it names levels and projects, never ids or
@@ -43,8 +43,8 @@ from pathlib import Path
 from evo_agents import filelock
 from evo_agents.kg.corpus import kg_home
 from evo_agents.kg.ids import utc_now
-from evo_agents.kg.policy import EVERY, Label, Policy, audience_of
 from evo_agents.kg.project import resolve_project
+from evo_agents.schema.policy import EVERY, Label, Policy, audience_of
 
 SESSION_VERSION = 1
 # Tool names of the evo-kg server: from the plugin, or declared by hand under the name evo-kg.

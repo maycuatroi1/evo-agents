@@ -15,24 +15,22 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
-from importlib import metadata
 from pathlib import Path
 
 import yaml
 
-from evo_agents.kg.policy import Policy
-from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.schema import known_kinds, validate_ontology
-from evo_agents.plugins.core import python_contributions
+from evo_agents.plugins.connectors import CONNECTOR_GROUP as CONNECTOR_GROUP
+from evo_agents.plugins.connectors import REGISTRY as CONNECTORS
 from evo_agents.plugins.manifest import CHANNEL_KIND
 from evo_agents.schema import Issue, errors, validate
+from evo_agents.schema.canonical import canonical_json, sha256
+from evo_agents.schema.ontology import known_kinds, validate_ontology
+from evo_agents.schema.policy import Policy
 
 MANIFEST = "harness.yaml"
 CONTRACTS = "contracts.yaml"
 DEFAULT_KNOWLEDGE = "knowledge.yaml"
 SCHEMA_DIR = Path(__file__).parent / "schemas"
-BUILTIN_CONNECTORS = ("harness", "git", "exec")
-CONNECTOR_GROUP = "evo_agents.kg.connectors"
 
 HUB_KEY = "hub"  # what the evo-agents hub adds to the read-only copy of a plan it keeps
 SKILL_REGISTRY = Path("~/.claude/harness/registry.json")  # the harness-engineering skill and `hub registry pull`
@@ -180,15 +178,8 @@ def registered_harnesses() -> list[dict]:
 
 
 def available_connectors() -> set[str]:
-    """The builtin connectors, those core plugins contribute (``evo_agents.plugins.core``) and the entry points of
-    group evo_agents.kg.connectors."""
-    names = set(BUILTIN_CONNECTORS)
-    names.update(python_contributions("kg_connectors"))
-    try:
-        names.update(ep.name for ep in metadata.entry_points(group=CONNECTOR_GROUP))
-    except Exception:  # pragma: no cover - broken environments still validate builtins
-        pass
-    return names
+    """The names of ``evo_agents.plugins.connectors``: the builtins, the core plugins' and the entry points'."""
+    return CONNECTORS.names()
 
 
 # ---------------------------------------------------------------------------------------------

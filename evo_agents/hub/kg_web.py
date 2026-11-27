@@ -36,10 +36,10 @@ from evo_agents.hub import kg_decisions, kg_entity_graph, kg_map, kg_review
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession, Snapshotted, reading
 from evo_agents.kg import freshness
 from evo_agents.kg.graph_scope import GraphScope
-from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.schema.policy import Label, Policy
 
 MAX_HOPS = 2
 MAX_NODES = 150

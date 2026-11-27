@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
-from evo_agents.kg.policy import audience_below
+from evo_agents.schema.policy import audience_below
 
 
 @dataclass(frozen=True)

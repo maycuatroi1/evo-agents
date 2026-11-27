@@ -34,7 +34,7 @@ from evo_agents.hub.server.hub_admin.models.admin import (
 from evo_agents.hub.server.hub_admin.repository import admin as repository
 from evo_agents.hub.server.paging import Paging
 from evo_agents.hub.server.security import admin_login, holds
-from evo_agents.kg.policy import Policy
+from evo_agents.schema.policy import Policy
 
 
 async def users(engine: AsyncEngine, config: HubConfig, page: Paging) -> list[UserRow]:

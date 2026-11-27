@@ -13,7 +13,8 @@ import pytest
 import yaml
 
 from evo_agents.kg import build
-from evo_agents.kg.pipeline.link import Linker
+from evo_agents.kg.memo import Stage
+from evo_agents.kg.pipeline.link import LINK, Linker
 from evo_agents.kg.project import load_project_at
 from tests.kg import built
 from tests.kg.built import sync_build
@@ -160,7 +161,7 @@ def test_link_version_invalidates_old_cross_repo_edges_without_source_changes(tw
         return old_ref(self, kind, target)
 
     with monkeypatch.context() as old:
-        old.setattr(build, "LINK_VERSION", "11")
+        old.setattr(build, "LINK", Stage(LINK.name, "11"))
         old.setattr(Linker, "_module_files", legacy_files)
         old.setattr(Linker, "_module_or_commit", legacy_ref)
         before = sync_build(two_repos)

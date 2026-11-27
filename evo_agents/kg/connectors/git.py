@@ -73,8 +73,9 @@ from pathlib import Path
 from evo_agents import __version__
 from evo_agents.kg.connectors import gitcli, github
 from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
+from evo_agents.kg.connectors.base import ConfigError, SourceConnector
 from evo_agents.kg.extract.scip_index import Scip
-from evo_agents.kg.protocol import canonical_json, finalize_item, hello, sha256
+from evo_agents.kg.protocol import canonical_json, finalize_item, sha256
 from evo_agents.kg.redact import redact_file
 
 # Keys of a source that say when or how it runs, or what the build does with its items: they leave the items as they
@@ -92,13 +93,13 @@ def repo_dir(ctx) -> Path:
             path = ctx.harness_root / path
         return path
     if ctx.harness is None:
-        raise ValueError("a git source with repo: needs a harness")
+        raise ConfigError("a git source with repo: needs a harness")
     repo = ctx.harness.repo(source["repo"])
     if repo is None:
-        raise ValueError(f"repo {source['repo']!r} is not in harness.yaml")
+        raise ConfigError(f"repo {source['repo']!r} is not in harness.yaml")
     path = ctx.harness.repo_path(repo)
     if path is None:
-        raise ValueError(f"repo {source['repo']!r} has no path in harness.yaml")
+        raise ConfigError(f"repo {source['repo']!r} has no path in harness.yaml")
     return path
 
 
@@ -351,69 +352,82 @@ def history_and_pulls(ctx, repo: Path, commit: str, repo_name: str, origin: str)
     return (yield from pull_items(ctx, repo_name, origin, prior))
 
 
-def run(ctx):
-    sid = ctx.source_id
-    yield hello("git", __version__, list_complete=True, rev_exact=True, history=True)
-    try:
-        repo = repo_dir(ctx)
+class GitConnector(SourceConnector):
+    """The files of a commit of a checkout, then its history and pull requests (see the module)."""
+
+    name = "git"
+
+    def features(self) -> dict:
+        return {"history": True}
+
+    def _checkout(self) -> tuple[Path, str]:
+        repo = repo_dir(self.ctx)
         if not gitcli.is_repo(repo):
-            raise ValueError(f"{repo} is not a git checkout")
-    except ValueError as exc:
-        yield {"type": "error", "failure": "config", "message": str(exc)}
-        yield {"type": "closed", "status": "error", "exception": str(exc)}
-        return
-    ref = ctx.source.get("ref") or "HEAD"
-    if ctx.source.get("fetch"):
-        yield from _fetch(repo, ref)
-    try:
-        commit = gitcli.resolve(repo, ref)
-    except gitcli.GitError as exc:
-        yield {"type": "error", "failure": "config", "message": str(exc)}
-        yield {"type": "closed", "status": "error", "exception": str(exc)}
-        return
+            raise ConfigError(f"{repo} is not a git checkout")
+        return repo, self.ctx.source.get("ref") or "HEAD"
 
-    include, exclude, allow = ctx.source.get("include"), ctx.source.get("exclude"), ctx.source.get("allow")
-    assets = ctx.source.get("assets", True)
-    tree = [(sha, path) for sha, path in gitcli.ls_tree(repo, commit) if not excluded(path, exclude, allow)]
-    files = [(sha, path) for sha, path in tree if selected(path, include, exclude, allow)]
-    others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude, allow)]
-    times = gitcli.last_change_times(repo, commit)
-    fallback_time = gitcli.commit_time(repo, commit)
-    entry = _repo_entry(ctx)
-    origin = entry.get("origin", "")
-    branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
-    repo_name = ctx.source.get("repo") or repo.name
-    scip = Scip(ctx.source, repo)  # the SCIP index of the checkout, when the source's code backend reads one
+    def items(self):
+        ctx = self.ctx
+        repo, ref = self._checkout()
+        if ctx.source.get("fetch"):
+            yield from _fetch(repo, ref)
+        try:
+            commit = gitcli.resolve(repo, ref)
+        except gitcli.GitError as exc:
+            raise ConfigError(str(exc)) from exc
+        entry = _repo_entry(ctx)
+        origin = entry.get("origin", "")
+        branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
+        repo_name = ctx.source.get("repo") or repo.name
+        count = yield from self._files(repo, commit, origin, branch, repo_name)
+        pulls = yield from history_and_pulls(ctx, repo, commit, repo_name, origin)
+        cursor = read_cursor(repo, ref, commit, origin=origin, branch=branch, default=entry.get("default_branch"))
+        yield {"type": "state", "cursor": {**cursor, "input": read_input(ctx), **({"pulls": pulls} if pulls else {})}}
+        yield {"type": "listing", "scope": f"{ctx.source_id}:file:", "complete": True, "count": count}
 
-    count = 0
-    batch = 200
-    for start in range(0, len(files), batch):
-        chunk = files[start : start + batch]
-        blobs = gitcli.cat_blobs(repo, [sha for sha, _ in chunk])
-        for sha, path in chunk:
-            item = blob_item(
-                f"{sid}:file:{path}",
-                path,
-                sha,
-                blobs.get(sha, b""),
-                rev_time=times.get(path, fallback_time),
-                uri=gitcli.web_url(origin, branch, path) if origin else None,
-                assets=assets,
-            )
-            if item is None:
-                continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
-            # No commit in props: it would change every item's hash on every commit.
+    def _files(self, repo: Path, commit: str, origin: str, branch: str, repo_name: str):
+        """The items of the files of ``commit``, read ones then those known by path only; returns how many."""
+        sid, source = self.ctx.source_id, self.ctx.source
+        include, exclude, allow = source.get("include"), source.get("exclude"), source.get("allow")
+        assets = source.get("assets", True)
+        tree = [(sha, path) for sha, path in gitcli.ls_tree(repo, commit) if not excluded(path, exclude, allow)]
+        files = [(sha, path) for sha, path in tree if selected(path, include, exclude, allow)]
+        others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude, allow)]
+        times = gitcli.last_change_times(repo, commit)
+        fallback_time = gitcli.commit_time(repo, commit)
+        scip = Scip(source, repo)  # the SCIP index of the checkout, when the source's code backend reads one
+
+        count = 0
+        batch = 200
+        for start in range(0, len(files), batch):
+            chunk = files[start : start + batch]
+            blobs = gitcli.cat_blobs(repo, [sha for sha, _ in chunk])
+            for sha, path in chunk:
+                item = blob_item(
+                    f"{sid}:file:{path}",
+                    path,
+                    sha,
+                    blobs.get(sha, b""),
+                    rev_time=times.get(path, fallback_time),
+                    uri=gitcli.web_url(origin, branch, path) if origin else None,
+                    assets=assets,
+                )
+                if item is None:
+                    continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
+                # No commit in props: it would change every item's hash on every commit.
+                item["props"]["repo"] = repo_name
+                yield finalize_item(scip.annotate(item))
+                count += 1
+        for sha, path in others:  # known by path only: never read, so no blob fetch
+            uri = gitcli.web_url(origin, branch, path) if origin else None
+            rev_time = times.get(path, fallback_time)
+            item = asset_item(f"{sid}:file:{path}", path, rev=sha, rev_time=rev_time, uri=uri, size=0)
             item["props"]["repo"] = repo_name
-            yield finalize_item(scip.annotate(item))
+            yield finalize_item(item)
             count += 1
-    for sha, path in others:  # known by path only: never read, so no blob fetch
-        uri = gitcli.web_url(origin, branch, path) if origin else None
-        item = asset_item(f"{sid}:file:{path}", path, rev=sha, rev_time=times.get(path, fallback_time), uri=uri, size=0)
-        item["props"]["repo"] = repo_name
-        yield finalize_item(item)
-        count += 1
-    pulls = yield from history_and_pulls(ctx, repo, commit, repo_name, origin)
-    cursor = read_cursor(repo, ref, commit, origin=origin, branch=branch, default=entry.get("default_branch"))
-    yield {"type": "state", "cursor": {**cursor, "input": read_input(ctx), **({"pulls": pulls} if pulls else {})}}
-    yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
-    yield {"type": "closed", "status": "ok"}
+        return count
+
+
+def run(ctx):
+    """The messages of a run of the git connector over the source of ``ctx``."""
+    return iter(GitConnector(ctx))

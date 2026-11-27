@@ -38,7 +38,7 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.kg_audience import person_audience, reader_audience
 from evo_agents.hub.server.security import Principal, RunScope
 from evo_agents.kg import serve
-from evo_agents.kg.policy import Label
+from evo_agents.schema.policy import Label
 from tests.hub.kg_fixture import AGENT, LEVELS
 from tests.hub.test_mcp import MCP_HEADERS, call
 from tests.kg import built as memory

@@ -13,11 +13,11 @@ from typing import Protocol
 
 from evo_agents import __version__
 from evo_agents.kg import audit
+from evo_agents.kg.connectors.runner import ConnectorContext, ConnectorError, ConnectorRun, credential_env
 from evo_agents.kg.corpus import Corpus, ItemRecord, LogWriter, run_epoch
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
 from evo_agents.kg.project import Project, ProjectError, read_index, remember
 from evo_agents.kg.protocol import StreamChecker, sha256
-from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorError, ConnectorRun, credential_env
 
 DEFAULT_MAX_REMOVAL_RATIO = 0.3
 DEFAULT_MIN_SCOPE = 10  # the ratio guard only applies once a scope holds this many items

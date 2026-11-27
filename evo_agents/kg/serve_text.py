@@ -6,10 +6,10 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from evo_agents.kg.policy import Label
 from evo_agents.kg.refs import named_by, readable
 from evo_agents.kg.serve_view import ANSWERS_NOTHING, SessionView
 from evo_agents.kg.text import slugify
+from evo_agents.schema.policy import Label
 
 KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 SPAN = re.compile(r"lines? (\d+)(?:-(\d+))?")

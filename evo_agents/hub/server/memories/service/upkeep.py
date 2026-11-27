@@ -47,7 +47,7 @@ from evo_agents.hub.server.memories.models import INDEX_BYTES, RESTORE, Memory
 from evo_agents.hub.server.memories.service import core
 from evo_agents.hub.server.memories.service.audience import label_audience
 from evo_agents.hub.server.security import Principal, holds
-from evo_agents.kg.policy import audience_below
+from evo_agents.schema.policy import audience_below
 
 log = logging.getLogger(__name__)
 

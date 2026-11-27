@@ -26,8 +26,8 @@ import json
 from hashlib import sha256
 
 from evo_agents.kg import search as text_search
-from evo_agents.kg.policy import Label, audience_below, audience_join
 from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row
+from evo_agents.schema.policy import Label, audience_below, audience_join
 
 OPS = ("node.put", "node.delete", "edge.put", "edge.delete", "entity_map", "decision")
 DECISIONS = ("deprecate", "merge", "link")

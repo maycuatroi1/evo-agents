@@ -37,8 +37,8 @@ from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession, UnknownRefs
 from evo_agents.hub.server import kg
 from evo_agents.hub.server.srs.service import settle
-from evo_agents.kg.policy import Label
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.policy import Label
 from tests.hub import live
 from tests.hub.live import ADMIN, sql
 from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, members and srs_core are fixtures)

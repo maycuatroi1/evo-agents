@@ -13,7 +13,7 @@ awaited when it returns an awaitable, within SOURCE_TIMEOUT, with ``params`` ``{
   nodes and edges (``evo_agents.kg.pipeline.stages.declared``). The hub gives each item its ``rev`` (its hash) and its
   kg/1 label: a level or location the knowledge config does not name reads as its highest, as the hub reads stored
   labels, and an item without a readable label, or whose label names another project in ``projects``, is left out.
-  A label may name an ``audience`` (``evo_agents.kg.policy``), which the kg/1 label carries as given: only a reader
+  A label may name an ``audience`` (``evo_agents.schema.policy``), which the kg/1 label carries as given: only a reader
   who is every principal of it sees the item, and one the build cannot read hides the item from every reader.
 - ``identifiers``: code patterns, ``{"kind", "pattern"}`` as knowledge.yaml declares them. The build puts them before
   the project's own, so a mention of such a code in any source links to the node the plugin declares for it.
@@ -54,10 +54,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import kg_decisions, kg_opportunities, kg_problems
 from evo_agents.hub.plugin_calls import CoreContext, effective_grant, enabled_plugins, load
 from evo_agents.hub.plugin_events import PERMISSION
-from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
 from evo_agents.kg.project import Project
 from evo_agents.kg.protocol import TIME_PATTERN, finalize_item, validate_message
 from evo_agents.kg.replace import FIRST_TIME, drop_sources, keep_cursor, replace_source
+from evo_agents.schema.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
 
 log = logging.getLogger(__name__)
 

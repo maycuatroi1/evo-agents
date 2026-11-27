@@ -9,7 +9,7 @@ import pytest
 from evo_agents.kg import asked
 from evo_agents.kg import search as text_search
 from evo_agents.kg.graph_rows import with_asked
-from evo_agents.kg.pipeline.stages import leading_comment
+from evo_agents.kg.pipeline.code import leading_comment
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.snapshot import Snapshot, SnapshotView
 from evo_agents.kg.sync import sync_project

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 
 from evo_agents.kg.graph_model import Graph, edge_id, key_conflicts
 from evo_agents.kg.pipeline import curation
-from evo_agents.kg.policy import Label, PolicyDNF, join_all
+from evo_agents.schema.policy import Label, PolicyDNF, join_all
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 UNSEARCHED_FIELDS = ("title", "verify", "evidence")  # the name already; commands and run output

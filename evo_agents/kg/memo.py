@@ -30,6 +30,7 @@ import os
 import threading
 from collections import Counter
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -50,6 +51,26 @@ def memo_key(stage: str, code_version: str, inputs: dict[str, str]) -> str:
         parts.append(_enc(name))
         parts.append(_enc(version))
     return sha256(b"".join(parts))
+
+
+@dataclass(frozen=True)
+class Stage:
+    """A memoized stage of the build: its name keys its entries' directory, its version every entry, so a new version
+    of its code makes each of its tasks again. ``Memo`` takes the pair as plain values; a stage passes them."""
+
+    name: str
+    version: str
+
+    def key(self, inputs: dict[str, str]) -> str:
+        return memo_key(self.name, self.version, inputs)
+
+    def run(self, memo: Memo, inputs: dict[str, str], fn, *, commit: bool = False):
+        """``Memo.run`` of one task of this stage: ``(output, output_hash)``."""
+        return memo.run(self.name, self.version, inputs, fn, commit=commit)
+
+    def run_traced(self, memo: Memo, inputs: dict[str, str], fn, held):
+        """``Memo.run_traced`` of one task of this stage, which reads a shared table."""
+        return memo.run_traced(self.name, self.version, inputs, fn, held)
 
 
 def _stage_dir(root: Path, stage: str) -> Path:

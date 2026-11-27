@@ -24,9 +24,9 @@ from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH
 from evo_agents.kg.pacing import pacing
-from evo_agents.kg.policy import Label
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.tools import SIGNATURES
+from evo_agents.schema.policy import Label
 
 
 def read_sink(access: ProjectAccess, sink: str) -> str:

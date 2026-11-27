@@ -32,7 +32,7 @@ from evo_agents.infra.git import Git
 
 PROJECT_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # a hub project name (harness.schema.json, the hub's table)
 SOURCE_ID = re.compile(r"[^a-z0-9_.-]+")  # what knowledge.schema.json does not take in a source id
-LEVELS = ["public", "internal", "customer", "secret"]  # evo_agents.kg.policy.DEFAULT_LEVELS, written out to edit
+LEVELS = ["public", "internal", "customer", "secret"]  # evo_agents.schema.policy.DEFAULT_LEVELS, written out to edit
 LABEL = {"level": "internal", "integrity": "U"}
 SINKS = [
     {"id": "claude-code@anthropic", "kind": "agent-session", "clearance": {"level": "internal"}},

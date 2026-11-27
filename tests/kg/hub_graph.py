@@ -13,10 +13,10 @@ from evo_agents.hub.client import HubError
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession
 from evo_agents.kg import grep_links
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.snapshot import Snapshot, SnapshotView
+from evo_agents.schema.policy import Label
 from tests.kg.built import snapshot_of
 
 URL = "https://hub.lumenops.example"

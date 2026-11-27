@@ -79,10 +79,11 @@ from evo_agents.kg.entity_mapping import (
     quote_line,
     quoted,
 )
-from evo_agents.kg.memo import memo_key
+from evo_agents.kg.memo import Stage
 from evo_agents.kg.protocol import canonical_json, sha256
 
 VERSION = "1"
+ENTITIES = Stage("entities", VERSION)  # the entities the model read in one item
 STATUS = "extracted"
 DEFAULT_CONF = 0.6
 COMMAND_TIMEOUT = 300
@@ -497,7 +498,7 @@ def _todo(config: dict, policy, records, body, unit_labels, cov: dict, digest: s
             "text": hashlib.sha256(text.encode()).hexdigest(),
             "config": digest,
         }
-        todo.append((rec, label, text, inputs, memo_key("entities", VERSION, inputs)))
+        todo.append((rec, label, text, inputs, ENTITIES.key(inputs)))
     return todo
 
 
@@ -516,7 +517,7 @@ class _Step:
     def answer(self, item: str, text: str, inputs: dict, key: str, ready: dict) -> dict | None:
         """The cleaned answer of an item, or None when it is skipped or its call failed (counted in coverage)."""
         memo, cov = self.memo, self.cov
-        before = memo.misses["entities"]
+        before = memo.misses[ENTITIES.name]
         fresh = key in ready  # answered (and memoized) by _prefetch: a call of this build, not a cache hit
         try:
             if fresh:
@@ -525,19 +526,19 @@ class _Step:
                     raise found
                 cleaned = found
             else:
-                cleaned, _ = memo.run("entities", VERSION, inputs, lambda: self.ask(text, key, item), commit=True)
+                cleaned, _ = ENTITIES.run(memo, inputs, lambda: self.ask(text, key, item), commit=True)
         except BudgetStop as stop:
-            memo.misses["entities"] = before
+            memo.misses[ENTITIES.name] = before
             self.skipped(str(stop))
             return None
         except EntitiesError as exc:
-            memo.misses["entities"] = before
+            memo.misses[ENTITIES.name] = before
             cov["failed"] += 1
             cov.setdefault("errors", [])
             if len(cov["errors"]) < REFUSED_SAMPLES:
                 cov["errors"].append({"item": item, "error": str(exc)[:200]})
             return None
-        if memo.misses["entities"] == before and not fresh:
+        if memo.misses[ENTITIES.name] == before and not fresh:
             cov["cache_hits"] += 1
         return cleaned
 
@@ -650,7 +651,7 @@ class _Step:
         model, out, todo = self.config["model"], [], []
         for a, b, why in cands:
             inputs = merge.pair_inputs(seen[a], seen[b], model)
-            held = _recall(self.memo, merge.MERGE_STAGE, merge.MERGE_VERSION, inputs)
+            held = _recall(self.memo, merge.MERGE, inputs)
             if held is not None:
                 out.append((a, b, why, held))
             elif not (self.allowed(seen[a].label) and self.allowed(seen[b].label)):
@@ -659,16 +660,14 @@ class _Step:
                 todo.append((a, b, why, inputs))
         for start in range(0, len(todo), merge.MERGE_BATCH):
             chunk = todo[start : start + merge.MERGE_BATCH]
-            key = memo_key(
-                merge.MERGE_STAGE, merge.MERGE_VERSION, {"batch": sha256(canonical_json([c[3] for c in chunk]))}
-            )
+            key = merge.MERGE.key({"batch": sha256(canonical_json([c[3] for c in chunk]))})
             got = self.task("merge", merge.merge_prompt([(seen[a], seen[b]) for a, b, _, _ in chunk]), key)
             found = merge.read_decisions(got, len(chunk)) if got else {}
             for i, (a, b, why, inputs) in enumerate(chunk, 1):
                 if i not in found:
                     self.tally("merge", "pending")
                     continue
-                self.memo.run(merge.MERGE_STAGE, merge.MERGE_VERSION, inputs, lambda d=found[i]: d)
+                merge.MERGE.run(self.memo, inputs, lambda d=found[i]: d)
                 self.tally("merge", "asked")
                 out.append((a, b, why, found[i]))
             self.memo.commit()
@@ -678,19 +677,19 @@ class _Step:
         """The model's summary of ``fragments``, descriptions of ``subject`` by items of ``label``: from the memo, else
         a call; None when it waits for a later build or the sink refuses the label."""
         inputs = merge.summary_inputs(subject, fragments, self.config["model"])
-        held = _recall(self.memo, merge.SUMMARY_STAGE, merge.SUMMARY_VERSION, inputs)
+        held = _recall(self.memo, merge.SUMMARY, inputs)
         if held is not None:
             return held.get("summary")
         if not self.allowed(label):
             self.tally("summaries", "refused")
             return None
-        key = memo_key(merge.SUMMARY_STAGE, merge.SUMMARY_VERSION, inputs)
+        key = merge.SUMMARY.key(inputs)
         got = self.task("summary", merge.summary_prompt(subject, fragments), key)
         text = merge.read_summary(got) if got else None
         if text is None:
             self.tally("summaries", "pending")
             return None
-        self.memo.run(merge.SUMMARY_STAGE, merge.SUMMARY_VERSION, inputs, lambda: {"summary": text}, commit=True)
+        merge.SUMMARY.run(self.memo, inputs, lambda: {"summary": text}, commit=True)
         self.tally("summaries", "made")
         return text
 
@@ -699,17 +698,17 @@ class _Miss(Exception):
     pass
 
 
-def _recall(memo, stage: str, version: str, inputs: dict):
-    """What the memo holds for a task, or None; a miss is not counted."""
-    before = memo.misses[stage]
+def _recall(memo, stage: Stage, inputs: dict):
+    """What the memo holds for a task of ``stage``, or None; a miss is not counted."""
+    before = memo.misses[stage.name]
 
     def missing():
         raise _Miss
 
     try:
-        found, _ = memo.run(stage, version, inputs, missing)
+        found, _ = stage.run(memo, inputs, missing)
     except _Miss:
-        memo.misses[stage] = before
+        memo.misses[stage.name] = before
         return None
     return found
 
@@ -721,7 +720,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
     are left to the step's loop, which skips them the same way."""
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
-    have = memo.keys("entities")
+    have = memo.keys(ENTITIES.name)
     pending = iter([t for t in todo if t[4] not in have and not isinstance(inbox.get(t[4]), dict)])
     out: dict = {}
     running: dict = {}
@@ -740,7 +739,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
         spend.add(usage)
         cleaned = _clean(answer, set(kinds), rels, style_of(config), text)
         cleaned["usage"] = usage
-        memo.run("entities", VERSION, inputs, lambda: cleaned)
+        ENTITIES.run(memo, inputs, lambda: cleaned)
         memo.commit()
         out[key] = cleaned
 

@@ -69,7 +69,7 @@ from evo_agents.hub.server.run_cause import CAUSE_KEY, CLASSIFIED, classified
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.signals import project_rules
 from evo_agents.kg.review import RULES as REVIEW_RULES
-from evo_agents.kg.schema import known_relations
+from evo_agents.schema.ontology import known_relations
 
 # The sink and the label
 

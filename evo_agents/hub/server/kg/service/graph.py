@@ -20,7 +20,7 @@ from evo_agents.hub.server.kg.models.graph import Build, Builds, MissingBlobs, Q
 from evo_agents.hub.server.kg.repository import graph as repository
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import holds
-from evo_agents.kg.policy import Label
+from evo_agents.schema.policy import Label
 
 log = logging.getLogger("evo_agents.hub.server.kg")
 

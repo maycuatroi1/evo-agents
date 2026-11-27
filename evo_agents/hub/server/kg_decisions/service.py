@@ -28,7 +28,7 @@ from evo_agents.hub.server.kg_decisions.models import (
 from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal, holds
-from evo_agents.kg.schema import known_relations
+from evo_agents.schema.ontology import known_relations
 
 
 class KgDecisionList(BaseModel):

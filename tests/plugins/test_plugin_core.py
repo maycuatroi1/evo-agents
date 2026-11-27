@@ -11,8 +11,8 @@ from importlib.metadata import EntryPoint
 import pytest
 
 from evo_agents import harness
-from evo_agents.kg.protocol import runner
-from evo_agents.plugins import core
+from evo_agents.kg.connectors import runner
+from evo_agents.plugins import connectors, core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP, core_plugins, python_contributions
 from evo_agents.worker import adapter
 from tests.plugins import core_sample
@@ -34,8 +34,7 @@ def installed(monkeypatch):
 
     for module in (core, adapter):
         monkeypatch.setattr(module, "entry_points", entry_points)
-    monkeypatch.setattr(runner.metadata, "entry_points", entry_points)
-    monkeypatch.setattr(harness.metadata, "entry_points", entry_points)
+    monkeypatch.setattr(connectors.metadata, "entry_points", entry_points)
     monkeypatch.delenv(adapter.ADAPTERS_VARIABLE, raising=False)
     return groups
 

@@ -1,6 +1,6 @@
 """``evo-agents kg connector``: connector tooling. ``test`` runs the conformance test of a connector: an ad hoc one
 (``-- COMMAND``), a builtin one (``--builtin``) or a source the project declares (``--source``), checked against a
-golden summary when one is given (``evo_agents.kg.protocol.conformance``)."""
+golden summary when one is given (``evo_agents.kg.connectors.conformance``)."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ class ConnectorTest(KgCommand):
     )
 
     def run(self, ctx: KgContext) -> Result:
-        from evo_agents.kg.protocol.conformance import run_conformance
-        from evo_agents.kg.protocol.runner import ConnectorError, credential_env
+        from evo_agents.kg.connectors.conformance import run_conformance
+        from evo_agents.kg.connectors.runner import ConnectorError, credential_env
 
         args = ctx.args
         harness = None

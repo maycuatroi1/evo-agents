@@ -25,7 +25,7 @@ from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import holds
 from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.entities import sink_problem
-from evo_agents.kg.policy import Policy
+from evo_agents.schema.policy import Policy
 
 
 def _mapping(tuning, step_on: bool) -> dict:

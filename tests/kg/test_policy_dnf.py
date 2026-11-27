@@ -1,4 +1,4 @@
-"""Who reads an element some derivations reveal (``evo_agents.kg.policy.PolicyDNF``) and how facts merge their
+"""Who reads an element some derivations reveal (``evo_agents.schema.policy.PolicyDNF``) and how facts merge their
 strength (``evo_agents.kg.assembly.stronger``).
 
 The algebra is checked on every policy of a small universe of atoms: both operations commutative, associative and
@@ -15,8 +15,8 @@ from types import SimpleNamespace
 
 from evo_agents.kg.assembly import STATUS_RANK, Facts, _strongest, assemble, strength
 from evo_agents.kg.graph_model import Graph, graph_tables, read_as, search_rows, within
-from evo_agents.kg.policy import TOP_AUDIENCE, Label, PolicyDNF, covers
 from evo_agents.kg.snapshot import Snapshot, edge_dict, edge_row, node_dict, node_row
+from evo_agents.schema.policy import TOP_AUDIENCE, Label, PolicyDNF, covers
 
 C5, C6 = "chat:5", "chat:6"
 AUDIENCES = [frozenset(), frozenset({C5}), frozenset({C6}), frozenset({C5, C6}), TOP_AUDIENCE]
