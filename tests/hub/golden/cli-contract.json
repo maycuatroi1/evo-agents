@@ -60250,7 +60250,7 @@
             "curator"
           ],
           "summary": "Close Change",
-          "description": "Close a change left open with no pull request, saying why; the admins of the project alone may.",
+          "description": "Close a change with no pull request, left open or planned with no active run, saying why; admins only.",
           "operationId": "close_change_v1_projects__project__curator_changes__change_id__close_post",
           "parameters": [
             {

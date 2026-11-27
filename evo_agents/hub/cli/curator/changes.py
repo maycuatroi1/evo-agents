@@ -39,7 +39,7 @@ class CuratorChanges(HubCommand):
 
 class ChangeClose(HubCommand):
     name = "close"
-    help = "close a change left open with no pull request, saying why; an admin of the project only"
+    help = "close a change with no pull request, left open or planned, saying why; an admin of the project only"
     arguments = (
         Arg("id", type=int, help="the change's id, as `curator changes` lists it"),
         Arg("--reason", required=True, help="why it is closed, in one line"),
@@ -56,7 +56,7 @@ class ChangeClose(HubCommand):
         return Result(change, Text(said))
 
 
-CURATOR_CHANGE = Group("change", "one change of the Curator: close one left open with no pull request", [ChangeClose()])
+CURATOR_CHANGE = Group("change", "one change of the Curator: close one with no pull request", [ChangeClose()])
 
 
 class CuratorProtection(HubCommand):

@@ -26,8 +26,8 @@ night, or of ``--night`` (GET .../curator/figures).
 
 ``curator changes`` lists what the accepted proposals the charter plans became: the Curator's plan, its branch, its pull
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator change close ID --reason
-TEXT`` closes a change left open with no pull request, such as one whose proposal named no repo, which only an admin of
-the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|show``
+TEXT`` closes a change with no pull request, left open (one whose proposal named no repo) or planned with no run of its
+plan active (one whose work landed through another pull request), which only an admin of the project may (POST .../curator/changes/{id}/close); ``curator replay tasks|show``
 (``evo_agents.hub.cli.curator.replay``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
 (``evo_agents.hub.cli.curator.history``) the night's history run, the clusters of its facets and the whole history, and
 ``curator playbook`` and ``curator earlier`` (``evo_agents.hub.cli.curator.playbook``) what the review runs remember, and

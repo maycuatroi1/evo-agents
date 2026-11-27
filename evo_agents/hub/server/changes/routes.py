@@ -1,6 +1,6 @@
 """The routes of the Curator's changes (``evo_agents.hub.server.changes.service.job`` describes the design): what a
 judge run reads and the verdict it posts, with the run's own key (``service.judge``), the list of a project's changes,
-an admin's close of a change left open with no pull request, and the drop of a change by its own Builder before its
+an admin's close of a change with no pull request, and the drop of a change by its own Builder before its
 pull request opens (``service.manage``)."""
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ async def list_changes(request: Request, project: ProjectName, user: CurrentUser
 async def close_change(
     request: Request, project: ProjectName, change_id: ChangeId, body: ChangeClose, user: CurrentUser
 ) -> Change:
-    """Close a change left open with no pull request, saying why; the admins of the project alone may."""
+    """Close a change with no pull request, left open or planned with no active run, saying why; admins only."""
     return await manage.close_change(request.app.state.engine, user, project, change_id, body)
 
 
