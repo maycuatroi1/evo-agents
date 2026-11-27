@@ -1,4 +1,4 @@
-"""The hold of a merge check that its own machinery failed (``evo_agents.hub.server.merge_holds``), against Postgres and
+"""The hold of a merge check that its own machinery failed (``evo_agents.hub.server.merge.service.holds``), against Postgres and
 the fake GitHub of ``tests.hub.fake_github``, on the world of ``tests.hub.test_github_merge_check``.
 
 A verdict that fails for a reason of the hub (``evo_agents.hub.merge_infra``) leaves the check judging and the plan
@@ -22,7 +22,7 @@ if not pg.DSN:
 from sqlalchemy import select, update
 
 from evo_agents.hub import judge, merge_infra, tables
-from evo_agents.hub.server import merge_holds
+from evo_agents.hub.server.merge.service import holds as merge_holds
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import thread
 from tests.hub.test_credentials_api import app_key  # noqa: F401 (a fixture of world)

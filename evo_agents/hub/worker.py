@@ -133,7 +133,7 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.merge_queue``, every minute, one pass at a time: the merge queue on GitLab of each project whose autonomy
   policy has a repo in mode auto: the merge requests of its runs opened, those in scope taken, and each one gated
   until its Judges' verdicts let it wait for its turn, with the reason it waits or is blocked
-  (``evo_agents.hub.server.merge_gate``, ``.merge_judge``).
+  (``evo_agents.hub.server.merge.service.gate``, ``evo_agents.hub.server.merge_judge``).
 - ``hub.extract_uploads``, every minute, one pass at a time: each archive uploaded with ``hub kg upload`` read into the
   items of its source, the uploads of the source it replaces released, and a build queued
   (``evo_agents.hub.kg_upload_extract``).

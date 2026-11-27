@@ -737,7 +737,6 @@ def _include_store_routes(app: FastAPI) -> None:
         kg_shared_pool_api,
         merge_check,
         merge_judge,
-        merge_view,
         model_catalog,
         opportunity_evidence,
         problem_evidence,
@@ -753,6 +752,7 @@ def _include_store_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.market.routes import install as market_install
     from evo_agents.hub.server.market.routes import licenses as market_licenses
     from evo_agents.hub.server.market.routes import market
+    from evo_agents.hub.server.merge.routes import view as merge_view
     from evo_agents.hub.server.opportunities import routes as opportunities
     from evo_agents.hub.server.plugins.routes import commands as plugin_command_list
     from evo_agents.hub.server.plugins.routes import host as plugin_host

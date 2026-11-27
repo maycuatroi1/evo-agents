@@ -3,7 +3,7 @@
 its target branch on through their checks, PROD, the rollback and the revert; ``merged`` is what the hub does at once
 when its queue merged a merge request (the revert it was, the audit sample); ``revert_gated`` gates a revert the hub
 opened; the admin's answers (``answer_sample``, ``approve_release``, ``ask_revert``) back the routes of
-``evo_agents.hub.server.merge_view``.
+``evo_agents.hub.server.merge.routes.view``. Its queries are ``repository.post_merge``'s.
 
 A merge goes ``merged`` (the hub waits for its commit's pipeline on the target branch) to ``verifying`` (its UAT check,
 the job ``jobs.uat_check``, or the pipeline itself when the repo names none, there being then no check after deploy),
@@ -17,7 +17,7 @@ culprit of a check goes ``reverting``: the hub opens its revert on ``evo-revert/
 its pipeline and by its diff undoing the merged one; once the revert merges, the culprit is ``reverted``. When the hub
 cannot tell the culprit, it reverts nothing and asks each admin of the project in the Inbox, listing the suspects; an
 admin asks for the revert of one (``ask_revert``). Once the checks of a pass are settled, and again before the turn,
-the repo's breaker may trip (``merge_breaker.watch``); tripped, PROD starts no deploy and a deploy job that failed is
+the repo's breaker may trip (``service.breaker.watch``); tripped, PROD starts no deploy and a deploy job that failed is
 not run again, while a deploy under way, the rollback and the reverts go on.
 
 Each step is a line of the ledger (``uat_check``, ``prod_deploy``, ``prod_check``, ``retried``, ``rollback``,
@@ -35,34 +35,22 @@ import random
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, insert, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import merge_gate, post_merge, tables
-from evo_agents.hub.access import has_role
+from evo_agents.hub import merge_gate, post_merge
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, MergeRequest, RevertRefused
+from evo_agents.hub.server.merge.models.post_merge import AFTER_MERGE, MAX_NOTE_CHARS, NOTICE, PASSED, link, short
+from evo_agents.hub.server.merge.repository import gate as queue
+from evo_agents.hub.server.merge.repository import post_merge as merges
+from evo_agents.hub.server.merge.service import breaker
+from evo_agents.hub.server.merge.service.access import admin_only
+from evo_agents.hub.server.merge.service.gate import hold, ready
 
 log = logging.getLogger(__name__)
 
-NOTICE = "merge_default_branch"  # the Inbox kind of the queue's notices (runs.NOTICE_KINDS)
-MAX_NOTE_CHARS = 2000  # of an admin's note on a sample (merge_samples.note)
-PASSED = {"passed": True, "failed": False, "none": None}  # a check's result as merge_events.passed
 draw = random.random  # the audit sample's draw; the tests fix it
-
-
-def short(sha: str | None) -> str:
-    return (sha or "an unknown commit")[:12]
-
-
-def link(project: str) -> str:
-    return f"/p/{project}/merge-queue"
-
-
-def _order(q):
-    return tuple_(q.c.merged_at, q.c.id)
 
 
 def with_item(follow: dict | None, key: str, item: str) -> dict:
@@ -75,23 +63,9 @@ def with_item(follow: dict | None, key: str, item: str) -> dict:
 async def mark_behind(conn: AsyncConnection, culprit) -> None:
     """Each merge of the branch after ``culprit`` and not past PROD yet is behind it: only a deploy after its revert
     carries it."""
-    q = tables.merge_queue
-    later = select(q).where(
-        q.c.project_id == culprit.project_id,
-        q.c.repo == culprit.repo,
-        q.c.target_branch == culprit.target_branch,
-        q.c.state.in_((*post_merge.UAT_STATES, "releasing")),
-        _order(q) > tuple_(culprit.merged_at, culprit.id),
-    )
-    for each in (await conn.execute(later.with_for_update())).all():
+    for each in await merges.later_merges(conn, culprit):
         if not (each.follow or {}).get("behind"):
             await queue.set_row(conn, each.id, follow={**(each.follow or {}), "behind": culprit.id})
-
-
-async def admins(conn: AsyncConnection, project_id: int) -> list[int]:
-    g = tables.grants
-    query = select(g.c.user_id).where(g.c.project_id == project_id, g.c.role == "admin").order_by(g.c.user_id)
-    return [user_id for (user_id,) in await conn.execute(query)]
 
 
 async def tell_admins(
@@ -102,7 +76,7 @@ async def tell_admins(
     from evo_agents.hub.server.notifications.service.notifier import NOTIFIER  # it reaches the plugins' channels
 
     commits = [found for found in (sha or row.after_sha,) if found]
-    for user_id in await admins(conn, project.id):
+    for user_id in await merges.admins(conn, project.id):
         await NOTIFIER.notify(
             conn,
             user_id=user_id,
@@ -123,17 +97,14 @@ async def merged(conn: AsyncConnection, found, row, after: str) -> None:
     """The queue merged ``row`` at ``after``, in the caller's transaction: the culprit a revert undoes is reverted, a
     merge after a culprit not yet reverted is behind it (only the revert's deploy carries it), its wait starts, and it
     may be drawn for an audit sample."""
-    q = tables.merge_queue
     if row.source == post_merge.REVERT and row.reverts_id is not None:
         culprit = await queue.row_of(conn, row.reverts_id, lock=True)
         if culprit is not None and culprit.state == "reverting":
             await queue.set_row(conn, culprit.id, state="reverted", reason=None)
             why = f"its revert !{row.iid} merged into {row.target_branch} as {short(after)}"
             await queue.record(conn, culprit, "reverted", passed=True, reason=why, sha=after, detail={"revert": row.id})
-    branch = (q.c.project_id == row.project_id) & (q.c.repo == row.repo) & (q.c.target_branch == row.target_branch)
-    open_culprit = select(q.c.id).where(branch, q.c.state == "reverting").order_by(q.c.id).limit(1)
-    behind = (await conn.execute(open_culprit)).scalar_one_or_none()
-    await queue.set_row(conn, row.id, waits_since=func.now(), follow={"behind": behind} if behind else {})
+    behind = await merges.open_culprit(conn, row)
+    await queue.set_row(conn, row.id, stamp=("waits_since",), follow={"behind": behind} if behind else {})
     rate = found.project.policy["audit"]["sample_rate"]
     if row.source != post_merge.REVERT and post_merge.sampled(rate, draw()):
         await sample(conn, found.project, row, after, rate)
@@ -141,10 +112,7 @@ async def merged(conn: AsyncConnection, found, row, after: str) -> None:
 
 async def sample(conn: AsyncConnection, project, row, after: str, rate: float) -> None:
     """Merge request ``row`` is an audit sample: its row, its line and a notice to each admin of the project."""
-    s = tables.merge_samples
-    sample_id = (
-        await conn.execute(insert(s).values(project_id=row.project_id, queue_id=row.id).returning(s.c.id))
-    ).scalar_one()
+    sample_id = await merges.insert_sample(conn, row)
     why = f"drawn for an audit sample (audit.sample_rate {rate:g})"
     await queue.record(conn, row, "sampled", reason=why, sha=after, detail={"sample": sample_id})
     first = (row.verdict or {}).get("first") or {}
@@ -177,7 +145,7 @@ async def revert_gated(found, row_id: int, mr: MergeRequest, files: list) -> Non
     exactly the diff of the merge request it reverts; then it is ready, first in the queue."""
     async with found.engine.begin() as conn:
         row = await queue.row_of(conn, row_id)
-        culprit = await queue.row_of(conn, row.reverts_id) if row.reverts_id is not None else None
+        culprit = await queue.row_of(conn, row.reverts_id) if row.reverts_id is not None else None  # pyright: ignore[reportOptionalMemberAccess]
     if culprit is None or culprit.iid is None:
         problem = "the hub knows no merge request it reverts"
     else:
@@ -188,15 +156,15 @@ async def revert_gated(found, row_id: int, mr: MergeRequest, files: list) -> Non
         if row is None or row.state != "gating" or row.head_sha != mr.sha:
             return
         if problem is not None:
-            await queue.hold(conn, row, 3, f"a revert: {problem}", blocked=True)
+            await hold(conn, row, 3, f"a revert: {problem}", blocked=True)
             return
         for gate in range(3):
             await queue.record(conn, row, "gate", gate=gate, passed=True, sha=mr.sha)
-        why = f"a revert: its diff undoes exactly the diff of !{culprit.iid} merged"
+        why = f"a revert: its diff undoes exactly the diff of !{culprit.iid} merged"  # pyright: ignore[reportOptionalMemberAccess]
         await queue.record(conn, row, "gate", gate=3, passed=True, reason=why, sha=mr.sha)
         fingerprint = merge_gate.patch_fingerprint(files)
         await queue.set_row(conn, row.id, fingerprint=fingerprint, title=mr.title)
-        await queue.ready(conn, row, f"the revert of !{culprit.iid}: its pipeline is green; no Judge, first in line")
+        await ready(conn, row, f"the revert of !{culprit.iid}: its pipeline is green; no Judge, first in line")  # pyright: ignore[reportOptionalMemberAccess]
     found.outcomes["ready"] += 1
 
 
@@ -205,21 +173,19 @@ async def revert_gated(found, row_id: int, mr: MergeRequest, files: list) -> Non
 
 async def follow(found) -> None:
     """Move what follows each merge of the target branch of ``found``, a pass over one repo, as far as it goes. Once
-    the checks are settled the repo's breaker may trip (``merge_breaker.watch``), and PROD then starts no deploy; what
+    the checks are settled the repo's breaker may trip (``breaker.watch``), and PROD then starts no deploy; what
     PROD and the reverts met may trip it again before the turn."""
-    from evo_agents.hub.server import merge_breaker  # it reads the admins and the link through this module
-
     after = After(found)
     await after.uat()
     await after.settle()
-    await merge_breaker.watch(found)
+    await breaker.watch(found)
     await after.prod()
     await after.reverts()
-    await merge_breaker.watch(found, read_target=False)
+    await breaker.watch(found, read_target=False)
 
 
 class After:
-    """What follows the merges of one target branch of a repo, in a pass over the repo (``queue.RepoPass``)."""
+    """What follows the merges of one target branch of a repo, in a pass over the repo (``gate_pass.RepoPass``)."""
 
     def __init__(self, found):
         self.found = found
@@ -231,15 +197,9 @@ class After:
         self.minutes: int = found.project.policy["merge"]["pipeline_minutes"]
         self._jobs: dict[int, dict] = {}
 
-    def _branch(self):
-        q, found = tables.merge_queue, self.found
-        return (q.c.project_id == found.project.id) & (q.c.repo == found.repo) & (q.c.target_branch == self.target)
-
     async def rows(self, *states: str) -> list:
-        q = tables.merge_queue
         async with self.engine.begin() as conn:
-            query = select(q).where(self._branch(), q.c.state.in_(states)).order_by(q.c.merged_at, q.c.id)
-            return (await conn.execute(query)).all()
+            return await merges.branch_rows(conn, self.project.id, self.found.repo, self.target, states)
 
     async def row(self, row_id: int):
         async with self.engine.begin() as conn:
@@ -268,8 +228,8 @@ class After:
             return None
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, row.id, lock=True)
-            kept = {**(locked.follow or {}), "pipeline": pipelines[0].id}
-            await queue.set_row(conn, row.id, state="verifying", follow=kept, waits_since=func.now(), reason=None)
+            kept = {**(locked.follow or {}), "pipeline": pipelines[0].id}  # pyright: ignore[reportOptionalMemberAccess]
+            await queue.set_row(conn, row.id, stamp=("waits_since",), state="verifying", follow=kept, reason=None)
         return pipelines[0].id
 
     async def late(self, row, why: str) -> tuple[str, str] | None:
@@ -288,9 +248,9 @@ class After:
         """The hub played or retried what ``stage`` of ``row`` watches: a line of ``kind``, and its wait restarts."""
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, row.id, lock=True)
-            kept = with_item(locked.follow, key, stage)
+            kept = with_item(locked.follow, key, stage)  # pyright: ignore[reportOptionalMemberAccess]
             reason = merge_gate.reason_line(f"after its merge, {why}")
-            await queue.set_row(conn, row.id, follow=kept, waits_since=func.now(), reason=reason)
+            await queue.set_row(conn, row.id, stamp=("waits_since",), follow=kept, reason=reason)
             await queue.record(conn, locked, kind, reason=why, sha=row.after_sha, detail={"stage": stage, **detail})
             if stage == "rollback" and key == "played":
                 await self.audited(conn, locked, audit.MERGE_ROLLBACK, f"job={detail['job']} to={detail['to']}")
@@ -310,20 +270,20 @@ class After:
             job.status if job else None, played=stage in follow.get("played", []), retried=retried
         )
         if step == "play":
-            await self.gl.play_job(self.path, job.id, variables)
+            await self.gl.play_job(self.path, job.id, variables)  # pyright: ignore[reportOptionalMemberAccess]
             to = (variables or {}).get(post_merge.ROLLBACK_VARIABLE)
             what = f"the hub runs manual job {name}" + (f" to put PROD back at {short(to)}" if to else "")
             await self.moved(row, stage, "played", kind, what, {"job": name, "to": to})
             return None
         if step == "retry" and stage == "deploy" and self.found.tripped:  # the breaker runs no deploy job again
-            step = "failed" if job.status == "failed" else "none"
+            step = "failed" if job.status == "failed" else "none"  # pyright: ignore[reportOptionalMemberAccess]
         if step == "retry":
-            again = await self.gl.retry_job(self.path, job.id)
-            why = f"job {name} ended {job.status}: the hub runs it again once"
+            again = await self.gl.retry_job(self.path, job.id)  # pyright: ignore[reportOptionalMemberAccess]
+            why = f"job {name} ended {job.status}: the hub runs it again once"  # pyright: ignore[reportOptionalMemberAccess]
             await self.moved(row, stage, "retried", "retried", why, {"job": name, "job_id": again.id})
             return None
         if step == "wait":
-            return await self.late(row, f"job {name} of pipeline {pipeline} is {job.status}")
+            return await self.late(row, f"job {name} of pipeline {pipeline} is {job.status}")  # pyright: ignore[reportOptionalMemberAccess]
         if job is None:
             return "none", f"job {name} is not in pipeline {pipeline} of {short(row.after_sha)}"
         again = (" on its retry" if step == "passed" else " again after a retry") if retried else ""
@@ -371,27 +331,25 @@ class After:
             return
         result, why = ended
         async with self.engine.begin() as conn:
-            locked = await queue.row_of(conn, row.id, lock=True)
+            locked = await queue.row_of(conn, row.id, lock=True)  # pyright: ignore[reportOptionalMemberAccess]
             if locked is None or locked.state not in post_merge.UAT_STATES or locked.uat_result is not None:
                 return
             reason = None if result == "passed" else merge_gate.reason_line(f"its UAT check: {why}")
-            await queue.set_row(conn, row.id, uat_result=result, reason=reason)
+            await queue.set_row(conn, row.id, uat_result=result, reason=reason)  # pyright: ignore[reportOptionalMemberAccess]
             detail = {"result": result, "pipeline": (locked.follow or {}).get("pipeline")}
             await queue.record(
-                conn, locked, "uat_check", passed=PASSED[result], reason=why, sha=row.after_sha, detail=detail
+                conn,
+                locked,
+                "uat_check",
+                passed=PASSED[result],
+                reason=why,
+                sha=row.after_sha,  # pyright: ignore[reportOptionalMemberAccess]
+                detail=detail,
             )
 
     async def revert_pending(self, conn: AsyncConnection) -> bool:
         """Whether a culprit of the branch waits for its revert, or a revert has no result of its own yet."""
-        q = tables.merge_queue
-        culprit = exists().where(self._branch(), q.c.state == "reverting")
-        unchecked = exists().where(
-            self._branch(),
-            q.c.source == post_merge.REVERT,
-            q.c.uat_result.is_(None),
-            q.c.state.in_((*merge_gate.QUEUED_STATES, *post_merge.UAT_STATES)),
-        )
-        return bool((await conn.execute(select(culprit | unchecked))).scalar_one())
+        return await merges.revert_pending(conn, self.project.id, self.found.repo, self.target)
 
     async def settle(self) -> None:
         """Settle the UAT checks of the branch's merges: passed or cleared, the culprit, or the suspects."""
@@ -424,7 +382,7 @@ class After:
                 detail = {"cleared_by": cleared_by.id}
                 await queue.record(conn, row, "uat_check", passed=True, reason=why, sha=row.after_sha, detail=detail)
             state = "releasing" if self.jobs["prod_deploy"] else "done"
-            await queue.set_row(conn, row_id, state=state, reason=None, uat_at=func.now(), waits_since=func.now())
+            await queue.set_row(conn, row_id, stamp=("uat_at", "waits_since"), state=state, reason=None)
 
     # The culprit
 
@@ -464,18 +422,15 @@ class After:
             await tell_admins(conn, self.project, suspects[-1], title=title, body=body, details=details)
             for row in suspects:
                 locked = await queue.row_of(conn, row.id, lock=True)
-                kept = with_item(locked.follow, "asked", "suspects") if row.id == oldest.id else locked.follow
+                kept = with_item(locked.follow, "asked", "suspects") if row.id == oldest.id else locked.follow  # pyright: ignore[reportOptionalMemberAccess]
                 reason = f"its {check} check failed and the hub cannot tell which of {listed} broke it: an admin picks"
                 await queue.set_row(conn, row.id, follow=kept, reason=merge_gate.reason_line(reason))
         self.found.outcomes["asked"] += 1
 
     async def reverts(self) -> None:
         """Open the revert of each culprit of the branch that has none yet."""
-        q = tables.merge_queue
-        r = q.alias("revert")
         async with self.engine.begin() as conn:
-            query = select(q).where(self._branch(), q.c.state == "reverting", ~exists().where(r.c.reverts_id == q.c.id))
-            rows = (await conn.execute(query.order_by(q.c.merged_at, q.c.id))).all()
+            rows = await merges.unreverted(conn, self.project.id, self.found.repo, self.target)
         for row in rows:
             if (row.follow or {}).get("revert_problem"):
                 continue
@@ -500,7 +455,6 @@ class After:
             description=post_merge.revert_description(self.project.name, row.iid, self.target, why, shas),
         )
         async with self.engine.begin() as conn:
-            q = tables.merge_queue
             values = {
                 "project_id": row.project_id,
                 "repo": row.repo,
@@ -512,7 +466,7 @@ class After:
                 "web_url": mr.web_url,
                 "reverts_id": row.id,
             }
-            revert_id = (await conn.execute(insert(q).values(values).returning(q.c.id))).scalar_one()
+            revert_id = await queue.insert_row(conn, values)
             revert = await queue.row_of(conn, revert_id)
             await queue.record(conn, revert, "opened", reason=f"the hub opened the revert of !{row.iid}")
             culprit = await queue.row_of(conn, row.id, lock=True)
@@ -602,7 +556,7 @@ class After:
                     conn, row.run_id, "K6", key=_deploy_key(row), what=what, repo=row.repo
                 )
                 if not said.act:
-                    await queue.set_row(conn, target.id, reason=merge_gate.reason_line(said.reason))
+                    await queue.set_row(conn, target.id, reason=merge_gate.reason_line(said.reason))  # pyright: ignore[reportArgumentType]
                     return True
         return False
 
@@ -628,11 +582,11 @@ class After:
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, target.id, lock=True)
             kept = {
-                **with_item(locked.follow, "played", "deploy"),
+                **with_item(locked.follow, "played", "deploy"),  # pyright: ignore[reportOptionalMemberAccess]
                 "deploy": job.id,
                 "carried": [r.id for r in carried],
             }
-            await queue.set_row(conn, target.id, follow=kept, waits_since=func.now(), reason=None)
+            await queue.set_row(conn, target.id, stamp=("waits_since",), follow=kept, reason=None)
             detail = {"job": name, "job_id": job.id, "carried": [row.id for row in carried]}
             await queue.record(conn, locked, "prod_deploy", reason=why, sha=target.after_sha, detail=detail)
             carries = f" carries={names.replace(' ', '')}" if names else ""
@@ -641,7 +595,10 @@ class After:
                 each = await queue.row_of(conn, row.id, lock=True)
                 reason = f"its PROD deploy rides with !{target.iid}'s"
                 await queue.set_row(
-                    conn, row.id, follow={**(each.follow or {}), "carried_by": target.id}, reason=reason
+                    conn,
+                    row.id,
+                    follow={**(each.follow or {}), "carried_by": target.id},  # pyright: ignore[reportOptionalMemberAccess]
+                    reason=reason,
                 )
         self.found.outcomes["deploys"] += 1
 
@@ -668,7 +625,7 @@ class After:
                 )
                 locked = await queue.row_of(conn, row.id, lock=True)
                 reason = "its PROD release waits for an admin to approve it (prod_release manual)"
-                await queue.set_row(conn, row.id, follow=with_item(locked.follow, "asked", "release"), reason=reason)
+                await queue.set_row(conn, row.id, follow=with_item(locked.follow, "asked", "release"), reason=reason)  # pyright: ignore[reportOptionalMemberAccess]
 
     async def deployed(self, target) -> None:
         """The deploy of ``target`` in flight: its deploy job, then its PROD check."""
@@ -682,8 +639,8 @@ class After:
                 return await self.prod_failed(target, result, why, "prod_deploy")
             async with self.engine.begin() as conn:
                 locked = await queue.row_of(conn, target.id, lock=True)
-                kept = {**(locked.follow or {}), "deployed": True}
-                await queue.set_row(conn, target.id, follow=kept, waits_since=func.now())
+                kept = {**(locked.follow or {}), "deployed": True}  # pyright: ignore[reportOptionalMemberAccess]
+                await queue.set_row(conn, target.id, stamp=("waits_since",), follow=kept)
                 await queue.record(conn, locked, "prod_deploy", passed=True, reason=why, sha=target.after_sha)
             target = await self.row(target.id)
         name = self.jobs["prod_check"]
@@ -701,36 +658,29 @@ class After:
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, target.id, lock=True)
             await queue.record(conn, locked, "prod_check", passed=True, reason=why, sha=target.after_sha)
-            await queue.set_row(conn, target.id, state="done", reason=None, prod_result="passed", prod_at=func.now())
-            for row_id in (locked.follow or {}).get("carried", []):
+            await queue.set_row(conn, target.id, stamp=("prod_at",), state="done", reason=None, prod_result="passed")
+            for row_id in (locked.follow or {}).get("carried", []):  # pyright: ignore[reportOptionalMemberAccess]
                 row = await queue.row_of(conn, row_id, lock=True)
                 carried = f"carried by the deploy of !{target.iid}, whose PROD check passed"
                 await queue.record(conn, row, "prod_check", passed=True, reason=carried, sha=target.after_sha)
-                await queue.set_row(conn, row_id, state="done", reason=None, prod_result="passed", prod_at=func.now())
+                await queue.set_row(conn, row_id, stamp=("prod_at",), state="done", reason=None, prod_result="passed")
 
     async def rollback_to(self, conn: AsyncConnection, target, carried: list[int]) -> tuple[str | None, str]:
         """(the commit PROD goes back to, why): the last of the branch whose PROD check passed, else the commit before
         the oldest merge the deploy carried."""
-        q = tables.merge_queue
-        query = (
-            select(q.c.after_sha)
-            .where(self._branch(), q.c.prod_result == "passed", _order(q) < tuple_(target.merged_at, target.id))
-            .order_by(q.c.merged_at.desc(), q.c.id.desc())
-            .limit(1)
-        )
-        good = (await conn.execute(query)).scalar_one_or_none()
+        good = await merges.last_passed(conn, self.project.id, self.found.repo, self.target, target)
         if good is not None:
             return good, f"{short(good)}, the last commit of {self.target} whose PROD check passed"
         oldest = await queue.row_of(conn, carried[0]) if carried else target
-        sha = oldest.before_sha
-        return sha, f"{short(sha)}, the commit before !{oldest.iid}: the hub knows no commit whose PROD check passed"
+        sha = oldest.before_sha  # pyright: ignore[reportOptionalMemberAccess]
+        return sha, f"{short(sha)}, the commit before !{oldest.iid}: the hub knows no commit whose PROD check passed"  # pyright: ignore[reportOptionalMemberAccess]
 
     async def prod_failed(self, target, result: str, why: str, kind: str) -> None:
         """The deploy of ``target`` failed, or its PROD check: PROD goes back first, with the rollback job."""
         name = self.jobs["rollback"]
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, target.id, lock=True)
-            follow = locked.follow or {}
+            follow = locked.follow or {}  # pyright: ignore[reportOptionalMemberAccess]
             to, which = await self.rollback_to(conn, locked, follow.get("carried", []))
             detail = {"result": result}
             await queue.record(
@@ -738,8 +688,8 @@ class After:
             )
             kept = {**follow, "rollback_to": to}
             reason = merge_gate.reason_line(f"its {kind.replace('_', ' ')} failed ({why}): PROD goes back to {which}")
-            values = {"prod_result": result, "follow": kept, "waits_since": func.now(), "reason": reason}
-            await queue.set_row(conn, target.id, state="rolling_back", **values)
+            values = {"prod_result": result, "follow": kept, "reason": reason}
+            await queue.set_row(conn, target.id, stamp=("waits_since",), state="rolling_back", **values)
             if not name or to is None:
                 no = "the repo names no rollback job" if not name else "the hub knows no commit to put PROD back at"
                 why = f"{no}: PROD stays as the failed deploy left it"
@@ -772,17 +722,12 @@ class After:
         async with self.engine.begin() as conn:
             rows = [await queue.row_of(conn, row_id) for row_id in [*carried, target.id]]
         for row in rows:
-            await self.finish(row.id, "done", merge_gate.reason_line(f"PROD went back to {to}"))
+            await self.finish(row.id, "done", merge_gate.reason_line(f"PROD went back to {to}"))  # pyright: ignore[reportOptionalMemberAccess]
         rows = [await self.row(row.id) for row in rows]
         await self.ask_suspects(rows, "PROD", f"PROD went back to {to}.")
 
 
 # What an admin answers
-
-
-def admin_only(user, access) -> None:
-    if user.acts_for_run is not None or not has_role(access.role, "admin"):
-        raise HTTPException(403, f"this needs the admin role on project {access.name}")
 
 
 async def _queued(conn: AsyncConnection, access, queue_id: int):
@@ -795,25 +740,26 @@ async def _queued(conn: AsyncConnection, access, queue_id: int):
 async def answer_sample(conn: AsyncConnection, user, access, sample_id: int, result: str, note: str | None):
     """An admin's answer to audit sample ``sample_id``: ``faulty`` counts as a pass of the Judge found wrong."""
     admin_only(user, access)
-    s = tables.merge_samples
-    found = (await conn.execute(select(s).where(s.c.id == sample_id).with_for_update())).one_or_none()
+    found = await merges.sample_of(conn, sample_id, lock=True)
     if found is None or found.project_id != access.project_id:
         raise HTTPException(404, f"project {access.name} has no audit sample {sample_id}")
     if found.result is not None:
         raise HTTPException(409, f"audit sample {sample_id} was answered already: {found.result}")
     text = " ".join((note or "").split())[:MAX_NOTE_CHARS] or None
-    values = {"result": result, "note": text, "answered_by": user.user_id, "answered_at": func.now()}
-    await conn.execute(update(s).values(values).where(s.c.id == sample_id))
+    await merges.answer_sample(conn, sample_id, result, text, user.user_id)
     row = await queue.row_of(conn, found.queue_id)
     why = f"{user.login} answered the audit sample: {result}"
     detail = {"sample": sample_id, "result": result}
     await queue.record(
-        conn, row, "sample_answered", passed=result == "ok", reason=why, sha=row.after_sha, detail=detail
+        conn,
+        row,
+        "sample_answered",
+        passed=result == "ok",
+        reason=why,
+        sha=row.after_sha,  # pyright: ignore[reportOptionalMemberAccess]
+        detail=detail,
     )
-    n = tables.notifications
-    sampled = n.c.details["sample_id"].astext == str(sample_id)
-    await conn.execute(update(n).values(read_at=func.now()).where(sampled, n.c.read_at.is_(None)))
-    target = f"{access.name}/{row.repo} !{row.iid} sample={sample_id} result={result}"
+    target = f"{access.name}/{row.repo} !{row.iid} sample={sample_id} result={result}"  # pyright: ignore[reportOptionalMemberAccess]
     await audit.record(
         conn,
         actor_id=user.user_id,
@@ -822,7 +768,7 @@ async def answer_sample(conn: AsyncConnection, user, access, sample_id: int, res
         target=target,
         project_id=access.project_id,
     )
-    return (await conn.execute(select(s).where(s.c.id == sample_id))).one()
+    return await merges.sample_of(conn, sample_id)
 
 
 async def approve_release(conn: AsyncConnection, user, access, queue_id: int, release: str):
@@ -843,9 +789,6 @@ async def approve_release(conn: AsyncConnection, user, access, queue_id: int, re
         project_id=access.project_id,
     )
     return await queue.row_of(conn, row.id)
-
-
-AFTER_MERGE = (*post_merge.UAT_STATES, "releasing", "done")
 
 
 async def ask_revert(conn: AsyncConnection, user, access, queue_id: int):

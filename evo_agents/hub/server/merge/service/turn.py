@@ -1,5 +1,5 @@
 """The turn of the hub's merge queue on GitLab (plan gitlab-merge-queue, criterion a5): the merge requests whose gates
-passed (``ready``, ``evo_agents.hub.server.merge_gate``) are merged into their target branch one at a time, each with
+passed (``ready``, ``evo_agents.hub.server.merge.service.gate``) are merged into their target branch one at a time, each with
 the exact head its pipeline passed on. ``take_turns`` moves the turn of one target branch on, in a pass of the job
 hub.merge_queue over its repo.
 
@@ -21,7 +21,7 @@ writes). Its turn:
   blocked. A push of someone else sends it back to its gates (``gating``). Then the pipeline of the new head: one that
   fails runs again once (the ledger's ``retried``) and failing again blocks it, as does one not green after
   ``merge.pipeline_minutes``. Green, the cheap gates are read again at that head (0 the repo, 1 the pipeline, 3 score
-  hacking, whose signs an admin's pass lets through while the patch is the one the gates passed: ``merge_pass``) with
+  hacking, whose signs an admin's pass lets through while the patch is the one the gates passed: ``service.passes``) with
   its patch: the patch judged goes on to its merge with the Judges' verdicts; a new patch sends it to its gates and
   Judges again, keeping its place.
 - ``merging``: GitLab merges it only while its head is still the sha its pipeline passed on (``gitlab.merge``), by
@@ -31,12 +31,12 @@ writes). Its turn:
   any other reason blocks it with GitLab's words. A merge GitLab made while the hub did not hear its answer is read
   from GitLab at the next move.
 
-``merged`` is where what follows a merge takes it on (``evo_agents.hub.server.post_merge``): a revert merged reverts
+``merged`` is where what follows a merge takes it on (``evo_agents.hub.server.merge.service.post_merge``): a revert merged reverts
 its culprit, and the merge may be drawn for an audit sample. A revert the hub opened goes first in line, and no merge
 before it holds its turn back. The Curator's change of a merge request merged is ``merged`` too, with its line in the
 proposal's ledger. Each move is a line of the queue's ledger
 (merge_events: ``rebased``, ``pipeline``, ``retried``, ``gate``, ``head``, ``queued``, ``merged``), each merge a line of
-audit (``merge.merge``), and the hub comments once on a merge request its turn blocked (``merge_gate.RepoPass``).
+audit (``merge.merge``), and the hub comments once on a merge request its turn blocked (``gate_pass.RepoPass``).
 
 One merge request of a target branch has the turn, whatever runs the queue: the job holds the procrastinate lock of
 its name, so one pass runs at a time on all the hub's job workers, and the unique index merge_queue_turn_key (schema
@@ -49,27 +49,29 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
-from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import merge_gate, post_merge, tables
-from evo_agents.hub.server import audit, ledger, merge_pass
-from evo_agents.hub.server import merge_gate as queue
-from evo_agents.hub.server import post_merge as after_merge
+from evo_agents.hub import merge_gate, post_merge
+from evo_agents.hub.server import audit, ledger
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, MergeRequest, NotMergeable, ShaMismatch
+from evo_agents.hub.server.merge.models.turn import CI_RUNNING, MAX_MOVES, NEEDS_REBASE, RETRYABLE
+from evo_agents.hub.server.merge.repository import gate as queue
+from evo_agents.hub.server.merge.repository import turn as turns
+from evo_agents.hub.server.merge.service import passes
+from evo_agents.hub.server.merge.service import post_merge as after_merge
+from evo_agents.hub.server.merge.service.gate import close, hold, merge_act
+
+if TYPE_CHECKING:
+    from evo_agents.hub.server.merge.service.gate_pass import RepoPass
 
 log = logging.getLogger(__name__)
 
-MAX_MOVES = 20  # moves of the turn of one target branch in one pass
-RETRYABLE = frozenset({"failed", "canceled"})  # a pipeline the turn runs again once
-NEEDS_REBASE = "need_rebase"  # GitLab's detailed_merge_status of a merge request behind its fast-forward target
-CI_RUNNING = "ci_still_running"  # ... of one GitLab merges only once the pipeline of its head ends
 
-
-async def take_turns(found: queue.RepoPass) -> None:
+async def take_turns(found: RepoPass) -> None:
     """Move the turn of the target branch of ``found``, a pass over one repo, as far as it goes in this pass."""
     turn = Turn(found)
     for _ in range(MAX_MOVES):
@@ -97,54 +99,39 @@ def still_running(mr: MergeRequest) -> bool:
 async def curator_merged(conn: AsyncConnection, row, after: str) -> None:
     """The Curator's change that merge request ``row`` carries is merged at ``after``, with its line in the proposal's
     ledger (``ledger.change_moved``)."""
-    c = tables.curator_changes
-    old = (await conn.execute(select(c.c.state).where(c.c.id == row.change_id).with_for_update())).scalar_one_or_none()
+    old = await turns.change_state(conn, row.change_id)
     if old is None or old == "merged":
         return
-    values = {"state": "merged", "merged_at": func.now(), "merge_sha": after, "reason": None, "updated_at": func.now()}
-    await conn.execute(update(c).values(values).where(c.c.id == row.change_id))
+    await turns.change_merged(conn, row.change_id, after)
     extra = {"actor": "curator", "before_sha": row.before_sha, "merge_request": row.iid, "into": row.target_branch}
     await ledger.change_moved(conn, row.change_id, old, "merged", extra)
 
 
 class Turn:
-    """The turn of one target branch of a repo, in a pass over the repo (``queue.RepoPass``)."""
+    """The turn of one target branch of a repo, in a pass over the repo (``gate_pass.RepoPass``)."""
 
-    def __init__(self, found: queue.RepoPass):
+    def __init__(self, found: RepoPass):
         self.found = found
         self.engine, self.gl, self.path, self.target = found.engine, found.gl, found.path, found.target
         self.minutes: int = found.project.policy["merge"]["pipeline_minutes"]
 
-    def _branch(self):
-        q, found = tables.merge_queue, self.found
-        return (q.c.project_id == found.project.id) & (q.c.repo == found.repo) & (q.c.target_branch == self.target)
+    def _branch(self) -> tuple[int, str, str]:
+        return self.found.project.id, self.found.repo, self.target
 
     # Whose turn
 
     async def holder(self) -> int | None:
         """The merge request whose turn it is; None when none has it."""
-        q = tables.merge_queue
         async with self.engine.begin() as conn:
-            query = select(q.c.id).where(self._branch(), q.c.state.in_(merge_gate.TURN_STATES)).limit(1)
-            return (await conn.execute(query)).scalar_one_or_none()
+            return await turns.holder(conn, *self._branch())
 
     async def start(self) -> int | None:
         """Give the turn to the merge request ready first, a revert before any other, unless it waits for something
         on GitLab or one merged before holds the turn (``held``; a revert is never held), or the repo's breaker tripped
         (a revert alone goes on); its id, or None."""
-        q = tables.merge_queue
-        not_waiting = or_(q.c.reason.is_(None), ~q.c.reason.startswith(merge_gate.WAITS, autoescape=True))
-        query = (
-            select(q)
-            .where(self._branch(), q.c.state == "ready", q.c.iid.is_not(None), not_waiting)
-            .order_by(q.c.source != post_merge.REVERT, q.c.queued_at.asc().nulls_last(), q.c.id)
-            .limit(1)
-            .with_for_update()
-        )
-        if self.found.tripped:  # the repo's breaker tripped: a revert alone takes the turn
-            query = query.where(q.c.source == post_merge.REVERT)
         async with self.engine.begin() as conn:
-            row = (await conn.execute(query)).one_or_none()
+            # the repo's breaker tripped: a revert alone takes the turn
+            row = await turns.next_ready(conn, *self._branch(), revert_only=self.found.tripped)
             if row is None:
                 return None
             held = None if row.source == post_merge.REVERT else await self.held(conn)
@@ -154,15 +141,7 @@ class Turn:
                 return None
             try:
                 async with conn.begin_nested():
-                    await queue.set_row(
-                        conn,
-                        row.id,
-                        state="rebasing",
-                        reason=None,
-                        before_sha=None,
-                        head_at=func.now(),
-                        rebases=q.c.rebases + 1,
-                    )
+                    await turns.take_turn(conn, row.id)
             except IntegrityError:  # another merge request of the branch has the turn (merge_queue_turn_key)
                 return None
         return row.id
@@ -173,11 +152,8 @@ class Turn:
         hold = self.found.project.policy["merge"]["hold_until"]
         if not merge_gate.holds_turn(hold, ()):
             return None
-        q, e = tables.merge_queue, tables.merge_events
-        merged = select(q.c.id, q.c.iid).where(self._branch(), q.c.state.in_(merge_gate.HOLDING_STATES))
-        for row in (await conn.execute(merged.order_by(q.c.merged_at, q.c.id))).all():
-            passed = select(e.c.kind).where(e.c.queue_id == row.id, e.c.kind == hold, e.c.passed.is_(True))
-            if merge_gate.holds_turn(hold, [kind for (kind,) in await conn.execute(passed)]):
+        for row in await turns.holding(conn, *self._branch()):
+            if merge_gate.holds_turn(hold, await turns.passed_kinds(conn, row.id, hold)):
                 return merge_gate.reason_line(
                     f"its turn waits for !{row.iid}, merged before it, to pass its {hold} (merge.hold_until)"
                 )
@@ -211,11 +187,11 @@ class Turn:
                 return False
             verdict, why = self.found.scope_of(row, mr)
             if verdict == "out":
-                await queue.close(conn, row, f"it left the queue: {why}", mr)
+                await close(conn, row, f"it left the queue: {why}", mr)
                 self.found.outcomes["closed"] += 1
                 return False
             if verdict == "wait":
-                await self.back(conn, row, merge_gate.reason_line(merge_gate.WAITS + why))
+                await self.back(conn, row, merge_gate.reason_line(merge_gate.WAITS + why))  # pyright: ignore[reportOperatorIssue]
                 return False
             if row.state != "rebasing" and mr.sha != row.head_sha:
                 await self.found.new_head(conn, row, mr)
@@ -252,9 +228,9 @@ class Turn:
                 return False
             before = base or locked.before_sha
             new = mr.sha != locked.head_sha
-            values = {"head_at": func.now()} if new else {}  # its pipeline's wait counts from its new head
+            stamp = ("head_at",) if new else ()  # its pipeline's wait counts from its new head
             await queue.set_row(
-                conn, row_id, state="testing", reason=None, head_sha=mr.sha, before_sha=before, **values
+                conn, row_id, stamp=stamp, state="testing", reason=None, head_sha=mr.sha, before_sha=before
             )
             onto = f"{self.target} at {before[:12]}"
             why = f"rebased onto {onto}: its head is {mr.sha[:12]}" if new else f"already on top of {onto}"
@@ -274,7 +250,7 @@ class Turn:
         if missing:  # it waits at gate 0 for the settings, and gives the turn back meanwhile
             async with self.engine.begin() as conn:
                 locked = await queue.row_of(conn, row.id, lock=True)
-                await queue.hold(conn, locked, 0, "the GitLab project " + "; ".join(missing))
+                await hold(conn, locked, 0, "the GitLab project " + "; ".join(missing))
             return True
         pipeline = mr.head_pipeline
         state, why = merge_gate.pipeline_state(
@@ -284,9 +260,9 @@ class Turn:
             await self.found.head_message(mr),
         )
         if state == "pending":
-            return await self.waits(row, "pipeline", why)
+            return await self.waits(row, "pipeline", why)  # pyright: ignore[reportArgumentType]
         if state == "red":
-            return await self.red(row, mr, why)
+            return await self.red(row, mr, why)  # pyright: ignore[reportArgumentType]
         return await self.green(row, mr)
 
     async def target_moved(self, row, mr: MergeRequest) -> str | None:
@@ -303,16 +279,14 @@ class Turn:
         """A pipeline that failed at the rebased head runs again once, to rule a flake out; failing again, skipped or
         asked to skip CI, it blocks the merge request."""
         pipeline = mr.head_pipeline
-        e = tables.merge_events
         async with self.engine.begin() as conn:
-            done = exists().where(e.c.queue_id == row.id, e.c.kind == "retried", e.c.sha == mr.sha)
-            retried = bool((await conn.execute(select(done))).scalar_one())
+            retried = await turns.retried(conn, row.id, mr.sha)
         if pipeline is not None and pipeline.status in RETRYABLE and not retried:
             await self.gl.retry_pipeline(self.path, pipeline.id)
             async with self.engine.begin() as conn:
                 locked = await queue.row_of(conn, row.id, lock=True)
                 reason = merge_gate.turn_reason("pipeline", f"{why}: the hub runs it again once")
-                await queue.set_row(conn, row.id, reason=reason, head_at=func.now())
+                await queue.set_row(conn, row.id, stamp=("head_at",), reason=reason)
                 detail = {"pipeline": pipeline.id}
                 await queue.record(conn, locked, "retried", reason=reason, sha=mr.sha, detail=detail)
             return False
@@ -323,7 +297,7 @@ class Turn:
                 return False
             detail = {"pipeline": pipeline.id if pipeline else None}
             await queue.record(conn, locked, "pipeline", passed=False, reason=why + after, sha=mr.sha, detail=detail)
-            await queue.hold(conn, locked, 1, f"at its rebased head, {why}{after}", blocked=True)
+            await hold(conn, locked, 1, f"at its rebased head, {why}{after}", blocked=True)
         return True
 
     async def green(self, row, mr: MergeRequest) -> bool:
@@ -336,14 +310,14 @@ class Turn:
         same = merge_gate.patch_fingerprint(files) == row.fingerprint
         passed_by = None
         if hacked is not None:  # an admin's pass of the hold lets the patch the gates passed through again
-            passed_by = await merge_pass.passes(self.engine, row.id, f"at its rebased head, {hacked}", same_patch=same)
+            passed_by = await passes.passes(self.engine, row.id, f"at its rebased head, {hacked}", same_patch=same)
             if passed_by is None:
                 return await self.blocked(row.id, f"at its rebased head, {hacked}", gate=3)
         async with self.engine.begin() as conn:
             locked = await queue.row_of(conn, row.id, lock=True)
             if locked is None or locked.state != "testing" or locked.head_sha != mr.sha:
                 return False
-            detail = {"pipeline": mr.head_pipeline.id}
+            detail = {"pipeline": mr.head_pipeline.id}  # pyright: ignore[reportOptionalMemberAccess]
             why = "green at its rebased head"
             await queue.record(conn, locked, "pipeline", passed=True, reason=why, sha=mr.sha, detail=detail)
             for gate in (0, 1, 3):
@@ -392,7 +366,7 @@ class Turn:
             if row is None or row.state != "merging":
                 return False
             after = mr.merge_commit_sha or mr.sha or row.head_sha
-            await queue.set_row(conn, row.id, state="merged", reason=None, merged_at=func.now(), after_sha=after)
+            await queue.set_row(conn, row.id, stamp=("merged_at",), state="merged", reason=None, after_sha=after)
             before = (row.before_sha or "an unknown commit")[:12]
             why = f"merged into {self.target}, which moved from {before} to {after[:12]}"
             detail = {"before_sha": row.before_sha, "after_sha": after, "rebases": row.rebases}
@@ -408,7 +382,7 @@ class Turn:
             if row.change_id is not None:
                 await curator_merged(conn, row, after)
             await after_merge.merged(conn, f, row, after)
-            act = queue.merge_act(row)
+            act = merge_act(row)
             title = f"The hub merged !{row.iid} of {f.repo} into {self.target} for your run {row.run_id}"
             await autonomy_gates.tell_after(
                 conn, row.run_id, "K5", key=act["key"], title=title, repo=f.repo, risk=act["risk"]
@@ -475,7 +449,7 @@ class Turn:
             if row is None or row.state not in merge_gate.TURN_STATES:
                 return False
             if gate is not None:
-                await queue.hold(conn, row, gate, why, blocked=True)
+                await hold(conn, row, gate, why, blocked=True)
                 return True
             reason = merge_gate.turn_reason(stage, why)
             await queue.set_row(conn, row.id, state="blocked", reason=reason)

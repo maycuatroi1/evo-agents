@@ -1,4 +1,4 @@
-"""The Curator's change the merge queue on GitLab merges (``evo_agents.hub.server.merge_turn.curator_merged``; plan
+"""The Curator's change the merge queue on GitLab merges (``evo_agents.hub.server.merge.service.turn.curator_merged``; plan
 gitlab-merge-queue, criterion a5): once the queue merges the merge request of a change its Judge passed, the change is
 merged too, with the merge's commits and a line in the proposal's ledger, as a merge on GitHub leaves it. The world is
 ``tests.hub.test_curator_changes``'s; the gates and Judges of the queue are ``tests.hub.test_merge_gate``'s to drive.
@@ -18,7 +18,7 @@ if not pg.DSN:
 from sqlalchemy import func, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server.merge.service import gate as queue
 from tests.hub.fake_gitlab import FakeGitLab
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import app_key  # noqa: F401 (a fixture)

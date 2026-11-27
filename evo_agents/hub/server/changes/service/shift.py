@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, judge, runs
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, merge_gate
+from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.changes.repository import repos as repo_store
 from evo_agents.hub.server.changes.repository import shift as store
@@ -20,6 +20,7 @@ from evo_agents.hub.server.changes.service import repos as change_repos
 from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.forge.models.forges import built_state_of, forge_named
 from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.merge.service import gate as merge_gate
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run

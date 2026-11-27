@@ -1,4 +1,4 @@
-"""The audit samples of the hub's merge queue on GitLab (``evo_agents.hub.server.post_merge``; plan gitlab-merge-queue,
+"""The audit samples of the hub's merge queue on GitLab (``evo_agents.hub.server.merge.service.post_merge``; plan gitlab-merge-queue,
 criterion a6), against Postgres and the fake GitLab of ``tests.hub.fake_gitlab``.
 
 The checks step 6 names: a merge request the queue merged is drawn at the policy's ``audit.sample_rate`` and goes to

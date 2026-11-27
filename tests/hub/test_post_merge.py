@@ -1,4 +1,4 @@
-"""What follows a merge of the hub's merge queue on GitLab (``evo_agents.hub.server.post_merge``; plan
+"""What follows a merge of the hub's merge queue on GitLab (``evo_agents.hub.server.merge.service.post_merge``; plan
 gitlab-merge-queue, criterion a6), against Postgres and the fake GitLab of ``tests.hub.fake_gitlab``: the real GitLab is
 never called.
 

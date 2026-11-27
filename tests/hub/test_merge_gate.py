@@ -1,4 +1,4 @@
-"""The gate before merge of the hub's merge queue on GitLab (``evo_agents.hub.server.merge_gate`` and
+"""The gate before merge of the hub's merge queue on GitLab (``evo_agents.hub.server.merge.service.gate`` and
 ``.merge_judge``; plan gitlab-merge-queue, criterion a4), against Postgres and the fake GitLab of
 ``tests.hub.fake_gitlab``: the real GitLab is never called.
 
@@ -29,10 +29,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
 from evo_agents.hub import judge, merge_gate, runs, tables
-from evo_agents.hub.server import merge_gate as queue
-from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
+from evo_agents.hub.server.merge.models.gate import OPEN_RETRY
+from evo_agents.hub.server.merge.service import gate as queue
+from evo_agents.hub.server.merge.service import post_merge as after_merge
 from tests.hub import test_credentials_api as leases_api
 from tests.hub.fake_gitlab import FakeGitLab, sha_of
 from tests.hub.live import sql
@@ -713,7 +714,7 @@ def test_merge_gate_a_merge_request_gitlab_will_not_open_blocks_its_row_and_is_a
 
     world.project.branches[BRANCH] = sha_of("work")
     q = tables.merge_queue
-    sql(world.db, update(q).values(updated_at=datetime.now(UTC) - queue.OPEN_RETRY - timedelta(minutes=1)))
+    sql(world.db, update(q).values(updated_at=datetime.now(UTC) - OPEN_RETRY - timedelta(minutes=1)))
     assert gate_pass(world) == {"opened": 1}
     entry = one(world)
     assert (entry["state"], entry["iid"]) == ("gating", 1)

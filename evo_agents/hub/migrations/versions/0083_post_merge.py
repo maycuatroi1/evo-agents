@@ -55,7 +55,7 @@ RESULTS = ("passed", "failed", "none")  # evo_agents.hub.post_merge.RESULTS
 SAMPLE_RESULTS = ("ok", "faulty")  # evo_agents.hub.post_merge.SAMPLE_RESULTS
 MAX_REASON_CHARS = 2000  # evo_agents.hub.merge_gate.MAX_REASON_CHARS
 MAX_DESCRIPTION_BYTES = 64 * 1024  # evo_agents.hub.merge_gate.MAX_KEPT_DESCRIPTION_BYTES
-MAX_NOTE_CHARS = 2000  # evo_agents.hub.server.post_merge.MAX_NOTE_CHARS
+MAX_NOTE_CHARS = 2000  # evo_agents.hub.server.merge.models.post_merge.MAX_NOTE_CHARS
 CHECK = "merge_queue_check"
 
 col = sa.column

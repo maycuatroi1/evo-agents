@@ -50,7 +50,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import merge_gate
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.changes.models.views import Change
@@ -64,6 +63,7 @@ from evo_agents.hub.server.curator.models.threads import SHOWN, SKILL, SUMMARY_C
 from evo_agents.hub.server.curator.repository import threads as store
 from evo_agents.hub.server.forge.models.forges import forge_named, github_target
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.repository import gate as merge_gate
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.proposals.models import ProposalAnswer
 from evo_agents.hub.server.proposals.service.reads import answer_proposal_as

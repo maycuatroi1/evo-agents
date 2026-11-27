@@ -425,21 +425,21 @@ AUTONOMY_DECIDED = "autonomy.decided"
 # <login:<login>|unit:<slug>|all>"; never the reason.
 AUTONOMY_STOP = "autonomy.stop"
 AUTONOMY_STOP_LIFT = "autonomy.stop.lift"
-# The hub's merge queue on GitLab (evo_agents.hub.server.merge_gate, .merge_judge, .merge_turn), in the project, with
+# The hub's merge queue on GitLab (evo_agents.hub.server.merge.service.gate and .turn, evo_agents.hub.server.merge_judge), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a
 # Judge, "<project>/<repo> !<iid> into=<branch> sha=<merged head> before=<the branch's head before>" when it merged one.
 MERGE_OPEN = "merge.open"
 MERGE_JUDGE = "merge.judge"
 MERGE_MERGE = "merge.merge"
-# The agent of a held merge check's thread (evo_agents.hub.server.merge_holds) judged it again or handed its failure
+# The agent of a held merge check's thread (evo_agents.hub.server.merge.service.holds) judged it again or handed its failure
 # back to the plan run, for the run's owner, in the project: "<repo> #<number> check:<id> rejudge|return
 # chat_run:<id>"; never the reason.
 MERGE_TRIAGE = "merge.triage"
-# An admin passed the hold of a merge request at a gate that holds it for a person (evo_agents.hub.server.merge_pass),
+# An admin passed the hold of a merge request at a gate that holds it for a person (evo_agents.hub.server.merge.service.passes),
 # in the project: "<project>/<repo> !<iid> gate=<n> sha=<the head it holds> reason=<the admin's reason, cut>".
 MERGE_PASS = "merge.pass"
-# What follows a merge of the queue (evo_agents.hub.server.post_merge), in the project: the hub ran the PROD deploy job,
+# What follows a merge of the queue (evo_agents.hub.server.merge.service.post_merge), in the project: the hub ran the PROD deploy job,
 # "<project>/<repo> !<iid> job=<name> sha=<commit>[ carries=<!iid,...>]", or the rollback job, "... job=<name>
 # to=<commit>", or opened a revert, "<project>/<repo> !<iid> revert=!<iid> branch=<branch>"; an admin approved a PROD
 # release, "<project>/<repo> !<iid> approved", asked for a revert, "<project>/<repo> !<iid> revert=asked", or answered
@@ -449,7 +449,7 @@ MERGE_ROLLBACK = "merge.rollback"
 MERGE_REVERT = "merge.revert"
 MERGE_RELEASE = "merge.release"
 MERGE_SAMPLE = "merge.sample"
-# The breaker of a repo of the merge queue (evo_agents.hub.server.merge_breaker), in the project: it tripped,
+# The breaker of a repo of the merge queue (evo_agents.hub.server.merge.service.breaker), in the project: it tripped,
 # "<project>/<repo> cause=<cause> causes=<cause,...> paused=<!iid,...>", or an admin reset it, "<project>/<repo>
 # resumed=<!iid,...>".
 MERGE_BREAKER = "merge.breaker"

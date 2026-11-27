@@ -64,8 +64,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy, findings, judge, merge_gate, merge_infra, runs, tables
-from evo_agents.hub.server import audit, merge_holds, pulls, run_events, run_waits
-from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server import audit, pulls, run_events, run_waits
 from evo_agents.hub.server import merge_judge as judging
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.decisions.models import OptionIn
@@ -73,6 +72,8 @@ from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.forge.models.forges import github_target
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.service import gate as queue
+from evo_agents.hub.server.merge.service import holds as merge_holds
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import LINE, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run

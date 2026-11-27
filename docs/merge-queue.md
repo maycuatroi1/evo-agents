@@ -17,13 +17,14 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | the policy's keys, defaults and checks | `evo_agents/hub/autonomy.py` |
 | the policy's revisions and routes | `evo_agents/hub/server/autonomy/routes/policies.py`, `evo_agents/hub/cli/policy.py` |
 | the forge secret and the GitLab client | `evo_agents/hub/server/forge/service/secrets.py`, `evo_agents/hub/server/forge/client/gitlab.py` |
-| scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge_gate.py`, `evo_agents/hub/server/merge_judge.py` |
-| the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge_turn.py` |
-| after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/post_merge.py` |
-| the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
-| an admin's pass of a hold for a person | `evo_agents/hub/server/merge_pass.py` |
+| scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge/service/gate.py` (a pass over one repo: `gate_pass.py`), `evo_agents/hub/server/merge_judge.py` |
+| the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge/service/turn.py` |
+| after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/merge/service/post_merge.py` |
+| the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge/service/breaker.py` |
+| an admin's pass of a hold for a person | `evo_agents/hub/server/merge/service/passes.py` |
 | the merge check of a pull request on GitHub | `evo_agents/hub/server/merge_check.py`, `evo_agents/worker/cli/merge_check.py` |
-| the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli/merge.py` |
+| the routes of the queue and the command line | `evo_agents/hub/server/merge/routes/view.py` (what they read: `merge/service/view.py`), `evo_agents/hub/cli/merge.py` |
+| the queue's SQL, shapes and constants | `evo_agents/hub/server/merge/repository/`, `evo_agents/hub/server/merge/models/` (a module per service module of the same name) |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
 | the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`); `merge_checks` (schema 0187, `tables_merge.py`) |
 
@@ -213,7 +214,7 @@ Above the policy, the hub reads the autonomy of the person the run that made the
 (`docs/autonomy.md`, `evo_agents/hub/server/autonomy/service/gates.py`), as the stricter of the run's snapshot and the value
 now. A merge request no run made, a run without a snapshot, and a principal at A5 pass as before.
 
-- **K5 at the last gate** (`merge_gate.ready`). Auto lets the merge request into the queue; notify lets it in and,
+- **K5 at the last gate** (`merge.service.gate.ready`). Auto lets the merge request into the queue; notify lets it in and,
   once merged, sends the principal the notice `autonomy`; ask keeps it `judging` with the reason "waits" while a
   decision of category `autonomy` is open to the principal (to the person they report to when they are an intern), and
   lets it in once they approve; deny, or a refused decision, blocks it with the class, the mode and the source in its
@@ -391,7 +392,7 @@ branch and the Judge reads that the base fails it), and the security pass gave n
 only when nothing of the pull request fails the check too: a conflict, a check that fails on the merge result alone, a
 dimension the Judge failed, an open finding or another head read send the failure back to the run as before.
 
-Such a check is held for the project's triage instead (`hub/server/merge_holds.py`): it stays `judging`, the run's
+Such a check is held for the project's triage instead (`hub/server/merge/service/holds.py`): it stays `judging`, the run's
 wait stays open and the run stays parked, and nobody asks its owner. The hub writes the facts in the project's triage
 chat, in one thread a check, and mentions the project's agent, which starts a chat run for the run's owner. The agent
 fixes the system (a pull request of the hub's code it merges, a worker set right, the base branch made green), then:

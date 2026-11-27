@@ -8,7 +8,7 @@ import type { ApiSource } from "@/lib/queries";
 
 /**
  * What the merge queue's pages and the Inbox read and write of a project's merge queue on GitLab and its autonomy
- * policy (plan gitlab-merge-queue; `evo_agents/hub/server/merge_view.py`, `autonomy_policies.py`). Any member with a
+ * policy (plan gitlab-merge-queue; `evo_agents/hub/server/merge/routes/view.py`, `autonomy_policies.py`). Any member with a
  * grant reads them; only an admin of the project answers an audit sample, approves a PROD release, asks for a revert,
  * resets a breaker or writes the policy. It lives in lib because the Inbox answers the queue's notices too.
  */
@@ -105,7 +105,7 @@ export type EventKind = (typeof EVENT_KINDS)[number];
 /** `post_merge.AFTER_MERGE` of the server: the states in which an admin may ask the hub to revert a merge. */
 export const REVERTABLE_STATES: readonly MergeState[] = ["merged", "verifying", "releasing", "done"];
 
-/** The most merge requests one read of the queue lists (`merge_view.MAX_LIST`). */
+/** The most merge requests one read of the queue lists (`merge.routes.view.MAX_LIST`). */
 export const MAX_QUEUE_LIST = 200;
 /** An admin's note on an audit sample (`post_merge.MAX_NOTE_CHARS`). */
 export const MAX_SAMPLE_NOTE_CHARS = 2000;
