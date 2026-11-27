@@ -1,16 +1,20 @@
 """An evolution as its owner reads it (``view_of``), with its candidates (``candidates_of``), and the evolutions a
-caller may read through a sink (``evolutions_of``, ``evolution_of``)."""
+caller may read through a sink (``evolutions_of``, ``evolution_of``); the routes read them with ``listed`` and
+``shown``, each in a transaction of its own."""
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import evolve
 from evo_agents.hub.server.base.errors import NotFound
-from evo_agents.hub.server.evolve.models import CandidateView, EvolveTaskView, EvolveView, FrontItem
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.evolve.models import CandidateView, EvolveList, EvolveTaskView, EvolveView, FrontItem
 from evo_agents.hub.server.evolve.repository import candidates, evolutions
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.plans import service as plan_service
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.security import Principal
 
 
 async def candidates_of(conn: AsyncConnection, evolve_id: int, *, components: bool) -> list[CandidateView]:
@@ -86,3 +90,24 @@ async def evolution_of(conn: AsyncConnection, access: ProjectAccess, evolve_id: 
     if row is None or not access.visible(row.label, plan_service.read_sink(access, sink) or ""):
         raise NotFound(f"project {access.name} has no evolution #{evolve_id}")
     return row
+
+
+async def listed(
+    engine: AsyncEngine, user: Principal, project: str, sink: str | None, *, state: str | None, limit: int
+) -> EvolveList:
+    """The project's evolutions a reader may read through ``sink``, the newest first."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        need_reader(access)
+        rows = await evolutions_of(conn, access, sink, state=state, limit=limit)
+    return EvolveList(project=access.name, evolutions=[view_of(access.name, row) for row in rows])
+
+
+async def shown(engine: AsyncEngine, user: Principal, project: str, evolve_id: int, sink: str | None) -> EvolveView:
+    """Evolution ``evolve_id`` for a reader, with each candidate and its components."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        need_reader(access)
+        row = await evolution_of(conn, access, evolve_id, sink)
+        candidates = await candidates_of(conn, row.id, components=True)
+    return view_of(access.name, row, candidates)

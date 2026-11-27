@@ -16,7 +16,7 @@ such file, as a probe cannot measure it; each with why, the fix proposals of rec
 place of probes not reproduced or stale (``replacements``), those still open or made since the oldest week shown
 (``service.fixes`` says when a review run is asked for them).
 
-GET /v1/projects/{p}/curator/probe-report (reader, ``routes.report``) answers it for ``weeks`` weeks, the newest first: the week of
+GET /v1/projects/{p}/curator/probe-report (reader, ``routes.report``, ``weekly``) answers it for ``weeks`` weeks, the newest first: the week of
 ``week`` (a day; default today in the charter's time zone, the week in progress, whose ``complete`` is false) and those
 before it; the probes and changes whose label the caller's grant reaches through the sink X-Evo-Sink
 names (else the project's hub sink). `evo-agents hub curator probe report` prints it, and the MCP tool
@@ -34,12 +34,14 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, probes, runs
 from evo_agents.hub.server import ledger as ledger_lines
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.curator.repository.charter import charter_row
 from evo_agents.hub.server.curator.service.shift import owner_access
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.memories.service.audience import Reader, label_reaches
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plans import service as plan_service
@@ -66,7 +68,7 @@ from evo_agents.hub.server.probes.models.report import (
 )
 from evo_agents.hub.server.probes.repository import report as repository
 from evo_agents.hub.server.probes.service.runs import probe_models
-from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import MACHINE, Principal
 
 log = logging.getLogger(__name__)
@@ -281,6 +283,17 @@ async def build(
         fixes=await _fixes(conn, access, reach, listed[-1]),
         replacements=await _replacements(conn, access, reach, listed[-1]),
     )
+
+
+async def weekly(
+    engine: AsyncEngine, user: Principal, project: str, *, weeks: int, newest: date | None, sink: str | None
+) -> ProbeWeekly:
+    """The report of the project's probes the route answers (``build``), in a transaction of its own; 403 without a
+    grant on the project."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        need_reader(access)
+        return await build(conn, access, user, weeks=weeks, newest=newest, sink=sink)
 
 
 # Words

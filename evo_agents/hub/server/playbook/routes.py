@@ -1,5 +1,5 @@
 """The routes of the playbook (see the package): the delta of the agent of a review run, and the project's playbook
-for its readers. Each opens the request's transaction and hands it to the service."""
+for its readers. Each hands the request's parts and the app's engine to the service, which opens the transaction."""
 
 from __future__ import annotations
 
@@ -28,8 +28,7 @@ async def record_delta(
     request: Request, run_id: RunId, body: service.PlaybookDelta, user: CurrentUser
 ) -> PlaybookEntry:
     """One delta of the playbook from the agent of the review run this worker holds."""
-    async with request.app.state.engine.begin() as conn:
-        entry, entry_id = await service.record_delta(conn, request, user, run_id, body)
+    entry, entry_id = await service.record_delta(request.app.state.engine, request, user, run_id, body)
     log.info("playbook delta", extra={"run_id": run_id, "entry_id": entry_id, "op": body.op})
     return entry
 
@@ -47,5 +46,5 @@ async def show_playbook(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> PlaybookView:
     """The project's playbook of the Curator, the most helpful first."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.playbook_view(conn, user, project, sink, lens=lens, retired=retired)
+    engine = request.app.state.engine
+    return await service.read_playbook(engine, user, project, sink, lens=lens, retired=retired)

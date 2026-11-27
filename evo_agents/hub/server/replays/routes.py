@@ -1,5 +1,6 @@
 """The routes of the Curator's replays (see the package): the worker's report of a replay run, the project's suite of
-replay tasks and a change's replays. Each opens the request's transaction and hands it to the service."""
+replay tasks and a change's replays. Each hands the request's parts and the app's engine to the service, which
+opens the transaction."""
 
 from __future__ import annotations
 
@@ -36,8 +37,7 @@ async def report_replay(
     request: Request, run_id: RunId, body: ReplayReport, user: CurrentUser, replay_key: ReplayKey = None
 ) -> Replay:
     """One arm's result of the replay run this worker holds, or why it cannot replay its task; with the run's key."""
-    async with request.app.state.engine.begin() as conn:
-        found, replay_id = await service.report(conn, user, run_id, body, replay_key)
+    found, replay_id = await service.report(request.app.state.engine, user, run_id, body, replay_key)
     log.info("replay reported", extra={"run_id": run_id, "replay_id": replay_id, "arm": body.arm})
     return found
 
@@ -52,10 +52,7 @@ async def list_tasks(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ReplayTaskList:
     """The project's suite of replay tasks, in the order they came in, of the plans the caller may read."""
-    async with request.app.state.engine.begin() as conn:
-        access = await service.reader_access(conn, user, project)
-        tasks, counts, total = await service.tasks_of(conn, access, split=split, limit=limit, sink=sink)
-    return ReplayTaskList(project=access.name, split=split, tasks=tasks, total=total, counts=counts)
+    return await service.suite(request.app.state.engine, user, project, split=split, limit=limit, sink=sink)
 
 
 @router.get("/{project}/curator/changes/{change_id}/replay", response_model=ChangeReplay, responses=REFUSALS)
@@ -67,6 +64,4 @@ async def show_change_replay(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> ChangeReplay:
     """A change's replays: each task, what arm a (the default branch's harness) and arm b (the change's) found."""
-    async with request.app.state.engine.begin() as conn:
-        access = await service.reader_access(conn, user, project)
-        return await service.change_replay(conn, access, change_id, sink)
+    return await service.replays_of_change(request.app.state.engine, user, project, change_id, sink)

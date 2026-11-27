@@ -1,5 +1,5 @@
-"""The routes of session digests: each opens the request's transaction and hands the request to
-``service.sessions``; the package's docstring says what they do."""
+"""The routes of session digests: each hands the request's parts and the app's engine to ``service.sessions``, which
+opens the transaction; the package's docstring says what they do."""
 
 from __future__ import annotations
 
@@ -40,8 +40,7 @@ async def put_digest(
     request: Request, project: ProjectName, session_id: SessionId, body: SessionDigest, user: CurrentUser
 ) -> DigestSummary:
     """Write the digest of session ``session_id``, replacing the one this member pushed before."""
-    async with request.app.state.engine.begin() as conn:
-        summary = await service.put(conn, user, project, session_id, body)
+    summary = await service.put(request.app.state.engine, user, project, session_id, body)
     log.info("session digest written", extra={"project": project, "session_id": session_id, "login": user.login})
     return summary
 
@@ -58,10 +57,10 @@ async def list_digests(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> DigestList:
     """The digests of the project the caller may read, the latest pushed first."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.listed(
-            conn, user, project, since=since, login=login, limit=limit, offset=offset, sink=sink
-        )
+    engine = request.app.state.engine
+    return await service.list_digests(
+        engine, user, project, since=since, login=login, limit=limit, offset=offset, sink=sink
+    )
 
 
 @router.get("/{project}/digests/{session_id}", response_model=DigestRecord, responses=READ_REFUSALS)
@@ -73,5 +72,4 @@ async def show_digest(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> DigestRecord:
     """The digest of session ``session_id``, when the caller may read it."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.shown(conn, user, project, session_id, sink)
+    return await service.show_digest(request.app.state.engine, user, project, session_id, sink)

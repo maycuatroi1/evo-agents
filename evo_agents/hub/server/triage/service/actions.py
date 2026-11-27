@@ -36,13 +36,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import runs, triage_rules
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.service import agents as chat_agents
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.agents import AgentRun
@@ -202,37 +203,39 @@ async def rerun_failed(conn: AsyncConnection, frame: Frame, options: RerunOption
     return new_id
 
 
-async def rerun(conn: AsyncConnection, user: Principal, run_id: int, body: TriageRerunIn) -> tuple[int, TriageActed]:
+async def rerun(engine: AsyncEngine, user: Principal, run_id: int, body: TriageRerunIn) -> tuple[int, TriageActed]:
     """Run the failed run of the thread of chat run ``run_id`` again for its owner, inside the frame: (the failed run's
     id, the answer)."""
-    frame = await frame_of(conn, user, run_id)
-    new_id = await rerun_failed(conn, frame, body, edited=False)
-    text = (
-        f"Decision: ran run #{frame.failed.id} again as run #{new_id} "
-        f"(cause {frame.cause}): {body.reason} Undo: cancel run #{new_id}."
-    )
-    message_id = await said(conn, frame, text)
-    await audited(conn, frame, audit.RUN_TRIAGE_RERUN, f" rerun:{new_id}")
-    return frame.failed.id, TriageActed(message_id=message_id, run_id=new_id, plan_revision=None)
+    async with UnitOfWork(engine) as conn:
+        frame = await frame_of(conn, user, run_id)
+        new_id = await rerun_failed(conn, frame, body, edited=False)
+        text = (
+            f"Decision: ran run #{frame.failed.id} again as run #{new_id} "
+            f"(cause {frame.cause}): {body.reason} Undo: cancel run #{new_id}."
+        )
+        message_id = await said(conn, frame, text)
+        await audited(conn, frame, audit.RUN_TRIAGE_RERUN, f" rerun:{new_id}")
+        return frame.failed.id, TriageActed(message_id=message_id, run_id=new_id, plan_revision=None)
 
 
-async def cancel(conn: AsyncConnection, user: Principal, run_id: int, body: TriageCancelIn) -> TriageCancelled:
+async def cancel(engine: AsyncEngine, user: Principal, run_id: int, body: TriageCancelIn) -> TriageCancelled:
     """Ask the worker of the stale run of the thread of chat run ``run_id`` to stop it, for its owner."""
-    frame = await frame_of(conn, user, run_id)
-    failed = frame.failed
-    if not frame.stale:
-        raise Conflict(f"run {failed.id} failed, which is final: only a stale run's thread stops a run")
-    if failed.state not in runs.HELD_STATES:
-        raise Conflict(f"run {failed.id} is {failed.state} now: its worker holds it no more")
-    if not await store.ask_cancel(conn, failed.id):
-        raise Conflict(f"the worker of run {failed.id} was asked to stop it already")
-    text = (
-        f"Decision: asked the worker of run #{failed.id} to stop it (cause {STALE_CAUSE}): {body.reason} "
-        "Undo: none once it stops; run it again with `evo-agents worker triage rerun` once it has ended."
-    )
-    message_id = await said(conn, frame, text)
-    await audited(conn, frame, audit.RUN_TRIAGE_CANCEL, "")
-    return TriageCancelled(message_id=message_id, run_id=failed.id)
+    async with UnitOfWork(engine) as conn:
+        frame = await frame_of(conn, user, run_id)
+        failed = frame.failed
+        if not frame.stale:
+            raise Conflict(f"run {failed.id} failed, which is final: only a stale run's thread stops a run")
+        if failed.state not in runs.HELD_STATES:
+            raise Conflict(f"run {failed.id} is {failed.state} now: its worker holds it no more")
+        if not await store.ask_cancel(conn, failed.id):
+            raise Conflict(f"the worker of run {failed.id} was asked to stop it already")
+        text = (
+            f"Decision: asked the worker of run #{failed.id} to stop it (cause {STALE_CAUSE}): {body.reason} "
+            "Undo: none once it stops; run it again with `evo-agents worker triage rerun` once it has ended."
+        )
+        message_id = await said(conn, frame, text)
+        await audited(conn, frame, audit.RUN_TRIAGE_CANCEL, "")
+        return TriageCancelled(message_id=message_id, run_id=failed.id)
 
 
 def with_edits(held_body: dict, edits: list[StepEdit]) -> dict:
@@ -274,72 +277,74 @@ async def write_edits(conn: AsyncConnection, frame: Frame, body: TriagePlanIn) -
     return held.revision, written.revision, old
 
 
-async def edit_plan(conn: AsyncConnection, user: Principal, run_id: int, body: TriagePlanIn) -> tuple[int, TriageActed]:
+async def edit_plan(engine: AsyncEngine, user: Principal, run_id: int, body: TriagePlanIn) -> tuple[int, TriageActed]:
     """Edit pending steps of the failed run's plan of the thread of chat run ``run_id`` for its owner, and with
-    ``rerun`` run the failed step again: (the failed run's id, the answer). A refused rerun raises, so the caller's
-    transaction leaves the plan as it was."""
-    frame = await frame_of(conn, user, run_id)
-    was, now, old = await write_edits(conn, frame, body)
-    new_id = await rerun_failed(conn, frame, body, edited=True) if body.rerun else None
-    again = f" Ran run #{frame.failed.id} again as run #{new_id}." if new_id else ""
-    text = decision(frame.failed.plan_id, was, now, body.edits(), old, body.reason, again)
-    message_id = await said(conn, frame, text)
-    keys = ",".join(edit.step for edit in body.edits())
-    tail = f" revision:{now}" + (f" rerun:{new_id}" if new_id else "")
-    await audited(conn, frame, audit.RUN_TRIAGE_PLAN_EDIT, f" step:{keys}{tail}")
-    return frame.failed.id, TriageActed(message_id=message_id, run_id=new_id, plan_revision=now)
+    ``rerun`` run the failed step again: (the failed run's id, the answer). A refused rerun raises, so its transaction
+    leaves the plan as it was."""
+    async with UnitOfWork(engine) as conn:
+        frame = await frame_of(conn, user, run_id)
+        was, now, old = await write_edits(conn, frame, body)
+        new_id = await rerun_failed(conn, frame, body, edited=True) if body.rerun else None
+        again = f" Ran run #{frame.failed.id} again as run #{new_id}." if new_id else ""
+        text = decision(frame.failed.plan_id, was, now, body.edits(), old, body.reason, again)
+        message_id = await said(conn, frame, text)
+        keys = ",".join(edit.step for edit in body.edits())
+        tail = f" revision:{now}" + (f" rerun:{new_id}" if new_id else "")
+        await audited(conn, frame, audit.RUN_TRIAGE_PLAN_EDIT, f" step:{keys}{tail}")
+        return frame.failed.id, TriageActed(message_id=message_id, run_id=new_id, plan_revision=now)
 
 
 async def invite(
-    conn: AsyncConnection, user: Principal, run_id: int, body: TriageInviteIn
+    engine: AsyncEngine, user: Principal, run_id: int, body: TriageInviteIn
 ) -> tuple[int, TriageInvited | str]:
     """Invite the agent ``body.handle`` of another project, one the failed run's error names, into the chat of the
     thread of chat run ``run_id`` for the run's owner: (the failed run's id, the answer, or the refusal it said in the
     thread when the agent did not join)."""
-    frame = await frame_of(conn, user, run_id)
-    failed = frame.failed
-    found = await candidates_of(
-        conn,
-        project=frame.project,
-        project_id=frame.access.project_id,
-        role=frame.access.role,  # pyright: ignore[reportArgumentType]
-        owner_id=frame.owner.user_id,
-        kind=failed.kind,
-        state="failed",
-        run_id=failed.id,
-    )
-    pointed = {o.project for o in found.other_projects if o.role is not None}  # a project with no grant: unseen
-    profile = await by_handle(conn, body.handle)
-    if profile is None or profile.project not in pointed or profile.deleted_at is not None:
-        names = ", ".join(sorted(pointed)) or "none"
-        raise Unprocessable(
-            f"agent {body.handle} is no agent of a project that the error of run {failed.id} names and the owner "
-            f"holds a grant on (projects: {names})",
+    async with UnitOfWork(engine) as conn:
+        frame = await frame_of(conn, user, run_id)
+        failed = frame.failed
+        found = await candidates_of(
+            conn,
+            project=frame.project,
+            project_id=frame.access.project_id,
+            role=frame.access.role,  # pyright: ignore[reportArgumentType]
+            owner_id=frame.owner.user_id,
+            kind=failed.kind,
+            state="failed",
+            run_id=failed.id,
         )
-    other = next(o for o in found.other_projects if o.project == profile.project)
-    chat = await chat_access(conn, frame.owner, frame.chat_id, lock=True)
-    refusal = None
-    if not other.fit:
-        refusal = other.reasons[0]
-    else:
-        try:
-            async with conn.begin_nested():
-                added = await put_agent(conn, frame.owner, chat, profile)
-        except HTTPException as exc:
-            refusal = str(exc.detail)
-    if refusal is not None:
-        await said(
-            conn, frame, f"No one invited: agent {body.handle} of project {profile.project} did not join: {refusal}"
-        )
-        await audited(conn, frame, audit.RUN_TRIAGE_INVITE, f" refused:@{body.handle}")
-        reply = refusal
-    else:
-        text = (
-            f"Decision: invited agent {body.handle} of project {profile.project} into this chat: {body.reason} "
-            f"Undo: remove it from the chat. Work goes to it by a mention of the agent of this thread, one hop "
-            f"further each time."
-        )
-        message_id = await said(conn, frame, text)
-        await audited(conn, frame, audit.RUN_TRIAGE_INVITE, f" invited:@{body.handle}")
-        reply = TriageInvited(message_id=message_id, project=profile.project, added=added)  # pyright: ignore[reportPossiblyUnboundVariable]
-    return failed.id, reply
+        pointed = {o.project for o in found.other_projects if o.role is not None}  # a project with no grant: unseen
+        profile = await by_handle(conn, body.handle)
+        if profile is None or profile.project not in pointed or profile.deleted_at is not None:
+            names = ", ".join(sorted(pointed)) or "none"
+            raise Unprocessable(
+                f"agent {body.handle} is no agent of a project that the error of run {failed.id} names and the owner "
+                f"holds a grant on (projects: {names})",
+            )
+        other = next(o for o in found.other_projects if o.project == profile.project)
+        chat = await chat_access(conn, frame.owner, frame.chat_id, lock=True)
+        refusal = None
+        if not other.fit:
+            refusal = other.reasons[0]
+        else:
+            try:
+                async with conn.begin_nested():
+                    added = await put_agent(conn, frame.owner, chat, profile)
+            except HTTPException as exc:
+                refusal = str(exc.detail)
+        if refusal is not None:
+            await said(
+                conn, frame, f"No one invited: agent {body.handle} of project {profile.project} did not join: {refusal}"
+            )
+            await audited(conn, frame, audit.RUN_TRIAGE_INVITE, f" refused:@{body.handle}")
+            reply = refusal
+        else:
+            text = (
+                f"Decision: invited agent {body.handle} of project {profile.project} into this chat: {body.reason} "
+                f"Undo: remove it from the chat. Work goes to it by a mention of the agent of this thread, one hop "
+                f"further each time."
+            )
+            message_id = await said(conn, frame, text)
+            await audited(conn, frame, audit.RUN_TRIAGE_INVITE, f" invited:@{body.handle}")
+            reply = TriageInvited(message_id=message_id, project=profile.project, added=added)  # pyright: ignore[reportPossiblyUnboundVariable]
+        return failed.id, reply

@@ -31,11 +31,12 @@ import secrets
 from datetime import date
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, probes, runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.probes.models.runs import (
     PROBE_RUN,
@@ -331,15 +332,18 @@ async def _session(conn: AsyncConnection, row, body: ProbeReport, session: Probe
     )
 
 
-async def report(conn: AsyncConnection, user: Principal, run_id: int, body: ProbeReport, key: str | None) -> ProbeRun:
+async def report(engine: AsyncEngine, user: Principal, run_id: int, body: ProbeReport, key: str | None) -> ProbeRun:
     """One session's result of the probe run the worker of ``user`` holds, or why the probe is stale; with the run's
-    own ``key``. The row as it is then."""
-    row = await _held_probe(conn, user, run_id, key)
-    if body.session is None:
-        await _stale(conn, row, body, run_id)
-    else:
-        await _session(conn, row, body, body.session, run_id)
-    return await repository.run_view(conn, row.id)
+    own ``key``, in a transaction of its own. The row as it is then, logged once that commits."""
+    async with UnitOfWork(engine) as conn:
+        row = await _held_probe(conn, user, run_id, key)
+        if body.session is None:
+            await _stale(conn, row, body, run_id)
+        else:
+            await _session(conn, row, body, body.session, run_id)
+        found = await repository.run_view(conn, row.id)
+    log.info("probe reported", extra={"run_id": run_id, "probe_run_id": found.id, "state": found.state})
+    return found
 
 
 async def probe_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:

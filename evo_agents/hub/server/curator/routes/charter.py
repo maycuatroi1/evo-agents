@@ -1,5 +1,5 @@
 """The routes of the night shift (see the package): its charter, where it stands, its latest nights, and pausing and
-resuming it. Each opens the request's transaction and hands it to the service."""
+resuming it. Each hands the request's parts and the app's engine to the service, which opens the transaction."""
 
 from __future__ import annotations
 
@@ -43,8 +43,7 @@ async def show_charter(
     revision: Annotated[int | None, Query(ge=1, le=2**31 - 1, description="an older revision")] = None,
 ) -> Charter:
     """The project's charter, at its newest revision or at ``revision``."""
-    async with request.app.state.engine.begin() as conn:
-        return await charters.show(conn, user, project, revision)
+    return await charters.show(request.app.state.engine, user, project, revision)
 
 
 @router.get(
@@ -54,8 +53,7 @@ async def show_charter(
 )
 async def charter_revisions(request: Request, project: ProjectName, user: CurrentUser) -> list[CharterRevision]:
     """Every revision of the project's charter, newest first; empty without one."""
-    async with request.app.state.engine.begin() as conn:
-        return await charters.revisions(conn, user, project)
+    return await charters.revisions(request.app.state.engine, user, project)
 
 
 # Writing
@@ -68,8 +66,7 @@ async def charter_revisions(request: Request, project: ProjectName, user: Curren
 )
 async def write_charter(request: Request, project: ProjectName, body: CharterWrite, user: CurrentUser) -> Charter:
     """Write a new revision of the project's charter; the admins of the project alone may."""
-    async with request.app.state.engine.begin() as conn:
-        written, revision = await charters.write(conn, user, project, body)
+    written, revision = await charters.write(request.app.state.engine, user, project, body)
     if revision is not None:
         log.info("charter written", extra={"project": project, "revision": revision, "login": user.login})
     return written
@@ -85,8 +82,7 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
 )
 async def status(request: Request, project: ProjectName, user: CurrentUser) -> CuratorStatus:
     """The charter, the schedules and the night of the project's night shift."""
-    async with request.app.state.engine.begin() as conn:
-        return await shift_status.status(conn, user, project)
+    return await shift_status.status(request.app.state.engine, user, project)
 
 
 @router.get(
@@ -101,8 +97,7 @@ async def nights(
     limit: Annotated[int, Query(ge=1, le=MAX_NIGHTS, description="the latest nights")] = DEFAULT_NIGHTS,
 ) -> NightList:
     """The latest nights of the project's night shift, each with its runs, their cost and its review run."""
-    async with request.app.state.engine.begin() as conn:
-        return await shift_status.nights(conn, user, project, limit)
+    return await shift_status.nights(request.app.state.engine, user, project, limit)
 
 
 # Pausing
@@ -115,8 +110,7 @@ async def nights(
 )
 async def pause(request: Request, project: ProjectName, user: CurrentUser) -> CuratorStatus:
     """Pause every schedule of the project, and cancel the runs they queued that are still queued."""
-    async with request.app.state.engine.begin() as conn:
-        found, cancelled = await shift_status.pause(conn, user, project)
+    found, cancelled = await shift_status.pause(request.app.state.engine, user, project)
     log.info("night shift paused", extra={"project": project, "login": user.login, "cancelled": cancelled})
     return found
 
@@ -128,7 +122,6 @@ async def pause(request: Request, project: ProjectName, user: CurrentUser) -> Cu
 )
 async def resume(request: Request, project: ProjectName, user: CurrentUser) -> CuratorStatus:
     """Let every schedule of the project run again."""
-    async with request.app.state.engine.begin() as conn:
-        found = await shift_status.resume(conn, user, project)
+    found = await shift_status.resume(request.app.state.engine, user, project)
     log.info("night shift resumed", extra={"project": project, "login": user.login})
     return found

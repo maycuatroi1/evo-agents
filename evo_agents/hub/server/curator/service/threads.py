@@ -46,11 +46,12 @@ import logging
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, judge, review, runs
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.changes.repository.job import night_paused
 from evo_agents.hub.server.changes.repository.views import change_view, change_with_origin
@@ -341,18 +342,17 @@ def decision_line(proposal: Proposal, body: CuratorAnswerIn, owner: str) -> str:
     return line
 
 
-async def answer(
-    conn: AsyncConnection, user: Principal, run_id: int, body: CuratorAnswerIn
-) -> tuple[Proposal, int, int]:
+async def answer(engine: AsyncEngine, user: Principal, run_id: int, body: CuratorAnswerIn) -> tuple[Proposal, int, int]:
     """Answer the proposal of chat run ``run_id``'s thread for its dispatcher: the proposal as answered, the
     Decision: line posted, and the proposal's id."""
-    frame = await _frame(conn, user, run_id, body.proposal_id)
-    said = ProposalAnswer(action=body.action, note=body.note, defer_days=body.defer_days)
-    proposal = await answer_proposal_as(
-        conn, frame.owner, frame.project, frame.proposal_id, said, agent=(frame.agent.profile.handle, run_id)
-    )
-    message_id = await _said(conn, frame, decision_line(proposal, body, frame.owner.login))
-    return proposal, message_id, frame.proposal_id
+    async with UnitOfWork(engine) as conn:
+        frame = await _frame(conn, user, run_id, body.proposal_id)
+        said = ProposalAnswer(action=body.action, note=body.note, defer_days=body.defer_days)
+        proposal = await answer_proposal_as(
+            conn, frame.owner, frame.project, frame.proposal_id, said, agent=(frame.agent.profile.handle, run_id)
+        )
+        message_id = await _said(conn, frame, decision_line(proposal, body, frame.owner.login))
+        return proposal, message_id, frame.proposal_id
 
 
 # The merge
