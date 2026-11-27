@@ -14,6 +14,7 @@ from evo_agents.kg import ppr, strategy
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.bench import run as bench_run
 from evo_agents.kg.project import load_project_at
+from evo_agents.kg.visibility import Visibility
 from tests.kg import built
 from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, make_project, write
@@ -328,8 +329,8 @@ HUB_SCORED = [("doc:a", 3.0), ("doc:b", 2.0), ("doc:c", 1.0)]
 def hub_order(monkeypatch, walk, seeds=(1.0, 1.0, 1.0)):
     seeds = dict(zip(("doc:a", "doc:b", "doc:c"), seeds, strict=True))
     found = ppr.personalized(HUB_ADJ, seeds, walk)
-    monkeypatch.setattr(ppr, "walked", lambda store, b, base, walk, seen: (found, HUB_ADJ))
-    return found, ppr.order(None, 1, HUB_SCORED, walk, lambda e: True)
+    monkeypatch.setattr(ppr, "walked", lambda store, base, walk, visibility: (found, HUB_ADJ))
+    return found, ppr.order(None, HUB_SCORED, walk, Visibility.everything())
 
 
 def test_a_hub_joined_to_every_seed_ranks_below_the_best_text_matches(monkeypatch):

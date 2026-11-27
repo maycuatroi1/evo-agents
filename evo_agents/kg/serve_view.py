@@ -6,13 +6,15 @@ the tests and benches (``evo_agents.kg.bench.rows_file.RowsSession``); this one 
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 from evo_agents.kg.project import Project
 from evo_agents.kg.refs import stored
 from evo_agents.kg.snapshot import SnapshotView
-from evo_agents.schema.policy import Label, audience_below
+from evo_agents.kg.visibility import Visibility
+from evo_agents.schema.policy import Label
 
 # Only a session with an ``error`` has no project, policy or clearance, and it answers nothing but that error.
 ANSWERS_NOTHING = "a session with an error reads nothing"
@@ -37,11 +39,9 @@ class SessionView:
         )
         self.handles: dict[str, tuple] = {}  # handle: (made, chunks left, audience its result revealed)
         self.policy = project.policy if project else None
-        self.clearance = None
-        self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
+        # what the session may see (evo_agents.kg.visibility): the call's, and the store's once a tool reads one
+        self.visibility = Visibility()
         self.read: Label | None = None  # join of the labels the current call reveals
-        self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.schema.policy)
-        self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None
         self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (``plain_search``)
@@ -52,7 +52,6 @@ class SessionView:
         # the named graphs this session knows, name to sources (``evo_agents.kg.graph_scope``): none on this machine,
         # those the hub resolved for the call on the hub; ``scope`` is the one the current call reads, None for all
         self.named_graphs: dict[str, frozenset[str]] = {}
-        self.scope: GraphScope | None = None
         if project is not None and error is None:
             policy = project.policy
             if sink == "cli" and "cli" not in policy.sinks:
@@ -65,35 +64,25 @@ class SessionView:
                 except KeyError as exc:
                     self.error = str(exc.args[0])
 
-    # -- visibility -----------------------------------------------------------------------------
+    # -- the reader ------------------------------------------------------------------------------
 
-    def visible(self, label: tuple) -> bool:
-        """Whether an element labelled ``label`` (level, location, integrity and, from the build's rows, audience)
-        shows."""
-        if self.sees_all:
-            return True
-        level, location, *_rest = label
-        audience = label[3] if len(label) > 3 else frozenset()
-        clearance = self.clearance
-        assert clearance is not None, ANSWERS_NOTHING
-        return level <= clearance[0] and location <= clearance[1] and audience_below(audience, self.audience)
+    @property
+    def clearance(self) -> tuple[int, int] | None:
+        """The (level, location) the session's sink may read; None for a session with an error."""
+        return self.visibility.clearance
 
-    def seen(self, x: dict) -> bool:
-        """``visible``, and not deprecated by a decision (``evo_agents.kg.pipeline.curation``) unless asked for, and
-        of the named graph the call reads (``scoped``)."""
-        return (
-            self.visible(x["label"])
-            and (self.deprecated or "deprecated" not in (x.get("props") or {}))
-            and self.scoped(x)
-        )
+    @clearance.setter
+    def clearance(self, clearance: tuple[int, int] | None) -> None:
+        self.visibility = replace(self.visibility, clearance=clearance)
 
-    def scoped(self, x: dict) -> bool:
-        """Whether a node or an edge row is of the named graph the call reads; any one without a named graph."""
-        return self.scope is None or self.scope.holds(x)
+    @property
+    def audience(self) -> frozenset[str]:
+        """The principals the reader is (``evo_agents.schema.policy``)."""
+        return self.visibility.audience
 
-    def shows(self, node: dict) -> bool:
-        """``visible`` for a node row, and of the named graph the call reads."""
-        return self.visible(node["label"]) and self.scoped(node)
+    @audience.setter
+    def audience(self, audience: frozenset[str]) -> None:
+        self.visibility = replace(self.visibility, audience=audience)
 
     def named_scope(self, graph) -> GraphScope | None:
         """The scope of the named graph a call passes as ``graph``: None for none or ``default`` (every source).
@@ -120,31 +109,23 @@ class SessionView:
         audience = " audience " + " ".join(sorted(label[3])) if len(label) > 3 and label[3] else ""
         return f"{lvl}{'' if loc == 'any' else '/' + loc},{integrity}{audience}"
 
-    def _saw(self, label: tuple) -> None:
+    def saw(self, label: tuple) -> None:
+        """Join ``label`` to what the current call reveals (``read``)."""
         assert self.project is not None, ANSWERS_NOTHING
         seen = Label.of(label, frozenset({self.project.name}))
         self.read = seen if self.read is None else self.read.join(seen)
 
-    def _store(self) -> tuple[SnapshotView, int]:
-        """The graph this call reads, as the session's audience reads it, and its latest ready build. When the highest
-        label of that build is within the clearance and its audiences within the session's, every element is
-        visible, and ``visible`` answers so without comparing labels."""
-        store, b = self._graph()
-        clearance = self.clearance
-        assert clearance is not None, ANSWERS_NOTHING
-        store.reader = self.audience
-        store.asked_clearance = clearance  # what agents asked before reading a node, under this clearance only
-        top = store.top_label(b)
-        within = top is not None and top[0] <= clearance[0] and top[1] <= clearance[1]
-        self.sees_all = within and audience_below(store.top_audience(b), self.audience)
-        store.ceiling = None if self.sees_all else clearance  # edges above it are left out before the limit
-        if self.scope is not None:  # a named graph leaves out nodes the label lets through: read further, as then
-            self.scope.bind(store, b)
-            self.sees_all = False
-        return store, b
+    def store(self) -> SnapshotView:
+        """The graph this call reads, as the session's reader reads it (``Visibility.reading``): when the highest
+        label of its build is within the clearance and its audiences within the session's, every element is visible,
+        and ``visibility`` answers so without comparing labels."""
+        store = self._graph()
+        assert self.clearance is not None, ANSWERS_NOTHING
+        self.visibility = self.visibility.reading(store)
+        return store
 
-    def _graph(self) -> tuple[SnapshotView, int]:
-        """The graph this call reads and its latest ready build: the subclass's. This machine holds none."""
+    def _graph(self) -> SnapshotView:
+        """The graph this call reads, of a ready build: the subclass's. This machine holds none."""
         raise self.no_graph()
 
     def no_graph(self) -> ToolError:
@@ -155,22 +136,22 @@ class SessionView:
             " which kg serve reads signed in"
         )
 
-    def _lookup(self, store: SnapshotView, node_id: str, b: int) -> dict | None:
+    def lookup(self, store: SnapshotView, node_id: str) -> dict | None:
         """A visible node by its stored id, its readable id (``refs.stored``) or an alias; None alike for a missing
         node and a hidden one."""
         if not isinstance(node_id, str) or not node_id:
             return None
         n = None
         for candidate in stored(node_id):
-            n = store.node(candidate, b)
+            n = store.node(candidate)
             if n is not None:
                 break
         if n is None:
-            alias = store.alias_of(node_id, b)
-            n = store.node(alias, b) if alias else None
-        return n if n is not None and self.shows(n) else None
+            alias = store.alias_of(node_id)
+            n = store.node(alias) if alias else None
+        return n if n is not None and self.visibility.shows(n) else None
 
-    def locked(self, store: SnapshotView, node_id: str, b: int) -> dict | None:
+    def locked(self, store: SnapshotView, node_id: str) -> dict | None:
         """The node ``node_id`` names when it is above the clearance and asks to show as locked (``props.locked``, as
         the docs plugin's typed nodes do): of the reader's audience and the named graph the call reads, but of a level
         or location the clearance does not reach. None for any other, a missing node among them. Only its id, kind
@@ -178,7 +159,7 @@ class SessionView:
         before this is asked (``SnapshotView.node``)."""
         if not isinstance(node_id, str) or not node_id:
             return None
-        n = next((x for x in (store.node(c, b) for c in stored(node_id)) if x is not None), None)
-        if n is None or (n.get("props") or {}).get("locked") is not True or not self.scoped(n):
+        n = next((x for x in (store.node(c) for c in stored(node_id)) if x is not None), None)
+        if n is None or (n.get("props") or {}).get("locked") is not True or not self.visibility.scoped(n):
             return None
-        return n if audience_below(n["label"][3] if len(n["label"]) > 3 else frozenset(), self.audience) else None
+        return n if self.visibility.holds_audience(n) else None

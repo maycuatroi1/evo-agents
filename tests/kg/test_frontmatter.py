@@ -172,9 +172,9 @@ def test_frontmatter_follows_identifier_changes(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     root = project.harness.root
     write(root / "screens.md", "---\nid: SCR-9\n---\n\n# Results screen\n")
-    first = sync_build(project)
+    sync_build(project)
     store = built.view_of(project)
-    assert store.node("screen:SCR-9", first.build_id) is None
+    assert store.node("screen:SCR-9") is None
 
     write(root / "knowledge.yaml", (root / "knowledge.yaml").read_text() + SCREEN)
     project = load_project_at(root, project.home)

@@ -16,7 +16,7 @@
   items of cluster_without_knowledge take no decision: they come back as the report. One build is queued.
 
 Access and visibility are those of the graph's other web reads (``evo_agents.hub.server.kg_web``): a grant on the
-project, the grant's ceiling with the member's audience, and every node through ``Session.visible``.
+project, the grant's ceiling with the member's audience, and every node through the session's ``Visibility``.
 """
 
 from __future__ import annotations

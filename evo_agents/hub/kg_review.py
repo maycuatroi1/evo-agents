@@ -20,54 +20,54 @@ from evo_agents.hub import kg_map
 from evo_agents.kg import review
 from evo_agents.kg.graph_model import edge_id
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.kg.visibility import Visibility
 
 NO_REVIEW = "this build has no review queue: it has no clusters"
 
-Visible = Callable[[tuple], bool]
-Degrees = Callable[[SnapshotView, list[str], int], dict[str, int]]  # visible edges of each node of ids at build b
+Degrees = Callable[[SnapshotView, list[str]], dict[str, int]]  # visible edges of each node of ids
 
 
-def visible_items(store: SnapshotView, b: int, visible: Visible) -> list[dict]:
+def visible_items(store: SnapshotView, visibility: Visibility) -> list[dict]:
     """The stored items of build b the reader sees, cut to what they see, as ``review.visible_item`` makes them."""
-    items = store.review_items(b)
+    items = store.review_items()
     if not items:
         return []
     ids = {nid for item in items for nid in item["evidence"]}
     ids |= {nid for item in items for nid in review.fix_nodes(item["detail"].get("fix") or [])}
-    labels = store.labels(ids, b)
+    labels = store.labels(ids)
     out = []
     for item in items:
-        shown = review.visible_item(item, labels, visible)
+        shown = review.visible_item(item, labels, visibility.label)
         if shown is None:
             continue
         edge = shown["detail"].get("edge")
         if edge is not None:
-            label = store.edge_label(edge, b)
-            if label is None or not visible(label):
+            label = store.edge_label(edge)
+            if label is None or not visibility.label(label):
                 continue
         fix = shown["detail"].get("fix")
-        if fix and not all(_edge_visible(store, b, visible, *e) for e in review.fix_edges(fix)):
+        if fix and not all(_edge_visible(store, visibility, *e) for e in review.fix_edges(fix)):
             shown["detail"].pop("fix")
         out.append(shown)
     return out
 
 
-def _edge_visible(store: SnapshotView, b: int, visible: Visible, src: str, rel: str, dst: str) -> bool:
-    label = store.edge_label(edge_id(src, rel, dst), b)
-    return label is not None and visible(label)
+def _edge_visible(store: SnapshotView, visibility: Visibility, src: str, rel: str, dst: str) -> bool:
+    label = store.edge_label(edge_id(src, rel, dst))
+    return label is not None and visibility.label(label)
 
 
-def queue(store: SnapshotView, b: int, visible: Visible, degrees: Degrees) -> dict:
+def queue(store: SnapshotView, visibility: Visibility, degrees: Degrees) -> dict:
     """Build b's review queue as the reader sees it: ``items``, most important first within each rule (RULES order),
     each with its nodes (id, kind, name), cluster and cluster label; and ``reason`` when there is none to show."""
-    stored = store.review_items(b)
-    if not stored and store.clusters(b) is None:
+    stored = store.review_items()
+    if not stored and store.clusters() is None:
         return {"computed": False, "reason": NO_REVIEW, "items": []}
-    items = visible_items(store, b, visible)
+    items = visible_items(store, visibility)
     ids = sorted({nid for item in items for nid in item["evidence"]})
-    nodes = store.nodes(ids, b)
-    weight = degrees(store, ids, b) if ids else {}
-    found = kg_map.view(store, b, visible)
+    nodes = store.nodes(ids)
+    weight = degrees(store, ids) if ids else {}
+    found = kg_map.view(store, visibility)
     rank = {rule: i for i, rule in enumerate(review.RULES)}
     out = []
     for item in items:
@@ -93,7 +93,7 @@ def queue(store: SnapshotView, b: int, visible: Visible, degrees: Degrees) -> di
     return {"computed": True, "reason": None, "items": out}
 
 
-def open_counts(store: SnapshotView, b: int, visible: Visible, dismissed: set[str]) -> dict[str, int]:
+def open_counts(store: SnapshotView, visibility: Visibility, dismissed: set[str]) -> dict[str, int]:
     """Per rule, the items of build b the reader sees that no one dismissed."""
-    items = [item for item in visible_items(store, b, visible) if item["fingerprint"] not in dismissed]
+    items = [item for item in visible_items(store, visibility) if item["fingerprint"] not in dismissed]
     return review.counts(items)

@@ -157,7 +157,7 @@ class FileSymbols:
         if symbol["props"]["line"] == number and short_name(symbol["id"]) in names:
             return symbol, True  # a definition without a keyword, such as a method of a TypeScript class
         if symbol["id"] not in self.callees:
-            edges = self.view.edges_of(symbol["id"], 0, "out", limit=MAX_EDGES)
+            edges = self.view.edges_of(symbol["id"], direction="out", limit=MAX_EDGES)
             calls = [e for e in edges if e["rel"] == "calls" and self.visible(e["label"])]
             self.callees[symbol["id"]] = {short_name(e["dst"]) for e in calls}
         return (symbol, False) if names & self.callees[symbol["id"]] else (None, False)
@@ -208,7 +208,7 @@ class Links:
         """The visible nodes with an edge of ``rels`` into ``node_id``, by id."""
         key = (node_id, rels)
         if key not in self.cache:
-            edges = self.view.edges_into(node_id, 0, rels, STATUSES, self.ceiling, limit=MAX_EDGES)
+            edges = self.view.edges_into(node_id, rels, STATUSES, self.ceiling, limit=MAX_EDGES)
             sources = self.view.nodes(sorted({e["src"] for e in edges if e["src"] != node_id}))
             self.cache[key] = sorted((n for n in sources.values() if self.visible(n["label"])), key=lambda n: n["id"])
         return self.cache[key]

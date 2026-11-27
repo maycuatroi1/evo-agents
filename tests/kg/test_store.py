@@ -366,9 +366,9 @@ def test_a_text_past_the_cap_is_cut_and_counted_in_coverage(tmp_path, kg_env, mo
 def test_lookups_by_id_name_and_alias(tmp_path, kg_env):
     view = searched(make_searchable(tmp_path, kg_env))
     search = "symbol:app:app/search.py::search"
-    assert view.exact(search, 0, 10) == [search]  # by id
-    assert view.exact("search", 0, 10, ["Symbol"]) == [search]  # by name, of a kind
-    assert view.exact("search", 0, 10, ["Section"]) == []
+    assert view.exact(search, limit=10) == [search]  # by id
+    assert view.exact("search", limit=10, kinds=["Symbol"]) == [search]  # by name, of a kind
+    assert view.exact("search", limit=10, kinds=["Section"]) == []
     assert view.alias_of("usecase:KB-99") is None  # an alias nothing holds
     assert view.node("app:file:app/search.py")["kind"] == "File"
 

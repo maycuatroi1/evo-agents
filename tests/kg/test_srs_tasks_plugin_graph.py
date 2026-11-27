@@ -243,30 +243,28 @@ def graph(project, report):
 
 
 def edge_between(store, b: int, src: str, rel: str, dst: str) -> dict | None:
-    return next(
-        (e for e in store.edges_of(src, b, limit=500) if (e["src"], e["rel"], e["dst"]) == (src, rel, dst)), None
-    )
+    return next((e for e in store.edges_of(src, limit=500) if (e["src"], e["rel"], e["dst"]) == (src, rel, dst)), None)
 
 
 def test_srs_use_cases_and_requirements_are_declared_nodes_of_the_approved_version(shop):
     project, report = shop([srs_source(), tasks_source()])
     store, b = graph(project, report)
     doc = "plugin.srs:document:demo-shop"
-    use_case = store.node(USE_CASE, b)
+    use_case = store.node(USE_CASE)
     assert use_case["kind"] == "UseCase" and use_case["status"] == "declared"
     assert (use_case["name"], use_case["props"]) == (
         "UC ORD-1",
         {"code": "UC ORD-1"},
     )  # its content stays in its section
-    assert store.node(doc, b)["kind"] == "Document"
+    assert store.node(doc)["kind"] == "Document"
     section = f"{doc}#k08"  # the heading of UC ORD-1, by its key
-    assert store.node(section, b)["kind"] == "Section"
+    assert store.node(section)["kind"] == "Section"
     assert edge_between(store, b, section, "defines", USE_CASE)["status"] == "declared"
-    rule = store.node("requirement:BR ORD1-1", b)
+    rule = store.node("requirement:BR ORD1-1")
     assert rule["kind"] == "Requirement" and rule["status"] == "declared"
     assert edge_between(store, b, "requirement:BR ORD1-1", "child_of", USE_CASE)["status"] == "declared"
     for code in ("NFR-SEC-01", "CBR 2"):  # table rows: defined by the section of the heading above them
-        assert store.node(f"requirement:{code}", b)["status"] == "declared"
+        assert store.node(f"requirement:{code}")["status"] == "declared"
     assert edge_between(store, b, f"{doc}#k23", "defines", "requirement:NFR-SEC-01") is not None
     assert edge_between(store, b, USE_CASE, "mentions", f"{doc}#k18")["status"] == "declared"  # the screen Cart
     found = hub_session(project, AGENT).call("kg_search", {"query": "UC-ORD-001"})["structuredContent"]
@@ -285,7 +283,7 @@ def test_srs_codes_link_mentions_and_bindings_to_the_declared_node(shop):
 def test_tasks_plugin_tickets_implement_use_cases_and_steps_implement_tickets(shop):
     project, report = shop([srs_source(), tasks_source()])
     store, b = graph(project, report)
-    ticket = store.node(TICKET, b)
+    ticket = store.node(TICKET)
     assert ticket["kind"] == "Ticket" and ticket["name"] == "T-1 Checkout"
     assert {key: ticket["props"][key] for key in ("number", "status", "status_group", "sprint", "assignees")} == {
         "number": "T-1",
@@ -296,7 +294,7 @@ def test_tasks_plugin_tickets_implement_use_cases_and_steps_implement_tickets(sh
     }
     assert edge_between(store, b, TICKET, "implements", USE_CASE)["status"] == "declared"
     assert edge_between(store, b, STEP, "implements", TICKET)["status"] == "declared"
-    assert store.node("plugin.tasks:ticket:T-3", b) is None  # its label names another project
+    assert store.node("plugin.tasks:ticket:T-3") is None  # its label names another project
 
 
 def test_srs_kg_path_goes_from_a_use_case_to_its_task_step_test_and_commit(shop):
@@ -315,16 +313,16 @@ def test_srs_plugin_data_carries_its_rows_label_and_a_sink_below_it_sees_nothing
     store, b = graph(project, report)
     doc = "plugin.srs:document:demo-shop"
     for internal in ("usecase:UC ORD-2", "requirement:NFR-SEC-01", doc, f"{doc}#k08", TICKET):
-        assert store.node(internal, b)["label"][0] == 1, internal
-    assert store.node("usecase:UC PAY-1", b)["label"][0] == 3  # the refunds document is secret
+        assert store.node(internal)["label"][0] == 1, internal
+    assert store.node("usecase:UC PAY-1")["label"][0] == 3  # the refunds document is secret
     agent = hub_session(project, AGENT)
     assert agent.call("kg_node", {"id": TICKET})["structuredContent"]["node"]["label"]["level"] == "internal"
     hidden = [(AGENT, "usecase:UC PAY-1"), (NARROW, "usecase:UC ORD-2"), (NARROW, TICKET), (NARROW, f"{doc}#k08")]
     for sink, node_id in hidden:
         with pytest.raises(ToolError):
-            hub_session(project, sink).tool_kg_node(node_id)
+            hub_session(project, sink).answer("kg_node", id=node_id)
     # A public document names UC ORD-1: the use case is public with its code alone, its section and task are not.
-    _, shown = hub_session(project, NARROW).tool_kg_node(USE_CASE)
+    _, shown = hub_session(project, NARROW).answer("kg_node", id=USE_CASE)
     assert shown["node"]["label"]["level"] == "public" and shown["node"]["props"] == {"code": "UC ORD-1"}
 
 
@@ -344,13 +342,13 @@ def test_srs_tasks_plugin_a_change_or_a_removal_is_written_once(shop):
     project, moved = shop([srs_source(), tasks_source(status="done", second=False)])
     assert not moved.skipped and moved.content_hash != first.content_hash
     store, b = graph(project, moved)
-    assert store.node(TICKET, b)["props"]["status"] == "done"
-    assert store.node("plugin.tasks:ticket:T-2", b) is None  # removed: a tombstone
+    assert store.node(TICKET)["props"]["status"] == "done"
+    assert store.node("plugin.tasks:ticket:T-2") is None  # removed: a tombstone
     (latest,) = project.corpus().runs("plugin.tasks", limit=1)
     assert latest["detail"] == {"written": 1, "removed": 1}
     project, dropped = shop([srs_source()])  # the project turned tasks off
     store, b = graph(project, dropped)
-    assert store.node(TICKET, b) is None and store.node(USE_CASE, b) is not None
+    assert store.node(TICKET) is None and store.node(USE_CASE) is not None
     assert "plugin.tasks" not in project.corpus().sources()
 
 

@@ -33,6 +33,7 @@ from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import clusters as kg_clusters_cli
 from evo_agents.hub.server.app import create_app
 from evo_agents.kg import clusters as kg_clusters
+from evo_agents.kg.visibility import Visibility
 from tests.hub.s3 import fake_s3
 from tests.hub.test_kg import InProcessHub, make_config, run_jobs
 
@@ -199,13 +200,13 @@ def test_a_project_without_a_build_has_an_empty_map_with_a_reason(hub):
 
 def test_a_build_without_clusters_says_why():
     class NoClusters:
-        def clusters(self, b):
+        def clusters(self):
             return None
 
-        def build_row(self, b):
+        def build_row(self):
             return {"coverage": {"clusters": {"computed": False, "reason": "graspologic-native is not installed"}}}
 
-    found = kg_map.cluster_map(kg_map.view(NoClusters(), 1, lambda label: True), True)
+    found = kg_map.cluster_map(kg_map.view(NoClusters(), Visibility.everything()), True)
     assert found == {
         "computed": False,
         "reason": "graspologic-native is not installed",
@@ -261,9 +262,9 @@ def test_a_view_is_counted_once_per_reader_and_never_shared_across_readers(hub, 
     counted: list[int] = []
     real = kg_map.view
 
-    def counting(store, b, visible):
-        counted.append(b)
-        return real(store, b, visible)
+    def counting(store, visibility):
+        counted.append(store.build)
+        return real(store, visibility)
 
     kg_map.VIEWS.clear()
     monkeypatch.setattr(kg_map, "view", counting)

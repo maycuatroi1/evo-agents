@@ -450,8 +450,8 @@ def test_the_ranking_is_the_stores(tmp_path, kg_env):
     _, snap = built(tmp_path, kg_env)
     ranker = Ranker(snap.view(frozenset(), None, kg_settings.DEFAULT))
     for query in QUERIES:
-        assert ranker.search(query, 0, limit=20) == RANKING[query], query
-        scored = ranker.search_scored(query, 0, limit=20)
+        assert ranker.search(query, limit=20) == RANKING[query], query
+        scored = ranker.search_scored(query, limit=20)
         assert [nid for nid, _ in scored] == RANKING[query], query
         for (nid, score), (want, expected) in zip(scored, TOP_SCORES[query], strict=False):
             assert nid == want, query

@@ -2,7 +2,7 @@
 subclusters, members and neighbours, and the compact whole graph the map's "all nodes and edges" view draws.
 
 A build stores its clusters over the nodes every reader of the project may read (``evo_agents.kg.clusters``), but a
-reader below that sees fewer, so nothing stored is shown as it is. Every member goes through ``Session.visible`` and
+reader below that sees fewer, so nothing stored is shown as it is. Every member goes through the session's ``Visibility`` and
 everything shown is counted again over the visible members alone: a cluster's size and kinds, the weight of a link
 between two clusters (the visible edges joining their visible members, as clusters project them), and a cluster's
 label, its c-TF-IDF words recomputed over the names and paths of visible members against the other visible clusters
@@ -15,7 +15,7 @@ its document's), so the map can colour it.
 
 Counting a view walks every member and every member edge of the build, seconds on a graph of tens of thousands of
 nodes, and the explorer of the web asks for the map, a cluster and the whole graph in a row. ``ViewCache`` keeps the
-last views computed, each by the artifact it read and everything ``Session.visible`` compares with, so two readers who
+last views computed, each by the artifact it read and everything ``Visibility.label`` compares with, so two readers who
 see differently never share one.
 
 Blocking, like ``evo_agents.hub.kg_web``: called from a WebSession method in the api's thread.
@@ -32,13 +32,13 @@ from typing import Generic, TypeVar
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.pacing import paced
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.kg.visibility import Visibility
 
 WHOLE_NODES = 20_000  # most nodes the whole-graph view takes
 VIEWS_KEPT = 8  # views ViewCache keeps, the latest used first
 NO_VISIBLE = "no cluster of this graph has a member you can read"
 NO_CLUSTERS = "this build has no clusters"
 
-Visible = Callable[[tuple], bool]
 V = TypeVar("V")
 
 
@@ -53,13 +53,15 @@ class View:
     pairs: dict[tuple[str, str], int] = field(default_factory=dict)  # (member, member), sorted: visible edges
 
 
-def view(store: SnapshotView, b: int, visible: Visible) -> View:
+def view(store: SnapshotView, visibility: Visibility) -> View:
     """The visible clusters of build b, recounted and renamed over their visible members."""
-    stored = store.clusters(b)
+    stored = store.clusters()
     if stored is None:
-        coverage = store.build_row(b)["coverage"].get("clusters") or {}
+        coverage = store.build_row()["coverage"].get("clusters") or {}
         return View(reason=coverage.get("reason") or NO_CLUSTERS)
-    nodes = [n for n in paced(store.cluster_nodes(b)) if n["cluster"] in stored.clusters and visible(n["label"])]
+    nodes = [
+        n for n in paced(store.cluster_nodes()) if n["cluster"] in stored.clusters and visibility.label(n["label"])
+    ]
     if not nodes:
         return View(reason=NO_VISIBLE)
     member = {n["id"]: n for n in paced(nodes)}
@@ -80,8 +82,8 @@ def view(store: SnapshotView, b: int, visible: Visible) -> View:
                 "kinds": dict(sorted(Counter(n["kind"] for n in ms).items())),
             }
     pairs: Counter = Counter()
-    for a, z, edge, src, dst, count in paced(store.member_links(b, kg_clusters.STRUCTURAL)):
-        if a in member and z in member and visible(edge) and visible(src) and visible(dst):
+    for a, z, edge, src, dst, count in paced(store.member_links(kg_clusters.STRUCTURAL)):
+        if a in member and z in member and visibility.label(edge) and visibility.label(src) and visibility.label(dst):
             pairs[(a, z) if a < z else (z, a)] += count
     links: Counter = Counter()
     for (a, z), w in paced(pairs.items()):
@@ -210,21 +212,21 @@ def cluster_detail(found: View, cid: str) -> dict | None:
     }
 
 
-def whole(store: SnapshotView, b: int, visible: Visible, limit: int, found: View | None = None) -> dict:
+def whole(store: SnapshotView, visibility: Visibility, limit: int, found: View | None = None) -> dict:
     """Every visible node, at most ``limit`` by id, with the level-1 cluster it counts in, and the visible edges between
     two of them as [source index, target index, type index into ``rels``]. ``found`` is the reader's view of build b,
     counted here when not given."""
-    found = found if found is not None else view(store, b, visible)
+    found = found if found is not None else view(store, visibility)
     top = {n["id"]: n["cluster"] for n in found.nodes}
-    nodes, edges = store.live_graph(b)
-    shown = [n for n in nodes if visible(n["label"])]
+    nodes, edges = store.live_graph()
+    shown = [n for n in nodes if visibility.label(n["label"])]
     truncated = len(shown) > limit
     shown = shown[:limit]
     index = {n["id"]: i for i, n in enumerate(shown)}
     rels: dict[str, int] = {}
     out_edges = []
     for src, rel, dst, label in edges:
-        if src in index and dst in index and visible(label):
+        if src in index and dst in index and visibility.label(label):
             out_edges.append([index[src], index[dst], rels.setdefault(rel, len(rels))])
     return {
         "nodes": [

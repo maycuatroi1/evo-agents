@@ -555,11 +555,11 @@ def test_commit_author_email_is_read_from_the_history_and_kept_on_the_commit_nod
     report = built.build(project)
     assert report.ok, report.errors
     store = built.view_of(project)
-    node = store.node(f"app:commit:{lumen}", report.build_id)
+    node = store.node(f"app:commit:{lumen}")
     assert node["kind"] == "Commit" and node["props"]["author_email"] == "Lumen.Writer@Northwind.test"
-    assert "author_email" not in store.node(f"app:commit:{nobody}", report.build_id)["props"]
+    assert "author_email" not in store.node(f"app:commit:{nobody}")["props"]
     # Labelled as its source, like every other prop: the level of the git source, the label of its files.
-    assert node["label"] == store.node("app:file:docs/notes.md", report.build_id)["label"]
+    assert node["label"] == store.node("app:file:docs/notes.md")["label"]
     assert node["label"][0] == 2  # customer, the third of the policy's levels
     wide = hub_session(project, "wide").call("kg_node", {"id": f"app:commit:{lumen}"})
     assert wide["structuredContent"]["node"]["props"]["author_email"] == "Lumen.Writer@Northwind.test"
@@ -587,7 +587,7 @@ def test_commit_author_email_reaches_the_commits_in_the_corpus_at_the_first_sync
     assert old.ok, old.errors
     commits = [r for r in project.corpus().items("app") if ":commit:" in r.item_id]
     assert len(commits) == 2 and all("author_email" not in r.record["props"] for r in commits)
-    assert "author_email" not in built.view_of(project).node(f"app:commit:{lumen}", old.build_id)["props"]
+    assert "author_email" not in built.view_of(project).node(f"app:commit:{lumen}")["props"]
 
     (result,) = sync_project(project, ["app"])  # the new build's code digest: the whole history again
     assert result.ok and not result.unchanged and result.removals == 0 and result.held == [], result.issues
@@ -596,9 +596,7 @@ def test_commit_author_email_reaches_the_commits_in_the_corpus_at_the_first_sync
     assert emails == {init: "t@example.test", lumen: "lumen@northwind.test"}
     new = built.build(project, verify=True, cold=True)  # a cold rebuild of the same corpus gives the same hash
     assert new.ok and new.verify["match"], new.verify
-    assert built.view_of(project).node(f"app:commit:{lumen}", new.build_id)["props"]["author_email"] == (
-        "lumen@northwind.test"
-    )
+    assert built.view_of(project).node(f"app:commit:{lumen}")["props"]["author_email"] == ("lumen@northwind.test")
 
     assert sync_project(project, ["app"])[0].unchanged  # the cursor holds the new input: nothing read again
     again = built.build(project, force=True)
@@ -786,7 +784,7 @@ def test_git_reads_the_pull_requests_of_a_repo_on_github_with_their_body_but_no_
     report = built.build(project)
     assert report.ok, report.errors
     store = built.view_of(project)
-    node = store.node("app:pr:7", report.build_id)
+    node = store.node("app:pr:7")
     assert node["kind"] == "PullRequest" and node["name"] == "Change 7"
     assert {k: node["props"][k] for k in ("number", "status", "head", "base")} == {
         "number": 7,
@@ -794,7 +792,7 @@ def test_git_reads_the_pull_requests_of_a_repo_on_github_with_their_body_but_no_
         "head": "feat/7",
         "base": "main",
     }
-    edges = {(e["src"], e["rel"], e["dst"]) for e in store.edges_of("app:pr:7", report.build_id)}
+    edges = {(e["src"], e["rel"], e["dst"]) for e in store.edges_of("app:pr:7")}
     assert ("app:pr:7", "merged_as", f"app:commit:{head}") in edges
     text = hub_session(project, "wide").call("kg_node", {"id": "app:pr:7"})["content"][0]["text"]
     assert "Free text" not in text and "(parsed, internal,U)" in text.splitlines()[0]

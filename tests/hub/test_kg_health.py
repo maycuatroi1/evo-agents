@@ -658,7 +658,7 @@ def test_the_review_queue_is_counted_on_the_snapshot_of_the_hubs_tables(world, t
 
     loaded = world.client.portal.call(keep)
     view = loaded.view(frozenset())
-    assert (view.clusters(0), view.review_items(0)) == kept  # the tables hold what the build gave
+    assert (view.clusters(), view.review_items()) == kept  # the tables hold what the build gave
     state = world.app.state
     found = partial(  # no blob store to read a graph file from: only the snapshot can be counted
         kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED

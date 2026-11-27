@@ -155,22 +155,22 @@ def shop(tmp_path):
 
 def test_canvas_claims_are_declared_nodes_with_their_use_case_and_signal_keys(shop):
     project, store, b = shop([srs_source(), tasks_source(), canvas_source()])
-    assert store.node(CANVAS, b)["kind"] == "Document"
-    claim = store.node(CLAIM, b)
+    assert store.node(CANVAS)["kind"] == "Document"
+    claim = store.node(CLAIM)
     assert claim["kind"] == "Claim" and claim["status"] == "declared"
     assert (claim["name"], claim["props"]) == ("CL-1", {"code": "CL-1"})  # its text and status stay in its section
-    section = store.node(f"{CANVAS}#CL-1", b)
+    section = store.node(f"{CANVAS}#CL-1")
     assert (section["kind"], section["name"]) == ("Section", "Claim 1 in Solution")
     assert edge_between(store, b, f"{CANVAS}#CL-1", "part_of", f"{CANVAS}#solution") is not None
     assert edge_between(store, b, f"{CANVAS}#CL-1", "defines", CLAIM)["status"] == "declared"
     assert edge_between(store, b, USE_CASE, "implements", CLAIM)["status"] == "declared"
     for key in (LEAD_DAYS, STOCKOUTS):  # the key it links, and the one its test card measures
-        node = store.node(f"signalkey:{key}", b)
+        node = store.node(f"signalkey:{key}")
         assert (node["kind"], node["name"], node["props"]) == ("SignalKey", key, {"key": key})
         assert edge_between(store, b, CLAIM, "measured_by", f"signalkey:{key}")["status"] == "declared"
     # CL-2 links a use case no approved version holds: the edge dangles and is dropped
-    assert store.node("usecase:UC NONE-9", b) is None
-    assert store.node("claim:CL-2", b)["kind"] == "Claim"
+    assert store.node("usecase:UC NONE-9") is None
+    assert store.node("claim:CL-2")["kind"] == "Claim"
     found = hub_session(project, AGENT).call("kg_search", {"query": "one tap stock-outs"})["structuredContent"]
     assert f"{CANVAS}#CL-1" in [hit["id"] for hit in found["results"]]  # search finds a claim by what it says
 
@@ -193,19 +193,19 @@ def test_canvas_mentions_of_a_claim_code_link_to_the_claim_and_show_its_code_alo
     assert edge_between(store, b, f"{CANVAS}#CL-2", "mentions", CLAIM) is not None  # one claim names another
     assert hub_session(project, AGENT).call("kg_node", {"id": f"{CANVAS}#CL-1"})["structuredContent"]["node"]
     # A public note names CL-1: the claim is public with its code alone; its section and links stay internal.
-    _, shown = hub_session(project, NARROW).tool_kg_node(CLAIM)
+    _, shown = hub_session(project, NARROW).answer("kg_node", id=CLAIM)
     assert shown["node"]["label"]["level"] == "public" and shown["node"]["props"] == {"code": "CL-1"}
     for hidden in (f"{CANVAS}#CL-1", CANVAS, f"signalkey:{LEAD_DAYS}"):
         with pytest.raises(ToolError):
-            hub_session(project, NARROW).tool_kg_node(hidden)
+            hub_session(project, NARROW).answer("kg_node", id=hidden)
     narrow = hub_session(project, NARROW).call("kg_path", {"from": CLAIM})["structuredContent"]
     assert [found["id"] for found in narrow["nodes"]] == [CLAIM]  # its links carry the canvas's label
 
 
 def test_canvas_without_srs_links_no_use_case_and_an_archived_claim_is_left_out(shop):
     project, store, b = shop([tasks_source(), canvas_source(with_srs=False, claims=CLAIMS[:1])], bindings=False)
-    assert store.node(CLAIM, b)["kind"] == "Claim" and store.node("claim:CL-2", b) is None
-    assert not [edge for edge in store.edges_of(CLAIM, b, limit=50) if edge["rel"] == "implements"]
+    assert store.node(CLAIM)["kind"] == "Claim" and store.node("claim:CL-2") is None
+    assert not [edge for edge in store.edges_of(CLAIM, limit=50) if edge["rel"] == "implements"]
     assert edge_between(store, b, CLAIM, "measured_by", f"signalkey:{LEAD_DAYS}") is not None
 
 

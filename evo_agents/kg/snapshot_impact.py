@@ -17,7 +17,7 @@ from evo_agents.kg.snapshot_search import SnapshotSearch, node_json
 
 
 def shows(reader: SnapshotSearch, node: dict) -> bool:
-    return reader.visible(node["label"])
+    return reader.visibility.label(node["label"])
 
 
 def seeds_of(reader: SnapshotSearch, ids: list[str], paths: list[str], found: Impact) -> None:
@@ -51,7 +51,7 @@ def seeds_of(reader: SnapshotSearch, ids: list[str], paths: list[str], found: Im
 
 def _seed_edges(reader: SnapshotSearch, found: Impact, nid: str) -> list[dict]:
     """The edges into a seed of the relations and statuses impact follows, up to IMPACT_SEED_EDGES."""
-    query = (nid, found.build, WALKED_RELS, IMPACT_STATUSES, reader.clearance)
+    query = (nid, WALKED_RELS, IMPACT_STATUSES, reader.clearance)
     edges = reader.view.edges_into(*query, limit=IMPACT_SEED_EDGES)
     total = reader.view.count_into(*query)
     if total > len(edges):
@@ -65,7 +65,7 @@ def edges_back(reader: SnapshotSearch, found: Impact, nid: str, hop: int) -> lis
     if hop == 0:
         edges = _seed_edges(reader, found, nid)
     else:
-        edges = reader.view.edges_of(nid, found.build, limit=HUB_DEGREE + 1)
+        edges = reader.view.edges_of(nid, limit=HUB_DEGREE + 1)
         if len(edges) > HUB_DEGREE:
             found.reached[nid]["hub"] = True
             return []
@@ -76,12 +76,12 @@ def edges_back(reader: SnapshotSearch, found: Impact, nid: str, hop: int) -> lis
         and e["src"] != nid
         and e["rel"] in WALKED_RELS
         and STATUS_RANK.get(e["status"], 0) >= IMPACT_MIN_RANK
-        and reader.seen(e)
+        and reader.visibility.seen(e)
     ]
 
 
 def walk_back(reader: SnapshotSearch, found: Impact) -> None:
-    """Walk back from the seeds: whoever has an edge into a reached node depends on it (``ImpactTools._walk_back``)."""
+    """Walk back from the seeds: whoever has an edge into a reached node depends on it (``KgImpact._walk_back``)."""
     frontier = sorted(found.seeds)
     for hop in range(found.depth + 1):
         step: dict[str, tuple] = {}
@@ -127,7 +127,7 @@ def impact(
 
 
 def impact_data(found: Impact) -> dict:
-    """The structured result of kg_impact (``ImpactTools._impact_data``) without the text's ``left_out``."""
+    """The structured result of kg_impact (``KgImpact._impact_data``) without the text's ``left_out``."""
     return {
         "build": found.build,
         "depth": found.depth,

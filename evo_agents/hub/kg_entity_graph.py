@@ -40,6 +40,7 @@ from evo_agents.hub.kg_map import ViewCache
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.pacing import paced
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.kg.visibility import Visibility
 
 ENTITY_PREFIX = "entity:"
 MENTIONS = "mentions"
@@ -53,8 +54,6 @@ CODE_RELS = (IMPLEMENTED_BY, REFERS_TO)
 CODE_KINDS = ("Directory", "File", "Symbol")
 CODE_LINKS = 100  # code nodes a detail lists at most; the count says how many there are
 MAX_CODE_NODES = 500  # code nodes one graph answer draws at most
-
-Seen = Callable[[dict], bool]
 
 
 @dataclass
@@ -73,25 +72,31 @@ class EntityView:
 VIEWS: ViewCache[EntityView] = ViewCache()
 
 
-def view(store: SnapshotView, b: int, seen: Seen) -> EntityView:
+def view(store: SnapshotView, visibility: Visibility) -> EntityView:
     """The reader's entity view of build b."""
-    nodes, edges = store.entity_graph(b, ENTITY_PREFIX)
-    shown = {n["id"]: n for n in paced(nodes) if seen(n)}
-    mentions = [e for e in paced(edges) if e["rel"] == MENTIONS and e["dst"] in shown and seen(e)]
-    documents = store.nodes({e["src"] for e in paced(mentions)}, b)
+    nodes, edges = store.entity_graph(prefix=ENTITY_PREFIX)
+    shown = {n["id"]: n for n in paced(nodes) if visibility.seen(n)}
+    mentions = [e for e in paced(edges) if e["rel"] == MENTIONS and e["dst"] in shown and visibility.seen(e)]
+    documents = store.nodes({e["src"] for e in paced(mentions)})
     docs: dict[str, list[dict]] = defaultdict(list)
     for e in paced(mentions):
         doc = documents.get(e["src"])
-        if doc is not None and seen(doc):
+        if doc is not None and visibility.seen(doc):
             docs[e["dst"]].append(e)
     relations: dict[str, dict] = {}
     adjacent: dict[str, list[str]] = defaultdict(list)
     for e in paced(edges):
-        if e["rel"] != MENTIONS and e["src"] in shown and e["dst"] in shown and e["src"] != e["dst"] and seen(e):
+        if (
+            e["rel"] != MENTIONS
+            and e["src"] in shown
+            and e["dst"] in shown
+            and e["src"] != e["dst"]
+            and visibility.seen(e)
+        ):
             relations[e["id"]] = e
             adjacent[e["src"]].append(e["id"])
             adjacent[e["dst"]].append(e["id"])
-    code, targets = _code(store, b, seen, shown)
+    code, targets = _code(store, visibility, shown)
     pointers: dict[str, int] = defaultdict(int)
     for by_target in paced(code.values()):
         for tid in by_target:
@@ -107,16 +112,18 @@ def view(store: SnapshotView, b: int, seen: Seen) -> EntityView:
     )
 
 
-def _code(store: SnapshotView, b: int, seen: Seen, shown: dict[str, dict]) -> tuple[dict, dict]:
+def _code(store: SnapshotView, visibility: Visibility, shown: dict[str, dict]) -> tuple[dict, dict]:
     """The code each seen entity points to: the seen edges of CODE_RELS to a seen code node, ``implemented_by``
     first, then by confidence."""
-    found = [e for e in paced(store.entity_code(b, CODE_RELS, ENTITY_PREFIX)) if e["src"] in shown and seen(e)]
-    nodes = store.nodes({e["dst"] for e in paced(found)}, b)
+    found = [
+        e for e in paced(store.entity_code(CODE_RELS, prefix=ENTITY_PREFIX)) if e["src"] in shown and visibility.seen(e)
+    ]
+    nodes = store.nodes({e["dst"] for e in paced(found)})
     targets: dict[str, dict] = {}
     code: dict[str, dict[str, list[dict]]] = defaultdict(dict)
     for e in paced(found):
         t = nodes.get(e["dst"])
-        if t is None or t["kind"] not in CODE_KINDS or not seen(t):
+        if t is None or t["kind"] not in CODE_KINDS or not visibility.seen(t):
             continue
         targets[t["id"]] = t
         code[e["src"]].setdefault(t["id"], []).append(e)
@@ -251,13 +258,13 @@ def _other(edge: dict, current: str) -> str:
     return edge["dst"] if edge["src"] == current else edge["src"]
 
 
-def _document(store: SnapshotView, b: int, links: Links, doc: dict, edge_id: str | None) -> dict:
+def _document(store: SnapshotView, links: Links, doc: dict, edge_id: str | None) -> dict:
     """A document as a citation names it: id, name, path and its link at the commit its source read (the source of
     ``edge_id``'s first unit, else the document's own)."""
     source = None
-    for d in store.derivations(edge_id or doc["id"], b):
+    for d in store.derivations(edge_id or doc["id"]):
         for u in d["units"]:
-            unit = store.unit(u, b)
+            unit = store.unit(u)
             if unit is not None:
                 source = unit["source"]
                 break
@@ -280,15 +287,15 @@ def _quoted(props: dict) -> dict:
     }
 
 
-def entity_citations(store: SnapshotView, b: int, found: EntityView, nid: str) -> tuple[list[dict], int]:
+def entity_citations(store: SnapshotView, found: EntityView, nid: str) -> tuple[list[dict], int]:
     """The documents that mention entity ``nid`` (at most CITATIONS, by name), each with what its mention says."""
     mentions = found.docs.get(nid, [])
-    documents = store.nodes({e["src"] for e in mentions}, b)
-    links = Links.of(store, b)
+    documents = store.nodes({e["src"] for e in mentions})
+    links = Links.of(store)
     out = []
     for e in mentions:
         doc = documents[e["src"]]
-        entry = {**_document(store, b, links, doc, e["id"]), **_quoted(e["props"])}
+        entry = {**_document(store, links, doc, e["id"]), **_quoted(e["props"])}
         entry["description"] = _description(e["props"])
         entry["model"] = _model(e["props"])
         out.append(entry)
@@ -296,21 +303,21 @@ def entity_citations(store: SnapshotView, b: int, found: EntityView, nid: str) -
     return out[:CITATIONS], len(out)
 
 
-def relation_citations(store: SnapshotView, b: int, edge: dict, seen: Seen) -> tuple[list[dict], int]:
+def relation_citations(store: SnapshotView, edge: dict, visibility: Visibility) -> tuple[list[dict], int]:
     """The documents relation ``edge`` was read from that the reader sees (at most CITATIONS, by name); the one whose
     statement the relation's props hold carries its quote and line."""
     items: dict[str, str] = {}  # document id -> the source of the unit it was read from
-    for d in store.derivations(edge["id"], b):
+    for d in store.derivations(edge["id"]):
         for u in d["units"]:
-            unit = store.unit(u, b)
+            unit = store.unit(u)
             if unit is not None:
                 items.setdefault(unit["item"], unit["source"])
-    documents = store.nodes(items, b)
-    links = Links.of(store, b)
+    documents = store.nodes(items)
+    links = Links.of(store)
     out = []
     for item, source in items.items():
         doc = documents.get(item)
-        if doc is None or not seen(doc):
+        if doc is None or not visibility.seen(doc):
             continue
         props = doc["props"]
         entry = {
@@ -386,15 +393,15 @@ def _surest(edges: list[dict]) -> float:
     return max((e["conf"] for e in edges if isinstance(e["conf"], (int, float))), default=0.0)
 
 
-def _source(store: SnapshotView, b: int, nid: str, seen: Seen) -> str | None:
+def _source(store: SnapshotView, nid: str, visibility: Visibility) -> str | None:
     """The source of the first unit node ``nid`` was derived from whose item the reader sees."""
-    for d in store.derivations(nid, b):
+    for d in store.derivations(nid):
         for u in d["units"]:
-            unit = store.unit(u, b)
+            unit = store.unit(u)
             if unit is None:
                 continue
-            item = store.nodes([unit["item"]], b).get(unit["item"])
-            if item is not None and seen(item):
+            item = store.nodes([unit["item"]]).get(unit["item"])
+            if item is not None and visibility.seen(item):
                 return unit["source"]
     return None
 
@@ -408,7 +415,7 @@ def _directory_uri(links: Links, source: str | None, path: str | None) -> str | 
 
 
 def code_links(
-    store: SnapshotView, b: int, found: EntityView, nid: str, seen: Seen, describe: Callable[[tuple], dict]
+    store: SnapshotView, found: EntityView, nid: str, visibility: Visibility, describe: Callable[[tuple], dict]
 ) -> tuple[list[dict], int]:
     """The code entity ``nid`` points to (at most CODE_LINKS, by package, kind and path), one entry per code node: the
     relations that link them, the agent's reason and the name that matched, the surest confidence, and the code's
@@ -416,9 +423,9 @@ def code_links(
     by_target = found.code.get(nid, {})
     targets = [found.targets[t] for t in by_target]
     files = store.nodes(
-        {t["props"]["file"] for t in targets if t["kind"] == "Symbol" and isinstance(t["props"].get("file"), str)}, b
+        {t["props"]["file"] for t in targets if t["kind"] == "Symbol" and isinstance(t["props"].get("file"), str)}
     )
-    links = Links.of(store, b)
+    links = Links.of(store)
     out = []
     for t in targets:
         props = t["props"]
@@ -426,10 +433,10 @@ def code_links(
         entry = code_node_json(found, t, describe)
         del entry["entities"]
         if t["kind"] == "Directory":
-            uri = _directory_uri(links, _source(store, b, t["id"], seen), entry["path"])
+            uri = _directory_uri(links, _source(store, t["id"], visibility), entry["path"])
         else:
             owner = files.get(props.get("file")) if t["kind"] == "Symbol" else t
-            seen_owner = owner is not None and (owner is t or seen(owner))
+            seen_owner = owner is not None and (owner is t or visibility.seen(owner))
             uri = links.node(owner)["props"].get("uri") if owner is not None and seen_owner else None
         reason = next((e["props"].get("reason") for e in edges if e["rel"] == IMPLEMENTED_BY), None)
         matched = next((e["props"].get("name") for e in edges if e["rel"] == REFERS_TO), None)

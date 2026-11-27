@@ -67,11 +67,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.harness import repo_paths
+from evo_agents.kg.budget import Budget
 from evo_agents.kg.project import ProjectError, resolve_project
 
 METHODS = ("kg_search", "kg_context", "grep")
 KS = (1, 5)
-BYTES_PER_TOKEN = 3  # as the hub's handoff counts tokens (evo_agents.hub.handoff)
 DEFAULT_LIMIT = 10  # kg_search's own default
 DEFAULT_BUDGET_TOKENS = 3000  # kg_context's own default
 MIN_BUDGET_TOKENS, MAX_BUDGET_TOKENS = 500, 8000  # what kg_context takes
@@ -218,7 +218,7 @@ class Report:
 
 
 def estimate_tokens(text: str) -> int:
-    return math.ceil(len(text.encode()) / BYTES_PER_TOKEN)
+    return Budget.tokens_of(text)
 
 
 # -- the question set --------------------------------------------------------------------------------------------
@@ -639,7 +639,7 @@ def grep_output(files: list[GrepFile], budget_tokens: int) -> tuple[str, list[tu
 
 def grep_lines(files: list[GrepFile], budget_tokens: int) -> tuple[str, list[tuple[str, str]], list[Item]]:
     """``grep_output`` and the lines it prints, as one-line items."""
-    budget = budget_tokens * BYTES_PER_TOKEN
+    budget = Budget(budget_tokens).bytes
     lines: list[str] = []
     used = 0
     shown: list[tuple[str, str]] = []

@@ -53,6 +53,7 @@ from evo_agents.kg import status as status_text
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session
 from evo_agents.kg.serve_impact import IMPACT_STATUSES
+from evo_agents.kg.serve_tool import Tool
 from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
 from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.schema.policy import Label, Policy, audience_below
@@ -91,8 +92,8 @@ class HubProject:
 
 
 class HubSession(Session):
-    """The tools of ``kg serve`` over a graph the hub built. ``ceiling`` is the highest label the caller may read
-    (None: nothing)."""
+    """The tools of ``kg serve`` over a graph the hub built, kg_status answered by the hub (``HubStatus``). ``ceiling``
+    is the highest label the caller may read (None: nothing)."""
 
     def __init__(
         self,
@@ -119,15 +120,14 @@ class HubSession(Session):
             self.clearance = (ceiling.level, ceiling.location)
             self.audience = ceiling.audience
 
-    def _graph(self) -> tuple[SnapshotView, int]:
-        b = self.graph_store.latest_ready()
-        if b is None:
+    def _graph(self) -> SnapshotView:
+        if self.graph_store.latest_ready() is None:
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")
-        return self.graph_store, b
+        return self.graph_store
 
-    def whole(self, b: int) -> bool:
-        """Whether the session's audience holds every audience of build ``b``."""
-        return audience_below(self.graph_store.top_audience(b), self.audience)
+    def whole(self) -> bool:
+        """Whether the session's audience holds every audience of its build."""
+        return audience_below(self.graph_store.top_audience(), self.audience)
 
     def recorded(self, summary: dict) -> dict:
         """The graph file's ``summary`` with the vectors the hub recorded of the build, which the file lacks."""
@@ -137,11 +137,10 @@ class HubSession(Session):
 
     def within(self, summary: dict) -> dict:
         """The build's ``summary`` as the session's audience may read it (see the module)."""
-        b = summary.get("build_id")
-        if not summary.get("ready") or self.whole(b):
+        if not summary.get("ready") or self.whole():
             return summary
         self.graph_store.reader = self.audience
-        seen = self.graph_store.seen(b)
+        seen = self.graph_store.seen()
         coverage = summary.get("coverage") or {}
         sources = [
             {"id": s["id"], "items": seen["items"].get(s["id"], 0)} if s["id"] in seen["audience"] else s
@@ -159,10 +158,10 @@ class HubSession(Session):
     def counted(self, graph: BuiltGraph) -> BuiltGraph:
         """``graph`` with the nodes and edges the session's audience holds, when it does not hold every audience."""
         b = self.graph_store.latest_ready()
-        if b is None or self.whole(b):
+        if b is None or self.whole():
             return graph
         self.graph_store.reader = self.audience
-        seen = self.graph_store.seen(b)
+        seen = self.graph_store.seen()
         return replace(graph, nodes=seen["nodes"], edges=seen["edges"])
 
     def cleared(self, summary: dict) -> dict:
@@ -172,8 +171,7 @@ class HubSession(Session):
         if not summary.get("ready"):
             return summary
         assert self.clearance is not None, ANSWERS_NOTHING
-        b = int(summary["build_id"])
-        level, location = self.graph_store.top_label(b)
+        level, location = self.graph_store.top_label()
         if level > self.clearance[0] or location > self.clearance[1]:
             return {k: v for k, v in summary.items() if k not in ("coverage", "stats")}
         coverage = summary.get("coverage") or {}
@@ -182,79 +180,24 @@ class HubSession(Session):
             if self.policy.declares(src["id"]):
                 label = self.policy.source_label(src["id"])
                 shown = (label.level, label.location, label.integrity)
-                if not self.visible(shown):
+                if not self.visibility.label(shown):
                     sources.append({"id": src["id"], "withheld": True})
                     continue
-                self._saw(shown)
+                self.saw(shown)
             sources.append(src)
-        whole = self.whole(b)
-        self._saw((level, location, "U", self.graph_store.top_audience(b) if whole else frozenset()))
+        whole = self.whole()
+        self.saw((level, location, "U", self.graph_store.top_audience() if whole else frozenset()))
         return {**summary, "coverage": {**coverage, "sources": sources}}
-
-    def tool_kg_status(self) -> tuple[str, dict]:
-        clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
-        summary = self.cleared(self.within(self.recorded(self.graph_store.summary())))
-        coverage = summary.get("coverage") or {}
-        hub_build = {
-            "build_id": self.graph.build_id,
-            "artifact_sha256": self.graph.sha256,
-            "content_hash": self.graph.content_hash,
-            "finished_at": self.graph.finished_at.isoformat(),
-            "latest": self.graph.build_id == self.latest.build_id,
-        }
-        lines = [
-            f"sink {self.sink}: clearance {clr[0]}/{clr[1]}",
-            f"project {self.project.name} on the hub: build {self.graph.build_id} finished "
-            f"{hub_build['finished_at']}, {summary.get('nodes', 0)} nodes, {summary.get('edges', 0)} edges, "
-            f"{summary.get('units', 0)} units, content {self.graph.content_hash}",
-        ]
-        if not hub_build["latest"]:
-            behind = "its graph is not loaded yet; this is the newest graph loaded"
-            lines.append(f"note: build {self.latest.build_id} is newer, but {behind}")
-        for src in coverage.get("sources", []):
-            if src.get("withheld"):  # above the clearance of the sink (``cleared``)
-                lines.append(f"  {src['id']:<22} withheld: above the clearance of this sink")
-                continue
-            if "mentions" not in src:  # items with an audience (``within``)
-                lines.append(f"  {src['id']:<22} {src['items']:>6} items you can read")
-                continue
-            read = f", read {freshness.describe(src['read'])}" if isinstance(src.get("read"), dict) else ""
-            lines.append(
-                f"  {src['id']:<22} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
-                f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{read}"
-            )
-            if src.get("code"):
-                lines.append(f"    {status_text.code_line(src['code'])}")
-        if "clusters" in coverage:
-            lines.append(status_text.cluster_line(coverage["clusters"]))
-        multiple = coverage.get("multiple_definitions")
-        if multiple is not None:  # a convention warning, not a failure: ``ok`` stays as it is
-            multiple = {**multiple, "hint": status_text.DERIVED_FROM_HINT if multiple["codes"] else None}
-            lines += status_text.multiple_lines(multiple)
-        lines += [f"warning: {w}" for w in coverage.get("warnings", [])]
-        status = {
-            "project": self.project.name,
-            "backend": "hub",
-            "ok": bool(summary.get("ready")),
-            "hub_build": hub_build,
-            "graph": summary,
-            "warnings": coverage.get("warnings", []),
-            "multiple_definitions": multiple,
-            "reads": freshness.reads(coverage),
-            "sink": {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}},
-            "summary": self.project.name,
-        }
-        return "\n".join(lines), status
 
     def node_kinds(self, ids: list[str]) -> dict[str, tuple[str, str]]:
         """Of node ``ids``, those a node visible to the session has: each to (its stored id, its kind). A hidden node
-        is left out as a missing one is (``_lookup``). ToolError as ``unknown``."""
+        is left out as a missing one is (``lookup``). ToolError as ``unknown``."""
         if self.error:
             raise ToolError(self.error)
-        store, b = self._store()
+        store = self.store()
         found = {}
         for node_id in dict.fromkeys(ids):
-            n = self._lookup(store, node_id, b)
+            n = self.lookup(store, node_id)
             if n is not None:
                 found[node_id] = (n["id"], n["kind"])
         return found
@@ -265,15 +208,15 @@ class HubSession(Session):
         visible to the session, or the graph holds no ready build."""
         if self.error:
             raise ToolError(self.error)
-        store, b = self._store()
+        store = self.store()
         lacking, named = [], set()
         for node_id in ids:
-            found = self._lookup(store, node_id, b)
+            found = self.lookup(store, node_id)
             if found is None:
                 lacking.append(node_id)
             elif found["kind"] in ("File", "Document"):
                 named.add(found["id"])
-        files = [found for found in store.path_nodes(b) if self.visible(found["label"])] if paths else []
+        files = [found for found in store.path_nodes() if self.visibility.label(found["label"])] if paths else []
         held: dict[tuple, set[str]] = {}
         for found in files:
             held.setdefault((found["props"].get("repo"), found["props"]["path"]), set()).add(found["id"])
@@ -289,7 +232,7 @@ class HubSession(Session):
                 named |= bare[path]
             else:
                 missing.append(path)
-        return lacking, missing, self._authors(store, b, sorted(named))
+        return lacking, missing, self._authors(store, sorted(named))
 
     def mentions(self, codes: list[str]) -> dict[str, list[Evidence]]:
         """For each use case code of ``codes`` (the node ``usecase:<code>``), what the graph shows of its delivery as
@@ -298,24 +241,24 @@ class HubSession(Session):
         graph holds no ready build."""
         if self.error:
             raise ToolError(self.error)
-        store, b = self._store()
+        store = self.store()
         found: dict[str, list[Evidence]] = {}
         for code in codes:
             edges = store.edges_into(
-                f"usecase:{code}", b, ("mentions",), IMPACT_STATUSES, self.clearance, limit=MAX_MENTIONS_READ
+                f"usecase:{code}", ("mentions",), IMPACT_STATUSES, self.clearance, limit=MAX_MENTIONS_READ
             )
-            sources = store.nodes([edge["src"] for edge in edges if self.visible(edge["label"])], b)
+            sources = store.nodes([edge["src"] for edge in edges if self.visibility.label(edge["label"])])
             found[code] = sorted(
                 {
                     item
                     for node in sources.values()
-                    if self.visible(node["label"]) and (item := _evidence(node)) is not None
+                    if self.visibility.label(node["label"]) and (item := _evidence(node)) is not None
                 },
                 key=lambda item: (item.kind, item.ref),
             )
         return found
 
-    def _authors(self, store: SnapshotView, b: int, file_ids: list[str]) -> list[str]:
+    def _authors(self, store: SnapshotView, file_ids: list[str]) -> list[str]:
         """The author emails of the LATEST_COMMITS newest commits visible to the session that changed each of
         ``file_ids``, each address once, in the order found."""
         found: list[str] = []
@@ -323,16 +266,16 @@ class HubSession(Session):
             edges: list[dict] = []
             while len(edges) < MAX_COMMITS_READ:
                 page = store.edges_into(
-                    file_id, b, ("changes",), IMPACT_STATUSES, self.clearance, limit=COMMITS_PAGE, offset=len(edges)
+                    file_id, ("changes",), IMPACT_STATUSES, self.clearance, limit=COMMITS_PAGE, offset=len(edges)
                 )
                 edges += page
                 if len(page) < COMMITS_PAGE:
                     break
-            sources = [edge["src"] for edge in edges if self.visible(edge["label"])]
+            sources = [edge["src"] for edge in edges if self.visibility.label(edge["label"])]
             commits = [
                 node
-                for node in store.nodes(sources, b).values()
-                if node["kind"] == "Commit" and self.visible(node["label"])
+                for node in store.nodes(sources).values()
+                if node["kind"] == "Commit" and self.visibility.label(node["label"])
             ]
             commits.sort(key=lambda node: (str(node["props"].get("time") or ""), node["id"]), reverse=True)
             for node in commits[:LATEST_COMMITS]:
@@ -359,6 +302,74 @@ def _evidence(node: dict) -> Evidence | None:
     else:
         return None
     return Evidence(found, node["id"], str(node.get("name") or "")[:120])
+
+
+class HubStatus(Tool):
+    """kg_status of a graph the hub built: the sink's clearance, the build the call read and whether it is the
+    newest, its totals and the coverage of each source as the reader may see it (``HubSession.cleared``)."""
+
+    name = "kg_status"
+
+    session: HubSession
+
+    def run(self) -> tuple[str, dict]:
+        session = self.session
+        clr = (session.policy.level_name(session.clearance[0]), session.policy.location_name(session.clearance[1]))
+        summary = session.cleared(session.within(session.recorded(session.graph_store.summary())))
+        coverage = summary.get("coverage") or {}
+        hub_build = {
+            "build_id": session.graph.build_id,
+            "artifact_sha256": session.graph.sha256,
+            "content_hash": session.graph.content_hash,
+            "finished_at": session.graph.finished_at.isoformat(),
+            "latest": session.graph.build_id == session.latest.build_id,
+        }
+        lines = [
+            f"sink {session.sink}: clearance {clr[0]}/{clr[1]}",
+            f"project {session.project.name} on the hub: build {session.graph.build_id} finished "
+            f"{hub_build['finished_at']}, {summary.get('nodes', 0)} nodes, {summary.get('edges', 0)} edges, "
+            f"{summary.get('units', 0)} units, content {session.graph.content_hash}",
+        ]
+        if not hub_build["latest"]:
+            behind = "its graph is not loaded yet; this is the newest graph loaded"
+            lines.append(f"note: build {session.latest.build_id} is newer, but {behind}")
+        for src in coverage.get("sources", []):
+            if src.get("withheld"):  # above the clearance of the sink (``cleared``)
+                lines.append(f"  {src['id']:<22} withheld: above the clearance of this sink")
+                continue
+            if "mentions" not in src:  # items with an audience (``within``)
+                lines.append(f"  {src['id']:<22} {src['items']:>6} items you can read")
+                continue
+            read = f", read {freshness.describe(src['read'])}" if isinstance(src.get("read"), dict) else ""
+            lines.append(
+                f"  {src['id']:<22} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
+                f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{read}"
+            )
+            if src.get("code"):
+                lines.append(f"    {status_text.code_line(src['code'])}")
+        if "clusters" in coverage:
+            lines.append(status_text.cluster_line(coverage["clusters"]))
+        multiple = coverage.get("multiple_definitions")
+        if multiple is not None:  # a convention warning, not a failure: ``ok`` stays as it is
+            multiple = {**multiple, "hint": status_text.DERIVED_FROM_HINT if multiple["codes"] else None}
+            lines += status_text.multiple_lines(multiple)
+        lines += [f"warning: {w}" for w in coverage.get("warnings", [])]
+        status = {
+            "project": session.project.name,
+            "backend": "hub",
+            "ok": bool(summary.get("ready")),
+            "hub_build": hub_build,
+            "graph": summary,
+            "warnings": coverage.get("warnings", []),
+            "multiple_definitions": multiple,
+            "reads": freshness.reads(coverage),
+            "sink": {"id": session.sink, "clearance": {"level": clr[0], "location": clr[1]}},
+            "summary": session.project.name,
+        }
+        return "\n".join(lines), status
+
+
+HubSession.tools = Session.tools.with_(HubStatus)
 
 
 class Handles:
@@ -403,7 +414,7 @@ class WholeSession(HubSession):
     """A HubSession whose answer is the tool's data whole, never cut for kg_more, and no text: what a read across
     projects counts before it reads again within the clearance it may show (``server.agents.service.reads``)."""
 
-    def _envelope(self, text: str, data: dict) -> dict:
+    def _envelope(self, text: str, data: dict, held: frozenset[str] | None = None) -> dict:
         return {"structuredContent": data}
 
 

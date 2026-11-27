@@ -473,8 +473,8 @@ class Snapshot:
 
 
 class SnapshotView:
-    """A snapshot as one reader reads it, with the reads of a graph its callers use; ``b`` is accepted and ignored,
-    a view reads its snapshot's one build. A node or edge read is a fresh dict; its props are shared and not to be
+    """A snapshot as one reader reads it, with the reads of a graph its callers use: a view reads its snapshot's one
+    build, so no read names a build. A node or edge read is a fresh dict; its props are shared and not to be
     changed."""
 
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
@@ -520,7 +520,7 @@ class SnapshotView:
 
     # -- nodes ------------------------------------------------------------------------------------------------------
 
-    def nodes(self, ids, b: int = 0) -> dict[str, dict]:
+    def nodes(self, ids) -> dict[str, dict]:
         out, sees, policy = {}, self.sight.sees, self.sight.policies.node
         for nid in ids:
             i = self.snap.index.get(nid)
@@ -528,13 +528,13 @@ class SnapshotView:
                 out[nid] = dict(self.read(self.snap.nodes[i]))
         return out
 
-    def node(self, node_id: str, b: int = 0) -> dict | None:
+    def node(self, node_id: str) -> dict | None:
         return self.nodes([node_id]).get(node_id)
 
-    def labels(self, ids, b: int = 0) -> dict[str, tuple]:
+    def labels(self, ids) -> dict[str, tuple]:
         return {nid: n["label"] for nid, n in self.nodes(ids).items()}
 
-    def exact(self, query: str, b: int = 0, limit: int = 50, kinds=()) -> list[str]:
+    def exact(self, query: str, *, limit: int = 50, kinds=()) -> list[str]:
         """Live nodes the reader sees whose id, alias or name is ``query``, by id."""
         wanted, sees, policy = set(kinds or ()), self.sight.sees, self.sight.policies.node
         found = sorted(
@@ -571,7 +571,7 @@ class SnapshotView:
                 found.update(part.into(i))
         return sorted(found)
 
-    def edges_of(self, node_id: str, b: int = 0, direction: str = "both", limit: int = 200) -> list[dict]:
+    def edges_of(self, node_id: str, *, direction: str = "both", limit: int = 200) -> list[dict]:
         """The live edges of a node, within ``ceiling`` and the reader's audience, filtered before the limit."""
         out, within, policy = [], self.sight.within(self.ceiling), self.sight.policies.edge
         for e in self._numbers(node_id, direction):
@@ -587,18 +587,18 @@ class SnapshotView:
         return [self.snap.edges[e] for e in found if within[policy[e]]]
 
     def edges_into(
-        self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int], *, limit: int, offset: int = 0
+        self, node_id: str, rels, statuses, ceiling: tuple[int, int], *, limit: int, offset: int = 0
     ) -> list[dict]:
         """One page of the edges ``count_into`` counts, in the order of ``edges_of``."""
         return [
             dict(self.read(e, ceiling)) for e in self._into(node_id, rels, statuses, ceiling)[offset : offset + limit]
         ]
 
-    def count_into(self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int]) -> int:
+    def count_into(self, node_id: str, rels, statuses, ceiling: tuple[int, int]) -> int:
         """How many live edges lead into a node with one of ``rels`` and ``statuses``, under ``ceiling``."""
         return len(self._into(node_id, rels, statuses, ceiling))
 
-    def degree(self, node_id: str, b: int = 0) -> int:
+    def degree(self, node_id: str) -> int:
         """How many edges touch a node, whatever their relation, status or level, the reader's audience within, an
         edge from the node to itself once: what a hub is told by."""
         i = self.snap.index.get(node_id)
@@ -608,7 +608,7 @@ class SnapshotView:
         sees, policy = self.sight.sees, self.sight.policies.edge
         return sum(1 for e in held if sees[policy[e]])
 
-    def degrees(self, ids, b: int, ceiling: tuple[int, int]) -> dict[str, int]:
+    def degrees(self, ids, ceiling: tuple[int, int]) -> dict[str, int]:
         """How many edges at most ``ceiling`` touch each of ``ids``, the reader's audience within, an edge from a node
         to itself twice; ids without one are left out."""
         out: dict[str, int] = {}
@@ -624,7 +624,7 @@ class SnapshotView:
                 out[nid] = count
         return out
 
-    def alias_of(self, alias: str, b: int = 0) -> str | None:
+    def alias_of(self, alias: str) -> str | None:
         """The node the reader sees that holds ``alias`` (an id merged into it), or None."""
         nid = self.snap.aliases.get(alias)
         return nid if nid is not None and self.node(nid) is not None else None
@@ -639,11 +639,11 @@ class SnapshotView:
         A ranker keeps nothing between calls."""
         return snapshot_text.Ranker(self)
 
-    def search(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[str]:
-        return self.ranker.search(query, b, limit, **kw)
+    def search(self, query: str, *, limit: int = 50, **kw) -> list[str]:
+        return self.ranker.search(query, limit=limit, **kw)
 
-    def search_scored(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[tuple[str, float | None]]:
-        return self.ranker.search_scored(query, b, limit, **kw)
+    def search_scored(self, query: str, *, limit: int = 50, **kw) -> list[tuple[str, float | None]]:
+        return self.ranker.search_scored(query, limit=limit, **kw)
 
     def matched(self, ids: list[str], query: str, snippets=frozenset()) -> dict[str, dict]:
         """The word counts of what matched, without its snippet and passage lines (not made from a snapshot yet)."""
@@ -686,7 +686,7 @@ class SnapshotView:
 
     # -- the web's counts (``kind_counts``, ``shape_counts``, ``build_row``) -------------------------------------------
 
-    def kind_counts(self, b: int = 0) -> list[tuple[str, int, int, str, int]]:
+    def kind_counts(self) -> list[tuple[str, int, int, str, int]]:
         counts: dict[tuple, int] = defaultdict(int)
         for kind, key, count in self.snap.node_counts:
             label = snapshot_masks.label_read(key, self.reader, self.ceiling)
@@ -694,14 +694,19 @@ class SnapshotView:
                 counts[(kind, *label[:3])] += count
         return [(*key, count) for key, count in counts.items()]
 
-    def shape_counts(self, b: int = 0) -> list[tuple]:
+    def shape_counts(self) -> list[tuple]:
         counts: dict[tuple, int] = defaultdict(int)
         for s_kind, rel, d_kind, e_lbl, s_lbl, d_lbl, count in self.snap.shape:
             if all(audience_below(x[3], self.reader) for x in (e_lbl, s_lbl, d_lbl)):
                 counts[(s_kind, rel, d_kind, e_lbl[:3], s_lbl[:3], d_lbl[:3])] += count
         return [(*key, count) for key, count in counts.items()]
 
-    def build_row(self, build_id: int = 0) -> dict:
+    @property
+    def build(self) -> int:
+        """The id of the build this view reads, which the answers name."""
+        return self.snap.summary.get("build_id", self.snap.build)
+
+    def build_row(self) -> dict:
         """What the build's summary keeps of a build's row: id, status, finish, content hash, coverage, stats."""
         summary = self.snap.summary
         return {
@@ -718,7 +723,7 @@ class SnapshotView:
     def file_ids(self) -> list[str]:
         return [n["id"] for n in self.snap.nodes if n["kind"] == "File"]
 
-    def alive_ids(self, table: str, b: int) -> set[str]:
+    def alive_ids(self, table: str) -> set[str]:
         """The ids of the live rows of ``table`` (nodes, edges, units), whatever the reader."""
         if table == "units":
             return set(self.snap.units)
@@ -737,7 +742,7 @@ class SnapshotView:
         ids = self.snap.ids
         return range(bisect_left(ids, prefix), bisect_left(ids, prefix[:-1] + chr(ord(prefix[-1]) + 1)))
 
-    def entity_graph(self, b: int = 0, prefix: str = "entity:") -> tuple[list[dict], list[dict]]:
+    def entity_graph(self, *, prefix: str = "entity:") -> tuple[list[dict], list[dict]]:
         """The nodes the reader sees whose id starts with ``prefix`` and the edges it sees into one of them, by id
         ."""
         held = self._prefixed(prefix)
@@ -748,7 +753,7 @@ class SnapshotView:
         )
         return nodes, [dict(e) for e in paced(edges)]
 
-    def entity_code(self, b: int, rels, prefix: str = "entity:") -> list[dict]:
+    def entity_code(self, rels, *, prefix: str = "entity:") -> list[dict]:
         """The edges the reader sees with one of ``rels`` out of a node whose id starts with ``prefix``, by id
         ."""
         held, rels = self._prefixed(prefix), set(rels)
@@ -778,7 +783,7 @@ class SnapshotView:
 
     # -- provenance, text and status (``unit``, ``where``, ``derivations``, ``body``, ``summary``, ``seen``) ----
 
-    def unit(self, unit_id: str, b: int = 0) -> dict | None:
+    def unit(self, unit_id: str) -> dict | None:
         row = self.snap.units.get(unit_id)
         if row is None or not within(self.reader, row[7]):
             return None
@@ -795,10 +800,10 @@ class SnapshotView:
                 out.setdefault(row[1], []).append(row[6])
         return out
 
-    def where(self, elem_id: str, b: int = 0) -> list[dict]:
+    def where(self, elem_id: str) -> list[dict]:
         return [{"unit": unit, "span": span} for unit, span in self.snap.where.get(elem_id, ())]
 
-    def derivations(self, elem_id: str, b: int = 0) -> list[dict]:
+    def derivations(self, elem_id: str) -> list[dict]:
         return [{"units": json.loads(u), "needs": json.loads(n)} for u, n in self.snap.derivations.get(elem_id, ())]
 
     def body(self, node_id: str) -> str | None:
@@ -810,7 +815,7 @@ class SnapshotView:
             return None
         return stored_text(held[0]) if held[0] else None
 
-    def path_nodes(self, b: int = 0) -> list[dict]:
+    def path_nodes(self) -> list[dict]:
         """Live File and Document nodes that carry a path, by id."""
         return [
             dict(n)
@@ -818,7 +823,7 @@ class SnapshotView:
             if n["kind"] in ("File", "Document") and self.sees(n) and n["props"].get("path")
         ]
 
-    def file_symbols(self, file_ids, b: int = 0) -> dict[str, list[dict]]:
+    def file_symbols(self, file_ids) -> dict[str, list[dict]]:
         """Live Symbol nodes grouped by the file item that defines them (``props.file``), by id."""
         wanted, out = set(file_ids), defaultdict(list)
         for n in self.snap.nodes:
@@ -827,15 +832,15 @@ class SnapshotView:
         return dict(out)
 
     def latest_ready(self, before: int | None = None) -> int | None:
-        return self.snap.summary.get("build_id", self.snap.build) if before is None else None
+        return self.build if before is None else None
 
-    def top_label(self, b: int = 0) -> tuple[int, int]:
+    def top_label(self) -> tuple[int, int]:
         return self.snap.top_label
 
-    def top_audience(self, b: int = 0) -> frozenset[str]:
+    def top_audience(self) -> frozenset[str]:
         return self.snap.top_audience
 
-    def clusters(self, b: int = 0) -> Clusters | None:
+    def clusters(self) -> Clusters | None:
         """The build's clusters whatever the reader: a copy, so a caller may change it."""
         found = self.snap.found
         if found is None:
@@ -850,7 +855,7 @@ class SnapshotView:
             return n["props"].get("item")
         return n["id"]
 
-    def cluster_nodes(self, b: int = 0) -> list[dict]:
+    def cluster_nodes(self) -> list[dict]:
         """The members of the build's clusters the reader sees, by id."""
         found = self.snap.found
         if found is None:
@@ -875,7 +880,7 @@ class SnapshotView:
             )
         return out
 
-    def member_links(self, b: int, skip_rels) -> list[tuple]:
+    def member_links(self, skip_rels) -> list[tuple]:
         """The edges between two members of the build's clusters the reader sees, as clusters project them, grouped
         by member pair and labels."""
         found = self.snap.found
@@ -899,7 +904,7 @@ class SnapshotView:
                 rows[(a, z, e["label"], s["label"], d["label"])] += 1
         return [(*key, count) for key, count in rows.items()]
 
-    def live_graph(self, b: int = 0) -> tuple[list[dict], list[tuple]]:
+    def live_graph(self) -> tuple[list[dict], list[tuple]]:
         """The nodes the reader sees, by id, with their owner, and the edges the reader sees as (source, type, target,
         label), by source, type and target."""
         nodes = [
@@ -912,11 +917,11 @@ class SnapshotView:
         )
         return nodes, edges
 
-    def review_items(self, b: int = 0) -> list[dict]:
+    def review_items(self) -> list[dict]:
         """The build's review items whatever the reader, by fingerprint."""
         return copy.deepcopy(list(self.snap.review))
 
-    def edge_label(self, edge_id: str, b: int = 0) -> tuple | None:
+    def edge_label(self, edge_id: str) -> tuple | None:
         """The label of edge ``edge_id`` if the reader sees it."""
         if self._edge_ids is None:
             self._edge_ids = {e["id"]: e for e in self.snap.edges}
@@ -926,7 +931,7 @@ class SnapshotView:
     def summary(self) -> dict:
         return dict(self.snap.summary) if self.snap.summary else {"ready": False}
 
-    def seen(self, b: int = 0) -> dict:
+    def seen(self) -> dict:
         """What the snapshot holds within the reader's audience, whatever the level."""
         if self._seen is not None and self._seen[0] == self.reader:
             cached = self._seen[1]
@@ -949,7 +954,7 @@ class SnapshotView:
         self._seen = (reader, out)
         return {**out, "items": dict(out["items"]), "audience": set(out["audience"])}
 
-    def walk_edges(self, ids: list[str], b: int = 0):
+    def walk_edges(self, ids: list[str]):
         """The edges the walk of ``evo_agents.kg.ppr`` reads for ``ids``: those out of one of them, then those into
         one, the reader's audience within, whatever the ceiling (``ppr.Reader.edges``)."""
         sees, policy = self.sight.sees, self.sight.policies.edge

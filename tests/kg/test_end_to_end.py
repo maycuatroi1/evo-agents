@@ -194,10 +194,10 @@ def test_serve_compares_labels_only_when_some_are_above_the_sink(tmp_path, kg_en
     project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
     sync_build(project)
     wide, narrow = hub_session(project, "wide"), hub_session(project, "agent")
-    wide._store()
-    assert wide.sees_all  # a customer clearance covers the highest label of the build
-    narrow._store()
-    assert not narrow.sees_all  # an internal one does not: customer-level files stay hidden
+    wide.store()
+    assert wide.visibility.sees_all  # a customer clearance covers the highest label of the build
+    narrow.store()
+    assert not narrow.visibility.sees_all  # an internal one does not: customer-level files stay hidden
 
     calls = [
         ("kg_search", {"query": "search"}),

@@ -52,6 +52,7 @@ from datetime import UTC, datetime
 from evo_agents.hub import digest, review
 from evo_agents.hub.digest import MAX_COUNT, TOOL_NAME, USAGE_KEYS
 from evo_agents.kg import explore, refs
+from evo_agents.kg.budget import Budget
 
 FACET_VERSION = 3  # 2: sources.skills_again, sources.skill_bodies and skills[].chars; 3: kg read from text, labels
 KINDS = ("session", "run")
@@ -96,7 +97,6 @@ SNIPPET = re.compile(r"^\s*> ")  # the words of a document a search matched, whi
 NO_RESULTS = re.compile(
     r"^\s*(?:0 result|impact of 0 seed|context for .*: 0 nodes,|no path within|nothing visible matches)"
 )
-BYTES_PER_TOKEN = 3  # evo_agents.kg.evaluate.BYTES_PER_TOKEN
 KG_WINDOW = 12  # the calls after a kg_search within which a read or an edit of a file it named is a click
 MAX_LABELS = 100  # the kg_search labels a facet keeps
 MAX_LABEL_RESULTS = 25  # the results (and the clicks) of one label
@@ -189,9 +189,8 @@ def kg_op(tool: str) -> str | None:
 
 def kg_tokens(text) -> int:
     """The tokens a kg result costs the model, as ``evo_agents.kg.evaluate.estimate_tokens`` counts them: its UTF-8
-    bytes over BYTES_PER_TOKEN, rounded up."""
-    size = len(str(text or "").encode())
-    return -(-size // BYTES_PER_TOKEN)
+    bytes over BYTES_PER_TOKEN (``evo_agents.kg.budget``), rounded up."""
+    return Budget.tokens_of(str(text or ""))
 
 
 def _id_path(ident: str) -> str | None:

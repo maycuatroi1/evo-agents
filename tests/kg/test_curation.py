@@ -64,16 +64,16 @@ DECISIONS = [
 def test_curation_merges_links_and_deprecates_at_the_binding_stage(tmp_path, kg_env):
     _project, view, b, report = curated(tmp_path, kg_env, DECISIONS)
     # A merge is a same_as: the smallest id stays and the other is its alias.
-    assert view.node(OLD, b) is None and view.alias_of(OLD, b) == GUIDE
-    assert OLD in view.node(GUIDE, b)["aliases"]
+    assert view.node(OLD) is None and view.alias_of(OLD) == GUIDE
+    assert OLD in view.node(GUIDE)["aliases"]
     # A link is a declared edge that names its decision.
-    added = next(e for e in view.edges_of(SERVER_PY, b, "out") if e["rel"] == "verifies")
+    added = next(e for e in view.edges_of(SERVER_PY, direction="out") if e["rel"] == "verifies")
     assert added["dst"] == SEARCH_PY and added["status"] == "declared" and added["props"] == {"decision": 2}
-    implements = [e for e in view.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
+    implements = [e for e in view.edges_of(SERVER_PY, direction="out") if e["rel"] == "implements"]
     assert [(e["dst"], e["props"]) for e in implements] == [("usecase:KB-02", {"decision": 5})]
     # A deprecation marks the node or edge it names, with its reason and decision; neither leaves the graph.
-    assert view.node(RANK, b)["props"]["deprecated"] == {"reason": "ranking moved to the index", "decision": 3}
-    calls = next(e for e in view.edges_of(HANDLE, b, "out") if e["rel"] == "calls")
+    assert view.node(RANK)["props"]["deprecated"] == {"reason": "ranking moved to the index", "decision": 3}
+    calls = next(e for e in view.edges_of(HANDLE, direction="out") if e["rel"] == "calls")
     assert calls["id"] == edge_id(HANDLE, "calls", SEARCH)
     assert calls["props"]["deprecated"] == {"reason": "the server calls the index now", "decision": 4}
     assert report.coverage["curation"] == {"deprecated": 2, "orphans": 0}
@@ -90,12 +90,12 @@ def test_curation_orphans_are_skipped_and_never_break_the_build(tmp_path, kg_env
         row(6, "link", SERVER_PY, "implements", "usecase:KB-99"),  # no such requirement: the link makes none
     ]
     _project, view, b, report = curated(tmp_path, kg_env, rows)
-    assert view.node(gone, b) is None and view.alias_of(gone, b) is None
-    assert not [e for e in view.edges_of(SEARCH_PY, b, "in") if e["rel"] == "verifies"]
-    assert view.node("usecase:KB-99", b) is None
-    assert not [e for e in view.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
+    assert view.node(gone) is None and view.alias_of(gone) is None
+    assert not [e for e in view.edges_of(SEARCH_PY, direction="in") if e["rel"] == "verifies"]
+    assert view.node("usecase:KB-99") is None
+    assert not [e for e in view.edges_of(SERVER_PY, direction="out") if e["rel"] == "implements"]
     assert report.coverage["curation"] == {"deprecated": 1, "orphans": 2}
-    assert view.node(RANK, b)["props"]["deprecated"]["decision"] == 5
+    assert view.node(RANK)["props"]["deprecated"]["decision"] == 5
 
 
 def test_curation_item_of_unreadable_or_foreign_entries_gives_no_fact():
@@ -131,8 +131,8 @@ def test_deprecated_parts_are_left_out_of_search_context_path_and_impact_unless_
 
 def test_search_leaves_deprecated_nodes_out_before_it_cuts_the_list(tmp_path, kg_env):
     _project, view, b, _report = curated(tmp_path, kg_env, DECISIONS)
-    assert view.search("rank_results", b, limit=1)[0] == RANK  # its name: first, deprecated or not
-    kept = view.search("rank_results", b, limit=1, deprecated=False)
+    assert view.search("rank_results", limit=1)[0] == RANK  # its name: first, deprecated or not
+    kept = view.search("rank_results", limit=1, deprecated=False)
     assert kept and RANK not in kept  # the room it took goes to the next node
 
 
@@ -149,10 +149,10 @@ def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
 def test_the_review_queue_of_a_build_leaves_out_what_its_decisions_settled(tmp_path, kg_env):
     cluster_md, contracts = "harness:file:CLUSTER.md", "harness:file:contracts.yaml"
     _project, view, b, _report = curated(tmp_path / "before", kg_env, [row(1, "deprecate", "app:file:app/gone.py")])
-    before = {(i["rule"], i["evidence"][0]) for i in view.review_items(b)}
+    before = {(i["rule"], i["evidence"][0]) for i in view.review_items()}
     assert {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)} <= before
     rows = [row(1, "link", GUIDE, "mentions", cluster_md), row(2, "deprecate", contracts)]
     _project, view, b, report = curated(tmp_path / "after", kg_env, rows)
-    after = {(i["rule"], i["evidence"][0]) for i in view.review_items(b)}
+    after = {(i["rule"], i["evidence"][0]) for i in view.review_items()}
     assert after == before - {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)}
     assert sum(report.coverage["review"].values()) == len(after)

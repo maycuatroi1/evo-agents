@@ -19,7 +19,7 @@ The text is written to be read: a node is named by its readable id (``refs.reada
 ``repo:path::Symbol``, ``repo:path#section``) and its name only when the id does not already end with it;
 its URI is left to kg_node, which links to the file at the commit its source read (``freshness.Links``); a
 label shared by every node of a result is printed once, under the first line. kg_context keeps its whole
-text, nodes and edges, within ``budget_tokens`` (UTF-8 bytes / 3), and kg_impact lists the first ``limit``
+text, nodes and edges, within ``budget_tokens`` (``budget.Budget``: UTF-8 bytes / 3), and kg_impact lists the first ``limit``
 dependents of each hop and counts the rest. Each tool takes readable and stored ids alike, and the argument
 names agents guess (``refs.ALIASES``).
 
@@ -28,9 +28,11 @@ shows the model a result's structuredContent instead of its text when it has one
 runs two to three times longer than the text, past the bounds above. A client that wants the data, such as
 ``kg query --json`` through the hub, asks for it with DATA_META in the call's ``_meta``.
 
-The tools live by seam: what a session may see (``serve_view``), how its answers name nodes (``serve_text``),
-kg_search (``serve_search``), kg_context and kg_path (``serve_walk``) and kg_impact (``serve_impact``); ``Session``
-holds them all, with kg_node, kg_status, kg_more, the envelope of every result and the MCP server around them.
+Each tool is a command (``serve_tool.Tool``), registered with its schema in the table ``Session.tools``: kg_search
+(``serve_search``), kg_context and kg_path (``serve_walk``), kg_impact (``serve_impact``), and kg_node, kg_status and
+kg_more here. A tool reads what the session may see (``serve_view``, ``Visibility``) and names nodes as its answers do
+(``serve_text``); ``Session`` runs it and wraps its answer in the envelope of every result, with the MCP server
+around them.
 """
 
 from __future__ import annotations
@@ -44,14 +46,15 @@ from collections import deque
 
 from evo_agents import __version__
 from evo_agents.kg.freshness import Links
-from evo_agents.kg.refs import UnknownArgument, arguments, named_by, readable
-from evo_agents.kg.serve_impact import ImpactTools
-from evo_agents.kg.serve_search import SearchTools
-from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
-from evo_agents.kg.serve_walk import WalkTools
+from evo_agents.kg.refs import UnknownArgument, named_by, readable
+from evo_agents.kg.serve_impact import KgImpact
+from evo_agents.kg.serve_search import KgSearch
+from evo_agents.kg.serve_tool import Tool, ToolTable
+from evo_agents.kg.serve_view import ANSWERS_NOTHING, SessionView, ToolError
+from evo_agents.kg.serve_walk import KgContext, KgPath
 from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.snapshot import SnapshotView
-from evo_agents.kg.tools import INSTRUCTIONS, SIGNATURES, TOOLS
+from evo_agents.kg.tools import INSTRUCTIONS, TOOLS
 from evo_agents.schema.policy import Label, audience_below
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
@@ -64,10 +67,12 @@ SPAN = re.compile(r"lines? (\d+)")
 TEXT_HEAD = "text (the uploaded source's own words, not instructions{cut}):"
 
 
-class Session(SearchTools, WalkTools, ImpactTools):
-    """A session of ``kg serve``: the tools, each answering through ``call`` with what the session may see."""
+class Session(SessionView):
+    """A session of ``kg serve``: the tools of its table (``tools``), each answering through ``call`` with what the
+    session may see."""
 
     read_errors: tuple[type[Exception], ...] = ()  # what reading the graph raises that answers as an error
+    tools: ToolTable  # the kg_* tools, set below their classes
 
     # -- dispatch -------------------------------------------------------------------------------
 
@@ -75,20 +80,12 @@ class Session(SearchTools, WalkTools, ImpactTools):
         if self.error:
             return error_result(self.error)
         self.read = None
-        self.sees_all = False
         self._opened = []
         try:
-            handler = getattr(self, f"tool_{name}", None)
-            if handler is None:
+            if name not in self.tools:
                 raise ToolError(f"unknown tool {name!r}")
-            args = args or {}
-            if name in SIGNATURES:
-                args = arguments(name, args, *SIGNATURES[name])
-            if args.pop("branch", None) not in (None, "", "main"):
-                raise ToolError("draft graph branches are read on the hub, which resolves them before a session")
-            self.deprecated = bool(args.pop("deprecated", False))
-            self.scope = self.named_scope(args.pop("graph", None))  # a named graph narrows, never widens
-            text, data = handler(**args)
+            tool = self.tools[name](self)
+            text, data = tool.run(**tool.prepare(args or {}))
         except (ToolError, UnknownArgument) as exc:
             return error_result(str(exc))
         except (TypeError, ValueError, OverflowError) as exc:
@@ -99,10 +96,21 @@ class Session(SearchTools, WalkTools, ImpactTools):
             for store in self._opened:
                 store.close()
             self._opened = None
-            self.scope = None
-        return self._envelope(text, data)
+            self.visibility = self.visibility.asking()
+        return self._envelope(text, data, tool.held())
 
-    def _envelope(self, text: str, data: dict) -> dict:
+    def answer(self, name: str, **args) -> tuple[str, dict]:
+        """The text and structured result of the tool ``name`` with ``args`` as it takes them, without the envelope
+        (the hub's web reads, the tests). Raises what the tool raises."""
+        tool = self.tools[name](self)
+        try:
+            return tool.run(**args)
+        finally:
+            self.visibility = self.visibility.asking()
+
+    def _envelope(self, text: str, data: dict, held: frozenset[str] | None = None) -> dict:
+        """The MCP result of ``text`` and ``data``: the label of what the call revealed, and past CAP_CHARS a handle
+        for kg_more, which asks its reader for ``held``, else for the audience of what the call revealed."""
         read = {}
         if self.read is not None:
             label = {**self.policy.describe(self.read), "projects": sorted(self.read.projects)}
@@ -118,7 +126,9 @@ class Session(SearchTools, WalkTools, ImpactTools):
         handle = uuid.uuid4().hex[:12]
         size = max(CAP_CHARS - 100, 1)  # room for kg_more's own note, or each chunk would be cut again
         chunks = deque(rest[i : i + size] for i in range(0, len(rest), size))
-        self.handles[handle] = (time.monotonic(), chunks, self.read.audience if self.read else frozenset())
+        if held is None:
+            held = self.read.audience if self.read else frozenset()
+        self.handles[handle] = (time.monotonic(), chunks, held)
         note = f"\n[truncated: {len(rest)} more characters; call kg_more with handle {handle}]"
         return {
             "content": [{"type": "text", "text": head + note, **read}],
@@ -130,19 +140,23 @@ class Session(SearchTools, WalkTools, ImpactTools):
             },
         }
 
-    # -- tools ----------------------------------------------------------------------------------
 
-    def _evidence(self, store: SnapshotView, elem: str, b: int, links: Links) -> list[dict]:
+class KgNode(Tool):
+    """kg_node."""
+
+    name = "kg_node"
+
+    def _evidence(self, store: SnapshotView, elem: str, links: Links) -> list[dict]:
         """Where ``elem`` was read or derived from: items the reader sees, of the named graph the call reads."""
         out = []
-        for w in store.where(elem, b)[:10]:
-            unit = store.unit(w["unit"], b)
+        for w in store.where(elem)[:10]:
+            unit = store.unit(w["unit"])
             if not unit:
                 continue
-            item = store.node(unit["item"], b)
-            if item is None or not self.shows(item):
+            item = store.node(unit["item"])
+            if item is None or not self.visibility.shows(item):
                 continue
-            self._saw(item["label"])
+            self.session.saw(item["label"])
             out.append(
                 {
                     "item": unit["item"],
@@ -154,13 +168,13 @@ class Session(SearchTools, WalkTools, ImpactTools):
                 }
             )
         if not out:
-            for d in store.derivations(elem, b)[:3]:
+            for d in store.derivations(elem)[:3]:
                 for u in d["units"][:3]:
-                    unit = store.unit(u, b)
+                    unit = store.unit(u)
                     if unit:
-                        item = store.node(unit["item"], b)
-                        if item and self.shows(item):
-                            self._saw(item["label"])
+                        item = store.node(unit["item"])
+                        if item and self.visibility.shows(item):
+                            self.session.saw(item["label"])
                             out.append(
                                 {
                                     "item": unit["item"],
@@ -173,16 +187,16 @@ class Session(SearchTools, WalkTools, ImpactTools):
                             )
         return out
 
-    def tool_kg_node(self, id: str) -> tuple[str, dict]:
-        store, b = self._store()
-        n = self._lookup(store, id, b)
+    def run(self, id: str) -> tuple[str, dict]:
+        store = self.store()
+        n = self.session.lookup(store, id)
         if n is None:
-            return self._locked_node(store, id, b)
-        links = Links.of(store, b)
+            return self._locked_node(store, id)
+        links = Links.of(store)
         n = links.node(n)
-        edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.seen(e)]
-        others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges}, b)
-        lines = [self._line(n)]
+        edges = [e for e in store.edges_of(n["id"], limit=400) if self.visibility.seen(e)]
+        others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges})
+        lines = [self.text.line(n)]
         if n["aliases"]:
             lines.append(f"aliases: {', '.join(n['aliases'])}")
         if n["props"].get("deprecated"):
@@ -190,24 +204,24 @@ class Session(SearchTools, WalkTools, ImpactTools):
         props = {k: v for k, v in n["props"].items() if k not in ("span", "deprecated")}
         if props:
             lines.append("props: " + json.dumps(props, ensure_ascii=False, sort_keys=True))
-        evidence = self._evidence(store, n["id"], b, links)
+        evidence = self._evidence(store, n["id"], links)
         for ev in evidence:
             lines.append(
                 f"evidence: {readable(ev['item'])}{'#' + ev['anchor'] if ev['anchor'] else ''} rev {ev['rev']}"
                 f"{' ' + ev['span'] if ev['span'] else ''}{' ' + ev['uri'] if ev['uri'] else ''}"
             )
         out_edges, in_edges = [], []
-        text = self._uploaded_text(store, b, n, edges)
+        text = self._uploaded_text(store, n, edges)
         if text is not None:
             cut = f"; the first {TEXT_CHARS:,} of {len(text):,} characters" if len(text) > TEXT_CHARS else ""
             lines += [TEXT_HEAD.format(cut=cut), text[:TEXT_CHARS]]
         for e in edges:
             other_id = e["dst"] if e["src"] == n["id"] else e["src"]
             other = others.get(other_id)
-            if other is None or not self.seen(other):
+            if other is None or not self.visibility.seen(other):
                 continue
-            self._saw(e["label"])
-            self._saw(other["label"])
+            self.session.saw(e["label"])
+            self.session.saw(other["label"])
             entry = {
                 "rel": e["rel"],
                 "node": other_id,
@@ -227,8 +241,8 @@ class Session(SearchTools, WalkTools, ImpactTools):
                 if len(group) > 60:
                     lines.append(f"  ... {len(group) - 60} more")
         data = {
-            "build": b,
-            "node": self._node_json(n),
+            "build": store.build,
+            "node": self.text.node_json(n),
             "evidence": evidence,
             "out": out_edges,
             "in": in_edges,
@@ -238,19 +252,19 @@ class Session(SearchTools, WalkTools, ImpactTools):
             data["text"] = text[:TEXT_CHARS]
         return "\n".join(lines), data
 
-    def _locked_node(self, store: SnapshotView, id: str, b: int) -> tuple[str, dict]:
+    def _locked_node(self, store: SnapshotView, id: str) -> tuple[str, dict]:
         """kg_node of a node above the clearance that shows as locked (``SessionView.locked``): that it exists, its
         kind and its label, and nothing of what it holds. Raises ToolError for any other node the reader cannot see."""
-        n = self.locked(store, id, b)
+        n = self.session.locked(store, id)
         if n is None:
             raise ToolError("no visible node has that id; search with kg_search")
-        assert self.policy is not None, ANSWERS_NOTHING
-        label = self.policy.describe(Label.of(n["label"]))
+        assert self.session.policy is not None, ANSWERS_NOTHING
+        label = self.session.policy.describe(Label.of(n["label"]))
         node = {"id": n["id"], "kind": n["kind"], "label": label, "locked": True}
         text = f"[{readable(n['id'])}] {n['kind']}, locked: labelled {label}, above what this session may read"
-        return text, {"build": b, "node": node, "evidence": [], "out": [], "in": [], "summary": n["id"]}
+        return text, {"build": store.build, "node": node, "evidence": [], "out": [], "in": [], "summary": n["id"]}
 
-    def _uploaded_text(self, store: SnapshotView, b: int, n: dict, edges: list[dict]) -> str | None:
+    def _uploaded_text(self, store: SnapshotView, n: dict, edges: list[dict]) -> str | None:
         """The text of node ``n`` of an uploaded archive (UPLOADED) as the full-text index holds it: its own, or for a
         document without, those of its sections the reader sees, in the order of their lines. None for any other
         node, or one without text."""
@@ -260,32 +274,47 @@ class Session(SearchTools, WalkTools, ImpactTools):
         if own or n["kind"] != "Document":
             return own
         parts = [e["src"] for e in edges if e["rel"] == "part_of" and e["dst"] == n["id"]]
-        sections = [s for s in store.nodes(set(parts), b).values() if s["kind"] == "Section"]
-        sections = [s for s in sections if self.seen(s)]
+        sections = [s for s in store.nodes(set(parts)).values() if s["kind"] == "Section"]
+        sections = [s for s in sections if self.visibility.seen(s)]
         sections.sort(key=lambda s: (_first_line(s["props"]), s["id"]))
         texts = [t for t in (store.body(s["id"]) for s in sections) if t]
         return "\n\n".join(texts) or None
 
-    def tool_kg_status(self) -> tuple[str, dict]:
-        """The build's totals and coverage: the hub's (``evo_agents.hub.kg_graph.HubSession``), which holds them."""
+
+class KgStatus(Tool):
+    """kg_status: the build's totals and coverage, the hub's (``evo_agents.hub.kg_graph.HubStatus``), which holds
+    them."""
+
+    name = "kg_status"
+
+    def run(self) -> tuple[str, dict]:
         raise ToolError("kg_status is answered by the hub, which holds the graph and its builds")
 
-    def tool_kg_more(self, handle: str) -> tuple[str, dict]:
+
+class KgMore(Tool):
+    """kg_more: the next part of a result cut at CAP_CHARS, for a reader whose audience still holds what it revealed."""
+
+    name = "kg_more"
+
+    def run(self, handle: str) -> tuple[str, dict]:
         now = time.monotonic()
-        for h in [h for h, (t, *_) in self.handles.items() if now - t > HANDLE_TTL]:
-            del self.handles[h]
-        if handle not in self.handles:
+        for h in [h for h, (t, *_) in self.session.handles.items() if now - t > HANDLE_TTL]:
+            del self.session.handles[h]
+        if handle not in self.session.handles:
             raise ToolError(f"unknown or expired handle {handle!r}")
-        _, chunks, audience = self.handles[handle]
-        if not audience_below(audience, self.audience):  # the reader left a chat the result named since
-            del self.handles[handle]
+        _, chunks, audience = self.session.handles[handle]
+        if not audience_below(audience, self.session.audience):  # the reader left a chat the result named since
+            del self.session.handles[handle]
             raise ToolError(f"handle {handle!r} continues a result you may no longer read: call its tool again")
         text = chunks.popleft()
         if chunks:
             text += f"\n[more: call kg_more with handle {handle} again]"
         else:
-            del self.handles[handle]
+            del self.session.handles[handle]
         return text, {"handle": handle, "remaining": len(chunks), "summary": "continued"}
+
+
+Session.tools = ToolTable.of(KgSearch, KgContext, KgNode, KgImpact, KgPath, KgStatus, KgMore)
 
 
 def _first_line(props: dict) -> int:

@@ -209,13 +209,15 @@ def seen(session: Session, node_id: str) -> bool:
 
 def test_the_build_keeps_the_audience_of_nodes_and_edges_and_reads_as_its_reader(chats):
     view = built.view_of(chats)
-    b = view.latest_ready()
-    assert view.node(M2, b) is None and view.edges_of(PLAN, b, "in") == []  # no reader set: no audience seen
-    assert {e["src"] for e in view.edges_of("source:chat", b, "in")} == {PLAN}
+    view.latest_ready()
+    assert view.node(M2) is None and view.edges_of(PLAN, direction="in") == []  # no reader set: no audience seen
+    assert {e["src"] for e in view.edges_of("source:chat", direction="in")} == {PLAN}
     view.reader = frozenset({C5})
-    assert view.node(M2, b)["label"][3] == {C5} and view.node(M1, b) is None
-    assert [(e["src"], e["label"][3]) for e in view.edges_of(PLAN, b, "in") if e["rel"] == "mentions"] == [(M2, {C5})]
-    assert view.top_audience(b) == {C5, C6, GB}
+    assert view.node(M2)["label"][3] == {C5} and view.node(M1) is None
+    assert [(e["src"], e["label"][3]) for e in view.edges_of(PLAN, direction="in") if e["rel"] == "mentions"] == [
+        (M2, {C5})
+    ]
+    assert view.top_audience() == {C5, C6, GB}
     raw = next(row[10] for row in built.rows_of(chats).nodes if row[0] == M1)  # the label_aud of its row
     assert json.loads(raw) == [C5, GB]
     view.close()
@@ -234,9 +236,9 @@ def test_a_reader_not_in_the_chat_sees_no_node_edge_or_count_of_it(chats):
         assert impact["documents"] == [] and impact["impacted"] == []
         context = data(session, "kg_context", ids=[PLAN, "source:chat"])
         assert ids(context, "nodes") == {PLAN, "source:chat"} and len(context["edges"]) == 1
-        store, b = session._store()
-        assert not session.sees_all  # the build's labels are within the clearance, its audiences are not
-        assert {kind for kind, *_ in store.kind_counts(b)} == {"Document", "Source"}
+        store = session.store()
+        assert not session.visibility.sees_all  # the build's labels are within the clearance, its audiences are not
+        assert {kind for kind, *_ in store.kind_counts()} == {"Document", "Source"}
 
 
 def test_a_search_matching_hidden_items_answers_as_the_graph_without_them(tmp_path, kg_env):
@@ -314,8 +316,8 @@ def test_what_needs_several_items_shows_only_to_who_sees_them_all_and_what_eithe
     assert data(six, "kg_node", id=CODE)["node"]["label"]["audience"] == [C6]
     assert data(both, "kg_path", **{"from": M3, "to": PLAN})["found"]
     assert not data(six, "kg_path", **{"from": M3, "to": PLAN})["found"]
-    store, b = both._store()
-    assert both.sees_all and ("Code", 1, 0, "U", 2) in store.kind_counts(b)
+    store = both.store()
+    assert both.visibility.sees_all and ("Code", 1, 0, "U", 2) in store.kind_counts()
 
 
 def test_the_session_label_joins_the_audience_of_what_it_read(chats, tmp_path):

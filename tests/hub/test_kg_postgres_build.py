@@ -171,24 +171,24 @@ def test_a_snapshot_of_the_tables_reads_as_the_snapshot_of_a_build_in_memory(hub
     first, _ = build(hub, caplog)
     view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
     here = here_view(hub, laptop)
-    b = here.latest_ready()
-    nodes = sorted(here.alive_ids("nodes", b))
-    elements = [*nodes, *sorted(here.alive_ids("edges", b))]
-    units = sorted(here.alive_ids("units", b))
+    here.latest_ready()
+    nodes = sorted(here.alive_ids("nodes"))
+    elements = [*nodes, *sorted(here.alive_ids("edges"))]
+    units = sorted(here.alive_ids("units"))
     assert units and nodes
-    assert sorted(view.alive_ids("nodes", b)) == nodes and sorted(view.alive_ids("units", b)) == units
+    assert sorted(view.alive_ids("nodes")) == nodes and sorted(view.alive_ids("units")) == units
     assert placed(view.summary()) == placed(here.summary()) and view.latest_ready() == first["id"]
-    assert view.seen(b) == here.seen(b)
-    assert view.top_audience(b) == here.top_audience(b)
-    assert [view.unit(u) for u in units] == [here.unit(u, b) for u in units]
-    assert [view.where(e) for e in elements] == [here.where(e, b) for e in elements]
-    assert [view.derivations(e) for e in elements] == [here.derivations(e, b) for e in elements]
+    assert view.seen() == here.seen()
+    assert view.top_audience() == here.top_audience()
+    assert [view.unit(u) for u in units] == [here.unit(u) for u in units]
+    assert [view.where(e) for e in elements] == [here.where(e) for e in elements]
+    assert [view.derivations(e) for e in elements] == [here.derivations(e) for e in elements]
     assert any(view.where(e) for e in elements) and any(view.derivations(e) for e in elements)
     assert [view.body(n) for n in nodes] == [here.body(n) for n in nodes]
     assert any(view.body(n) for n in nodes)
-    assert [view.degree(n) for n in nodes] == [here.degree(n, b) for n in nodes]
-    assert view.path_nodes() == here.path_nodes(b)
-    assert view.file_symbols(nodes) == here.file_symbols(nodes, b)
+    assert [view.degree(n) for n in nodes] == [here.degree(n) for n in nodes]
+    assert view.path_nodes() == here.path_nodes()
+    assert view.file_symbols(nodes) == here.file_symbols(nodes)
 
 
 def test_a_snapshot_of_the_tables_searches_and_counts_as_the_snapshot_of_a_build_in_memory(hub, tmp_path, caplog):
@@ -199,28 +199,28 @@ def test_a_snapshot_of_the_tables_searches_and_counts_as_the_snapshot_of_a_build
     view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
     here = here_view(hub, laptop)
     try:
-        b = here.latest_ready()
-        nodes = sorted(here.alive_ids("nodes", b))
+        here.latest_ready()
+        nodes = sorted(here.alive_ids("nodes"))
         for query in ("guide", "install app", "works"):
-            assert view.search(query, b) == here.search(query, b)
-            assert view.search_scored(query, b) == here.search_scored(query, b)
+            assert view.search(query) == here.search(query)
+            assert view.search_scored(query) == here.search_scored(query)
             assert view.plain_search(query, 10) == here.plain_search(query, 10)
             assert view.plain_search(query, 10, ["Document"]) == here.plain_search(query, 10, ["Document"])
             assert view.matched(nodes, query) == here.matched(nodes, query)
-        assert view.search("guide", b) and view.plain_search("guide", 10)
+        assert view.search("guide") and view.plain_search("guide", 10)
         assert any(m["words"] for m in view.matched(nodes, "guide").values())
         assert view.code_files(["guide"]) == here.code_files(["guide"])
         assert [view.code_lines(n, ["guide"]) for n in nodes] == [here.code_lines(n, ["guide"]) for n in nodes]
         assert view.asked_nodes(nodes) == here.asked_nodes(nodes) == set()
         assert view.asked_clearance is None and here.asked_clearance is None
-        assert [view.alias_of(n, b) for n in nodes] == [here.alias_of(n, b) for n in nodes]
-        assert view.alias_of("docs:doc:nowhere", b) is None
-        assert view.degrees(nodes, b, (9, 9)) == here.degrees(nodes, b, (9, 9))
-        assert view.degrees(nodes, b, (0, 0)) == here.degrees(nodes, b, (0, 0))
-        assert sorted(view.kind_counts(b)) == sorted(here.kind_counts(b))
-        assert sorted(view.shape_counts(b)) == sorted(here.shape_counts(b))
-        assert view.shape_counts(b)
-        assert view.build_row(b)["coverage"] == here.build_row(b)["coverage"]
+        assert [view.alias_of(n) for n in nodes] == [here.alias_of(n) for n in nodes]
+        assert view.alias_of("docs:doc:nowhere") is None
+        assert view.degrees(nodes, (9, 9)) == here.degrees(nodes, (9, 9))
+        assert view.degrees(nodes, (0, 0)) == here.degrees(nodes, (0, 0))
+        assert sorted(view.kind_counts()) == sorted(here.kind_counts())
+        assert sorted(view.shape_counts()) == sorted(here.shape_counts())
+        assert view.shape_counts()
+        assert view.build_row()["coverage"] == here.build_row()["coverage"]
         assert sorted(view.file_ids()) == sorted(here.file_ids())
         low, high = nodes[0], nodes[len(nodes) // 2]
         assert view.nodes_between(low, high) == here.nodes_between(low, high)
@@ -263,7 +263,7 @@ def test_a_snapshot_of_the_tables_reads_the_asked_rows_as_the_snapshot_of_a_buil
     back = write_and_read(hub.db, add_project(hub.db, "asked"), stored)
     assert back.asked == stored.asked and len(back.asked) == 3 and back.asked_weight == 2.0
     snap, own = Snapshot.from_stored(back), Snapshot.from_stored(stored)
-    b = own.view().latest_ready()
+    own.view().latest_ready()
     for reader in (frozenset(), frozenset({"chat:1"})):
         view, here = snap.view(reader), own.view(reader)
         assert view.asked_nodes(nodes) == here.asked_nodes(nodes) == {guide, setup}
@@ -272,14 +272,14 @@ def test_a_snapshot_of_the_tables_reads_the_asked_rows_as_the_snapshot_of_a_buil
         for clearance in (None, (0, 0), (9, 9)):
             view.asked_clearance = here.asked_clearance = clearance
             for words in ("install app", "works", "guide"):
-                assert view.search_scored(words, b) == here.search_scored(words, b), (reader, clearance, words)
+                assert view.search_scored(words) == here.search_scored(words), (reader, clearance, words)
                 here.asked_clearance = None
-                moved += clearance is not None and view.search_scored(words, b) != here.search_scored(words, b)
+                moved += clearance is not None and view.search_scored(words) != here.search_scored(words)
                 here.asked_clearance = clearance
         assert moved  # the asked rows changed a ranking
         view.asked_weight = here.asked_weight = 0.5
         assert view.weight_of_asked() == 0.5
-        assert view.search_scored("works", b) == here.search_scored("works", b)
+        assert view.search_scored("works") == here.search_scored("works")
 
 
 def test_the_vectors_of_a_build_read_back_by_their_node_vec_key(hub_db):

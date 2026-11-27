@@ -187,7 +187,7 @@ def evaluate(
         b = store.latest_ready()
         if b is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
-        commits = kg_health_eval.GraphCommits(store, b)
+        commits = kg_health_eval.GraphCommits(store)
         question_set, set_digest = found_set if found_set else (None, None)
         holdout = kg_health_eval.holdout_questions(question_set, project)
         held = {q.id for q in question_set.questions} if question_set else set()
@@ -316,10 +316,10 @@ def review(
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
         if session.error:
             return {"why": session.error}
-        found, b = session._store()
-        if found.clusters(b) is None and not found.review_items(b):
+        found = session.store()
+        if found.clusters() is None and not found.review_items():
             return {"why": kg_review.NO_REVIEW, "build_id": graph.build_id}
-        counts = kg_review.open_counts(found, b, session.visible, dismissed)
+        counts = kg_review.open_counts(found, session.visibility, dismissed)
         return {"build_id": graph.build_id, "open": counts}
 
 

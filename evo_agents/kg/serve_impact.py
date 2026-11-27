@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.refs import path_like, readable
-from evo_agents.kg.serve_text import SPAN, SessionText
+from evo_agents.kg.serve_text import SPAN
+from evo_agents.kg.serve_tool import Tool
 from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
 from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
 from evo_agents.kg.snapshot import SnapshotView
@@ -29,22 +30,24 @@ IMPACT_SEED_EDGES = 2_000  # edges kg_impact reads into a seed, SEED_EDGES at a 
 IMPACT_MENTIONS_SHOWN = 3  # reached nodes a document's line names; the data has them all
 
 
-class ImpactTools(SessionText):
+class KgImpact(Tool):
     """kg_impact."""
 
-    def _changed_symbols(self, store: SnapshotView, b: int, symbols: list[dict], lines: set[int]) -> list[dict]:
+    name = "kg_impact"
+
+    def _changed_symbols(self, store: SnapshotView, symbols: list[dict], lines: set[int]) -> list[dict]:
         """The visible symbols a set of changed lines falls in: for each line, the symbol that starts last
         at or before it (the innermost one), within its unit's line span when the unit has one."""
         extents = []
         for s in symbols:
-            if not self.shows(s):
+            if not self.visibility.shows(s):
                 continue
             start, end = s["props"].get("line"), None
-            for w in store.where(s["id"], b):
+            for w in store.where(s["id"]):
                 m = SPAN.fullmatch(w["span"] or "")
                 if m:
                     start = int(m[1])
-                unit = store.unit(w["unit"], b)
+                unit = store.unit(w["unit"])
                 m = SPAN.fullmatch((unit or {}).get("span") or "")
                 if m and m[2]:
                     end = int(m[2])
@@ -60,7 +63,7 @@ class ImpactTools(SessionText):
                 hit[best[1]["id"]] = best[1]
         return list(hit.values())
 
-    def tool_kg_impact(
+    def run(
         self,
         id: str | None = None,
         ids: list | None = None,
@@ -69,15 +72,15 @@ class ImpactTools(SessionText):
         depth: int = 2,
         limit: int = IMPACT_LIMIT,
     ) -> tuple[str, dict]:
-        store, b = self._store()
-        found = Impact(b, max(1, min(int(depth), 3)), max(1, min(int(limit), IMPACT_MAX_LIMIT)))
+        store = self.store()
+        found = Impact(store.build, max(1, min(int(depth), 3)), max(1, min(int(limit), IMPACT_MAX_LIMIT)))
         wanted = ([id] if isinstance(id, str) and id else []) + [i for i in ids or [] if isinstance(i, str)]
         paths = [p for p in ([paths] if isinstance(paths, str) else paths or []) if isinstance(p, str) and p]
         changes = diff_lines(diff) if isinstance(diff, str) else {}
         if not (wanted or paths or changes):
             raise ToolError("give an id, ids, paths (repo:path) or a unified diff")
         for nid in wanted:
-            n = self._lookup(store, nid, b)
+            n = self.session.lookup(store, nid)
             if n is not None:
                 found.seeds[n["id"]] = n
             elif path_like(nid):
@@ -88,7 +91,7 @@ class ImpactTools(SessionText):
             self._seeds_by_path(store, found, paths, changes)
         unmatched, found.unmatched = found.unmatched, []
         for path in unmatched:  # a path that names no file may be an id, such as one the text showed
-            n = self._lookup(store, path, b)
+            n = self.session.lookup(store, path)
             if n is not None:
                 found.seeds[n["id"]] = n
             else:
@@ -98,8 +101,8 @@ class ImpactTools(SessionText):
         self._walk_back(store, found)
         found.docs = {
             d: n
-            for d, n in store.nodes(found.mentions, b).items()
-            if self.shows(n) and d not in found.seeds and d not in found.reached
+            for d, n in store.nodes(found.mentions).items()
+            if self.visibility.shows(n) and d not in found.seeds and d not in found.reached
         }
         found.coverage = seed_coverage(found.seeds.values())
         return "\n".join(self._impact_lines(found)), self._impact_data(found)
@@ -110,8 +113,7 @@ class ImpactTools(SessionText):
         """Seeds from repo:path paths and the files of a diff, and the symbols its changed lines fall in. A diff
         does not say which repo it comes from: a path names a file only when exactly one visible file matches it;
         otherwise the candidates go back to the caller."""
-        b = found.build
-        files = [f for f in store.path_nodes(b) if self.shows(f)]
+        files = [f for f in store.path_nodes() if self.visibility.shows(f)]
         changed: dict[str, set[int]] = {}
         for path, lines in [(p, None) for p in paths] + sorted(changes.items()):
             repo, sep, rest = path.partition(":")
@@ -127,9 +129,9 @@ class ImpactTools(SessionText):
                 found.ambiguous.append({"path": path, "candidates": [f["id"] for f in matches]})
             else:
                 found.unmatched.append(path)
-        symbols = store.file_symbols(changed, b)
+        symbols = store.file_symbols(changed)
         for fid, lines in changed.items():
-            for s in self._changed_symbols(store, b, symbols.get(fid, []), lines):
+            for s in self._changed_symbols(store, symbols.get(fid, []), lines):
                 found.seeds[s["id"]] = s
 
     def _walk_back(self, store: SnapshotView, found: Impact) -> None:
@@ -149,11 +151,11 @@ class ImpactTools(SessionText):
                         key = (-STATUS_RANK[e["status"]], e["rel"], e["dst"])
                         if e["src"] not in step or key < step[e["src"]][0]:
                             step[e["src"]] = (key, e)
-            nodes = store.nodes(step, found.build)
+            nodes = store.nodes(step)
             frontier = []
             for other in sorted(step):
                 node = nodes.get(other)
-                if node is not None and self.shows(node):
+                if node is not None and self.visibility.shows(node):
                     e = step[other][1]
                     rels = sorted(links[(other, e["dst"])])
                     found.reached[other] = {"hop": hop + 1, "node": node, "edge": e, "rels": rels, "hub": False}
@@ -166,7 +168,7 @@ class ImpactTools(SessionText):
         if hop == 0:
             edges = self._seed_edges(store, found, nid)
         else:
-            edges = store.edges_of(nid, found.build, limit=HUB_DEGREE + 1)
+            edges = store.edges_of(nid, limit=HUB_DEGREE + 1)
             if len(edges) > HUB_DEGREE:
                 found.reached[nid]["hub"] = True
                 return []
@@ -177,14 +179,14 @@ class ImpactTools(SessionText):
             and e["src"] != nid
             and e["rel"] in WALKED_RELS
             and STATUS_RANK.get(e["status"], 0) >= IMPACT_MIN_RANK
-            and self.seen(e)
+            and self.visibility.seen(e)
         ]
 
     def _seed_edges(self, store: SnapshotView, found: Impact, nid: str) -> list[dict]:
         """The edges into a seed, SEED_EDGES at a time, up to IMPACT_SEED_EDGES; a seed with more is added to
         ``found.cut`` with the number of edges it has, so no caller is dropped without a word."""
-        assert self.clearance is not None, ANSWERS_NOTHING
-        query = (nid, found.build, WALKED_RELS, IMPACT_STATUSES, self.clearance)
+        assert self.visibility.clearance is not None, ANSWERS_NOTHING
+        query = (nid, WALKED_RELS, IMPACT_STATUSES, self.visibility.clearance)
         edges: list[dict] = []
         while len(edges) < IMPACT_SEED_EDGES:
             want = min(SEED_EDGES, IMPACT_SEED_EDGES - len(edges))
@@ -212,7 +214,7 @@ class ImpactTools(SessionText):
     def _impact_lines(self, found: Impact) -> list[str]:
         hops, docs = self._impact_shown(found)
         shown = [*found.seeds.values(), *(r["node"] for g in hops.values() for r in g), *(found.docs[d] for d in docs)]
-        shared, label_line = self._labels(shown)
+        shared, label_line = self.text.labels(shown)
         lines = [
             f"impact of {len(found.seeds)} seed(s) within {found.depth} hop(s) (build {found.build}):"
             f" {len(found.reached)} dependent(s), {len(found.docs)} document(s) to re-check"
@@ -220,7 +222,7 @@ class ImpactTools(SessionText):
         lines += label_line
         if found.seeds:
             lines.append("seeds:")
-            lines += [f"  {self._line(found.seeds[s], shared)}" for s in sorted(found.seeds)]
+            lines += [f"  {self.text.line(found.seeds[s], shared)}" for s in sorted(found.seeds)]
         lines += [coverage_line(row) for row in found.coverage]
         lines += [
             f"cut: {c['total']} edges lead into [{readable(c['seed'])}] and the first {c['read']} were read; what"
@@ -233,7 +235,7 @@ class ImpactTools(SessionText):
             for r in hops[hop]:
                 e, also = r["edge"], [rel for rel in r["rels"] if rel != r["edge"]["rel"]]
                 lines.append(
-                    f"  {self._line(r['node'], shared)} -{e['rel']}-> [{readable(e['dst'])}] ({e['status']})"
+                    f"  {self.text.line(r['node'], shared)} -{e['rel']}-> [{readable(e['dst'])}] ({e['status']})"
                     + (f" (also {', '.join(also)})" if also else "")
                     + (" (hub, not expanded)" if r["hub"] else "")
                 )
@@ -261,7 +263,7 @@ class ImpactTools(SessionText):
             targets = sorted(found.mentions[d], key=lambda e: e["dst"])
             more = f", and {len(targets) - IMPACT_MENTIONS_SHOWN} more" if len(targets) > IMPACT_MENTIONS_SHOWN else ""
             lines.append(
-                f"  {self._line(found.docs[d], shared)} -mentions-> "
+                f"  {self.text.line(found.docs[d], shared)} -mentions-> "
                 + ", ".join(f"[{readable(e['dst'])}] ({e['status']})" for e in targets[:IMPACT_MENTIONS_SHOWN])
                 + more
             )
@@ -279,12 +281,12 @@ class ImpactTools(SessionText):
         return {
             "build": found.build,
             "depth": found.depth,
-            "seeds": [self._node_json(found.seeds[s]) for s in sorted(found.seeds)],
+            "seeds": [self.text.node_json(found.seeds[s]) for s in sorted(found.seeds)],
             "coverage": found.coverage,
             "impacted": [
                 {
                     "hop": r["hop"],
-                    "node": self._node_json(r["node"]),
+                    "node": self.text.node_json(r["node"]),
                     "rel": r["edge"]["rel"],
                     "rels": r["rels"],
                     "status": r["edge"]["status"],
@@ -295,7 +297,7 @@ class ImpactTools(SessionText):
             ],
             "documents": [
                 {
-                    "node": self._node_json(found.docs[d]),
+                    "node": self.text.node_json(found.docs[d]),
                     "mentions": [
                         {"node": e["dst"], "status": e["status"]}
                         for e in sorted(found.mentions[d], key=lambda e: e["dst"])

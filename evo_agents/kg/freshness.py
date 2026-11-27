@@ -160,8 +160,8 @@ class Links:
                 self.prefixes[entry["id"]] = (blob["branch"], blob["commit"])
 
     @classmethod
-    def of(cls, store, b: int) -> Links:
-        return cls(store.build_row(b)["coverage"])
+    def of(cls, store) -> Links:
+        return cls(store.build_row()["coverage"])
 
     def at_commit(self, uri, source) -> str | None:
         """``uri`` at the commit its source read; any other link as it is."""
