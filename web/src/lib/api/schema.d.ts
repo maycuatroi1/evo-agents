@@ -30900,6 +30900,13 @@ export interface components {
              */
             needs_rebuild: string[];
             /**
+             * By Type
+             * @description per question type, {type: {current, candidate}}: the same figures; null when nothing was measured
+             */
+            by_type?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Why
              * @description why nothing was measured
              */
