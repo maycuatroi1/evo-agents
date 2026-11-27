@@ -21,9 +21,10 @@ from evo_agents.hub import kg_optimize as model
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, queue_build
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
-from evo_agents.hub.server import audit, kg_eval_sets, kg_health
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.kg import built_graphs
+from evo_agents.hub.server.kg.models.health import GRAPHS_TRIED
 from evo_agents.hub.server.kg.models.optimize import (
     AFTER_WAIT,
     ERROR_CHARS,
@@ -39,6 +40,8 @@ from evo_agents.hub.server.kg.models.optimize import (
     shown,
 )
 from evo_agents.hub.server.kg.repository import optimize as repo
+from evo_agents.hub.server.kg.service.eval_sets import latest_set
+from evo_agents.hub.server.kg.service.health import measure_review, owner_reads, snapshot_of
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal, holds
@@ -73,7 +76,7 @@ def _measure_graph(
     if question_set is None or not holdout:
         return {"why": "the project's eval set has no holdout question"}
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    with reading(project, kg_health.snapshot_of(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, snapshot_of(loaded, graphs, ceiling)) as (store, graph):
         if store.latest_ready() is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
@@ -120,13 +123,13 @@ def _measure_graph(
 
 async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, weight: float, tune: bool) -> dict:
     """The measure of ``row``'s project (project_id, project, owner_id, owner) as its owner's agents read it, through
-    the agents' sink with the owner's audience: ``_measure_graph``'s, with ``review`` (kg_health.measure_review); {"why": ...} when it cannot."""
+    the agents' sink with the owner's audience: ``_measure_graph``'s, with ``review`` (kg.service.health.measure_review); {"why": ...} when it cannot."""
     async with UnitOfWork(engine) as conn:
-        graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
-        access, sink, why = await kg_health._owner_reads(conn, row, graphs, agent=True)
+        graphs = await built_graphs(conn, row.project_id, GRAPHS_TRIED)
+        access, sink, why = await owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
-        found_set = await kg_eval_sets.latest_set(conn, row.project_id)
+        found_set = await latest_set(conn, row.project_id)
         audience = await agent_audience(conn, row.owner_id, None, None)
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
@@ -144,7 +147,7 @@ async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, 
         )
     except GraphUnavailable as exc:
         return {"why": str(exc)}
-    review = await kg_health.measure_review(engine, row, blobs, data_dir, graphs, loaded)  # the same snapshot
+    review = await measure_review(engine, row, blobs, data_dir, graphs, loaded)  # the same snapshot
     return {**found, "review": review}
 
 

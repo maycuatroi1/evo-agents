@@ -24,28 +24,21 @@ config the members sent (PUT /v1/kg/{project}/config), and a project with none a
 from __future__ import annotations
 
 import asyncio
-import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import Text, cast, select
 
-from evo_agents.hub import tables
 from evo_agents.hub.kg_source_state import SourceState
 from evo_agents.hub.server import blobs, kg
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
-from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.kg_duties import duty_refusal
+from evo_agents.hub.server.kg.service import worker as service
 from evo_agents.hub.server.security import CurrentUser, Principal
-
-log = logging.getLogger(__name__)
 
 WORKER_KINDS = frozenset({"kg-blob", "kg-log"})  # the blobs a worker uploads: the logs of its runs and their items
 SOURCE = Annotated[str | None, Query(min_length=1, max_length=200, description="only the runs of this source")]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 
 worker_router = APIRouter(prefix="/v1/worker/kg", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
@@ -60,12 +53,7 @@ class RunLog(BaseModel):
 
 async def on_duty(request: Request, user: Principal, project: str) -> None:
     """403 unless the worker whose token made the request is on duty for ``project``."""
-    async with request.app.state.engine.begin() as conn:
-        worker = await worker_of(conn, user)
-        refusal = await duty_refusal(conn, worker.id, worker.name, project)
-    if refusal is not None:
-        log.warning("worker kg request refused", extra={"project": project, "worker_id": worker.id})
-        raise HTTPException(403, refusal)
+    await service.on_duty(request.app.state.engine, user, project)
 
 
 def _same_project(project: str, named: str | None) -> None:
@@ -77,18 +65,8 @@ def _same_project(project: str, named: str | None) -> None:
 async def list_runs(request: Request, project: ProjectName, user: CurrentUser, source: SOURCE = None) -> kg.Runs:
     """The runs the hub holds of the project, or of one of its sources."""
     await on_duty(request, user, project)
-    ingests, pending = tables.kg_ingests, tables.kg_pending_runs
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-
-        def ids(runs):
-            run_id = cast(runs.c.run_id, Text).label("run_id")
-            query = select(run_id).where(runs.c.project_id == access.project_id)
-            return query.where(runs.c.source == source) if source is not None else query
-
-        ingested = (await conn.execute(ids(ingests).order_by("run_id"))).scalars().all()
-        held = (await conn.execute(ids(pending).order_by("run_id"))).scalars().all()
-    return kg.Runs(ingested=list(ingested), pending=list(held))
+    ingested, held = await service.runs(request.app.state.engine, user, project, source)
+    return kg.Runs(ingested=ingested, pending=held)
 
 
 @worker_router.get("/{project}/runs/{run_id}/log", response_model=RunLog, responses=REFUSALS)
@@ -96,18 +74,7 @@ async def run_log(request: Request, project: ProjectName, run_id: kg.RunId, user
     """Where to fetch the log of an ingested run of the project."""
     await on_duty(request, user, project)
     store = blobs.blob_store(request)
-    ingests = tables.kg_ingests
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        row = (
-            await conn.execute(
-                select(ingests.c.source, ingests.c.log_sha256, ingests.c.log_size).where(
-                    ingests.c.project_id == access.project_id, ingests.c.run_id == run_id
-                )
-            )
-        ).one_or_none()
-    if row is None:
-        raise HTTPException(404, f"project {project} has no ingested run {run_id}")
+    row = await service.run_log(request.app.state.engine, user, project, run_id)
     url = await asyncio.to_thread(store.presign_get, row.log_sha256)
     return RunLog(run_id=str(run_id), source=row.source, log_sha256=row.log_sha256, log_size=row.log_size, url=url)
 

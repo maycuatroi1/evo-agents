@@ -17,29 +17,26 @@ Every change is a row with its author, its reason and the figures it cites, so i
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
-from typing import Literal
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from fastapi import APIRouter, Request
 
-from evo_agents.hub import kg_health_eval, tables
+from evo_agents.hub import kg_health_eval
 from evo_agents.hub import kg_optimize as model
-from evo_agents.hub import kg_settings as store
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
-from evo_agents.hub.server import audit, kg_eval_sets
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs, member, read_sink, snapshot_view
-from evo_agents.hub.server.kg_audience import reader_audience
-from evo_agents.hub.server.kg_web import require_reader
-from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser, holds
-from evo_agents.kg import settings as kg_settings
-
-MAX_REASON_CHARS = 1000
-MAX_FIGURES_CHARS = store.MAX_FIGURES_CHARS
+from evo_agents.hub.server.kg.models.settings import MAX_REASON_CHARS as MAX_REASON_CHARS
+from evo_agents.hub.server.kg.models.settings import (
+    MeasureBody,
+    MeasureOut,
+    SetBody,
+    SettingsOut,
+    UndoBody,
+)
+from evo_agents.hub.server.kg.service import settings as service
+from evo_agents.hub.server.kg.service.tools import read_sink, snapshot_view
+from evo_agents.hub.server.security import CurrentUser
 
 router = APIRouter(
     prefix="/v1/kg",
@@ -48,163 +45,22 @@ router = APIRouter(
 )
 
 
-class ChangeOut(BaseModel):
-    id: int
-    kind: str
-    changed_by: str | None
-    run_id: int | None
-    reason: str | None
-    figures: dict | None
-    before: dict
-    after: dict
-    undoes: int | None
-    changed_at: datetime
-
-
-class SettingsOut(BaseModel):
-    values: dict = Field(description="every key with the value the project is tuned with")
-    overrides: dict = Field(description="the keys that differ from the defaults")
-    defaults: dict
-    needs_rebuild: list[str] = Field(description="the keys changed by this call that act on the next build")
-    changes: list[ChangeOut] = Field(description="the newest changes, newest first")
-    can_change: bool
-
-
-class SetBody(BaseModel):
-    values: dict = Field(description="keys of the KG settings and their new values")
-    reason: str | None = Field(None, max_length=MAX_REASON_CHARS)
-    figures: dict | None = Field(None, description="the numbers the change rests on, as the bench or measure gave them")
-
-
-class UndoBody(BaseModel):
-    reason: str | None = Field(None, max_length=MAX_REASON_CHARS)
-
-
-async def may_change(conn, user, access) -> None:
-    require_reader(access)
-    if not holds(access.role, "writer"):
-        raise HTTPException(403, f"changing the KG settings of project {access.name} needs the writer role on it")
-    run = user.acts_for_run
-    if run is not None:
-        project = (await conn.execute(select(tables.runs.c.project_id).where(tables.runs.c.id == run))).scalar()
-        if project != access.project_id:
-            raise HTTPException(403, f"run {run} is not a run of project {access.name}")
-
-
-async def _out(conn, project_id: int, role, *, needs_rebuild: list[str], before=None) -> SettingsOut:
-    tuning = await store.read(conn, project_id)
-    found = await store.changes(conn, project_id)
-    ids = {c.changed_by for c in found if c.changed_by is not None}
-    logins = {}
-    if ids:
-        rows = await conn.execute(select(tables.users.c.id, tables.users.c.login).where(tables.users.c.id.in_(ids)))
-        logins = {r.id: r.login for r in rows}
-    return SettingsOut(
-        values=tuning.to_json(),
-        overrides=tuning.overrides(),
-        defaults=kg_settings.DEFAULT.to_json(),
-        needs_rebuild=needs_rebuild,
-        changes=[
-            ChangeOut(
-                id=c.id,
-                kind=c.kind,
-                changed_by=logins.get(c.changed_by),
-                run_id=c.run_id,
-                reason=c.reason,
-                figures=c.figures,
-                before=c.before,
-                after=c.after,
-                undoes=c.undoes,
-                changed_at=c.changed_at,
-            )
-            for c in found
-        ],
-        can_change=holds(role, "writer"),
-    )
-
-
 @router.get("/{project}/settings", response_model=SettingsOut)
 async def get_settings(request: Request, project: ProjectName, user: CurrentUser) -> SettingsOut:
     """What the project's search and build are tuned with, and the newest changes."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        require_reader(access)
-        return await _out(conn, access.project_id, access.role, needs_rebuild=[])
+    return await service.read_settings(request.app.state.engine, user, project)
 
 
 @router.put("/{project}/settings", response_model=SettingsOut)
 async def put_settings(request: Request, project: ProjectName, body: SetBody, user: CurrentUser) -> SettingsOut:
     """Set keys of the project's KG settings; the change keeps who made it, why, and the figures it cites."""
-    if body.figures is not None and len(repr(body.figures)) > MAX_FIGURES_CHARS:
-        raise HTTPException(422, f"figures are over {MAX_FIGURES_CHARS} characters")
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        await may_change(conn, user, access)
-        try:
-            before, after, made = await store.change(
-                conn,
-                access.project_id,
-                body.values,
-                user_id=user.user_id,
-                run_id=user.acts_for_run,
-                reason=body.reason,
-                figures=body.figures,
-            )
-        except kg_settings.SettingsError as e:
-            raise HTTPException(422, str(e)) from e
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=audit.KG_SETTINGS,
-            target=f"{project} change={made} kind=set",
-            project_id=access.project_id,
-        )
-        return await _out(conn, access.project_id, access.role, needs_rebuild=kg_settings.rebuild_keys(before, after))
+    return await service.set_settings(request.app.state.engine, user, project, body)
 
 
 @router.post("/{project}/settings/undo", response_model=SettingsOut)
 async def undo_settings(request: Request, project: ProjectName, body: UndoBody, user: CurrentUser) -> SettingsOut:
     """Put back what the newest change that is not undone replaced."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        await may_change(conn, user, access)
-        try:
-            before, after, made = await store.undo(
-                conn, access.project_id, user_id=user.user_id, run_id=user.acts_for_run, reason=body.reason
-            )
-        except store.NothingToUndo as e:
-            raise HTTPException(404, f"project {access.name} has no change of its KG settings to undo") from e
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=audit.KG_SETTINGS,
-            target=f"{project} change={made} kind=undo",
-            project_id=access.project_id,
-        )
-        return await _out(conn, access.project_id, access.role, needs_rebuild=kg_settings.rebuild_keys(before, after))
-
-
-class MeasureBody(BaseModel):
-    values: dict = Field(default_factory=dict, description="the candidate's keys, on top of the project's settings")
-    split: Literal["tune", "holdout"] = Field("tune", description="the part of the question set that is asked")
-    max_questions: int = Field(300, ge=1, le=1000)
-
-
-class MeasureOut(BaseModel):
-    build_id: int | None
-    split: str
-    questions: int
-    current: dict | None = Field(description="the figures with the project's settings (n, hit@5, tokens per hit, p95)")
-    candidate: dict | None = Field(description="the figures with the candidate's query keys on top")
-    candidate_settings: dict
-    needs_rebuild: list[str] = Field(description="keys of the candidate that need a new build and were not measured")
-    by_type: dict | None = Field(
-        None,
-        description="per question type, {type: {current, candidate}}: the same figures; null when nothing was measured",
-    )
-    why: str | None = Field(None, description="why nothing was measured")
+    return await service.undo_settings(request.app.state.engine, user, project, body.reason)
 
 
 def _by_type(found: dict) -> dict:
@@ -254,25 +110,10 @@ def _measure(project, access, sink, audience, graphs, found_set, current, candid
 async def measure(request: Request, project: ProjectName, body: MeasureBody, user: CurrentUser) -> MeasureOut:
     """Score the project's settings and a candidate on its question set; nothing is stored or changed."""
     state = request.app.state
-    async with state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        member(access)
-        current = await store.read(conn, access.project_id)
-        try:
-            wanted = kg_settings.of(body.values, current)
-        except kg_settings.SettingsError as e:
-            raise HTTPException(422, str(e)) from e
-        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
-        found_set = await kg_eval_sets.latest_set(conn, access.project_id) if graphs else None
-        audience = await reader_audience(conn, user) if graphs else frozenset()
-    needs = kg_settings.rebuild_keys(current, wanted)
-    # what a graph already built can be asked with: the query keys of the candidate; its build keys stay as they are
-    kept = {k: getattr(wanted, k) for k in kg_settings.KEYS if k not in kg_settings.BUILD_KEYS}
-    if "semantic_mode" in needs:
-        kept["semantic_mode"] = current.semantic_mode
-    candidate = kg_settings.of(kept, current)
+    found = await service.measuring(state.engine, user, project, body.values)
+    access, graphs, audience = found.access, found.graphs, found.audience
     empty = {"build_id": None, "split": body.split, "questions": 0, "current": None, "candidate": None, "by_type": None}
-    out = dict(empty, candidate_settings=candidate.to_json(), needs_rebuild=needs)
+    out: dict[str, Any] = dict(empty, candidate_settings=found.candidate.to_json(), needs_rebuild=found.needs_rebuild)
     if not graphs:
         return MeasureOut(**out, why=f"project {project} has no graph on the hub yet")
     sink = read_sink(access, "cli")
@@ -280,22 +121,22 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
         state, access.project_id, graphs, access.rules.ceiling(access.max_level, sink, audience)
     )
     try:
-        found = await asyncio.to_thread(
+        measured = await asyncio.to_thread(
             _measure,
             project,
             access,
             sink,
             audience,
             graphs,
-            found_set,
-            current,
-            candidate,
+            found.found_set,
+            found.current,
+            found.candidate,
             body.split,
             body.max_questions,
             snapshot,
         )
     except GraphUnavailable as e:
         return MeasureOut(**out, why=str(e))
-    if "why" in found:
-        return MeasureOut(**out, why=found["why"])
-    return MeasureOut(**{**out, **found})
+    if "why" in measured:
+        return MeasureOut(**out, why=measured["why"])
+    return MeasureOut(**{**out, **measured})

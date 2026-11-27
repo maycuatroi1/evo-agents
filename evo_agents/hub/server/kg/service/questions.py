@@ -19,6 +19,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.kg import built_graphs
 from evo_agents.hub.server.kg.models.questions import Count, QuestionsOut, Queue
+from evo_agents.hub.server.kg.repository import eval_sets as sets
 from evo_agents.hub.server.kg.repository import questions as repository
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
@@ -28,7 +29,7 @@ from evo_agents.kg.evaluate import HOLDOUT, split_of
 
 log = logging.getLogger("evo_agents.hub.server.kg_questions")  # the name its log lines had before the layers
 
-OwnerReads = Callable[..., Awaitable[tuple]]  # kg_health._owner_reads
+OwnerReads = Callable[..., Awaitable[tuple]]  # kg.service.health.owner_reads
 
 
 # Reading the graph as the agents' sink does
@@ -209,11 +210,10 @@ async def keep(
     waits for them, in a transaction of its own."""
     async with UnitOfWork(engine) as conn:
         row = await _init_row(conn, user, access, run_id)
-        await repository.lock_project(conn, access.project_id)
-        version = (await repository.latest_version(conn, access.project_id) or 0) + 1
-        await repository.add_set(
-            conn, access.project_id, version, model.SET_NAME, entries, set_digest(entries), user.user_id
-        )
+        await sets.lock_project(conn, access.project_id)
+        latest = await sets.latest_row(conn, access.project_id)
+        version = (latest.version if latest else 0) + 1
+        await sets.add_set(conn, access.project_id, version, model.SET_NAME, entries, set_digest(entries), user.user_id)
         body = dict(row.body or {})
         body["questions"] = {**body["questions"], "version": version, "count": len(entries), "classes": classes}
         await repository.save(conn, row.id, body)
