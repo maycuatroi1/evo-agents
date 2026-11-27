@@ -15,15 +15,16 @@ opens a draft pull request of it and never merges, and reports ``done``; the hub
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs, task_runs
+from evo_agents.worker import run_kinds
 from evo_agents.worker.runner import access, verify
 from evo_agents.worker.runner.branch_work import BranchWork, Kind
 from evo_agents.worker.runner.common import RunFailed
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -56,13 +57,15 @@ async def _no_more_turns() -> list[dict]:
     return []
 
 
-class TaskRun:
+class TaskRun(RunKind):
     """A task run: a writable worktree of each repo of its project this worker has a checkout of, on the run's branch,
     one headless turn of the agent on the task, and the branch of each repo it changed pushed at its end, with the hub
     told so for the draft pull request."""
 
-    parks = False
+    traits = run_kinds.KINDS["task"]
     chat = False
+    leaves_branch = False  # its worktrees stay on the run's branch until the cleanup of old runs: the next attempt
+    # starts from what was pushed of it
 
     def __init__(self, run: Run):
         self.run = run
@@ -119,15 +122,3 @@ class TaskRun:
         prompt = self.run.spec.get("prompt") or ""
         extra = self.work.where()
         return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        return await self.directory.diff()
-
-    async def release_branch(self) -> None:
-        """The worktrees stay on the run's branch until the cleanup of old runs: the next attempt starts from what
-        was pushed of it."""

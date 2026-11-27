@@ -61,7 +61,6 @@ from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
-    AgentFinished,
     QueueAdapter,
     cut,
     json_value,
@@ -271,7 +270,7 @@ class AcpAdapter(QueueAdapter):
     @classmethod
     def profile_refusal(cls, run) -> str | None:
         profile = profiles.Profile.of(run)
-        refused = profiles.model_refusal(profile, run)
+        refused = super().profile_refusal(run)
         if refused or profile is None:
             return refused
         limited = [axis for axis in ("tool", "skill") if profile.allowed(axis) is not None]
@@ -302,15 +301,13 @@ class AcpAdapter(QueueAdapter):
 
     def __init__(self, context: RunContext):
         super().__init__(context)
-        self._session: str | None = None
+        self._session = None  # a session of its own: session/load is asked for once the agent answers
         self._process: asyncio.subprocess.Process | None = None
         self._conn: Connection | None = None
         self._stderr: deque[str] = deque(maxlen=STDERR_LINES)
         self._stderr_task: asyncio.Task | None = None
-        self._dir: Path | None = None
         self._turn: asyncio.Task | None = None
         self._pending: list[str] = []
-        self._accepting = False
         self._loading = False  # session/load replays the session's history, which is no event of this run
         self._stop_reason: str | None = None
         self._error: str | None = None
@@ -321,10 +318,6 @@ class AcpAdapter(QueueAdapter):
         self._window: int | None = None
         self.agent_info: dict = {}
         self.loaded = False  # the session went on from context.resume_session
-
-    @property
-    def session_id(self) -> str | None:
-        return self._session
 
     # Starting
 
@@ -523,11 +516,8 @@ class AcpAdapter(QueueAdapter):
         how = self._stop_reason or "without a stop reason"
         return Outcome(False, f"{self.runtime} ended its turn {how}", usage, summary)
 
-    async def send(self, text: str) -> None:
-        async with self._lock:
-            if not self._accepting:
-                raise AgentFinished(f"{self.runtime} has finished its last turn and takes no more messages")
-            self._pending.append(text)
+    async def _take(self, text: str) -> None:
+        self._pending.append(text)
 
     async def _interrupt(self) -> None:
         if self._conn is not None and self._session is not None:
@@ -552,10 +542,6 @@ class AcpAdapter(QueueAdapter):
             self._stderr_task.cancel()
             with contextlib.suppress(BaseException):
                 await self._stderr_task
-
-    def _cleanup(self) -> None:
-        if self._dir is not None:
-            shutil.rmtree(self._dir, ignore_errors=True)
 
 
 def adapter_class(declaration: AcpRuntime) -> type[AcpAdapter]:

@@ -54,7 +54,6 @@ import json
 import logging
 import re
 import secrets
-import shutil
 import signal
 import socket
 import tempfile
@@ -62,17 +61,15 @@ from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
 from evo_agents.worker import packs
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
+from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext, command_output
 from evo_agents.worker.environments import HOST_ENVIRONMENT
 from evo_agents.worker.runtimes import gateway, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
-    AgentFinished,
     QueueAdapter,
     add_numbers,
     cut,
-    detect_runtime,
     first_request,
     kill_group,
     larger,
@@ -323,13 +320,12 @@ async def start_server(
 class OpencodeAdapter(QueueAdapter):
     runtime = "opencode"
     binary = "opencode"
+    min_version = MIN_VERSION
+    packages = (AIOHTTP,)
+    finished_words = "has gone idle and takes no more messages"
     interactive = True
     pack_kinds = ("skills", "mcp_servers", "instructions")
     pack_transports = packs.TRANSPORTS
-
-    @classmethod
-    def detect(cls) -> Detection:
-        return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(AIOHTTP,))
 
     @classmethod
     def models(cls) -> list[str] | None:
@@ -342,14 +338,9 @@ class OpencodeAdapter(QueueAdapter):
 
         return OpencodeTui(context, session_id)
 
-    @classmethod
-    def profile_refusal(cls, run) -> str | None:
-        return profiles.model_refusal(profiles.Profile.of(run), run)
-
     def __init__(self, context: RunContext):
         super().__init__(context)
         self.profile = profiles.profile_of(context)
-        self._session = context.resume_session
         self._server: Server | None = None
         self._http = None
         self._stream = None
@@ -357,7 +348,6 @@ class OpencodeAdapter(QueueAdapter):
         self._tree: set[str] = set()  # the session and the sessions it started
         self._user_messages: set[str] = set()
         self._posted = 0
-        self._accepting = False
         self._idle = False
         self._tools: set[str] = set()
         self._error: str | None = None
@@ -369,11 +359,6 @@ class OpencodeAdapter(QueueAdapter):
         self.model: tuple[str, str] | None = None
         self.variant = run_setting(context, self.runtime, "effort")
         self.server_url: str | None = None
-        self._dir: Path | None = None  # in a container: where its command's spec is
-
-    @property
-    def session_id(self) -> str | None:
-        return self._session
 
     def group_pid(self) -> int | None:
         return self._server.pid if self._server is not None else None
@@ -640,11 +625,8 @@ class OpencodeAdapter(QueueAdapter):
             return Outcome(False, cut(f"opencode: {self._error}"), usage, self._summary)
         return Outcome(True, None, usage, self._summary)
 
-    async def send(self, text: str) -> None:
-        async with self._lock:
-            if not self._accepting:
-                raise AgentFinished("opencode has gone idle and takes no more messages")
-            await self._prompt(text)
+    async def _take(self, text: str) -> None:
+        await self._prompt(text)
 
     async def _interrupt(self) -> None:
         if self._http is not None and self._session:
@@ -659,7 +641,3 @@ class OpencodeAdapter(QueueAdapter):
             await self._http.close()
         if self._server is not None:
             await self._server.stop()
-
-    def _cleanup(self) -> None:
-        if self._dir is not None:
-            shutil.rmtree(self._dir, ignore_errors=True)

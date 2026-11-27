@@ -170,7 +170,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -180,9 +179,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from evo_agents.hub import author, curator, runs
-from evo_agents.worker import packs
+from evo_agents.worker import packs, run_kinds
 from evo_agents.worker.adapter import (
-    Detection,
     Outcome,
     ProfileRefused,
     RunContext,
@@ -206,12 +204,10 @@ from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
     SUBAGENT_NOTE,
-    AgentFinished,
     QueueAdapter,
     add_numbers,
     cut,
     descendants,
-    detect_runtime,
     kill_group,
     kill_tree,
     larger,
@@ -411,6 +407,9 @@ def help_models(text: str | None) -> list[str] | None:
 class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
+    min_version = MIN_VERSION
+    packages = (SDK,)
+    finished_words = "has finished its turn and takes no more messages"
     interactive = True
     pack_kinds = packs.KINDS
     pack_transports = packs.TRANSPORTS
@@ -420,10 +419,6 @@ class ClaudeCodeAdapter(QueueAdapter):
     follow_up_after = FOLLOW_UP_AFTER
     turn_grace = TURN_GRACE
     stop_grace = STOP_GRACE
-
-    @classmethod
-    def detect(cls) -> Detection:
-        return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(SDK,))
 
     @classmethod
     def models(cls) -> list[str] | None:
@@ -453,10 +448,6 @@ class ClaudeCodeAdapter(QueueAdapter):
         return auth_notes(context) + profiles.claude_notes(profiles.profile_of(context))
 
     @classmethod
-    def profile_refusal(cls, run) -> str | None:
-        return profiles.model_refusal(profiles.Profile.of(run), run)
-
-    @classmethod
     def login_refusal(cls, context: RunContext) -> str | None:
         return curator_login_refusal(context)
 
@@ -471,7 +462,6 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._first: dict | None = None  # the cache tokens of the first of those messages (FIRST_REQUEST)
         self._error: str | None = None
         self._stderr: collections.deque[str] = collections.deque(maxlen=20)
-        self._dir: Path | None = None
         self.options = None
         self.background = Background()
         self.reaper = TaskReaper(self.group_pid)  # what is left of a command the CLI stopped (task_reaper)
@@ -486,10 +476,6 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._settled = asyncio.Event()  # set once nothing the agent started runs in the background
         self._stopper: asyncio.Task | None = None  # stops the background commands, then ends the input
 
-    @property
-    def session_id(self) -> str | None:
-        return self._session
-
     def make_client(self, options):
         """The SDK's client; a test hands it a transport of its own."""
         from claude_agent_sdk import ClaudeSDKClient
@@ -501,7 +487,7 @@ class ClaudeCodeAdapter(QueueAdapter):
 
         dropped = dropped_env(self.context)
         profile = profiles.profile_of(self.context)
-        note = f"{SYSTEM_NOTE}\n\n{PLAN_WAIT_NOTE}" if self.context.run.get("kind") == "plan" else SYSTEM_NOTE
+        note = f"{SYSTEM_NOTE}\n\n{PLAN_WAIT_NOTE}" if run_kinds.of(self.context.run.get("kind")).waits else SYSTEM_NOTE
         append = packs.with_instructions(profiles.with_instructions(note, profile), self.context.packs)
         settings = {
             "cwd": str(self.context.worktree),
@@ -530,15 +516,15 @@ class ClaudeCodeAdapter(QueueAdapter):
                 settings[key] = value
         limits = profiles.claude_settings(profile)
         disallowed = limits.pop("disallowed_tools", [])
-        kind = self.context.run.get("kind")
-        if kind in ("author", "chat", "task", "release", "question"):  # nobody at this machine answers a question tool
+        kind = run_kinds.of(self.context.run.get("kind"))
+        if not kind.answered:  # nobody at this machine answers a question tool
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
-        if kind == "plan":  # the wait guard refuses every Monitor watch, so the session is not offered the tool
+        if kind.waits:  # the wait guard refuses every Monitor watch, so the session is not offered the tool
             disallowed = [*disallowed, *PLAN_DISALLOWED_TOOLS]
         if disallowed:
             settings["disallowed_tools"] = disallowed
         # an @handle or @path in the words it is given never makes it read a file
-        if kind in ("chat", "task", "question"):
+        if kind.verbatim:
             settings["verbatim_prompts"] = True
         settings.update(limits)
         settings.update(packs.claude_options(self.context.packs))
@@ -824,13 +810,13 @@ class ClaudeCodeAdapter(QueueAdapter):
         kill_tree(await asyncio.to_thread(descendants, pid))
         kill_group(pid)
 
-    async def send(self, text: str) -> None:
-        async with self._lock:
-            if not self._input_open or self._client is None:
-                raise AgentFinished("claude-code has finished its turn and takes no more messages")
-            if not self._turn_open:  # the message opens a turn: what waited for the CLI does no longer
-                self._turn_starts()
-            await self._client.query(text)
+    def _takes_input(self) -> bool:
+        return self._input_open and self._client is not None
+
+    async def _take(self, text: str) -> None:
+        if not self._turn_open:  # the message opens a turn: what waited for the CLI does no longer
+            self._turn_starts()
+        await self._client.query(text)
 
     async def _interrupt(self) -> None:
         if self._client is not None and self._input_open:
@@ -856,8 +842,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             killed = self.reaper.reap_all()
             if killed:
                 log.info("killed what the session's commands left running", extra={"processes": killed})
-        if self._dir is not None:
-            shutil.rmtree(self._dir, ignore_errors=True)
+        super()._cleanup()
 
     async def _note_tasks(self) -> None:
         """Note the processes of the commands the CLI runs, every SNAPSHOT_EVERY seconds (``task_reaper``)."""

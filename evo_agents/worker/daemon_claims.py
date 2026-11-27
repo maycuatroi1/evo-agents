@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from evo_agents.worker import memory_room
 from evo_agents.worker.background import spawn
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
-from evo_agents.worker.run import run_class
+from evo_agents.worker.run import Run
 
 if TYPE_CHECKING:
     from evo_agents.worker.daemon import Daemon
@@ -175,7 +175,7 @@ class Claims:
 
     def _start(self, spec: dict) -> None:
         daemon = self.daemon
-        run = run_class(spec)(daemon, spec)
+        run = Run(daemon, spec)
         log.info(
             "run claimed",
             extra={

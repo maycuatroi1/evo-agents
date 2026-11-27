@@ -55,13 +55,14 @@ import yaml
 
 from evo_agents.hub import judge, run_prompts, runs
 from evo_agents.hub.credentials import normalize_origin
-from evo_agents.worker import gitops
+from evo_agents.worker import gitops, run_kinds
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner import access, origin, push, venv, verify
 from evo_agents.worker.runner.common import Parked, RunFailed, cut, log, push_cause
 from evo_agents.worker.runner.conversation import KEEP_GOING_PROMPT, Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.sessions import StepSessions
 from evo_agents.worker.runner.transitions import start_refs
 
@@ -71,11 +72,11 @@ if TYPE_CHECKING:
 SUMMARY_IN_ERROR = 1000  # characters of the agent's summary the error of a run that fails with steps_left keeps
 
 
-class PlanRun:
+class PlanRun(RunKind):
     """A plan run: a worktree of each of its repos in one directory, the agent in that directory doing every step not
     done yet, waiting for its owner's answers between its turns, and the repos pushed at its end."""
 
-    parks = True
+    traits = run_kinds.KINDS["plan"]
     chat = False
 
     def __init__(self, run: Run):
@@ -567,14 +568,3 @@ class PlanRun:
         if not self.builder or self.run.curator.get("forge") != "gitlab":
             return []
         return judge.gitlab_push_options(self.targets.get(name) or "main", self.run.title)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        return await self.directory.diff()
-
-    async def release_branch(self) -> None:
-        await self.directory.release()

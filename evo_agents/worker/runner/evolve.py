@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, evolve, replay
-from evo_agents.worker import gitops, untrusted
+from evo_agents.worker import gitops, run_kinds, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner import access, verify
@@ -218,6 +218,8 @@ async def write_branch(
 class EvolveRun(ReplayRun):
     """An evolve run: the inputs read with its key, the evolution in its directory, the best candidate written on its
     branch and reported. It lays out each task as a replay run lays out an arm, and ends as one."""
+
+    traits = run_kinds.KINDS["evolve"]
 
     def __init__(self, run: Run):
         self.run = run

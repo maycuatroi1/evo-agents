@@ -1,7 +1,7 @@
-"""A run on this worker: what every kind of run shares (``Run``), and what a kind brings to it (``RunKind``).
+"""A run on this worker: what every kind of run shares (``Run``), and what a kind brings to it (``kind.RunKind``).
 
 The daemon holds a ``Run`` for each run it claimed. The run's kind (``kinds.KINDS``: step, plan, review, judge, author,
-chat, task, replay, history) is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the
+chat, task, replay, history and the rest) is a ``RunKind`` the Run composes, never a subclass of the Run: it gets the Run in its constructor and works through the
 parts the Run holds, which every kind shares: its log (``event``, ``note``) and the events on their way to the hub
 (``sender``), its leases (``credentials``), its agent (``agent``), the owner's messages (``inbox``), its reports
 (``reports``) and its budget (``watchdog``). The git, the preflight, the verify commands and the commit are functions of
@@ -21,15 +21,16 @@ import contextlib
 import functools
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-from evo_agents.hub import curator, releases
-from evo_agents.worker import credentials, verify_jobs
+from evo_agents.hub import curator
+from evo_agents.worker import credentials, run_kinds, verify_jobs
 from evo_agents.worker.adapter import AgentEvent, Outcome
 from evo_agents.worker.credentials import RunCredentials
 from evo_agents.worker.runner.agent import Agent
 from evo_agents.worker.runner.common import RunFailed, RunGone, Stopped, log, now
 from evo_agents.worker.runner.inbox import Inbox
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.kinds import kind_class
 from evo_agents.worker.runner.outputs import CLOSE_GRACE, Outputs
 from evo_agents.worker.runner.reports import LOG_LIMIT, Reports
@@ -42,26 +43,6 @@ if TYPE_CHECKING:
     from evo_agents.worker.run_host import RunHost
 
 SENDER_GRACE = 30.0  # seconds the events left have to reach the hub once the run is over here
-
-
-class RunKind(Protocol):
-    """What a kind of run brings to the Run that holds it, which it gets in its constructor: its steps from the claim
-    to the report that ends it, and what the parts every kind shares ask of it."""
-
-    parks: bool  # it waits for its owner between turns, and the hub may park it: a plan run, an author run
-    chat: bool  # its owner ends its chat: an author run
-
-    async def steps(self) -> None:
-        """From the claim to the report that ends the run; RunFailed or Stopped ends it otherwise."""
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        """(repo, worktree, the commit it started at) of each worktree of the run, for the watchdog."""
-
-    async def diff(self) -> bytes:
-        """The diff of the run's commits, uploaded once it ended; empty for none."""
-
-    async def release_branch(self) -> None:
-        """Leave the plan's branches once the run is over, so they can be checked out elsewhere."""
 
 
 def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None, str | None]:
@@ -145,7 +126,7 @@ class Run:
             home,
             daemon.env,
             self.note,
-            guarded=self.curator is not None or spec.get("kind") == releases.RELEASE_KIND,
+            guarded=self.curator is not None or run_kinds.of(spec.get("kind")).guarded,
         )
         self.agent = Agent(self)
         self.inbox = Inbox(self)

@@ -36,21 +36,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs
-from evo_agents.worker import gitops
+from evo_agents.worker import gitops, run_kinds
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.runner import access, origin, push, venv, verify
 from evo_agents.worker.runner.common import RunFailed, push_cause
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.transitions import final_state, start_refs, verify_failure
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
 
 
-class StepRun:
+class StepRun(RunKind):
     """A run of one step: one worktree on the plan's branch, the agent in it, its verify commands run again, and the
     branch pushed."""
 
-    parks = False
+    traits = run_kinds.KINDS["step"]
     chat = False
 
     def __init__(self, run: Run):

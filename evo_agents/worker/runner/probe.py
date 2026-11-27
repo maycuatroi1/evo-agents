@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, probes, replay
-from evo_agents.worker import gitops, untrusted
+from evo_agents.worker import gitops, run_kinds, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner import access, verify
@@ -89,6 +89,8 @@ class ProbeRun(ReplayRun):
     sessions of each arm each in a new repository at the base commit with its agent and the probe's verify run on its
     work and a trace of it, each session's result posted; nothing pushed. It lays its sessions out as a replay run
     lays out its arms."""
+
+    traits = run_kinds.KINDS["probe"]
 
     def __init__(self, run: Run):
         self.run = run

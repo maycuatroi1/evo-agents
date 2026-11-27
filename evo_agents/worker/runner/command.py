@@ -25,9 +25,11 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import command_runs
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
+from evo_agents.worker import run_kinds
 from evo_agents.worker.runner import access
 from evo_agents.worker.runner.common import RunFailed, Stopped
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -43,12 +45,13 @@ def shell_of(env: dict[str, str]) -> str:
     return shell if os.path.isabs(shell) and os.access(shell, os.X_OK) else "/bin/sh"
 
 
-class CommandRun:
+class CommandRun(RunKind):
     """A command run: the cron job's command line in a worktree of its repo, or in an empty directory, its output to the
     run's log and its exit code the run's end."""
 
-    parks = False
+    traits = run_kinds.KINDS["command"]
     chat = False
+    leaves_branch = False  # its worktree is detached: no branch to leave; it stays until the cleanup of old runs
 
     def __init__(self, run: Run):
         self.run = run
@@ -195,15 +198,3 @@ class CommandRun:
         if self.dropped:
             said += f", and {self.dropped} more left out of the log"
         return f"The command {ended}, after {said}."
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        return await self.directory.diff()
-
-    async def release_branch(self) -> None:
-        """The worktree is detached: no branch to leave. It stays until the cleanup of old runs."""
-        return None

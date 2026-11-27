@@ -1,9 +1,7 @@
-"""The kinds of run this worker runs, by the claim's kind (``runs.RUN_KINDS``). A Run (``context``) composes the one
-its claim names; no kind inherits from another or from the Run."""
+"""The kinds of run this worker runs, by the claim's kind (``runs.RUN_KINDS``), each a ``kind.RunKind`` listed here by
+hand under the name its traits declare. A Run (``context``) composes the one its claim names."""
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
 
 from evo_agents.worker.runner.author import AuthorRun
 from evo_agents.worker.runner.browser_login import BrowserLoginRun
@@ -12,6 +10,7 @@ from evo_agents.worker.runner.command import CommandRun
 from evo_agents.worker.runner.evolve import EvolveRun
 from evo_agents.worker.runner.history import HistoryRun
 from evo_agents.worker.runner.judge import JudgeRun
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.plan import PlanRun
 from evo_agents.worker.runner.probe import ProbeRun
 from evo_agents.worker.runner.question import QuestionRun
@@ -21,25 +20,25 @@ from evo_agents.worker.runner.review import ReviewRun
 from evo_agents.worker.runner.step import StepRun
 from evo_agents.worker.runner.task import TaskRun
 
-if TYPE_CHECKING:
-    from evo_agents.worker.runner.context import RunKind
-
-KINDS = {
-    "step": StepRun,
-    "plan": PlanRun,
-    "review": ReviewRun,
-    "judge": JudgeRun,
-    "author": AuthorRun,
-    "chat": ChatRun,
-    "task": TaskRun,
-    "replay": ReplayRun,
-    "history": HistoryRun,
-    "probe": ProbeRun,
-    "release": ReleaseRun,
-    "question": QuestionRun,
-    "browser": BrowserLoginRun,
-    "command": CommandRun,
-    "evolve": EvolveRun,
+KINDS: dict[str, type[RunKind]] = {
+    kind.traits.name: kind
+    for kind in (
+        StepRun,
+        PlanRun,
+        ReviewRun,
+        JudgeRun,
+        AuthorRun,
+        ChatRun,
+        TaskRun,
+        ReplayRun,
+        HistoryRun,
+        ProbeRun,
+        ReleaseRun,
+        QuestionRun,
+        BrowserLoginRun,
+        CommandRun,
+        EvolveRun,
+    )
 }
 
 

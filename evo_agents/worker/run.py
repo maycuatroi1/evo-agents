@@ -40,9 +40,10 @@ from evo_agents.worker.runner.author import AuthorRun
 from evo_agents.worker.runner.chat import ChatRun
 from evo_agents.worker.runner.command import CommandRun
 from evo_agents.worker.runner.common import Parked, ReportRefused, RunFailed, RunGone, Stopped
-from evo_agents.worker.runner.context import Run, RunKind
+from evo_agents.worker.runner.context import Run
 from evo_agents.worker.runner.conversation import ANSWER_PROMPT, RESUME_PROMPT, read_asked
 from evo_agents.worker.runner.judge import JudgeRun
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.kinds import KINDS, kind_class
 from evo_agents.worker.runner.plan import PlanRun
 from evo_agents.worker.runner.question import QuestionRun
@@ -78,11 +79,4 @@ __all__ = [
     "Stopped",
     "kind_class",
     "read_asked",
-    "run_class",
 ]
-
-
-def run_class(spec: dict) -> type[Run]:
-    """The class of the run ``spec`` claims: Run, for every kind; the kind it composes (``kind_class``: StepRun,
-    PlanRun, ReviewRun, JudgeRun or AuthorRun) brings what differs."""
-    return Run

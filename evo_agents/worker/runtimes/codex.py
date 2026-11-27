@@ -62,23 +62,20 @@ import json
 import logging
 import os
 import re
-import shutil
 import tempfile
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
 from evo_agents.worker import packs
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext
 from evo_agents.worker.runtimes import gateway, hub_tools, profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
     SUBAGENT_NOTE,
-    AgentFinished,
     QueueAdapter,
     cut,
-    detect_runtime,
     first_request,
     larger,
     message_chunk,
@@ -322,13 +319,11 @@ def events_of(method: str, params: dict) -> list[AgentEvent]:
 class CodexAdapter(QueueAdapter):
     runtime = "codex"
     binary = "codex"
+    min_version = MIN_VERSION
+    packages = (SDK,)
     interactive = True
     pack_kinds = ("skills", "mcp_servers", "instructions")
     pack_transports = ("stdio", "http")
-
-    @classmethod
-    def detect(cls) -> Detection:
-        return detect_runtime(cls.runtime, cls.binary, MIN_VERSION, packages=(SDK,))
 
     @classmethod
     def models(cls) -> list[str] | None:
@@ -355,17 +350,14 @@ class CodexAdapter(QueueAdapter):
 
     @classmethod
     def profile_refusal(cls, run) -> str | None:
-        profile = profiles.Profile.of(run)
-        return profiles.model_refusal(profile, run) or profiles.codex_refusal(profile)
+        return super().profile_refusal(run) or profiles.codex_refusal(profiles.Profile.of(run))
 
     def __init__(self, context: RunContext):
         super().__init__(context)
-        self._session = context.resume_session
         self._codex = None
         self._thread = None
         self._turn = None
         self._pending: list[str] = []
-        self._accepting = False
         self._status: str | None = None
         self._turn_error: str | None = None
         self._error: str | None = None
@@ -374,14 +366,9 @@ class CodexAdapter(QueueAdapter):
         self._first: dict | None = None  # the cache tokens of the first ``last`` (FIRST_REQUEST)
         self._window: int | None = None  # the model's context window, as the app-server reports it
         self._summary: str | None = None
-        self._dir: Path | None = None
         self.config = None
         self.thread_options: dict = {}
         self.server_version: str | None = None
-
-    @property
-    def session_id(self) -> str | None:
-        return self._session
 
     def mcp_servers(self) -> list[str]:
         """The MCP servers of the owner's codex config and of the worktree's (``profiles.codex_servers``)."""
@@ -519,17 +506,14 @@ class CodexAdapter(QueueAdapter):
         detail = f": {self._turn_error}" if self._turn_error else ""
         return Outcome(False, cut(f"codex ended its turn {self._status or 'without a status'}{detail}"), usage, summary)
 
-    async def send(self, text: str) -> None:
-        async with self._lock:
-            if not self._accepting:
-                raise AgentFinished("codex has finished its last turn and takes no more messages")
-            if self._turn is not None:
-                try:
-                    await self._turn.steer(text)
-                    return
-                except Exception as exc:  # the turn ended meanwhile: the message starts the next one
-                    log.info("codex did not take a message into its turn", extra={"error": type(exc).__name__})
-            self._pending.append(text)
+    async def _take(self, text: str) -> None:
+        if self._turn is not None:
+            try:
+                await self._turn.steer(text)
+                return
+            except Exception as exc:  # the turn ended meanwhile: the message starts the next one
+                log.info("codex did not take a message into its turn", extra={"error": type(exc).__name__})
+        self._pending.append(text)
 
     async def _interrupt(self) -> None:
         turn = self._turn
@@ -541,7 +525,3 @@ class CodexAdapter(QueueAdapter):
         self._accepting = False
         if self._codex is not None:
             await self._codex.close()
-
-    def _cleanup(self) -> None:
-        if self._dir is not None:
-            shutil.rmtree(self._dir, ignore_errors=True)

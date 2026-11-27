@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+from evo_agents.worker import run_kinds
 from evo_agents.worker.browser import profiles
 from evo_agents.worker.runner.common import RunFailed, log
+from evo_agents.worker.runner.kind import RunKind
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -29,10 +30,10 @@ if TYPE_CHECKING:
 POLL = 1.0  # seconds between looks at the run's timeout and its stop
 
 
-class BrowserLoginRun:
+class BrowserLoginRun(RunKind):
     """A login session: its Chromium, its live view in human mode, and a Save that seals the profile."""
 
-    parks = False
+    traits = run_kinds.KINDS["browser"]
     chat = True  # the owner's Save is the finish of the run (Run.request_finish)
 
     def __init__(self, run: Run):
@@ -93,14 +94,3 @@ class BrowserLoginRun:
         except (profiles.DevToolsFailed, KeyError) as exc:
             log.warning("login page not opened", extra={"run_id": self.run.id, "error": str(exc)})
             self.run.note("Browser: the login page did not open; type its address in the URL box of the view.")
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return []
-
-    async def diff(self) -> bytes:
-        return b""
-
-    async def release_branch(self) -> None:
-        return None

@@ -496,61 +496,22 @@ def cut_diff(data: bytes, limit: int) -> bytes:
     return keep[: keep.rfind(b"\n") + 1] + note
 
 
-def _own_branches(kind: str) -> tuple[str, str, str, Callable[[str], bool]] | None:
-    """For a kind of run that pushes only branches of its own: who runs it, whose branches they are, their form, and
-    the test of a branch; None for any other kind."""
-    if kind == "chat":
-        from evo_agents.hub.chat_runs import is_chat_branch
-
-        return "a chat run", "a chat run", "chat/<run>", is_chat_branch
-    if kind == "task":
-        from evo_agents.hub.task_runs import is_task_branch
-
-        return "a task run", "a task run", "task/<run>", is_task_branch
-    if kind == "curator":
-        from evo_agents.hub.judge import is_curator_branch
-
-        return "a run of the Curator", "the Curator", "curator/...", is_curator_branch
-    if kind == "release":
-        from evo_agents.hub.release_runs import is_release_branch
-
-        return "a release run", "a release", "release/<version>", is_release_branch
-    return None
-
-
 def check_push(
     branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None, named_branch: str | None = None
 ) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
-    not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
-    the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
-    a judge run, an author run, a replay run, a history run, a probe run and a question run push nothing at all, a Builder of the Curator (``kind`` curator) only a
-    branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, a
-    task run (``kind`` task) only its branch ``task/<run>`` or the branch its task names for the repo
-    (``named_branch``, which is no default branch), and a release run (``kind`` release) only a branch
-    ``release/<version>``: never a default branch, and never a tag, since ``push`` sends to refs/heads/ alone."""
-    if kind in ("review", "judge", "author", "replay", "history", "probe", "question"):
-        raise PushRefused(f"a {kind} run reads and pushes nothing")
-    own = _own_branches(kind)
-    if own is not None:
-        who, whose, form, is_own = own
-        if branch in protected or branch in PROTECTED:
-            raise PushRefused(f"{branch} is a default branch: {who} never pushes it")
-        if kind == "task" and named_branch is not None and branch == named_branch:
-            return False  # the branch the task names for the repo
-        if not is_own(branch):
-            raise PushRefused(f"{branch} is not a branch of {whose}: {who} pushes {form} alone")
-        return False
-    if branch not in protected:
-        return False
-    if kind == "plan" and plan_branch is not None and branch == plan_branch:
-        return True
-    if kind == "plan":
-        raise PushRefused(
-            f"{branch} is a default branch of the repo and the plan does not name it for the repo: the worker pushes "
-            "a default branch only when the plan names it"
-        )
-    raise PushRefused(f"{branch} is a default branch: the worker never pushes it in a run of one step")
+    not; True when it does and the rule of ``kind`` lets it (``push_rules``: a plan run whose plan names exactly that
+    branch for the repo, ``plan_branch``); PushRefused otherwise. ``named_branch`` is the branch a task names for the
+    repo, which a task run may push; ``kind`` curator is a run of the Curator's (``run_kinds.CURATOR``)."""
+    from evo_agents.worker.run_kinds import push_rule  # it names the rules of push_rules, which import this module
+
+    return push_rule(kind).check(kind, branch, protected, plan_branch, named_branch)
+
+
+def _replays(kind: str) -> bool:
+    from evo_agents.worker.run_kinds import push_rule
+
+    return push_rule(kind).replays
 
 
 async def remote_tip(
@@ -662,7 +623,7 @@ async def push(
     head = await rev(cwd, "HEAD")
     if head is None:
         raise GitError("HEAD names no commit: there is nothing to push")
-    if replay is not None and (default or kind == "step"):
+    if replay is not None and (default or _replays(kind)):
         from evo_agents.worker.git_replay import push_replaying
 
         return await push_replaying(cwd, branch, remote, head, replay, default, env=env, options=options)

@@ -33,6 +33,7 @@ from typing import TextIO
 
 from evo_agents.clikit import Arg, Group, Result, Stderr, Text, returns_object
 from evo_agents.hub.runs import PRIORITIES
+from evo_agents.worker import run_kinds
 from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext, failure, text_of
 from evo_agents.worker.home import WorkerStateError
 from evo_agents.worker.run_decisions import note_decision
@@ -55,7 +56,7 @@ READ_KEYS = ("project", "tool", "text", "shown", "withheld", "why")
 def chat_only(ctx: AgentRunContext, what: str) -> None:
     """Refuse, before anything else, outside a chat run of this worker: only the agent of a chat run ``what``."""
     kind = ctx.kind
-    if kind != "chat":
+    if not run_kinds.of(kind).talks:
         article = "an" if kind[:1] in "aeiou" else "a"
         raise WorkerStateError(
             f"run {ctx.run_id} is {article} {kind} run: only the agent of a chat run {what} with `evo-agents worker "

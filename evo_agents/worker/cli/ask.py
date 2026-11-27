@@ -9,7 +9,7 @@ import sys
 
 from evo_agents.clikit import Arg, Result, Text
 from evo_agents.hub import credential_requests, decision_asks, runs
-from evo_agents.worker import output_files
+from evo_agents.worker import output_files, run_kinds
 from evo_agents.worker.agent_input import decision_extras, read_text
 from evo_agents.worker.cli.base import AgentCommand, AgentRunContext
 from evo_agents.worker.cli.output import attach_arg
@@ -67,7 +67,7 @@ def asked_lines(answer: dict, decision_id: int, question: str, request: dict | N
             "Once the owner gives what it asks for, the worker takes the run's leases again: read them with "
             f"`{credential_requests.ENV_COMMAND}` before the command that needs them."
         )
-    if kind == "author":
+    if run_kinds.of(kind).asks_in_chat:
         lines.append(
             "Ask the other decisions of this turn now, then end your turn with your message to the member in the chat: "
             "what you found, what you decided yourself and the decisions you asked. The run waits until the member "

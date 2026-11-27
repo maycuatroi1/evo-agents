@@ -24,13 +24,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import release_runs, releases, runs
-from evo_agents.worker import gitops
+from evo_agents.worker import gitops, run_kinds
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, origin, push, verify
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, RunFailed, push_cause, wait_or
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -44,11 +45,11 @@ async def _no_more_turns() -> list[dict]:
     return []
 
 
-class ReleaseRun:
+class ReleaseRun(RunKind):
     """A release run: a writable worktree of the schedule's repo at the commit the release starts from, one headless
     turn of the agent, and HEAD pushed to release/<version> at its end, with the hub told so for the landing."""
 
-    parks = False
+    traits = run_kinds.KINDS["release"]
     chat = False
 
     def __init__(self, run: Run):
@@ -280,14 +281,3 @@ class ReleaseRun:
             f"The hub took {branch} of {body['repo']}: it opens the pull request, merges it and tags the merge "
             "commit once the run is done."
         )
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        return await self.directory.diff()
-
-    async def release_branch(self) -> None:
-        await self.directory.release()

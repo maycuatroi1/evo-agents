@@ -15,15 +15,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs
-from evo_agents.worker import figures
+from evo_agents.worker import figures, run_kinds
 from evo_agents.worker.runner import access, verify
 from evo_agents.worker.runner.common import log
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -31,13 +31,14 @@ if TYPE_CHECKING:
 WORKTREE_FIGURES = "worktree-figures.json"  # in .evo-run/ of a review run's directory
 
 
-class ReviewRun:
+class ReviewRun(RunKind):
     """A review run: a worktree of each of its repos (none for the KG init of a project with no repo), detached at the commit origin's default branch has, the agent
     reading in their directory and writing findings and proposals through ``evo-agents worker finding|propose``, and
     nothing committed or pushed at its end."""
 
-    parks = False
+    traits = run_kinds.KINDS["review"]
     chat = False
+    uploads_diff = False  # it changes nothing
 
     def __init__(self, run: Run):
         self.run = run
@@ -105,15 +106,3 @@ class ReviewRun:
         if moved:
             extra += ["Worktree folders that are not named as their repo:", *moved]
         return runs.clip(prompt + "\n".join(extra) + "\n", runs.MAX_PROMPT_BYTES)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        """A review run changes nothing: no diff is uploaded."""
-        return b""
-
-    async def release_branch(self) -> None:
-        await self.directory.release()
