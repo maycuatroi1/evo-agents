@@ -18,6 +18,13 @@ The heartbeat says what the engine holds and how much of it nothing uses (``usag
 short of its reserve stays short. Every call goes through the engine's client (docker, or podman, found as for a run's
 container, ``environments.find_engine``) with a timeout; a failure of the engine removes nothing and fails nothing.
 ``EVO_WORKER_ENGINE_CLEANUP=0`` in the daemon's environment leaves the engine alone. Standard library only.
+
+A container an agent starts by itself (``docker run``) has no label of Compose, so nothing found it: on evo-agents'
+own worker, sixteen Postgres and Redis containers of runs that ended up to 11 days before held 11 GB of the machine's
+24 GB in their tmpfs (2026-11-27), and the next run with many tests ran out of memory. So a run's agent gets the
+engine's client through a shim first on its PATH (``agent_env``, ``shim_text``): ``run`` and ``create`` (also as
+``container run`` and ``container create``) get the label ``RUN_DIR`` naming the run's worktree, and the cleanup
+treats such a container as a stack started from that directory.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ import json
 import logging
 import os
 import re
+import shlex
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,13 +45,18 @@ log = logging.getLogger("evo_agents.worker")
 VARIABLE = "EVO_WORKER_ENGINE_CLEANUP"  # 0, false, no or off: the cleanup leaves the container engine alone
 PROJECT = "com.docker.compose.project"
 WORKING_DIR = "com.docker.compose.project.working_dir"
+RUN_DIR = "dev.evo-agents.working_dir"  # the worktree of the run whose agent started a container (shim_text)
+RUN_VARIABLE = "EVO_ENGINE_RUN_DIR"  # the worktree the shim names in RUN_DIR
+SHIM_DIR = Path("engine") / "bin"
 LIST_TIMEOUT = 30.0  # seconds to list or inspect containers, images or networks
 REMOVE_TIMEOUT = 120.0  # seconds to stop or remove a batch of containers or images
 PRUNE_TIMEOUT = 600.0  # seconds a prune of the build cache may take on a full drive
 USAGE_TIMEOUT = 60.0  # seconds ``system df`` may take with many images
 GB = 1024**3
 _LABEL = "{{index .Config.Labels " + json.dumps(PROJECT) + "}}"
-_DIRECTORY = "{{index .Config.Labels " + json.dumps(WORKING_DIR) + "}}"
+_DIRECTORY = (
+    "{{or (index .Config.Labels " + json.dumps(WORKING_DIR) + ") (index .Config.Labels " + json.dumps(RUN_DIR) + ")}}"
+)
 _INSPECT = "\t".join(("{{.Id}}", "{{.State.Running}}", _LABEL, _DIRECTORY))
 _SIZE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s*([kKMGTP]?i?B)?")
 _UNITS = {"": 1, "B": 1, "kB": 1e3, "KB": 1e3, "MB": 1e6, "GB": 1e9, "TB": 1e12, "PB": 1e15}
@@ -53,7 +66,8 @@ _RECLAIMED = re.compile(r"reclaimed space:\s*(\S+)", re.I)
 
 @dataclass(frozen=True)
 class Container:
-    """A container of a Compose stack: its id, its project, the directory Compose ran from and whether it runs."""
+    """A container of a Compose stack, or one a run's agent started: its id, its project (empty for the latter), the
+    directory Compose ran from or the run's worktree, and whether it runs."""
 
     id: str
     project: str
@@ -128,6 +142,47 @@ def read_containers(text: str) -> list[Container]:
     return found
 
 
+def shim_text(engine: str) -> str:
+    """The engine's client for a run's agent: ``engine`` with the label ``RUN_DIR`` added to what starts a container,
+    while ``RUN_VARIABLE`` names the run's worktree; every other command as it is."""
+    real = shlex.quote(engine)
+    label = f'"{RUN_DIR}=${RUN_VARIABLE}"'
+    return (
+        "#!/bin/sh\n"
+        "# evo-agents worker (evo_agents/worker/stacks.py): a container the run starts names the run's worktree, so the\n"
+        "# daemon stops it once the run ended.\n"
+        f'[ -n "${{{RUN_VARIABLE}:-}}" ] || exec {real} "$@"\n'
+        'case "$1" in\n'
+        f'run | create) sub=$1; shift; exec {real} "$sub" --label {label} "$@" ;;\n'
+        "container)\n"
+        '    case "$2" in\n'
+        f'    run | create) sub=$2; shift 2; exec {real} container "$sub" --label {label} "$@" ;;\n'
+        "    esac ;;\n"
+        "esac\n"
+        f'exec {real} "$@"\n'
+    )
+
+
+def agent_env(env: Mapping[str, str], root: Path, worktree: Path) -> dict[str, str]:
+    """What a run's agent working in ``worktree`` gets after ``env``: the shim of the engine's client first on PATH
+    (under the worker's ``root``) and ``RUN_VARIABLE``; nothing when the cleanup leaves the engine alone or there is no
+    engine."""
+    if not enabled(env):
+        return {}
+    engine, _why = find_engine(env)
+    directory = Path(root) / SHIM_DIR
+    if engine is None or within(Path(engine), [directory]):
+        return {}
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / Path(engine).name
+    text = shim_text(engine)
+    if not path.exists() or path.read_text(encoding="utf-8") != text:
+        path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    found = os.pathsep.join([str(directory), env.get("PATH", "")]).rstrip(os.pathsep)
+    return {"PATH": found, RUN_VARIABLE: str(worktree)}
+
+
 def within(path: Path, directories: Iterable[Path]) -> bool:
     """Whether ``path`` is one of ``directories`` or lies in one, as written or with symbolic links resolved."""
     forms = {Path(os.path.normpath(path))}
@@ -174,11 +229,14 @@ class Engine:
         return done.stdout.split() if done is not None and done.returncode == 0 else []
 
     def containers(self) -> list[Container] | None:
-        """The containers, running or not, of every Compose stack the engine has; None when it did not answer."""
-        listed = self._run(["ps", "-aq", "--no-trunc", "--filter", f"label={WORKING_DIR}"])
-        if listed is None or listed.returncode != 0:
-            return None
-        ids = listed.stdout.split()
+        """The containers, running or not, of every Compose stack the engine has and every one a run's agent started
+        (``RUN_DIR``); None when it did not answer."""
+        ids: list[str] = []
+        for label in (WORKING_DIR, RUN_DIR):  # two filters on labels would both have to hold
+            listed = self._run(["ps", "-aq", "--no-trunc", "--filter", f"label={label}"])
+            if listed is None or listed.returncode != 0:
+                return None
+            ids += [found for found in listed.stdout.split() if found not in ids]
         if not ids:
             return []
         inspected = self._run(["inspect", "--format", _INSPECT, *ids])

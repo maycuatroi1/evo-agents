@@ -2227,7 +2227,22 @@ from (the container label `com.docker.compose.project.working_dir`) and its imag
   whose disk lies there, as Docker Desktop). A tagged image no container uses stays: it may be the only copy of a
   build, and the heartbeat's `engine_unused_gb` tells its owner how much they could free by hand.
 
-`EVO_WORKER_ENGINE_CLEANUP=0` in the daemon's environment leaves the engine alone (`evo_agents/worker/stacks.py`).
+A container the agent starts by itself (`docker run`, `docker create`) has no label of Compose, so a run's agent gets
+the engine's client through a shim first on its PATH (`<home>/engine/bin/docker`): what starts a container gets the
+label `dev.evo-agents.working_dir` naming the run's worktree (`EVO_ENGINE_RUN_DIR`), and the cleanup treats it as a
+stack started from there. Before it, sixteen Postgres and Redis containers of runs that ended up to 11 days before
+held 11 GB of a 24 GB worker in their tmpfs, and the next run with many tests ran out of memory (2026-11-27).
+
+`EVO_WORKER_ENGINE_CLEANUP=0` in the daemon's environment leaves the engine alone, and gives the agent no shim
+(`evo_agents/worker/stacks.py`).
+
+When the machine does run out of memory, the kernel kills the process of the largest score; every process of the
+worker's unit starts with the unit's (`OOMScoreAdjust`), so that used to be the agent's CLI, which holds its subagents:
+run #12899 of evo-agents lost its session twice that way while ten subagents ran tests, and failed. On Linux the
+agent's environment names in `BASH_ENV` a script (`<home>/oom/bash_env.sh`) that raises each command's
+`oom_score_adj` to 700 before it runs, and what the command starts inherits it: the kernel kills a test or a build
+first, whose shell tells the agent so. A `BASH_ENV` of the daemon's environment is read after it
+(`EVO_PREVIOUS_BASH_ENV`, `evo_agents/worker/oom.py`).
 
 ### Repos a run clones
 

@@ -519,3 +519,60 @@ def test_the_heartbeat_says_what_the_engine_holds_on_the_worktrees_drive(tmp_pat
     found = daemon_cleanup.health.report(tmp_path, {}, 20.0, 5.0, usage)["disk"]
     assert found["engine_gb"] == 265.0 and found["engine_unused_gb"] == 143.0
     assert "engine_gb" not in daemon_cleanup.health.report(tmp_path, {}, 20.0, 5.0, None)["disk"]
+
+
+def test_a_run_agents_engine_shim_names_its_worktree_on_what_starts_a_container(tmp_path):
+    stacks = daemon_cleanup.stacks
+    log = tmp_path / "engine.log"
+    real = tmp_path / "real" / "docker"
+    real.parent.mkdir()
+    real.write_text(
+        f"#!{sys.executable}\nimport json, os, sys\n"
+        "open(os.environ['FAKE_ENGINE_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n",
+        encoding="utf-8",
+    )
+    real.chmod(0o755)
+    worktree = tmp_path / "worktrees" / "run-7"
+    env = {"PATH": str(real.parent), "FAKE_ENGINE_LOG": str(log)}
+
+    given = stacks.agent_env(env, tmp_path / "home", worktree)
+    shim = tmp_path / "home" / stacks.SHIM_DIR
+    assert given == {"PATH": f"{shim}{os.pathsep}{real.parent}", stacks.RUN_VARIABLE: str(worktree)}
+    agent = {**env, **given}
+    for args in (["run", "--rm", "-d", "pg"], ["container", "create", "pg"], ["ps", "-a"]):
+        subprocess.run(["docker", *args], env=agent, check=True)
+    subprocess.run(["docker", "run", "pg"], env={**agent, stacks.RUN_VARIABLE: ""}, check=True)
+    label = f"{stacks.RUN_DIR}={worktree}"
+    assert [json.loads(line) for line in log.read_text().splitlines()] == [
+        ["run", "--label", label, "--rm", "-d", "pg"],
+        ["container", "create", "--label", label, "pg"],
+        ["ps", "-a"],
+        ["run", "pg"],
+    ], "what starts a container names the run's worktree; the rest, and a shell without the variable, pass as they are"
+    assert stacks.agent_env({**env, stacks.VARIABLE: "0"}, tmp_path / "home", worktree) == {}, "cleanup off: no shim"
+    assert stacks.agent_env({"PATH": str(shim)}, tmp_path / "home", worktree) == {}, "the shim never wraps itself"
+
+
+def test_the_engine_lists_the_containers_of_compose_stacks_and_those_a_run_started(tmp_path):
+    stacks = daemon_cleanup.stacks
+    fake = tmp_path / "docker"
+    fake.write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        "args = sys.argv[1:]\n"
+        f"if args[:2] == ['ps', '-aq'] and args[-1] == 'label={stacks.WORKING_DIR}': print('c1'); print('c2')\n"
+        f"elif args[:2] == ['ps', '-aq'] and args[-1] == 'label={stacks.RUN_DIR}': print('c2'); print('c3')\n"
+        "elif args[0] == 'inspect':\n"
+        "    print('c1\\ttrue\\tdemo\\t/w/run-1')\n"
+        "    print('c2\\ttrue\\t<no value>\\t/w/run-2')\n"
+        "    print('c3\\tfalse\\t<no value>\\t/w/run-3')\n"
+        "    print(' '.join(args[3:]), file=sys.stderr)\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    found = stacks.Engine(str(fake), {}).containers()
+    assert [(item.id, item.project, str(item.working_dir), item.running) for item in found] == [
+        ("c1", "demo", "/w/run-1", True),
+        ("c2", "", "/w/run-2", True),
+        ("c3", "", "/w/run-3", False),
+    ]
+    assert stacks.RUN_DIR in stacks._DIRECTORY and stacks.WORKING_DIR in stacks._DIRECTORY
