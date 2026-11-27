@@ -251,7 +251,7 @@ def _checked_name(name: str) -> str:
     return name
 
 
-def _skills(with_global: tuple[str, ...], project_ids: list[int]) -> Select:
+def latest_skills(with_global: tuple[str, ...], project_ids: list[int]) -> Select:
     """The skills of Skill, column by field name, each with its latest version: the global ones whose audience is in
     ``with_global``, and those of the projects ``project_ids``."""
     skills, projects, users, versions = tables.skills, tables.projects, tables.users, tables.skill_versions
@@ -321,7 +321,7 @@ async def list_skills(
         else:
             projects = list((await conn.execute(_granted(user))).scalars())
         with_global = audiences(request, user) if scope in (None, "global") and project is None else ()
-        rows = await page.rows(conn, _skills(with_global, projects if scope in (None, "project") else []))
+        rows = await page.rows(conn, latest_skills(with_global, projects if scope in (None, "project") else []))
     return [Skill(**row._mapping) for row in rows]
 
 
@@ -626,7 +626,7 @@ async def worker_skills(request: Request, user: CurrentUser, page: Paging = WHOL
     version: what ``hub skills sync`` writes on a machine without a project."""
     async with request.app.state.engine.begin() as conn:
         owner = await _pool_node(request, conn, user)
-        rows = await page.rows(conn, _skills(audiences(request, owner), []))
+        rows = await page.rows(conn, latest_skills(audiences(request, owner), []))
     return [Skill(**row._mapping) for row in rows]
 
 

@@ -23,6 +23,10 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
    go redacted, counting nothing, so one message is counted once and blocks its own turn alone.
    Each round writes the model's text, the tool calls with their results and its tokens to the run's log, of the ACP
    kinds a worker's run writes (``hub_run_events``), so the run's stream shows the turn as it goes.
+   The skills the profile's skill axis allows, of those the run's owner reads on the hub (global, and the run's
+   project's), go after ON_HUB as a section # Skills with the name and description of each, and the turn gets the tool
+   ``skill_read`` of ``hub_tools``, which reads the SKILL.md or one file of a listed skill. An agent with no such skill
+   gets neither: its prompt and its tools are as they were.
 5. Its last answer, masked as the worker's reply is, is the agent's reply in the thread (``chats.service.runs.agent_reply``).
    The turn's tokens and the key's cost go to run_spend, runs.usage and the attributes of the run's invoke_agent span.
 6. A run that asked an agent and waits for the answer parks (waiting, then parked), and the answer wakes it in a new
@@ -32,7 +36,8 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
 A member's task run of such an agent (``member_tasks``) queues with runtime ``hub`` too, and its turn goes as above
 with no chat: the prompt is the profile's instructions and ON_HUB_TASK, then the task with its input and assets
 (``task_runs.build_member_task_prompt``), all of it new to the provider for the data loss prevention policy; its tools
-are TASK_TOOLS of ``hub_tools``, none of which needs a thread, and no inbox joins. Its last answer, masked, is the
+are TASK_NAMES of ``hub_tools``, none of which needs a thread, with ``skill_read`` and the section # Skills as a chat
+run gets them, and no inbox joins. Its last answer, masked, is the
 run's evidence, which GET .../task-runs/{task} gives as the task's output, as the summary of a worker's task run is;
 nothing is posted in a chat. A task run that takes no turn (no gateway, the daily limit, no provider account) or whose
 rounds run out without a final answer fails with why, since its output would be no result.
@@ -347,6 +352,21 @@ async def _open_waits(engine: AsyncEngine, run_id: int) -> bool:
 # The model
 
 
+async def _permissions(conn, held: Held, profile) -> dict | None:
+    """The permissions of the profile's version the run records, the profile's own without one."""
+    rules = await version_rules(conn, held.profile_id, held.profile_version) if held.profile_version else None
+    return (rules or {}).get("permissions") or profile.permissions
+
+
+async def _skills(engine: AsyncEngine, config, held: Held) -> tuple[hub_tools.AllowedSkill, ...]:
+    """The skills the turn of ``held`` lists, as its profile's skill axis allows (``hub_tools.allowed_skills``)."""
+    async with engine.connect() as conn:
+        profile = await by_id(conn, held.profile_id)
+        assert profile is not None  # _hold holds a run of an agent alone
+        permissions = await _permissions(conn, held, profile)
+        return await hub_tools.allowed_skills(conn, config, held.run_id, held.project_id, permissions)
+
+
 async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -> tuple[list[str], str | None]:
     """(the gateway connections of the provider accounts the run may use, why there are none)."""
     if held.prefix is None:
@@ -354,8 +374,7 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
     async with engine.connect() as conn:
         profile = await by_id(conn, held.profile_id)
         assert profile is not None  # _hold holds a run of an agent alone
-        rules = await version_rules(conn, held.profile_id, held.profile_version) if held.profile_version else None
-        permissions = (rules or {}).get("permissions") or profile.permissions
+        permissions = await _permissions(conn, held, profile)
         asker = Asker(
             held.run_id,
             held.dispatched_by,
@@ -378,11 +397,12 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
     return reach, None if reach else f"no provider account of {held.prefix} has an active connection at the gateway"
 
 
-async def _prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str]]:
-    """(the first messages of the turn: the profile's instructions, then the worker's prompt and the inbox's; the texts
-    in them new to the provider: the body of the message that woke the run, and the inbox's)."""
+async def _prompt(engine: AsyncEngine, held: Held, listed: str = "") -> tuple[list[dict], list[str]]:
+    """(the first messages of the turn: the profile's instructions, ON_HUB and the skills ``listed``, then the worker's
+    prompt and the inbox's; the texts in them new to the provider: the body of the message that woke the run, and the
+    inbox's)."""
     if held.kind == TASK:
-        return await _task_prompt(engine, held)
+        return await _task_prompt(engine, held, listed)
     cm = tables.chat_messages
     async with engine.begin() as conn:
         profile = await by_id(conn, held.profile_id)
@@ -392,14 +412,14 @@ async def _prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str
         assert found is not None  # chat_prompt reads it too
         woke = (await conn.execute(select(cm.c.body).where(cm.c.id == found.message_id))).scalar_one_or_none()
         inbox = await _take_inbox(conn, held.run_id)
-    system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB) if part)
+    system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB, listed) if part)
     messages = [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join([text, *inbox])}]
     return messages, [woke or "", *inbox]
 
 
-async def _task_prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], list[str]]:
-    """(the first messages of a task run's turn: the profile's instructions and ON_HUB_TASK, then the member's task with
-    its input and assets; that task, all of it new to the provider)."""
+async def _task_prompt(engine: AsyncEngine, held: Held, listed: str = "") -> tuple[list[dict], list[str]]:
+    """(the first messages of a task run's turn: the profile's instructions, ON_HUB_TASK and the skills ``listed``, then
+    the member's task with its input and assets; that task, all of it new to the provider)."""
     r, u, m = tables.runs, tables.users, tables.member_tasks
     async with engine.connect() as conn:
         profile = await by_id(conn, held.profile_id)
@@ -417,7 +437,7 @@ async def _task_prompt(engine: AsyncEngine, held: Held) -> tuple[list[dict], lis
         assets=list(given.assets) if given is not None else [],
         on_hub=True,
     )
-    system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB_TASK) if part)
+    system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB_TASK, listed) if part)
     return [{"role": "system", "content": system}, {"role": "user", "content": text}], [text]
 
 
@@ -552,12 +572,14 @@ async def _converse(engine, config, blobs, sealer, held: Held, client: GatewayCl
     reach, why = await _connections(client, engine, held)
     if not reach:
         return {"state": await _no_turn(engine, held, f"I cannot answer on the hub: {why}.", why or "")}
+    names = hub_tools.TASK_NAMES if held.kind == TASK else hub_tools.NAMES
+    listed = await _skills(engine, config, held)  # before the key: nothing to revoke if it fails
+    names += (hub_tools.SKILL_READ,) if listed else ()  # an agent without a skill keeps the tools it had
+    turn = hub_tools.Turn(engine, config, blobs, sealer, held.run_id, held.project, names=names, skills=listed)
     expires = datetime.now(UTC) + timedelta(seconds=TURN_SECONDS + KEY_GRACE)
     key = await client.create_key(KEY_NAME.format(run_id=held.run_id), reach, expires)
-    names = hub_tools.TASK_NAMES if held.kind == TASK else hub_tools.NAMES
-    turn = hub_tools.Turn(engine, config, blobs, sealer, held.run_id, held.project, names=names)
     try:
-        messages, fresh = await _prompt(engine, held)
+        messages, fresh = await _prompt(engine, held, hub_tools.skills_prompt(listed))
         found = await _rounds(client, key.value.get_secret_value(), held, turn, messages, fresh)
         cost = await _spent(engine, client, held, key.id, found)
         if found.exhausted:  # the rule rounds: the Orchestrator of its agent, if any, is told

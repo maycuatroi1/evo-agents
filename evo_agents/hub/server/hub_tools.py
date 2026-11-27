@@ -21,6 +21,11 @@ answers a call of a tool the turn was not offered as one it does not know.
   outcome (met or not_met, what is left), which the work card shows (``work_cards.set_work``), as ``evo-agents worker
   work set``.
 - ``memory_write``: a memory of the project, under the rules of ``memories.put``.
+- ``skill_read``: the SKILL.md of a skill the turn lists, or one file of it, read from its latest bundle in the blob
+  store (``skills.read_bundle``), at most MAX_SKILL_FILE bytes. The turn lists the skills the run's owner reads, the
+  global ones of an audience it is in and those of the run's project (``server.skills``), that the profile's skill axis
+  allows (``allowed_skills``); a project skill hides a global one of the same name. A turn with no such skill is not
+  offered the tool, and the tool refuses a skill it did not list. Chat runs and task runs both get it.
 
 A tool that is refused answers the model with why, as the worker's command prints it; nothing raises past ``call``.
 """
@@ -29,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import logging
 from dataclasses import dataclass, field
@@ -41,13 +47,14 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.requests import Request
 
-from evo_agents.hub import kg_snapshots, outputs, runs, system_context
+from evo_agents.hub import kg_snapshots, outputs, profiles, runs, system_context
+from evo_agents.hub.blobs import BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
-from evo_agents.hub.server import kg, work_cards, work_status_models
+from evo_agents.hub.server import kg, skills, work_cards, work_status_models
 from evo_agents.hub.server.agents.models.asks import AgentAskIn
 from evo_agents.hub.server.agents.service import asks as agent_asks
 from evo_agents.hub.server.blobs import put_bytes
@@ -66,6 +73,7 @@ from evo_agents.hub.server.outputs.models import OutputIn
 from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.runs.service.plan_runs import held_row
 from evo_agents.hub.server.security import WORKER
+from evo_agents.hub.skills import MAX_BUNDLE, SKILL_FILE, BundleError, read_bundle
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -77,6 +85,10 @@ log = logging.getLogger(__name__)
 
 MAX_RESULT_CHARS = 12_000  # what one tool's result hands back to the model
 INTERACTIVE_NAME = "answer.html"
+MAX_SKILL_FILE = 64 * 1024  # bytes of one file skill_read hands back; a larger one is refused
+MAX_SKILL_DESCRIPTION = 500  # characters of a skill's description in the turn's prompt
+MAX_SKILLS_LISTED = 100  # skills the turn's prompt names
+MAX_FILES_LISTED = 50  # files of a skill skill_read names after its SKILL.md
 # the kg_more handles and the snapshots of each data directory, as the app holds them
 _GRAPHS: dict[Path, tuple[Handles, kg_snapshots.SnapshotCoordinator]] = {}
 
@@ -220,13 +232,36 @@ TOOLS = [
         ["name", "body"],
     ),
 ]
-NAMES = tuple(tool["function"]["name"] for tool in TOOLS)
+SKILL_TOOL = _function(
+    "skill_read",
+    "Read a skill listed under # Skills: its SKILL.md, or one file of it that the SKILL.md names (a reference).",
+    {
+        "skill": {"type": "string", "description": "the skill's name, as listed"},
+        "file": {"type": "string", "description": "a path inside the skill, e.g. references/tone.md; default SKILL.md"},
+    },
+    ["skill"],
+)
+TOOLS.append(SKILL_TOOL)
+SKILL_READ = SKILL_TOOL["function"]["name"]
+NAMES = tuple(tool["function"]["name"] for tool in TOOLS if tool is not SKILL_TOOL)
 TASK_NAMES = ("kg_search", "memory_write")  # the tools of a task run's turn: none needs a chat thread
 
 
 def offered(names: tuple[str, ...]) -> list[dict]:
     """The definitions of TOOLS a turn offered ``names`` sends the model."""
     return [tool for tool in TOOLS if tool["function"]["name"] in names]
+
+
+@dataclass(frozen=True)
+class AllowedSkill:
+    """A skill a turn lists: its latest version, as ``skills._skills`` reads it."""
+
+    name: str
+    scope: str  # global or project
+    version: int
+    description: str
+    sha256: str
+    size: int
 
 
 @dataclass
@@ -242,6 +277,8 @@ class Turn:
     names: tuple[str, ...] = NAMES  # the tools the turn is offered: NAMES for a chat run, TASK_NAMES for a task run
     asked: list[int] = field(default_factory=list)  # the runs it asked or escalated to this turn
     state: SimpleNamespace | None = None
+    skills: tuple[AllowedSkill, ...] = ()  # the skills it lists, which skill_read reads (``allowed_skills``)
+    bundles: dict[str, Any] = field(default_factory=dict)  # the bundles skill_read read this turn, by SHA-256
 
     def app_state(self) -> SimpleNamespace:
         """What ``kg`` and ``memories`` read of the app's state, made once a turn."""
@@ -263,6 +300,49 @@ class Turn:
                 jobs=JobQueue.in_transaction(),
             )
         return self.state
+
+
+async def allowed_skills(
+    conn, config: HubConfig, run_id: int, project_id: int, permissions: dict | None
+) -> tuple[AllowedSkill, ...]:
+    """The skills a turn of run ``run_id`` lists: those its owner reads, the global ones of an audience the owner is in
+    and those of project ``project_id``, that the skill axis of ``permissions`` allows; a project skill in place of a
+    global one of the same name, ignoring case. Nothing when the owner holds no grant on the project any more."""
+    try:
+        user = await hub_principal(conn, run_id, WORKER)
+    except HTTPException:
+        return ()
+    with_global = skills.AUDIENCES if config.is_admin(user.admin_login) else (skills.EVERYONE,)
+    found: dict[str, AllowedSkill] = {}
+    for row in (await conn.execute(skills.latest_skills(with_global, [project_id]))).all():
+        if not profiles.allows(permissions, "skill", row.name):
+            continue
+        key = row.name.lower()
+        if key in found and row.scope != "project":
+            continue
+        found[key] = AllowedSkill(row.name, row.scope, row.version, row.description, row.sha256, row.size)
+    return tuple(sorted(found.values(), key=lambda skill: skill.name.lower()))
+
+
+def skills_prompt(listed: tuple[AllowedSkill, ...]) -> str:
+    """The section of a turn's system prompt naming the skills it lists; empty without one."""
+    if not listed:
+        return ""
+    lines = [
+        "# Skills",
+        "",
+        f"These skills hold instructions for tasks of this project. When one fits the work, read it with the tool "
+        f"{SKILL_READ} before you act, then read the files its SKILL.md points to that you need.",
+        "",
+    ]
+    for skill in listed[:MAX_SKILLS_LISTED]:
+        description = " ".join(skill.description.split())
+        if len(description) > MAX_SKILL_DESCRIPTION:
+            description = description[:MAX_SKILL_DESCRIPTION].rstrip() + "..."
+        lines.append(f"- {skill.name}: {description}")
+    if len(listed) > MAX_SKILLS_LISTED:
+        lines.append(f"- and {len(listed) - MAX_SKILLS_LISTED} more, read by name")
+    return "\n".join(lines)
 
 
 def _cut(text: str) -> str:
@@ -428,6 +508,52 @@ async def memory_write(turn: Turn, arguments: dict) -> str:
     return f"wrote memory {written.name} (revision {written.revision})"
 
 
+def _fetched(store, skill: AllowedSkill):
+    """The files of ``skill``'s bundle, read from the blob store and checked (blocking: run it in a thread)."""
+    data = io.BytesIO()
+    if store.fetch(blob_key(skill.sha256), data, MAX_BUNDLE) != (skill.sha256, skill.size):
+        raise BundleError("the blob store does not hold its bundle as published")
+    return read_bundle(data.getvalue(), skill.name)
+
+
+async def skill_read(turn: Turn, arguments: dict) -> str:
+    wanted = str(arguments.get("skill") or "")
+    skill = next((item for item in turn.skills if item.name.lower() == wanted.lower()), None)
+    if skill is None:
+        return f"refused: no skill {wanted} for this agent; the skills are {', '.join(s.name for s in turn.skills)}"
+    path = str(arguments.get("file") or SKILL_FILE).lstrip("/")
+    if turn.blobs is None:
+        return "error: the blob store is not configured on this hub"
+    contents = turn.bundles.get(skill.sha256)
+    if contents is None:
+        try:
+            contents = await asyncio.to_thread(_fetched, turn.blobs, skill)
+        except BlobStoreUnavailable:
+            return "error: the blob store did not answer; try again shortly"
+        except BundleError as exc:
+            log.error("a skill's bundle does not read", extra={"skill": skill.name, "sha256": skill.sha256})
+            return f"error: skill {skill.name} does not read: {exc}"
+        turn.bundles[skill.sha256] = contents
+    entry = next((item for item in contents.files if item.path == path), None)
+    if entry is None:
+        return f"error: skill {skill.name} has no file {path}; its files are {_files(contents)}"
+    if len(entry.data) > MAX_SKILL_FILE:
+        return f"refused: {path} of skill {skill.name} is {len(entry.data)} bytes, over {MAX_SKILL_FILE}"
+    try:
+        text = entry.data.decode()
+    except UnicodeDecodeError:
+        return f"refused: {path} of skill {skill.name} is not text"
+    if path == SKILL_FILE:
+        text += f"\n\n[files of skill {skill.name}, version {skill.version}: {_files(contents)}]"
+    return text
+
+
+def _files(contents) -> str:
+    paths = [entry.path for entry in contents.files]
+    more = f" and {len(paths) - MAX_FILES_LISTED} more" if len(paths) > MAX_FILES_LISTED else ""
+    return ", ".join(paths[:MAX_FILES_LISTED]) + more
+
+
 async def ops_action(turn: Turn, arguments: dict) -> str:
     found = OPS_ACTIONS.get(str(arguments.pop("action", "")))
     if found is None:
@@ -455,6 +581,7 @@ HANDLERS = {
     "ops_action": ops_action,
     "work_set": work_set,
     "memory_write": memory_write,
+    SKILL_READ: skill_read,
 }
 
 

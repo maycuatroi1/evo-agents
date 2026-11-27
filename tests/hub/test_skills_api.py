@@ -287,3 +287,43 @@ def test_a_pool_node_reads_the_global_skills_of_its_owner_with_its_worker_token_
         refused = client.get("/v1/worker/skills", headers=lone)
         assert refused.status_code == 403 and "worker pool" in refused.json()["message"]
         assert client.get("/v1/worker/skills/global/house-style/bundle", headers=lone).status_code == 403
+
+
+@needs_pg
+def test_an_app_session_of_a_writer_and_the_workspace_ops_token_publish_a_project_skill(hub_db, tmp_path, s3):
+    """The app publishes the skills of its project through the blob flow (plan creative-flow-skills-enterprise, step
+    1): with the Bearer session of a member it signed in who holds the writer role, and with the machine token of the
+    workspace's operations member; the session of a reader is refused as a reader's machine token is."""
+    import secrets as random
+
+    from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
+    from tests.hub.test_app_session_auth import signed
+
+    with make_hub(hub_db, tmp_path, secrets_key=random.token_bytes(KEY_BYTES), **s3.config()) as client:
+        who = headers_of(hub_db, client)
+        made = client.post("/v1/admin/auth-apps", json={"name": "lumen-studio"}, headers=who[live.ADMIN])
+        assert made.status_code == 201, made.text
+        for handle, role in (("mai", "writer"), ("ben", "reader")):
+            grant = {"role": role, "max_level": "internal"}
+            path = f"/v1/admin/projects/demo/grants/{handle}_lumen-studio"
+            assert client.put(path, json=grant, headers=who[live.ADMIN]).status_code == 200
+            raw, headers = signed(made.json()["secret"], {"app": "lumen-studio", "subject": handle, "login": handle})
+            signed_in = client.post("/v1/auth/app-session", content=raw, headers=headers)
+            assert signed_in.status_code == 201, signed_in.text
+            who[handle, "app"] = live.bearer(signed_in.json()["token"])
+
+        first = pack(write_skill(tmp_path / "v1", "launch-copy", "first"))
+        published = publish(client, who, ("mai", "app"), first.data, "launch-copy", "demo")
+        assert (published["created"], published["latest"]["version"]) == (True, 1)
+        assert published["latest"]["published_by"] == "mai_lumen-studio"
+        second = pack(write_skill(tmp_path / "v2", "launch-copy", "second"))
+        published = publish(client, who, "alice", second.data, "launch-copy", "demo")  # the ops member's token
+        assert (published["created"], published["latest"]["version"]) == (True, 2)
+
+        third = pack(write_skill(tmp_path / "v3", "launch-copy", "third")).data
+        item = {"sha256": sha(third), "size": len(third), "kind": "skill-bundle"}
+        asked = client.post("/v1/blobs/uploads", json={"project": "demo", "items": [item]}, headers=who["ben", "app"])
+        version = {"sha256": sha(third), "size": len(third)}
+        refused = client.post("/v1/skills/projects/demo/launch-copy/versions", json=version, headers=who["ben", "app"])
+        assert (asked.status_code, refused.status_code) == (403, 403)
+        assert "needs the writer role" in refused.json()["message"]
