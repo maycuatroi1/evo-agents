@@ -67,8 +67,10 @@ from evo_agents.worker import (
     guard,
     interactive,
     model_router,
+    oom,
     orphans,
     packs,
+    stacks,
     venvs,
     wait_guard,
 )
@@ -305,6 +307,9 @@ class Agent:
         env.update(self.trailer_config(env))  # and carry the run's trailers, and its git checks no private name
         if run.worktree is not None and not run.spec.get("environment"):  # the gh shim of the guard, first on PATH
             env.update(guard.agent_env(env, run.daemon.home.root))
+            env.update(stacks.agent_env(env, run.daemon.home.root, Path(run.worktree)))  # its containers named
+        if not run.spec.get("environment"):  # its commands, not its CLI, go when memory runs out (oom)
+            env.update(oom.agent_env(env, run.daemon.home.root))
         if claude_home.wanted(run.spec, run.runtime, route is not None) and run.worktree:  # a config dir of its own
             env["CLAUDE_CONFIG_DIR"] = str(claude_home.config_dir(run.worktree))
             env["GH_CONFIG_DIR"] = str(claude_home.gh_dir(run.worktree))  # empty: none of the owner's gh logins
