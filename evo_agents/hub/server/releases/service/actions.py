@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import TypeVar
 from urllib.parse import quote, urlsplit
 
@@ -30,43 +29,18 @@ from evo_agents.hub.releases import CONTROL
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.github import API_HEADERS, GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, not_installed
+from evo_agents.hub.server.releases.models.actions import (
+    JOBS_PAGE,
+    MAX_JOB_PAGES,
+    RUNS_PAGE,
+    NoActions,
+    WorkflowRun,
+    actions_problem,
+)
 
 log = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-RUNS_PAGE = 20  # runs of the workflow for one commit the hub lists
-JOBS_PAGE = 100
-MAX_JOB_PAGES = 3
-INSTALLATIONS_PAGE = "https://github.com/settings/installations"
-
-
-class NoActions(GitHubRefused):
-    """The App's installation does not grant actions at the level a call needs."""
-
-
-@dataclass(frozen=True)
-class WorkflowRun:
-    """The run of a tag's workflow, as the hub keeps it."""
-
-    id: int
-    status: str | None
-    conclusion: str | None
-    url: str | None
-    attempt: int | None
-    started_at: str | None
-
-    @property
-    def completed(self) -> bool:
-        return self.status == "completed"
-
-
-def actions_problem(owner: str, repo: str, level: str) -> str:
-    return (
-        f"{release_ci.ACTIONS_PERMISSION}: the App's installation on {owner}/{repo} does not grant actions {level}, "
-        f"so the hub cannot read the CI of a release tag or run its failed jobs again: a member of {owner} accepts "
-        f"the App's new permissions on the installation's page ({INSTALLATIONS_PAGE})"
-    )
 
 
 async def with_actions(app: GitHubApp, owner: str, repo: str, use: str, call: Callable[[str], Awaitable[T]]) -> T:

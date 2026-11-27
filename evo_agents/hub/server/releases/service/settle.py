@@ -7,7 +7,7 @@ the hub refused (or failed to land), that made no tag and whose cycle is open or
 a pass, with one token of the App for the repo alone (``pulls.with_token``, use ``merge``):
 
 - **A person merged its pull request** into the default branch, whose head is the commit the run pushed
-  (``release_land.pull_problem``): the hub adopts the merge, as ``release_land.land`` would have: the lightweight tag
+  (``service.land.pull_problem``): the hub adopts the merge, as ``service.land.land`` would have: the lightweight tag
   ``<prefix><version>`` on the merge commit (or the tag found there already), the run kept ``tagged`` with its merge
   commit, a row of release_tags for the cycle to follow, audited as ``release.tag``. A person who merges a refused pull
   request decides what the hub would not: the test-hacking guard of the hub's own merge is not applied again. A tag
@@ -18,10 +18,10 @@ a pass, with one token of the App for the repo alone (``pulls.with_token``, use 
   branch that moved is never touched. The hub never forces a push, never touches the default branch and never makes a
   tag but on a merge commit of a pull request of the run's own branch.
 
-The owner's ``continue`` queues no run while such a branch holds the cycle (``release_cycles.held_by``): a person may
+The owner's ``continue`` queues no run while such a branch holds the cycle (``service.cycles.held_by``): a person may
 merge the refused pull request as they answer, and a fix run queued then pushes the same release/<version> and fails
 push_conflict (run #12580). Once the branch is free (cleared, or found gone), this pass makes the cycle's next move
-(``release_cycles.go_on``); a branch that a person moved stops the cycle again with what to do (``_after``).
+(``service.cycles.go_on``); a branch that a person moved stops the cycle again with what to do (``_after``).
 
 A pass that GitHub failed leaves the run for the next one; one run failing leaves the others their turn.
 """
@@ -31,46 +31,30 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import releases, tables
+from evo_agents.hub import releases
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.release_cycles import cycle_of, go_on, held_by, stop_cycle
-from evo_agents.hub.server.release_land import (
-    Landing,
-    Refusal,
+from evo_agents.hub.server.releases.models.land import Landing, Refusal
+from evo_agents.hub.server.releases.repository import cycles as cycles_repo
+from evo_agents.hub.server.releases.repository import runs as runs_repo
+from evo_agents.hub.server.releases.repository.cycles import cycle_of
+from evo_agents.hub.server.releases.service.cycles import go_on, held_by, stop_cycle
+from evo_agents.hub.server.releases.service.land import (
     default_branch,
     ensure_tag,
-    landing_rows,
     mark_tagged,
     owner_is_admin,
     pull_problem,
     run_event,
     save_run,
 )
-from evo_agents.hub.tables import RUN_ACTIVE
 
 log = logging.getLogger(__name__)
-
-
-def _left():
-    """The release runs a landing left behind: refused or failed, no tag, of a cycle open or stopped, whose branch no
-    other run has taken since: one that waits to land it or landed it."""
-    rr, other = tables.release_runs, tables.release_runs.alias("other")
-    c = tables.release_cycles
-    taken = exists().where(
-        other.c.branch == rr.c.branch,
-        other.c.run_id != rr.c.run_id,
-        other.c.land_state.is_(None) | (other.c.land_state == "tagged"),
-    )
-    return landing_rows(
-        rr.c.land_state.in_(("refused", "failed")), rr.c.tagged.is_(None), c.c.state.in_(("open", "stopped")), ~taken
-    )
 
 
 async def _adopt(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[str, str], row: Landing, merged: dict):
@@ -153,10 +137,8 @@ async def settle(engine: AsyncEngine, app: GitHubApp | None, row: Landing) -> st
 async def _after(engine: AsyncEngine, row: Landing, found: str) -> None:
     """Once ``row``'s branch is settled (``found``) and still holds its open cycle's next move (``held_by``): that move
     made when the branch is free, or the cycle stopped when a person moved the branch."""
-    c, rr, r = tables.release_cycles, tables.release_runs, tables.runs
     async with engine.begin() as conn:
-        state = (await conn.execute(select(c.c.state).where(c.c.id == row.cycle_id).with_for_update())).scalar_one()
-        if state != "open":
+        if await cycles_repo.lock_state(conn, row.cycle_id) != "open":
             return
         cycle = await cycle_of(conn, row.cycle_id)
         left = await held_by(conn, cycle)
@@ -169,8 +151,7 @@ async def _after(engine: AsyncEngine, row: Landing, found: str) -> None:
             )
             await stop_cycle(conn, row.cycle_id, reason, "refused")
             return
-        active = exists().where(rr.c.cycle_id == row.cycle_id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
-        if (await conn.execute(select(active))).scalar_one():
+        if await cycles_repo.run_active(conn, row.cycle_id):
             return
         said = await go_on(conn, cycle)
         await run_event(conn, row.run_id, {"text": f"{row.branch} of {row.repo} is free again: {said}."})
@@ -181,7 +162,7 @@ async def settle_releases(engine: AsyncEngine, app: GitHubApp | None) -> dict:
     """One pass of settling: each release run a landing left behind gets ``settle``, one failing leaving the others
     their turn; how many ended each way."""
     async with engine.connect() as conn:
-        rows = [Landing(**row._mapping) for row in (await conn.execute(_left())).all()]
+        rows = [Landing(**row._mapping) for row in await runs_repo.left_behind(conn)]
     outcomes: Counter = Counter()
     for row in rows:
         try:

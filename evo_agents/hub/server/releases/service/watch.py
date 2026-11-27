@@ -4,7 +4,7 @@ its checks and its landings (``evo_agents.hub.release_ci`` describes what it rea
 Each pass, for each open cycle: first the tags of the repo under the schedule's prefix (git's ls-refs, as the check
 reads them), and a tag of a version greater than every tag the cycle follows and its base tag, which a person pushed,
 becomes a tag the cycle follows. Then the newest tag it follows, while its CI is pending or running: the run of the
-workflow for it and, once that completed, its jobs and the logs of those that failed (``release_actions``), read
+workflow for it and, once that completed, its jobs and the logs of those that failed (``releases.service.actions``), read
 outside any transaction; then, under the cycle's row lock, with the cycle still open:
 
 - passed (success, and the job publish succeeded): the cycle is published, and its owner gets a notice of kind release
@@ -12,7 +12,7 @@ outside any transaction; then, under the cycle's row lock, with the cycle still 
 - failed of the infrastructure alone, and run again fewer than INFRA_RERUNS times: its failed jobs run again, and the
   hub waits for that new attempt;
 - failed otherwise: the failures are kept on the tag; the cycle stops when a test id failed at the tag it followed
-  before too (same_test), else a fix run of the tag is queued with what is left of the cap (``release_cycles.queue_run``,
+  before too (same_test), else a fix run of the tag is queued with what is left of the cap (``releases.service.cycles.queue_run``,
   which stops the cycle on its budget instead);
 - no run of the workflow NO_RUN_MINUTES after the hub began to follow the tag, or a run going MAX_RUN_HOURS: the cycle
   stops (timeout); a run that ended cancelled, or red with no job failed, stops it too (ci).
@@ -27,71 +27,27 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, func, select, update
-from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import release_ci, releases, tables
+from evo_agents.hub import release_ci, releases
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.release_actions import (
-    NoActions,
-    WorkflowRun,
-    failures,
-    rerun_failed,
-    run_jobs,
-    tag_run,
-    with_actions,
-)
-from evo_agents.hub.server.release_cycles import cycle_of, notify_release, queue_run, stop_cycle
-from evo_agents.hub.server.release_github import ReadFailed, read_refs
-from evo_agents.hub.tables import RUN_ACTIVE
+from evo_agents.hub.server.releases.models.actions import NoActions
+from evo_agents.hub.server.releases.models.github import TAGS, ReadFailed
+from evo_agents.hub.server.releases.models.watch import Read
+from evo_agents.hub.server.releases.repository import cycles as cycles_repo
+from evo_agents.hub.server.releases.repository import runs as runs_repo
+from evo_agents.hub.server.releases.repository import tags as tags_repo
+from evo_agents.hub.server.releases.repository.cycles import cycle_of
+from evo_agents.hub.server.releases.service.actions import failures, rerun_failed, run_jobs, tag_run, with_actions
+from evo_agents.hub.server.releases.service.cycles import notify_release, queue_run, stop_cycle
+from evo_agents.hub.server.releases.service.github import read_refs
 
 log = logging.getLogger(__name__)
-
-TAGS = "refs/tags/"
-
-
-@dataclass(frozen=True)
-class Read:
-    """What the hub read of the CI of one tag: the run of the workflow, its jobs once it completed, and the failures
-    of a red one; or what kept it from reading (``blocked``: the installation grants no actions)."""
-
-    run: WorkflowRun | None = None
-    jobs: list[dict] = field(default_factory=list)
-    failures: dict | None = None
-    problem: str | None = None
-    blocked: bool = False
-
-    @property
-    def passed(self) -> bool:
-        return (
-            self.run is not None
-            and self.run.completed
-            and release_ci.published({"conclusion": self.run.conclusion}, self.jobs)
-        )
-
-    @property
-    def red(self) -> bool:
-        """Completed, not published, with a job that failed."""
-        return self.failures is not None and bool(self.failures.get("jobs"))
-
-
-def _open_cycles():
-    c, s, p, pr = tables.release_cycles, tables.release_schedules, tables.projects, tables.project_repos
-    return (
-        select(c.c.id, c.c.base_tag, s.c.workflow, s.c.tag_pattern, s.c.repo, pr.c.origin, p.c.name.label("project"))
-        .join_from(c, s, s.c.id == c.c.schedule_id)
-        .join(p, p.c.id == c.c.project_id)
-        .outerjoin(pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == s.c.repo))
-        .where(c.c.state == "open")
-        .order_by(c.c.id)
-    )
 
 
 def _version(tag: str, prefix: str):
@@ -100,8 +56,7 @@ def _version(tag: str, prefix: str):
 
 async def _tags(conn: AsyncConnection, cycle_id: int, prefix: str) -> list:
     """The tags cycle ``cycle_id`` follows, oldest version first."""
-    t = tables.release_tags
-    rows = (await conn.execute(select(t).where(t.c.cycle_id == cycle_id))).all()
+    rows = await tags_repo.tags_of(conn, cycle_id)
     return sorted(rows, key=lambda row: (_version(row.tag, prefix) or (-1, -1, -1), row.id))
 
 
@@ -163,11 +118,9 @@ async def _follow(engine: AsyncEngine, app: GitHubApp, where: tuple[str, str], r
         followed = await _tags(conn, row.id, prefix)
         known = [_version(tag.tag, prefix) for tag in followed] + [_version(row.base_tag or "", prefix)]
         floor = max((item for item in known if item is not None), default=None)
-        if floor is not None and _version(found[0], prefix) <= floor:
+        if floor is not None and _version(found[0], prefix) <= floor:  # pyright: ignore[reportOptionalOperand]
             return False
-        t = tables.release_tags
-        made = upsert(t).values(cycle_id=row.id, tag=found[0], commit=found[1]).on_conflict_do_nothing()
-        added = (await conn.execute(made.returning(t.c.id))).scalar_one_or_none() is not None
+        added = await tags_repo.follow(conn, row.id, found[0], found[1])
     if added:
         log.info("release tag followed", extra={"cycle_id": row.id, "tag": found[0]})
     return added
@@ -205,11 +158,9 @@ def _overdue(row, tag, read: Read, now: datetime) -> str | None:
 
 async def _locked(conn: AsyncConnection, cycle_id: int, tag_id: int):
     """The cycle's row locked, and the tag's row once the cycle is open still; None otherwise."""
-    c, t = tables.release_cycles, tables.release_tags
-    state = (await conn.execute(select(c.c.state).where(c.c.id == cycle_id).with_for_update())).scalar_one()
-    if state != "open":
+    if await cycles_repo.lock_state(conn, cycle_id) != "open":
         return None
-    return (await conn.execute(select(t).where(t.c.id == tag_id))).one()
+    return await tags_repo.tag_row(conn, tag_id)
 
 
 def _run_values(read: Read) -> dict:
@@ -224,17 +175,9 @@ def _run_values(read: Read) -> dict:
     }
 
 
-async def _save(conn: AsyncConnection, tag_id: int, **values) -> None:
-    t = tables.release_tags
-    await conn.execute(update(t).where(t.c.id == tag_id).values(checked_at=func.now(), **values))
-
-
 async def _published(conn: AsyncConnection, row, tag, read: Read) -> str:
-    c = tables.release_cycles
-    await _save(conn, tag.id, ci_state="passed", problem=None, **_run_values(read))
-    await conn.execute(
-        update(c).where(c.c.id == row.id).values(state="published", ended_at=func.now(), updated_at=func.now())
-    )
+    await tags_repo.save_tag(conn, tag.id, ci_state="passed", problem=None, **_run_values(read))
+    await cycles_repo.publish(conn, row.id)
     found = await cycle_of(conn, row.id)
     version = release_ci.tag_version_text(tag.tag, releases.tag_prefix(row.tag_pattern))
     url, pypi = read.run.url if read.run else None, release_ci.pypi_url(version)
@@ -254,7 +197,7 @@ async def _published(conn: AsyncConnection, row, tag, read: Read) -> str:
 async def _blocked(conn: AsyncConnection, row, tag, read: Read) -> None:
     """Keep why the CI of ``tag`` is unread; tell the owner the first time the installation grants no actions."""
     first = read.blocked and not (tag.problem or "").startswith(release_ci.ACTIONS_PERMISSION)
-    await _save(conn, tag.id, problem=releases.clip_reason(read.problem or "unread"))
+    await tags_repo.save_tag(conn, tag.id, problem=releases.clip_reason(read.problem or "unread"))
     if first:
         found = await cycle_of(conn, row.id)
         await notify_release(
@@ -281,17 +224,12 @@ async def _red(conn: AsyncConnection, row, tag) -> str:
             reason = f"the same test failed at {before[-1].tag} and {tag.tag}, two tags in a row: {shown}"
             await stop_cycle(conn, row.id, reason, "same_test")
             return "stopped"
-    rr, r = tables.release_runs, tables.runs
-    active = exists().where(rr.c.cycle_id == row.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
-    asked = exists().where(rr.c.cycle_id == row.id, rr.c.mode == "fix", rr.c.tag == tag.tag)
-    busy, fixing = (await conn.execute(select(active, asked))).one()
+    busy, fixing = await runs_repo.busy_or_fixing(conn, row.id, tag.tag)
     if busy or fixing:
         return "waiting"
     if await queue_run(conn, row.id, "fix", red_tag=tag.tag) is not None:
         return "fix"
-    state = (
-        await conn.execute(select(tables.release_cycles.c.state).where(tables.release_cycles.c.id == row.id))
-    ).scalar_one()
+    state = await cycles_repo.state_of(conn, row.id)
     return "stopped" if state == "stopped" else "waiting"
 
 
@@ -299,25 +237,25 @@ async def _rerun(engine: AsyncEngine, app: GitHubApp, where: tuple[str, str], ro
     """Run the failed jobs of ``tag``'s run again, for a failure of the infrastructure alone; None when GitHub
     refused, and the failure goes on as any other."""
     try:
-        await rerun_failed(app, *where, read.run.id)
+        await rerun_failed(app, *where, read.run.id)  # pyright: ignore[reportOptionalMemberAccess]
     except (GitHubRefused, GitHubUnavailable) as exc:
         log.warning("release jobs not run again", extra={"cycle_id": row.id, "tag": tag.tag, "why": str(exc)})
         return None
     async with engine.begin() as conn:
         if await _locked(conn, row.id, tag.id) is None:
             return "waiting"
-        await _save(
+        await tags_repo.save_tag(
             conn,
             tag.id,
             ci_state="running",
             reruns=tag.reruns + 1,
-            rerun_of_attempt=read.run.attempt or 1,
-            watched_since=func.now(),
+            rerun_of_attempt=read.run.attempt or 1,  # pyright: ignore[reportOptionalMemberAccess]
+            watch_now=True,
             failures=read.failures,
             problem=None,
             **_run_values(read),
         )
-    log.info("release jobs run again", extra={"cycle_id": row.id, "tag": tag.tag, "run": read.run.id})
+    log.info("release jobs run again", extra={"cycle_id": row.id, "tag": tag.tag, "run": read.run.id})  # pyright: ignore[reportOptionalMemberAccess]
     return "rerun"
 
 
@@ -328,23 +266,24 @@ async def _decide(conn: AsyncConnection, row, tag, read: Read, now: datetime) ->
     if read.problem:
         await _blocked(conn, row, tag, read)
     elif read.failures is None:
-        await _save(conn, tag.id, ci_state="running" if read.run else "pending", problem=None, **_run_values(read))
+        await tags_repo.save_tag(
+            conn, tag.id, ci_state="running" if read.run else "pending", problem=None, **_run_values(read)
+        )
     if read.failures is None:
         overdue = _overdue(row, tag, read, now)
         if overdue is None:
             return "waiting"
-        await _save(conn, tag.id, ci_state="timeout")
+        await tags_repo.save_tag(conn, tag.id, ci_state="timeout")
         await stop_cycle(conn, row.id, overdue, "timeout")
         return "stopped"
-    await _save(conn, tag.id, ci_state="failed", failures=read.failures, problem=None, **_run_values(read))
+    await tags_repo.save_tag(conn, tag.id, ci_state="failed", failures=read.failures, problem=None, **_run_values(read))
     if not read.red:
-        ended = f"the run of {row.workflow} for {tag.tag} ({read.run.url or read.run.id}) ended {read.run.conclusion}"
-        if read.run.conclusion == "success":
+        ended = f"the run of {row.workflow} for {tag.tag} ({read.run.url or read.run.id}) ended {read.run.conclusion}"  # pyright: ignore[reportOptionalMemberAccess]
+        if read.run.conclusion == "success":  # pyright: ignore[reportOptionalMemberAccess]
             ended += f" but its job {release_ci.PUBLISH_JOB} did not succeed"
         await stop_cycle(conn, row.id, f"{ended}, and no job of it failed: no fix forward answers that", "ci")
         return "stopped"
-    t = tables.release_tags
-    return await _red(conn, row, (await conn.execute(select(t).where(t.c.id == tag.id))).one())
+    return await _red(conn, row, await tags_repo.tag_row(conn, tag.id))
 
 
 async def watch(engine: AsyncEngine, app: GitHubApp | None, row, *, now: datetime | None = None) -> str:
@@ -374,7 +313,7 @@ async def watch(engine: AsyncEngine, app: GitHubApp | None, row, *, now: datetim
         run_id=tag.workflow_run_id,
         after_attempt=tag.rerun_of_attempt,
     )
-    if read.red and read.failures.get("infra") and tag.reruns < release_ci.INFRA_RERUNS:
+    if read.red and read.failures.get("infra") and tag.reruns < release_ci.INFRA_RERUNS:  # pyright: ignore[reportOptionalMemberAccess]
         rerun = await _rerun(engine, app, where, row, tag, read)
         if rerun is not None:
             return rerun
@@ -390,7 +329,7 @@ async def watch_releases(engine: AsyncEngine, app: GitHubApp | None, *, now: dat
     """One pass of the watch of every open cycle, one failing leaving the others their turn; how many ended each way
     but waiting."""
     async with engine.connect() as conn:
-        rows = (await conn.execute(_open_cycles())).all()
+        rows = await cycles_repo.open_cycles(conn)
     outcomes: Counter = Counter()
     for row in rows:
         try:

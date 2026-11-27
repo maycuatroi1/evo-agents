@@ -1,4 +1,4 @@
-"""K6 at the release the schedule cuts (``evo_agents.hub.server.release_land``), as criterion a6 of plan autonomy-levels
+"""K6 at the release the schedule cuts (``evo_agents.hub.server.releases.service.land``), as criterion a6 of plan autonomy-levels
 names it: before the hub merges a release branch and tags it, it reads K6 of the release run's principal. deny leaves it
 unlanded and stops the cycle with a reason that names the class, the mode and the source; ask waits for the
 principal's answer and lands once they approve. The world is ``tests.hub.test_release_runs``'s; the projects and people

@@ -253,7 +253,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 
         return await evolve_prompt(conn, view)
     if view.kind == "release":
-        from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
+        from evo_agents.hub.server.releases.service.claims import release_prompt  # it reads runs through this package
 
         return await release_prompt(conn, view)
     from evo_agents.hub.server.replays.service import run_prompt
@@ -397,10 +397,10 @@ async def _opening_files(conn: AsyncConnection, view: Run) -> list:
 
 
 async def _release_spec(conn: AsyncConnection, view: Run):
-    """A release run's cycle, mode and start commit (``release_claims.release_claim``); None for any other run."""
+    """A release run's cycle, mode and start commit (``releases.service.claims.release_claim``); None for any other run."""
     if view.kind != "release":
         return None
-    from evo_agents.hub.server.release_claims import release_claim  # it reads runs through this package
+    from evo_agents.hub.server.releases.service.claims import release_claim  # it reads runs through this package
 
     return await release_claim(conn, view.id)
 

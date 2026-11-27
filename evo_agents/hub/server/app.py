@@ -79,7 +79,7 @@ from evo_agents.hub.server.memories.routes import restore_router as restore_rout
 from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
 from evo_agents.hub.server.notifications import routes as notifications
 from evo_agents.hub.server.plugins.routes.bridge import bridge_gate
-from evo_agents.hub.server.release_check import release_pass as release_pass
+from evo_agents.hub.server.releases.service.check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.hub.server.systems.routes import traces as system_trace_views
 from evo_agents.kg import pacing
@@ -492,8 +492,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         local_runs,
         member_tasks,
         overview,
-        release_claims,
-        releases,
         today,
     )
     from evo_agents.hub.server.attachments import routes as attachments
@@ -503,6 +501,8 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     from evo_agents.hub.server.proposals.routes import reads as proposal_reads
     from evo_agents.hub.server.proposals.routes import record as proposals
     from evo_agents.hub.server.push import routes as push
+    from evo_agents.hub.server.releases.routes import claims as release_claims
+    from evo_agents.hub.server.releases.routes import releases
     from evo_agents.hub.server.webhooks import routes as webhooks
 
     for routes in (

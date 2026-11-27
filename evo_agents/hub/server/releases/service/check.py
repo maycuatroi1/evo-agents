@@ -4,8 +4,8 @@
 ``check`` is one check of one schedule, for the job (trigger ``schedule``, the local day ``releases.due_day`` names) or
 for an admin's ``evo-agents hub release run`` (trigger ``manual``, the local day of now). It reads nothing of GitHub
 when the schedule is paused, has a cycle open, or its owner no longer holds the admin role on the project; else it reads
-the newest tag and the target's commit (``evo_agents.hub.server.release_github``) outside any transaction, and the CI of
-the newest tag (``release_watch.red_tag``), then, under the schedule's row lock, looks at the gates again and records
+the newest tag and the target's commit (``evo_agents.hub.server.releases.service.github``) outside any transaction, and the CI of
+the newest tag (``service.watch.red_tag``), then, under the schedule's row lock, looks at the gates again and records
 the check. A stopped cycle keeps the check busy until its owner answers, unless the newest tag is newer than any the
 cycle knows (its base tag and the tags it made) and no run of it is active: a release made outside the cycle superseded
 it, so the check closes it, cancels the decision that waits on it and its notification, says so in the cycle's thread of
@@ -24,8 +24,8 @@ or ERROR_TRIES that did, and the job passes the schedule over, and the unique in
 ``fire_release_schedules`` is the job's checks, run every minute by the hub's worker: each schedule whose local time
 came in the last CATCH_UP_MINUTES gets the check of that day, in its own transactions, one failing leaving the others
 their turn; ``release_pass`` is the whole job, those checks, then the landing of the release runs that are done
-(``evo_agents.hub.server.release_land``), then the watch of the CI of the open cycles' tags
-(``evo_agents.hub.server.release_watch``). ``cancel_queued`` and ``close_idle`` are what pausing does: the release runs
+(``evo_agents.hub.server.releases.service.land``), then the watch of the CI of the open cycles' tags
+(``evo_agents.hub.server.releases.service.watch``). ``cancel_queued`` and ``close_idle`` are what pausing does: the release runs
 of the project still queued are cancelled, and an open cycle left with no active run closes, with the pause as its
 reason.
 """
@@ -34,68 +34,36 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import and_, exists, func, insert, literal, null, select, update
+from sqlalchemy import null
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import releases, tables
+from evo_agents.hub import releases
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chats.service.runs import hub_reply
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.release_cycles import DISPATCH, queue_run
-from evo_agents.hub.server.release_github import ReadFailed, Reading, read_release
-from evo_agents.hub.server.release_land import land_releases, owner_is_admin
-from evo_agents.hub.server.release_settle import settle_releases
-from evo_agents.hub.server.release_watch import Read, red_tag, watch_releases
+from evo_agents.hub.server.releases.models.check import NO_APP, Checked
+from evo_agents.hub.server.releases.models.cycles import DISPATCH
+from evo_agents.hub.server.releases.models.github import ReadFailed, Reading
+from evo_agents.hub.server.releases.models.watch import Read
+from evo_agents.hub.server.releases.repository import checks as checks_repo
+from evo_agents.hub.server.releases.repository import cycles as cycles_repo
+from evo_agents.hub.server.releases.repository import runs as runs_repo
+from evo_agents.hub.server.releases.repository import schedules as schedules_repo
+from evo_agents.hub.server.releases.repository import tags as tags_repo
+from evo_agents.hub.server.releases.repository.cycles import unfinished
+from evo_agents.hub.server.releases.service.cycles import queue_run
+from evo_agents.hub.server.releases.service.github import read_release
+from evo_agents.hub.server.releases.service.land import land_releases, owner_is_admin
+from evo_agents.hub.server.releases.service.settle import settle_releases
+from evo_agents.hub.server.releases.service.watch import red_tag, watch_releases
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.tables import RUN_ACTIVE
 
 log = logging.getLogger(__name__)
-
-NO_APP = "this hub has no GitHub App (EVO_HUB_GITHUB_APP_ID, EVO_HUB_GITHUB_APP_PRIVATE_KEY): it reads no tag"
-
-
-@dataclass(frozen=True)
-class Checked:
-    """A check recorded: its id and outcome, and the cycle and run it opened."""
-
-    id: int
-    outcome: str
-    cycle_id: int | None = None
-    run_id: int | None = None
-
-
-def schedules(now: datetime | None = None):
-    """Each release schedule with its project's name, its owner's and pauser's logins, and the local time in its zone
-    at ``now`` (the database's now when None)."""
-    s, p, u = tables.release_schedules, tables.projects, tables.users
-    pauser = u.alias("pauser")
-    moment = func.now() if now is None else literal(now)
-    return (
-        select(
-            s,
-            p.c.name.label("project"),
-            u.c.login.label("owner"),
-            pauser.c.login.label("paused_by_login"),
-            func.timezone(s.c.timezone, moment).label("local_now"),
-        )
-        .join_from(s, p, p.c.id == s.c.project_id)
-        .join(u, u.c.id == s.c.owner_id)
-        .outerjoin(pauser, pauser.c.id == s.c.paused_by)
-        .order_by(s.c.id)
-    )
-
-
-async def unfinished(conn: AsyncConnection, schedule_id: int):
-    """The cycle of ``schedule_id`` that is open or stopped, (id, state), or None."""
-    c = tables.release_cycles
-    query = select(c.c.id, c.c.state).where(c.c.schedule_id == schedule_id, c.c.state.in_(releases.UNFINISHED))
-    return (await conn.execute(query)).one_or_none()
 
 
 async def _gate(conn: AsyncConnection, row, *, past_stopped: bool = False) -> tuple[str, str] | None:
@@ -116,31 +84,16 @@ async def _gate(conn: AsyncConnection, row, *, past_stopped: bool = False) -> tu
 
 async def _github_repo(conn: AsyncConnection, row) -> tuple[str, str] | None:
     """(owner, name) on GitHub of the schedule's repo, as the project lists its origin; None off GitHub."""
-    r = tables.project_repos
-    query = select(r.c.origin).where(r.c.project_id == row.project_id, r.c.name == row.repo)
-    origin = (await conn.execute(query)).scalar_one_or_none()
+    origin = await schedules_repo.origin(conn, row.project_id, row.repo)
     return github_repo(origin) if origin else None
-
-
-async def _day_done(conn: AsyncConnection, schedule_id: int, day: date) -> bool:
-    """Whether the scheduled check of ``day`` is made: one that did not fail, or ERROR_TRIES that did."""
-    k = tables.release_checks
-    of_day = (k.c.schedule_id == schedule_id, k.c.trigger == "schedule", k.c.local_day == day)
-    query = select(
-        exists().where(*of_day, k.c.outcome != "error").label("made"),
-        select(func.count()).select_from(k).where(*of_day, k.c.outcome == "error").scalar_subquery().label("failed"),
-    )
-    found = (await conn.execute(query)).one()
-    return bool(found.made) or found.failed >= releases.ERROR_TRIES
 
 
 async def _record(conn: AsyncConnection, row, how: dict, outcome: str, **values) -> Checked:
     """Record a check of ``row`` (``how``: trigger, local_day, requested_by) that ended ``outcome``."""
     if values.get("reason") is not None:
         values["reason"] = releases.clip_reason(values["reason"])
-    k = tables.release_checks
-    statement = insert(k).values(project_id=row.project_id, schedule_id=row.id, outcome=outcome, **how, **values)
-    check_id = (await conn.execute(statement.returning(k.c.id))).scalar_one()
+    check_values = {"project_id": row.project_id, "schedule_id": row.id, "outcome": outcome, **how, **values}
+    check_id = await checks_repo.insert_check(conn, check_values)
     log.info("release check", extra={"project": row.project, "check_id": check_id, "outcome": outcome, **how})
     return Checked(check_id, outcome, values.get("cycle_id"), values.get("run_id"))
 
@@ -165,16 +118,15 @@ def _cut_run(row, reading: Reading, budget: dict) -> dict:
 async def _open(conn: AsyncConnection, row, day: date, reading: Reading) -> tuple[int, int] | None:
     """Open a cycle of ``row`` from ``reading`` and queue its cut run: (cycle id, run id); None when another cycle or
     release run of the project got in first."""
-    c, rr = tables.release_cycles, tables.release_runs
     budget = releases.run_budget()
     cycle = {"project_id": row.project_id, "schedule_id": row.id, "start": "cut", "owner_id": row.owner_id}
     cycle |= {"local_day": day, "target_ref": row.target_ref, **_read_values(reading)}
     cycle["span"] = reading.span  # the range the claim of its cut run builds the prompt from
     try:
         async with conn.begin_nested():
-            cycle_id = (await conn.execute(insert(c).values(**cycle).returning(c.c.id))).scalar_one()
+            cycle_id = await cycles_repo.insert_cycle(conn, cycle)
             run_id = await insert_run(conn, _cut_run(row, reading, budget))
-            await conn.execute(insert(rr).values(run_id=run_id, cycle_id=cycle_id, mode="cut"))
+            await runs_repo.insert_release_run(conn, run_id, cycle_id, "cut")
     except IntegrityError:  # release_cycles_unfinished_key or runs_active_release_key
         return None
     text = (
@@ -210,21 +162,19 @@ def _red_values(read: Reading, ci: Read) -> dict:
         "workflow_url": run.url if run else None,
         "run_attempt": run.attempt if run else None,
         "failures": ci.failures,
-        "checked_at": func.now(),
     }
 
 
 async def _open_fix(conn: AsyncConnection, row, day: date, read: Reading, ci: Read) -> tuple[int, int] | None:
     """Open a cycle of ``row`` that starts with the fix of the red newest tag of ``read``: (cycle id, run id); None
     when another cycle or release run of the project got in first."""
-    c, t = tables.release_cycles, tables.release_tags
     cycle = {"project_id": row.project_id, "schedule_id": row.id, "start": "fix", "owner_id": row.owner_id}
     cycle |= {"local_day": day, "target_ref": row.target_ref}
     cycle |= {**_read_values(read), "span": null() if read.span is None else read.span}  # SQL NULL, not JSON null
     try:
         async with conn.begin_nested():
-            cycle_id = (await conn.execute(insert(c).values(**cycle).returning(c.c.id))).scalar_one()
-            await conn.execute(insert(t).values(cycle_id=cycle_id, **_red_values(read, ci)))
+            cycle_id = await cycles_repo.insert_cycle(conn, cycle)
+            await tags_repo.insert_tag(conn, cycle_id, _red_values(read, ci))
             run_id = await queue_run(conn, cycle_id, "fix", red_tag=read.base_tag)
             if run_id is None:
                 raise _Busy
@@ -315,12 +265,10 @@ async def check(
 ) -> Checked | None:
     """One check of schedule ``schedule_id`` (see the module); None when the schedule is gone, or the scheduled check
     of ``local_day`` is made already."""
-    s = tables.release_schedules
-    query = schedules(now).where(s.c.id == schedule_id)
     try:
         async with engine.begin() as conn:
-            row = (await conn.execute(query)).one_or_none()
-            if row is None or (trigger == "schedule" and await _day_done(conn, schedule_id, local_day)):
+            row = await schedules_repo.schedule_of(conn, schedule_id, now)
+            if row is None or (trigger == "schedule" and await checks_repo.day_done(conn, schedule_id, local_day)):
                 return None
             how = {"trigger": trigger, "local_day": local_day or row.local_now.date(), "requested_by": requested_by}
             gated = await _gate(conn, row, past_stopped=True)
@@ -330,9 +278,11 @@ async def check(
         read = await _read(app, where, row)  # outside any transaction: GitHub may take seconds
         ci = await _ci(app, where, row, read)
         async with engine.begin() as conn:
-            await conn.execute(select(s.c.id).where(s.c.id == schedule_id).with_for_update())
-            row = (await conn.execute(query)).one_or_none()
-            if row is None or (trigger == "schedule" and await _day_done(conn, schedule_id, how["local_day"])):
+            await schedules_repo.lock_schedule(conn, schedule_id)
+            row = await schedules_repo.schedule_of(conn, schedule_id, now)
+            if row is None or (
+                trigger == "schedule" and await checks_repo.day_done(conn, schedule_id, how["local_day"])
+            ):
                 return None
             return await _decide(conn, row, how, read, ci)
     except IntegrityError:  # release_checks_day_key: another pass recorded the day's check first
@@ -343,7 +293,7 @@ async def fire_release_schedules(engine: AsyncEngine, app: GitHubApp | None, *, 
     """One pass of ``hub.release_schedules`` at ``now`` (the database's now when None): the check of each schedule
     whose day is due; how many ended each outcome."""
     async with engine.connect() as conn:
-        rows = (await conn.execute(schedules(now))).all()
+        rows = await schedules_repo.every_schedule(conn, now)
     outcomes: Counter = Counter()
     for row in rows:
         day = releases.due_day(row.local_now, row.check_at)
@@ -360,7 +310,7 @@ async def fire_release_schedules(engine: AsyncEngine, app: GitHubApp | None, *, 
 
 
 async def release_pass(engine: AsyncEngine, app: GitHubApp | None, *, now: datetime | None = None) -> dict:
-    """One pass of ``hub.release_schedules``: the branches a refused landing left (``release_settle``), the checks
+    """One pass of ``hub.release_schedules``: the branches a refused landing left (``service.settle``), the checks
     that are due, the landing of the release runs done, then the watch of the open cycles' CI, which reads the clock
     (``now`` is the checks'); how many of each ended each way, the settling under ``settled_<how>``, the landings
     under ``landed_<how>`` and the watch's under ``watched_<how>``."""
@@ -386,22 +336,15 @@ async def supersede(conn: AsyncConnection, row, newest: str) -> int | None:
     newer = releases.tag_version(newest, row.tag_pattern)
     if cycle is None or cycle.state != "stopped" or newer is None:
         return None
-    c, t, rr, r = tables.release_cycles, tables.release_tags, tables.release_runs, tables.runs
-    found = (await conn.execute(select(c).where(c.c.id == cycle.id, c.c.state == "stopped").with_for_update())).one()
-    made = (await conn.execute(select(t.c.tag).where(t.c.cycle_id == found.id))).scalars().all()
+    found = await cycles_repo.lock_stopped(conn, cycle.id)
+    made = await tags_repo.tag_names(conn, found.id)
     known = [v for v in (releases.tag_version(tag, row.tag_pattern) for tag in (found.base_tag, *made) if tag) if v]
-    active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
-    if (known and newer <= max(known)) or (await conn.execute(select(active))).scalar_one():
+    if (known and newer <= max(known)) or await cycles_repo.run_active(conn, found.id):
         return None
     why = f"{newest} was tagged outside cycle #{found.id}, which it supersedes"
-    reason = releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}")
-    closed = {"state": "closed", "stop_reason": reason, "ended_at": func.now(), "updated_at": func.now()}
-    await conn.execute(update(c).where(c.c.id == found.id).values(**closed))
+    await cycles_repo.close(conn, found.id, releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}"))
     if found.decision_id is not None:
-        d, n = tables.decisions, tables.notifications
-        await conn.execute(update(d).values(state="cancelled").where(d.c.id == found.decision_id, d.c.state == "open"))
-        unread = (n.c.decision_id == found.decision_id, n.c.read_at.is_(None))
-        await conn.execute(update(n).values(read_at=func.now()).where(*unread))
+        await cycles_repo.cancel_decision(conn, found.decision_id)
     if found.triage_chat_id and found.triage_root_id:
         cancelled = f" and cancelled decision #{found.decision_id}" if found.decision_id is not None else ""
         said = f"{why}: the hub closed the cycle{cancelled}; the release goes on from {newest}."
@@ -416,19 +359,15 @@ async def close_unanswerable(conn: AsyncConnection, row) -> int | None:
     cycle = await unfinished(conn, row.id)
     if cycle is None or cycle.state != "stopped":
         return None
-    c, d, rr, r = tables.release_cycles, tables.decisions, tables.release_runs, tables.runs
-    found = (await conn.execute(select(c).where(c.c.id == cycle.id, c.c.state == "stopped").with_for_update())).one()
+    found = await cycles_repo.lock_stopped(conn, cycle.id)
     asked = None
     if found.decision_id is not None:
-        asked = (await conn.execute(select(d.c.state).where(d.c.id == found.decision_id))).scalar_one_or_none()
-    active = exists().where(rr.c.cycle_id == found.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
-    if asked == "open" or (await conn.execute(select(active))).scalar_one():
+        asked = await cycles_repo.decision_state(conn, found.decision_id)
+    if asked == "open" or await cycles_repo.run_active(conn, found.id):
         return None
     gone = f"its decision #{found.decision_id} is {asked or 'gone'}" if found.decision_id else "no decision was asked"
     why = f"{gone}: nobody can answer it, so the check closed cycle #{found.id}"
-    reason = releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}")
-    closed = {"state": "closed", "stop_reason": reason, "ended_at": func.now(), "updated_at": func.now()}
-    await conn.execute(update(c).where(c.c.id == found.id).values(**closed))
+    await cycles_repo.close(conn, found.id, releases.clip_reason(f"{found.stop_reason or 'stopped'}; {why}"))
     if found.triage_chat_id and found.triage_root_id:
         await hub_reply(conn, found.triage_chat_id, found.triage_root_id, f"{why}; the release goes on from its check.")
     log.info("release cycle closed unanswerable", extra={"cycle_id": found.id, "decision_id": found.decision_id})
@@ -440,15 +379,8 @@ async def close_unanswerable(conn: AsyncConnection, row) -> int | None:
 
 async def cancel_queued(conn: AsyncConnection, project_id: int, reason: str) -> list[int]:
     """Cancel the release runs of the project still queued; their ids."""
-    r = tables.runs
-    query = (
-        select(r.c.id)
-        .where(r.c.project_id == project_id, r.c.kind == releases.RELEASE_KIND, r.c.state == "queued")
-        .order_by(r.c.id)
-        .with_for_update(skip_locked=True)
-    )
     cancelled = []
-    for run_id in (await conn.execute(query)).scalars().all():
+    for run_id in await runs_repo.queued_release_runs(conn, project_id):
         await move_run(conn, run_id, "queued", "cancelled", "owner", reason=reason)
         cancelled.append(run_id)
     return cancelled
@@ -456,12 +388,4 @@ async def cancel_queued(conn: AsyncConnection, project_id: int, reason: str) -> 
 
 async def close_idle(conn: AsyncConnection, schedule_id: int, reason: str) -> int | None:
     """Close the open cycle of ``schedule_id`` that has no run active; its id, or None."""
-    c, rr, r = tables.release_cycles, tables.release_runs, tables.runs
-    active = exists().where(rr.c.cycle_id == c.c.id, r.c.id == rr.c.run_id, r.c.state.in_(RUN_ACTIVE))
-    statement = (
-        update(c)
-        .values(state="closed", stop_reason=releases.clip_reason(reason), ended_at=func.now(), updated_at=func.now())
-        .where(and_(c.c.schedule_id == schedule_id, c.c.state == "open", ~active))
-        .returning(c.c.id)
-    )
-    return (await conn.execute(statement)).scalar_one_or_none()
+    return await cycles_repo.close_idle(conn, schedule_id, reason)

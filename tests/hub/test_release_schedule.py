@@ -1,5 +1,5 @@
 """The daily release of a project on the hub: its schedule, the check at the schedule's local time, and the cycle that
-check opens (``evo_agents.hub.releases``, ``evo_agents.hub.server.release_check``, ``evo_agents.hub.server.releases``).
+check opens (``evo_agents.hub.releases``, ``evo_agents.hub.server.releases.service.check``, ``evo_agents.hub.server.releases.routes.releases``).
 
 The checks step 1 of the daily-release plan names. a1: an admin sets the schedule with its defaults (06:00
 Asia/Ho_Chi_Minh, the tag nightly, v*, release.yml, the packaging paths, 200 USD) and becomes its owner; at that local
@@ -32,8 +32,8 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import jobs, releases, runs, tables
 from evo_agents.hub.cli.curator.release import CHECK_KEYS, STATUS_KEYS
 from evo_agents.hub.server.app import create_app, loop_tick, memory_upkeep
-from evo_agents.hub.server.release_check import fire_release_schedules, release_pass
-from evo_agents.hub.server.release_github import ls_refs, parse_refs
+from evo_agents.hub.server.releases.service.check import fire_release_schedules, release_pass
+from evo_agents.hub.server.releases.service.github import ls_refs, parse_refs
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql

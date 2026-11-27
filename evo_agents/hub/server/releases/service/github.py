@@ -18,38 +18,13 @@ GitHub failing or refusing becomes ``ReadFailed``, whose text is safe to show an
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass, field
 
-from evo_agents import __version__
 from evo_agents.hub import release_runs, releases
 from evo_agents.hub.nightly import DELIM, FLUSH, pkt_line, pkt_lines
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-
-TAGS = "refs/tags/"
-HEADERS = {
-    "Git-Protocol": "version=2",
-    "Content-Type": "application/x-git-upload-pack-request",
-    "Accept": "application/x-git-upload-pack-result",
-    "User-Agent": f"git/evo-agents-hub-{__version__}",
-}
-
-
-class ReadFailed(Exception):
-    """What the check could not read, in words safe to show."""
-
-
-@dataclass(frozen=True)
-class Reading:
-    """What a check read: the newest tag the pattern matches and its commit, the commit of the target ref, the
-    packaging paths that changed between the two, and the range of the release when one did."""
-
-    base_tag: str
-    base_commit: str
-    target_commit: str
-    changed: list[str] = field(default_factory=list)
-    span: dict | None = None
+from evo_agents.hub.server.releases.models.github import HEADERS, TAGS, ReadFailed, Reading
 
 
 def ls_refs(prefixes: list[str]) -> bytes:
