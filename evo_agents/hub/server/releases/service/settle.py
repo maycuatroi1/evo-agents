@@ -35,10 +35,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import releases
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import pulls
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.releases.models.land import Landing, Refusal
 from evo_agents.hub.server.releases.repository import cycles as cycles_repo
 from evo_agents.hub.server.releases.repository import runs as runs_repo

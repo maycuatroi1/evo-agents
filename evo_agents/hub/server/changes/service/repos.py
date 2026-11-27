@@ -169,8 +169,8 @@ async def open_pulls(engine: AsyncEngine, app, change, reader: change_tiers.Grap
 
 async def _open_repo(engine: AsyncEngine, app, change, row, inputs: PullInputs, reader) -> str:
     """Open ``row``'s pull request (``job.opener``), read its files for signs and the tier, and keep it."""
-    from evo_agents.hub.server import pulls
     from evo_agents.hub.server.changes.service import job
+    from evo_agents.hub.server.merge.service import pulls
 
     target, view = github_target(row.origin), overlay(change, row)
     if target is None:

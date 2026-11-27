@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub.server.merge.repository import trailers as repository
 
 PRINCIPAL_TRAILER, AGENT_TRAILER = "Evo-Principal", "Evo-Agent"
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
@@ -25,13 +24,7 @@ async def lines(conn: AsyncConnection, run_id: int | None) -> list[str]:
     """``Evo-Principal: <login>`` and ``Evo-Agent: <handle>`` of run ``run_id``, each when it has one."""
     if run_id is None:
         return []
-    r, u, ap = tables.runs, tables.users, tables.agent_profiles
-    query = (
-        select(u.c.login, ap.c.handle)
-        .select_from(r.outerjoin(u, u.c.id == r.c.principal_id).outerjoin(ap, ap.c.id == r.c.profile_id))
-        .where(r.c.id == run_id)
-    )
-    row = (await conn.execute(query)).one_or_none()
+    row = await repository.names(conn, run_id)
     if row is None:
         return []
     found = []

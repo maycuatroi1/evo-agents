@@ -156,7 +156,7 @@ def test_autonomy_level_stop_ends_the_leases_of_the_runs_it_cancels(client, hub,
 def test_autonomy_level_trailer_of_a_pull_request_body_names_principal_and_agent_never_runtime_or_model(
     client, hub, hub_db
 ):
-    from evo_agents.hub.server import pull_trailers
+    from evo_agents.hub.server.merge.service import trailers
 
     run_id = plan_run(client, hub["owner"], autonomy_worker(client, hub["owner"]))
     agent = agent_of(hub_db, run_id)
@@ -164,7 +164,7 @@ def test_autonomy_level_trailer_of_a_pull_request_body_names_principal_and_agent
     runtime, model = sql(hub_db, select(r.c.runtime, r.c.model).where(r.c.id == run_id))[0]
 
     async def body(conn):
-        return await pull_trailers.block(conn, run_id), await pull_trailers.block(conn, None)
+        return await trailers.block(conn, run_id), await trailers.block(conn, None)
 
     signed, none = on_db(hub_db, body)
     assert signed == f"\n\nEvo-Principal: {OWNER}\nEvo-Agent: {agent}" and none == ""

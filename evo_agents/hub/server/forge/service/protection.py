@@ -40,8 +40,8 @@ from evo_agents.hub.server.forge.models.protection import (
     reason_line,
 )
 from evo_agents.hub.server.forge.repository import protection as store
+from evo_agents.hub.server.merge.service.pulls import check_ruleset
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.pulls import check_ruleset
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)

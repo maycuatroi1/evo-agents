@@ -1,8 +1,8 @@
 """What the hub checks after a pull request that passed the merge check was merged on github.com (plan
 super-board-parity-2): that the merge happened at the head the hub judged, and that the merge commit sits on the base.
 
-``settle`` runs on each pass of the job hub.merge_queue, after ``merge_check.advance``; it first comments on the pull
-request of each check that settled (``evo_agents.hub.server.merge_comments``). For each check that passed and
+``settle`` runs on each pass of the job hub.merge_queue, after ``check.advance``; it first comments on the pull
+request of each check that settled (``evo_agents.hub.server.merge.service.comments``). For each check that passed and
 has no merge recorded yet (merged within the last WINDOW_DAYS), it reads the pull request with the workers' GitHub App
 (a token of pull_requests and contents read). A pull request still open or closed unmerged is left for the next pass. A merged
 one gets its merge recorded in the check's verdict (``verdict.merged``: the merge commit, the head GitHub merged, the
@@ -23,15 +23,15 @@ import logging
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
-from evo_agents.hub.server import merge_check as checks
-from evo_agents.hub.server import merge_comments, pulls
+from evo_agents.hub import runs
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.forges import github_target
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.repository import check as checks
+from evo_agents.hub.server.merge.service import comments, pulls
+from evo_agents.hub.server.merge.service import gate as queue
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 
 log = logging.getLogger(__name__)
@@ -124,22 +124,20 @@ async def _tell(conn: AsyncConnection, project, row, record: dict) -> None:
 
 
 async def settle(engine: AsyncEngine, app: GitHubApp | None, public_url: str | None = None) -> dict:
-    """Comment on the pull request of each check that settled (``merge_comments.post``, its links to the hub at
+    """Comment on the pull request of each check that settled (``comments.post``, its links to the hub at
     ``public_url``), then read the merge of each passed check not read yet; how many were commented on
     (``commented``, ``comment_refused``), recorded (``merged``) and how many of them open a notice (``notified``).
     Nothing without the workers' App."""
     if app is None:
         return {}
-    commented = await merge_comments.post(engine, app, public_url)
-    m = tables.merge_checks
+    commented = await comments.post(engine, app, public_url)
     since = datetime.now(UTC) - timedelta(days=WINDOW_DAYS)
     async with engine.begin() as conn:
-        query = select(m).where(m.c.state == checks.PASSED, m.c.created_at >= since).order_by(m.c.id)
-        rows = [row for row in await conn.execute(query) if "merged" not in (row.verdict or {})]
+        rows = await checks.passed_since(conn, since)
         projects = {}
         for row in rows:
             if row.project_id not in projects:
-                projects[row.project_id] = await checks.queue._load(conn, row.project_id)
+                projects[row.project_id] = await queue._load(conn, row.project_id)
     outcomes: Counter = Counter()
     for row in rows:
         project = projects[row.project_id]

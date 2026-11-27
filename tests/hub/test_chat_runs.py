@@ -854,7 +854,7 @@ def pushed_branch(client, hub, github) -> tuple:
 
 
 def test_a_refused_pull_request_says_githubs_errors_and_the_next_push_opens_it(client, hub, hub_db, github):
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     worker, chat, mention, spec, body = pushed_branch(client, hub, github)
     refusal = {"resource": "PullRequest", "field": "base", "code": "invalid", "message": "base is not\n there"}
@@ -883,7 +883,7 @@ def test_a_refused_pull_request_says_githubs_errors_and_the_next_push_opens_it(c
 
 
 def test_a_head_github_does_not_see_yet_is_tried_again(client, hub, hub_db, github, monkeypatch):
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     monkeypatch.setattr(pulls, "HEAD_WAITS", (0.0, 0.0))
     worker, chat, _, spec, body = pushed_branch(client, hub, github)

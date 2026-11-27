@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import guard, runs
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, draft_pulls, pull_trailers
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.chats.models.agents import ChatPull, ChatPushed, ChatRepo, ChatRepoIn
 from evo_agents.hub.server.chats.models.runs import ChatRun
 from evo_agents.hub.server.chats.repository import agents as store
@@ -34,6 +34,8 @@ from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.repository import draft_pulls as draft_rows
+from evo_agents.hub.server.merge.service import draft_pulls, trailers
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.runs.models import RunRepo
 from evo_agents.hub.server.runs.service.claims import worker_of
@@ -71,7 +73,7 @@ async def pushed(engine: AsyncEngine, app, user: Principal, run_id: int, body: C
         # the session's title: its first run's, which the branch names
         first = rules.session_of(body.branch) or run_id
         title = await store.run_title(conn, first) or body.branch
-        signed = await pull_trailers.block(conn, run_id)
+        signed = await trailers.block(conn, run_id)
         policy = await guard.policy(conn)
     target = github_repo(origin) if origin else None
     url, number, opened, problem, draft, made = None, None, False, None, True, None
@@ -102,9 +104,9 @@ async def pushed(engine: AsyncEngine, app, user: Principal, run_id: int, body: C
     async with engine.begin() as conn:
         entry = draft_pulls.kept(body.repo, body.branch, body.head, made) if made is not None else None
         if entry is not None:
-            await draft_pulls.keep(conn, run_id, entry)
+            await draft_rows.keep(conn, run_id, entry)
         if made is not None and made.closed is not None and type(made.closed.get("number")) is int:
-            await draft_pulls.mark(conn, run.project_id, body.repo, made.closed["number"], state="closed")
+            await draft_rows.mark(conn, run.project_id, body.repo, made.closed["number"], state="closed")
         chat = await agent_access(conn, found.chat_id, run.profile, run.principal.user_id)
         message_id = 0
         if chat is not None:

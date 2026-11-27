@@ -244,8 +244,8 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.curator.service.shift",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests.service.sessions",
     "evo_agents.hub.worker -> evo_agents.hub.server.forge.client.github_app",
-    "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
-    "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge.service.ancestry",
+    "evo_agents.hub.worker -> evo_agents.hub.server.merge.service.check",
     "evo_agents.hub.worker -> evo_agents.hub.server.market.service.install",
     "evo_agents.hub.worker -> evo_agents.hub.server.market.service.licenses",
     "evo_agents.hub.worker -> evo_agents.hub.server.opportunity_deadlines",
@@ -1162,6 +1162,27 @@ layer gives) import none of them. Move the code that reaches up into the layer t
 into the service, a query into the repository, a shape or a constant into the models. Other modules import the \
 service and the models, never the routes but the app, which includes them. A new module of the package goes into \
 one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-merge-layers"
+name = "The merge check, the pulls and the merge queue go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.merge"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.merge a route handler (check, judge, merged_work: the worker protocol's merge check, merge \
+gate and triage, a judge run's inputs and verdict, and the merged runs a worker keeps; view, the merge queue's routes) \
+keeps its auth and passes the request's parts to the service, which opens the transaction, checks and decides \
+(check, judge, judging, ancestry, comments, merged_work, draft_pulls, trailers, and pulls, the hub's own calls to \
+GitHub; gate, gate_pass, turn, breaker, holds, passes, post_merge, access and view, the merge queue on GitLab); the \
+repository holds the SQL of the merge checks, the judge runs, the drafts kept on runs, the merged runs, the trailers \
+and the queue's rows, holds, passes, breakers and merges; the models (the API's \
+shapes, the check's states and texts, the errors and findings of pulls, the drafts' dataclasses and limits) import \
+none of them. Move the code that reaches up into the layer that needs it: a check or a message into the service, a \
+query into the repository, a shape or a constant into the models. Other modules import the service, the repository \
+and the models, never the routes. A new module of the package goes into one of the four layers. See \
+docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "plugins-standalone"

@@ -22,8 +22,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from evo_agents.hub import autonomy_card, runs, tables, task_runs
-from evo_agents.hub.server import draft_pulls
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.merge.service import draft_pulls
 from evo_agents.hub.server.plugins.service.tokens import issue_token
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api

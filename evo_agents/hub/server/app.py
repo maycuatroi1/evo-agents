@@ -546,7 +546,6 @@ def _include_curator_routes(app: FastAPI) -> None:
         earlier,
         kg_health,
         ledger,
-        merged_work,
         org,
         transcripts,
     )
@@ -558,6 +557,7 @@ def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.evolve import routes as evolve
     from evo_agents.hub.server.forge.routes import protection
     from evo_agents.hub.server.history import routes as history_routes
+    from evo_agents.hub.server.merge.routes import merged_work
     from evo_agents.hub.server.playbook import routes as playbook_routes
     from evo_agents.hub.server.probes.routes import probes as probe_routes
     from evo_agents.hub.server.probes.routes import report as probe_report
@@ -735,8 +735,6 @@ def _include_store_routes(app: FastAPI) -> None:
         context_answer_reuse,
         features,
         kg_shared_pool_api,
-        merge_check,
-        merge_judge,
         model_catalog,
         opportunity_evidence,
         problem_evidence,
@@ -752,6 +750,8 @@ def _include_store_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.market.routes import install as market_install
     from evo_agents.hub.server.market.routes import licenses as market_licenses
     from evo_agents.hub.server.market.routes import market
+    from evo_agents.hub.server.merge.routes import check as merge_check
+    from evo_agents.hub.server.merge.routes import judge as merge_judge
     from evo_agents.hub.server.merge.routes import view as merge_view
     from evo_agents.hub.server.opportunities import routes as opportunities
     from evo_agents.hub.server.plugins.routes import commands as plugin_command_list

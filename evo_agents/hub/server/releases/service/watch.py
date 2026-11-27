@@ -33,9 +33,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import release_ci, releases
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import pulls
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.releases.models.actions import NoActions
 from evo_agents.hub.server.releases.models.github import TAGS, ReadFailed
 from evo_agents.hub.server.releases.models.watch import Read

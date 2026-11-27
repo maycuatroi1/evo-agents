@@ -425,7 +425,7 @@ AUTONOMY_DECIDED = "autonomy.decided"
 # <login:<login>|unit:<slug>|all>"; never the reason.
 AUTONOMY_STOP = "autonomy.stop"
 AUTONOMY_STOP_LIFT = "autonomy.stop.lift"
-# The hub's merge queue on GitLab (evo_agents.hub.server.merge.service.gate and .turn, evo_agents.hub.server.merge_judge), in the project, with
+# The hub's merge queue on GitLab (evo_agents.hub.server.merge.service.gate and .turn, evo_agents.hub.server.merge.service.judge), in the project, with
 # no actor but the policy's admin for a judge run: "<project>/<repo> !<iid> source=<source>[ plan=<id>] run:<id>" when it
 # opened the merge request of a run, "<project>/<repo> !<iid> run:<id> first|second model=<model>" when it queued a
 # Judge, "<project>/<repo> !<iid> into=<branch> sha=<merged head> before=<the branch's head before>" when it merged one.

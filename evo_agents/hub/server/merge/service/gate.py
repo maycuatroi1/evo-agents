@@ -1,7 +1,7 @@
 """The hub's merge queue on GitLab, up to its gate before merge (plan gitlab-merge-queue, criterion a4; the rules are
 ``evo_agents.hub.merge_gate``'s): the job that reads the merge requests of each repo an autonomy policy has in mode
 auto, opens those of the hub's runs, runs the gates on each one and queues its Judges; the hand-off of the Curator's
-merge requests its Judge passed. ``evo_agents.hub.server.merge_judge`` holds the judge runs; ``service.gate_pass`` the pass over one repo, and
+merge requests its Judge passed. ``evo_agents.hub.server.merge.service.judge`` holds the judge runs; ``service.gate_pass`` the pass over one repo, and
 ``repository.gate`` the queries of the rows and their ledger.
 
 ``advance`` is one pass of the job ``hub.merge_queue``. For each project with a policy (or with merge requests still

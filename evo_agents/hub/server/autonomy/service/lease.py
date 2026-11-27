@@ -158,10 +158,8 @@ async def rulesets_now(engine: AsyncEngine, app: GitHubApp, survey) -> dict[str,
     """For a Builder of the Curator: check again, with the Curator's App, the ruleset of each of its repos on GitHub,
     and keep what each check found; repo -> why a repo whose ruleset does not keep the Curator off, or could not be
     checked now, gets no token."""
-    from evo_agents.hub.server.forge.service.protection import (
-        store_check,  # it reads runs through the routes that import this one
-    )
-    from evo_agents.hub.server.pulls import check_ruleset
+    from evo_agents.hub.server.forge.service.protection import store_check
+    from evo_agents.hub.server.merge.service.pulls import check_ruleset
 
     refused: dict[str, str] = {}
     for repo, (owner, name) in survey.github.items():
@@ -213,7 +211,9 @@ async def _push_forbidden(engine: AsyncEngine, state, project_id: int, origin: s
 
 
 async def _ruleset_keeps_off(app: GitHubApp | None, owner: str, name: str) -> str | None:
-    from evo_agents.hub.server.pulls import check_ruleset  # it reads runs through the routes that import this one
+    from evo_agents.hub.server.merge.service.pulls import (
+        check_ruleset,  # it reads runs through the routes that import this one
+    )
 
     if app is None:
         return f"this hub has no GitHub App to check the ruleset of {owner}/{name}"

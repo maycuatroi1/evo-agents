@@ -405,7 +405,7 @@ def probe_gate(features):
 
 def merge_judge_gate(features):
     """The condition a queued run meets for a worker whose daemon says ``features``: a judge run of the merge queue or
-    of a GitHub merge check (``merge_judge``, ``merge_check``) goes only to a daemon that says it judges merge requests
+    of a GitHub merge check (``merge.service.judge``, ``merge.service.check``) goes only to a daemon that says it judges merge requests
     (``runs.MERGE_JUDGE``); any other run, the Curator's judge runs too, asks nothing of it."""
     if runs.MERGE_JUDGE in (features or ()):
         return true()

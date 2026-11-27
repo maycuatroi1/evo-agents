@@ -24,46 +24,26 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
-from evo_agents.hub.server import pulls
-from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.loop.view import RELEASED
-from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.merge.models.merged_work import MergedAnswer
+from evo_agents.hub.server.merge.repository import merged_work as repository
+from evo_agents.hub.server.merge.service import pulls
 
 log = logging.getLogger(__name__)
 
-MAX_ASKED = 200  # run ids in one question
 PLAN_KINDS = ("plan", "step")
 PULL_URL = re.compile(r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<number>\d+)$")
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-
-
-class MergedQuestion(BaseModel):
-    runs: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
-        max_length=MAX_ASKED, description="ended runs of this worker whose directory and worktrees it still keeps"
-    )
-
-
-class MergedAnswer(BaseModel):
-    merged: list[int] = Field(
-        description="those of runs whose work the hub knows merged: the daemon may remove their worktrees now"
-    )
 
 
 def _released(body) -> dict[str, str]:
     entries = body.get("repos") if isinstance(body, dict) and isinstance(body.get("repos"), list) else []
-    return {entry["repo"]: entry.get("status") for entry in entries if isinstance(entry, dict) and entry.get("repo")}
+    return {entry["repo"]: entry.get("status") for entry in entries if isinstance(entry, dict) and entry.get("repo")}  # pyright: ignore[reportOptionalIterable, reportReturnType]
 
 
 def _run_repos(row) -> set[str]:
@@ -71,48 +51,18 @@ def _run_repos(row) -> set[str]:
     return found or ({row.repo} if row.repo else set())
 
 
-async def _ended(conn: AsyncConnection, worker_id: int, ids: list[int]) -> list:
-    """The runs of ``ids`` worker ``worker_id`` ran that ended and that no run going on resumes."""
-    r = tables.runs
-    later = r.alias("later")
-    going_on = (
-        select(later.c.id)
-        .where(later.c.resume_of_run_id == r.c.id, later.c.state.not_in(runs.TERMINAL_STATES))
-        .exists()
-    )
-    query = select(r.c.id, r.c.project_id, r.c.kind, r.c.plan_id, r.c.repo, r.c.repos, r.c.pulls).where(
-        r.c.id.in_(ids), r.c.worker_id == worker_id, r.c.state.in_(runs.TERMINAL_STATES), ~going_on
-    )
-    return list(await conn.execute(query))
-
-
 async def _plans_released(conn: AsyncConnection, rows: list) -> set[int]:
-    p = tables.plans
     wanted = {(row.project_id, row.plan_id) for row in rows if row.kind in PLAN_KINDS and row.plan_id}
     if not wanted:
         return set()
-    query = select(p.c.project_id, p.c.plan_id, p.c.body).where(
-        p.c.project_id.in_({project for project, _ in wanted}), p.c.plan_id.in_({plan for _, plan in wanted})
-    )
-    statuses = {(row.project_id, row.plan_id): _released(row.body) for row in await conn.execute(query)}
+    statuses = {
+        (row.project_id, row.plan_id): _released(row.body) for row in await repository.plan_bodies(conn, wanted)
+    }
     found = set()
     for row in rows:
         repos, status = _run_repos(row), statuses.get((row.project_id, row.plan_id))
         if row.kind in PLAN_KINDS and status is not None and repos and all(status.get(n) in RELEASED for n in repos):
             found.add(row.id)
-    return found
-
-
-async def _merged_elsewhere(conn: AsyncConnection, ids: list[int]) -> set[int]:
-    """The runs of ``ids`` that built or judged a change of the Curator the hub merged, or made or judged a merge
-    request the queue merged."""
-    c, q = tables.curator_changes, tables.merge_queue
-    found: set[int] = set()
-    for column in (c.c.builder_run_id, c.c.judge_run_id):
-        found |= set((await conn.execute(select(column).where(column.in_(ids), c.c.state == "merged"))).scalars())
-    for column in (q.c.run_id, q.c.judge_run_id):
-        query = select(column).where(and_(column.in_(ids), q.c.merged_at.is_not(None)))
-        found |= set((await conn.execute(query)).scalars())
     return found
 
 
@@ -145,24 +95,18 @@ async def _tasks_merged(app: GitHubApp | None, rows: list) -> set[int]:
     return found
 
 
-@worker_router.post("/merged", response_model=MergedAnswer, responses={403: {"model": ErrorBody}})
-async def merged(request: Request, question: MergedQuestion, user: CurrentUser) -> MergedAnswer:
-    """Of the ended runs the worker whose token asks still keeps, those whose work the hub knows merged."""
-    w = tables.workers
-    ids = sorted(set(question.runs))
-    async with request.app.state.engine.connect() as conn:
-        query = select(w.c.id, w.c.revoked_at).where(w.c.token_id == user.token_id)
-        worker = (await conn.execute(query)).one_or_none()
+async def merged(engine: AsyncEngine, app: GitHubApp | None, token_id: int, ids: list[int]) -> MergedAnswer:
+    """Of the ended runs ``ids`` the worker of token ``token_id`` still keeps, those whose work the hub knows merged;
+    GitHub is read with the workers' App ``app``."""
+    async with engine.connect() as conn:
+        worker = await repository.worker_of_token(conn, token_id)
         if worker is None or worker.revoked_at is not None:
             raise HTTPException(403, "this worker token belongs to no live worker: join the machine again")
-        rows = await _ended(conn, worker.id, ids) if ids else []
+        rows = await repository.ended(conn, worker.id, ids) if ids else []
         ended = [row.id for row in rows]
-        found = await _plans_released(conn, rows) | (await _merged_elsewhere(conn, ended) if ended else set())
+        found = await _plans_released(conn, rows) | (await repository.merged_elsewhere(conn, ended) if ended else set())
     left = [row for row in rows if row.id not in found]
-    found |= await _tasks_merged(getattr(request.app.state, "github_app", None), left)
+    found |= await _tasks_merged(app, left)
     if found:
         log.info("merged runs a worker keeps", extra={"worker_id": worker.id, "runs": sorted(found)})
     return MergedAnswer(merged=sorted(found))
-
-
-__all__ = ["MAX_ASKED", "MergedAnswer", "MergedQuestion", "merged", "worker_router"]

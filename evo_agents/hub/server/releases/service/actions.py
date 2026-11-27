@@ -14,7 +14,7 @@ job's log is the redirect GET .../actions/jobs/{id}/logs answers, read without t
 LOG_TAIL_BYTES kept (``GitHubClient.tail_of``); a log GitHub no longer keeps, or that cannot be read, is left out and
 the job's name and failed step stand for it. POST .../actions/runs/{id}/rerun-failed-jobs runs the failed jobs again.
 
-GitHub failing is ``GitHubUnavailable``, refusing a ``GitHubRefused``, as ``evo_agents.hub.server.pulls`` raises them.
+GitHub failing is ``GitHubUnavailable``, refusing a ``GitHubRefused``, as ``evo_agents.hub.server.merge.service.pulls`` raises them.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ from urllib.parse import quote, urlsplit
 
 from evo_agents.hub import release_ci, release_runs
 from evo_agents.hub.releases import CONTROL
-from evo_agents.hub.server import pulls
 from evo_agents.hub.server.forge.client.github_app import GitHubApp, not_installed
 from evo_agents.hub.server.forge.models.github import API_HEADERS, GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.releases.models.actions import (
     JOBS_PAGE,
     MAX_JOB_PAGES,

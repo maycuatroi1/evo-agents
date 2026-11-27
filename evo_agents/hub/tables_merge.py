@@ -18,7 +18,7 @@ merge_breakers (0084) holds the breaker of each repo of a project the queue pass
 (``merge_breaker.STATES``), what tripped it last and why, when, how often, who reset it last and when, and since when
 the hub has seen its target branch red.
 merge_checks (0187) holds the merge check of each pull request on github.com a run asked for (plan
-super-board-parity-2, ``evo_agents.hub.server.merge_check``): the project, the repo and the pull request's number, the
+super-board-parity-2, ``evo_agents.hub.server.merge.service.check``): the project, the repo and the pull request's number, the
 run that asked and its plan and model, the pull request as the hub last read it, the head the verdict holds for, where
 the check stands (``merge_check.STATES``) and why, the Judges' verdicts with their findings, the risk, the judge run in
 flight with its own key (a SHA-256) and the runs that ended without a verdict, and the wait of the run that asked,

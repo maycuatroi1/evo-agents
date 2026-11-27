@@ -42,7 +42,7 @@ def _github_time(text) -> datetime | None:
 async def _watch(engine: AsyncEngine, app: GitHubApp, change) -> str:
     """Read a pull request left open for its owner: merged by hand, the change is merged (and its figures will be
     counted again); closed, it is closed; else it is read again after WATCH_EVERY."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
     try:
@@ -112,7 +112,7 @@ async def settle_by_branch(engine: AsyncEngine, app: GitHubApp, change, target: 
     has no step left: one merged, else the newest when it is closed, settles the change as ``_settle`` does (its branch
     merged, or its pull request closed, by hand). The outcome, or None when no pull request settles it or GitHub
     refuses."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     if target is None or not change.branch:
         return None

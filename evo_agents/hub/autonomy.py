@@ -13,7 +13,7 @@ Outside a body a key is named by its dotted path: ``merge.hold_until``, ``repos.
 The policy has no key that caps a diff or the merges of a day (the member's answers 4 and 8 of 2026-10-21).
 
 ``repos.<repo>.merge_check`` (plan super-board-parity-2) is off by default: on, for a repo on github.com alone, the hub
-judges a pull request a run opened at its head before the run merges it (``evo_agents.hub.server.merge_check``).
+judges a pull request a run opened at its head before the run merges it (``evo_agents.hub.server.merge.service.check``).
 
 ``loop`` (plan loop-engine, criterion a4) holds the keys of a project's Loop (``evo_agents.hub.server.loop``): whether
 it runs, the time zone of its schedule, how many work items of each cycle run

@@ -123,7 +123,7 @@ makes of a change the hub left open (`curator.service.threads`, the principal of
 before a run merges its own pull request: the hub's Judges check it at its head, on the head merged with the base, and
 the run waits parked for the verdict (`docs/merge-queue.md`, The merge check on GitHub). The hook of the worker holds
 the agent's own merge command to it (below, K5 and the merge check), and the job `hub.merge_queue` reads each merge
-afterwards (`evo_agents/hub/server/merge_ancestry.py`). **K6 at the deploy and the release**: the PROD deploy of the policy (`post_merge`) and
+afterwards (`evo_agents/hub/server/merge/service/ancestry.py`). **K6 at the deploy and the release**: the PROD deploy of the policy (`post_merge`) and
 the release schedule when it lands a release (`releases.service.land`).
 
 | Mode | What the hub does |

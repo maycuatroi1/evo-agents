@@ -32,7 +32,9 @@ Its keys, its bounds and its frame are ``models.holds``'s, its queries ``reposit
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -51,7 +53,6 @@ from evo_agents.hub.server.merge.models.holds import (
     RETURN,
     ROUND_KEYS,
     SKILL,
-    Frame,
 )
 from evo_agents.hub.server.merge.repository import holds as checks
 from evo_agents.hub.server.security import Principal
@@ -59,6 +60,18 @@ from evo_agents.hub.server.triage.models.threads import Thread
 from evo_agents.hub.server.triage.service import threads as triage
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Frame:
+    """What the agent of a held check's thread acts on: its chat run, the thread, the check and the owner."""
+
+    agent: chat_agents.AgentRun
+    chat_run_id: int
+    chat_id: int
+    root_id: int
+    row: Any  # the check's row, locked
+    owner: Principal
 
 
 # The hold in the check's verdict

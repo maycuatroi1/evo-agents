@@ -271,7 +271,7 @@ async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> Non
     from evo_agents.hub.server.triage.service import threads as triage  # it reads runs through this module
 
     await triage.open_stale(engine)
-    from evo_agents.hub.server import draft_pulls  # it opens threads through triage
+    from evo_agents.hub.server.merge.service import draft_pulls  # it opens threads through triage
     from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 
     await orchestrator.open_idle(engine)

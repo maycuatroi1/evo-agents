@@ -1616,7 +1616,7 @@ def test_changes_a_branch_with_no_commit_of_its_own_closes_its_change_instead_of
 
 
 def test_changes_a_comparison_that_says_nothing_of_the_files_still_opens_the_pull_request(world, monkeypatch):
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     async def unknown(*args, **kwargs):  # GitHub refused the comparison, or named no files
         return {"ahead_by": None, "files": None}

@@ -162,12 +162,12 @@ def signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[d
 async def pull_inputs(engine: AsyncEngine, change) -> tuple[str, str, dict, str, dict]:
     """(its proposal's title, the project, the charter, the trailers the Builder's run signs it with, the plan's body)
     of a change whose pull request the hub opens."""
-    from evo_agents.hub.server import pull_trailers
+    from evo_agents.hub.server.merge.service import trailers
 
     async with engine.begin() as conn:
         title, project = await store.title_and_project(conn, change.proposal_id)
         charter = await charter_of(conn, change.project_id)
-        signed = await pull_trailers.block(conn, change.builder_run_id)
+        signed = await trailers.block(conn, change.builder_run_id)
         body = await plan_body(conn, change.project_id, change.plan_id)
     return title, project, charter, signed, body
 
@@ -213,7 +213,7 @@ def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: s
     """What opens the pull request of ``change``'s branch on ``target`` with a token: {"pull": the pull request as
     GitHub answers it, "base": the default branch, "ahead_by": the commits of its own}, the pull request None for a
     branch that changes no file, with commits of its own or none."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     async def opened(token: str) -> dict:
         async with engine.connect() as conn:  # the names of the guard leave the title and body on a published repo
@@ -246,7 +246,7 @@ def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: s
 
 
 async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
     if target is None:
@@ -323,7 +323,7 @@ async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str,
 async def files_of(app: GitHubApp, token: str, target: Target, number: int, expected) -> tuple[list[dict], str | None]:
     """(the files of pull request ``number`` as GitHub lists them, why that list is not the whole of them or None):
     a list GitHub cuts short, or that holds fewer files than the pull request says it changes, is not read in part."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     try:
         files = await pulls.pull_files(app, token, target.owner, target.name, number)
@@ -359,7 +359,7 @@ async def reopen(engine: AsyncEngine, change, why: str | None, kept: str | None 
 
 async def check_run(app: GitHubApp, target: Target, sha: str, passed: bool, verdict: dict, external_id: str) -> int:
     """Write the Judge's verdict as its check run on commit ``sha`` of ``target`` with the workers' App; its id."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     conclusion, title, summary = judge.check_run_output(
         passed,
@@ -399,7 +399,8 @@ async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
 async def _ruleset_now(engine: AsyncEngine, curator_app: GitHubApp | None, change, target: Target):
     """Check the repo's ruleset again now, with the Curator's App, and keep what it found; the ``RulesetCheck``, None
     without the Curator's App."""
-    from evo_agents.hub.server.pulls import RulesetCheck, check_ruleset
+    from evo_agents.hub.server.merge.models.pulls import RulesetCheck
+    from evo_agents.hub.server.merge.service.pulls import check_ruleset
 
     if curator_app is None:
         return None
@@ -417,7 +418,7 @@ async def _ruleset_now(engine: AsyncEngine, curator_app: GitHubApp | None, chang
 async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dict:
     """What the hub reads of a judged change's pull request before it merges it: the pull request, its files and
     whether GitHub cut them, the check runs and statuses of its head, its head commit's message, and the repo."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     found = await pulls.pull(app, token, target.owner, target.name, change.pr_number)
     files, cut = await files_of(app, token, target, change.pr_number, found.get("changed_files"))
@@ -496,7 +497,7 @@ async def merge_read(
     """Read judged ``change``'s pull request again from GitHub, and its repo's ruleset with the Curator's App, and
     gather the facts of its merge: the signs of its files now, its tier again from them with ``reader`` (the change's
     own without one), and its CI as ``charter`` reads it. GitHubUnavailable and GitHubRefused go to the caller."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
     without_ci = charter.get("merge_without_ci") is True
@@ -548,7 +549,7 @@ def merge_act(change, read: MergeRead) -> dict:
 async def merge_at_head(app: GitHubApp, change, tier: int) -> str:
     """Merge ``change``'s pull request with the workers' App at the head the Judge passed; the merge commit.
     GitHubRefused when GitHub refuses it (the head moved, a conflict)."""
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     target = github_target(change.origin)
 

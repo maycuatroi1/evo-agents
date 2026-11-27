@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy, diff_signs, findings, judge, merge_gate, runs, task_runs
-from evo_agents.hub.server import audit, pull_trailers
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.forge.client.gitlab import GitLab
 from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, MergeRequest
@@ -20,6 +20,7 @@ from evo_agents.hub.server.merge.models.gate import Candidate, Project
 from evo_agents.hub.server.merge.repository import gate as queries
 from evo_agents.hub.server.merge.repository.gate import older, plan_body, record, row_of, set_row
 from evo_agents.hub.server.merge.service import breaker, passes, post_merge, turn
+from evo_agents.hub.server.merge.service import trailers as pull_trailers
 from evo_agents.hub.server.merge.service.gate import close, hold, hold_judging, next_round, protected_of, ready, wait
 
 log = logging.getLogger(__name__)
@@ -453,7 +454,7 @@ class RepoPass:
 
     async def judging(self, row_id: int) -> None:
         """Queue the next judge run of ``row_id``, or block it once JUDGE_ATTEMPTS runs ended without a verdict."""
-        from evo_agents.hub.server.merge_judge import queue_judge  # it reads the rows through this module
+        from evo_agents.hub.server.merge.service.judge import queue_judge
 
         async with self.engine.begin() as conn:
             row = await row_of(conn, row_id, lock=True)

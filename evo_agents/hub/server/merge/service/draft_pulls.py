@@ -35,73 +35,24 @@ import logging
 import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
-from evo_agents.hub.server import pulls
+from evo_agents.hub import runs
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.models.draft_pulls import CHECK_MINUTES, MAX_LINKED, SETTLE_BATCH, Draft, Made, Verdict
+from evo_agents.hub.server.merge.repository import draft_pulls as repository
+from evo_agents.hub.server.merge.service import pulls
 
 log = logging.getLogger(__name__)
 
-KINDS = ("chat", "task")  # the kinds of run whose branch gets a draft pull request
-WATCH_DAYS = 30  # a draft kept on a run queued longer ago is read no more
-CHECK_MINUTES = 10  # a draft is read at most this often
-SETTLE_MINUTES = 30  # a trace whose last run ended this long ago, none still to end, has ended
-SETTLE_BATCH = 20  # drafts one pass reads
-MAX_LINKED = 5  # pull requests of a trace's messages one draft reads
-MAX_PULLS = 50  # the pull requests a run keeps (runs.pulls), one for each repo of its project at most
 SHOWN_PATHS = 5  # paths a reason names
 DRAFT_TITLE = "[Draft]"  # chat_runs.DRAFT_TITLE: the title of a pull request on a repo that takes no draft
 PULL_URL = re.compile(r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<number>\d+)$")
 IN_BASE = ("behind", "identical")  # how GitHub compares base...head when every commit of head is in base
 # (connection, the draft's run, the lines of the thread, its key): opens the thread of rule draft (``orchestrator.on_draft``)
 Ask = Callable[[AsyncConnection, int, list[str], str], Awaitable[object]]
-
-
-@dataclass(frozen=True)
-class Made:
-    """What ``open_for`` did with the push of a branch: the pull request opened (``opened``) or found, the base, and
-    when it opened none, why (``nothing``) and the one of the branch it closed for that (``closed``)."""
-
-    pull: dict | None
-    opened: bool
-    base: str | None
-    nothing: str | None = None
-    closed: dict | None = None
-
-
-@dataclass(frozen=True)
-class Draft:
-    """A draft kept on a run: the run, its project, kind and branch, and the pull request (repo of the project, owner
-    and name on GitHub, number, base, url) with what the hub noted of it."""
-
-    run_id: int
-    project_id: int
-    branch: str
-    repo: str
-    owner: str
-    name: str
-    number: int
-    base: str | None
-    url: str
-    noted: dict = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class Verdict:
-    """What GitHub says of a draft: ``merged``, ``closed``, ``close`` (with the comment and the pull request that
-    replaced it) or ``open`` (its base, head and paths)."""
-
-    state: str
-    comment: str | None = None
-    replaced_by: int | None = None
-    base: str | None = None
-    head: str | None = None
-    paths: tuple[str, ...] = ()
 
 
 # Opening
@@ -230,30 +181,6 @@ def kept(repo: str, branch: str, head: str, made: Made) -> dict | None:
     }
 
 
-async def keep(conn: AsyncConnection, run_id: int, entry: dict) -> None:
-    """Keep ``entry`` in runs.pulls of run ``run_id``, in place of the one of its repo."""
-    r = tables.runs
-    found = (await conn.execute(select(r.c.pulls).where(r.c.id == run_id).with_for_update())).scalar_one() or []
-    found = [item for item in found if isinstance(item, dict) and item.get("repo") != entry["repo"]] + [entry]
-    await conn.execute(update(r).where(r.c.id == run_id).values(pulls=found[-MAX_PULLS:]))
-
-
-async def mark(conn: AsyncConnection, project_id: int, repo: str, number: int, **noted) -> None:
-    """Note ``noted`` (a state, when it was read, ...) on every copy of pull request ``number`` of ``repo`` that the
-    runs of project ``project_id`` keep."""
-    r = tables.runs
-    held = r.c.pulls.contains([{"repo": repo, "number": number}])
-    rows = (await conn.execute(select(r.c.id, r.c.pulls).where(r.c.project_id == project_id, held))).all()
-    for row in rows:
-        items = [
-            {**item, **noted}
-            if isinstance(item, dict) and (item.get("repo"), item.get("number")) == (repo, number)
-            else item
-            for item in row.pulls or []
-        ]
-        await conn.execute(update(r).where(r.c.id == row.id).values(pulls=items))
-
-
 # Settling
 
 
@@ -279,16 +206,10 @@ def _draft(row, item) -> Draft | None:
 async def watched(conn: AsyncConnection, batch: int = SETTLE_BATCH, now: datetime | None = None) -> list[Draft]:
     """The drafts a pass reads: the newest run's copy of each draft kept open, not read in CHECK_MINUTES, on a run of
     KINDS queued in WATCH_DAYS; the one read longest ago first, ``batch`` of them."""
-    r = tables.runs
     now = now or datetime.now(UTC)
-    query = select(r.c.id, r.c.project_id, r.c.branch, r.c.pulls).where(
-        r.c.kind.in_(KINDS),
-        r.c.pulls.contains([{"state": "open"}]),
-        r.c.queued_at > func.now() - timedelta(days=WATCH_DAYS),
-    )
     seen: set[tuple[int, str, int]] = set()
     found: list[tuple[datetime, Draft]] = []
-    for row in await conn.execute(query.order_by(r.c.id.desc())):
+    for row in await repository.open_drafts(conn):
         for item in row.pulls or []:
             draft = _draft(row, item)
             if draft is None or (draft.project_id, draft.repo, draft.number) in seen:
@@ -332,36 +253,10 @@ async def read_draft(app, token: str, draft: Draft) -> Verdict:
     return Verdict("open", base=base, head=head, paths=paths)
 
 
-async def _trace_runs(conn: AsyncConnection, draft: Draft):
-    """The ids of the runs of the trace of the draft's run, or of its session (its project and branch) for a run of
-    no trace, as a subquery."""
-    s, r = tables.system_spans, tables.runs
-    trace = await conn.scalar(select(s.c.trace_id).where(s.c.run_id == draft.run_id).limit(1))
-    if trace is not None:
-        return select(s.c.run_id).where(s.c.trace_id == trace, s.c.run_id.is_not(None))
-    return select(r.c.id).where(r.c.project_id == draft.project_id, r.c.branch == draft.branch)
-
-
-async def settled(conn: AsyncConnection, draft: Draft) -> bool:
-    """Whether the trace of the draft's run ended: none of its runs is still to end, and the last ended SETTLE_MINUTES
-    ago."""
-    r = tables.runs
-    ids = await _trace_runs(conn, draft)
-    going = await conn.scalar(select(func.count()).where(r.c.id.in_(ids), r.c.state.not_in(runs.TERMINAL_STATES)))
-    if going:
-        return False
-    since = func.now() - timedelta(minutes=SETTLE_MINUTES)
-    last = select(func.max(func.coalesce(r.c.finished_at, r.c.queued_at))).where(r.c.id.in_(ids)).scalar_subquery()
-    return bool(await conn.scalar(select(last < since)))
-
-
 async def linked(conn: AsyncConnection, draft: Draft) -> list[int]:
     """The pull requests of the draft's repo, other than it, that the messages and evidence of its trace's runs link
     (a URL on github.com, or ``<repo>#<n>``), first seen first, MAX_LINKED at most."""
-    m, r = tables.chat_messages, tables.runs
-    ids = await _trace_runs(conn, draft)
-    texts = list((await conn.execute(select(m.c.body).where(m.c.run_id.in_(ids)).order_by(m.c.id))).scalars())
-    texts += [text for text in (await conn.execute(select(r.c.evidence).where(r.c.id.in_(ids)))).scalars() if text]
+    texts = await repository.trace_texts(conn, draft)
     owner, name = re.escape(draft.owner), re.escape(draft.name)
     pattern = re.compile(rf"github\.com/{owner}/{name}/pull/(\d+)|(?<![\w-]){name}#(\d+)", re.IGNORECASE)
     found: list[int] = []
@@ -429,7 +324,7 @@ async def _decide(engine: AsyncEngine, app, token: str, draft: Draft, ask: Ask |
     if verdict.state == "close":
         return await _closing(app, token, draft, verdict.comment or "Closed by the hub.", verdict.replaced_by, "closed")
     async with engine.connect() as conn:
-        if draft.noted.get("asked_at") or not await settled(conn, draft):
+        if draft.noted.get("asked_at") or not await repository.settled(conn, draft):
             return "waiting", {}
         numbers = await linked(conn, draft)
     other = await replacement(app, token, draft, verdict, numbers)
@@ -465,7 +360,7 @@ async def settle_one(engine: AsyncEngine, app, draft: Draft, ask: Ask | None = N
         log.info("draft pull request not read", extra={"pull": draft.url, "why": str(exc)})
         what, noted = "unread", {}
     async with engine.begin() as conn:
-        await mark(conn, draft.project_id, draft.repo, draft.number, checked_at=stamp, **noted)
+        await repository.mark(conn, draft.project_id, draft.repo, draft.number, checked_at=stamp, **noted)
     return what
 
 

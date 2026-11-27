@@ -16,7 +16,7 @@ no key: the hub then leaves the project's merge requests there as they are, open
 (criterion a3). ``ForgeToken.gitlab`` opens the client of ``evo_agents.hub.server.forge.client.gitlab`` with it; the
 caller keeps the token no longer than its calls, and nothing writes its value to a log line, an error, an event or the audit.
 ``has_forge`` says whether such a secret covers an origin without opening one, for a caller that only decides whether
-the merge queue takes a merge request (``evo_agents.hub.server.merge_gate``). The query is in
+the merge queue takes a merge request (``evo_agents.hub.server.merge.service.gate``). The query is in
 ``evo_agents.hub.server.forge.repository.secrets``.
 """
 
