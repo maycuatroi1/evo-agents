@@ -1,45 +1,30 @@
 """A person's pass of a hold of the hub's merge queue on GitLab (``merge_gate.PASSABLE_GATES``): gate 3, score
-hacking, holds a merge request for a person, and POST /v1/projects/{p}/merge-queue/{id}/pass (``merge_view``) lets an
-admin of the project pass it with a reason (``pass_hold``).
+hacking, holds a merge request for a person, and POST /v1/projects/{p}/merge-queue/{id}/pass (``routes.view``) lets an
+admin of the project pass it with a reason (``pass_hold``). The pass's query is ``repository.passes``'s.
 
 The merge request goes back to ``gating`` at the same head; its ledger has a line of the gate passed that names the
 admin and the reason (the key PERSON of its detail), and the audit says merge.pass. The job's next pass reads its gates
-again at that head (``evo_agents.hub.server.merge_gate``): gate 3 lets the signs through for the pass (``passes``),
+again at that head (``service.gate``): gate 3 lets the signs through for the pass (``passes``),
 and the risk, the checks and the Judges (unless their verdicts hold for the patch), its turn, the pipeline at its
 rebased head and the merge still apply. The Judge's claim says the pass covers the head it judges (``covers``), so
 the worker's Judge weighs the signs against the plan (``judge.WEIGH_SIGNS``) instead of failing the change unjudged,
 and the hub takes its verdict past gate 3 on the signs of that patch. At the rebased head
-(``evo_agents.hub.server.merge_turn``) gate 3 lets the signs through again while the patch is the one the gates passed.
+(``service.turn``) gate 3 lets the signs through again while the patch is the one the gates passed.
 A new head (a push of someone else, or a rebase that changed the patch: the ledger's ``head``) takes the pass back,
 and the hold it comes to again needs a new pass.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from fastapi import HTTPException
-from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import merge_gate, tables
+from evo_agents.hub import merge_gate
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import merge_gate as queue
-from evo_agents.hub.server.post_merge import admin_only
-
-MAX_REASON_CHARS = 1000  # of an admin's reason for a pass, in the ledger's line
-AUDIT_REASON_CHARS = 300  # of it in the audit's target
-PERSON = "person"  # the key of the detail of a ledger line that is an admin's pass: their login
-
-
-@dataclass(frozen=True)
-class Pass:
-    """An admin's pass of a hold that still holds: its ledger line, the head it was given at, who and why."""
-
-    id: int
-    sha: str | None
-    login: str
-    line: str
+from evo_agents.hub.server.merge.models.passes import AUDIT_REASON_CHARS, MAX_REASON_CHARS, PERSON, Pass
+from evo_agents.hub.server.merge.repository import gate as queue
+from evo_agents.hub.server.merge.repository.passes import standing
+from evo_agents.hub.server.merge.service.access import admin_only
 
 
 async def pass_hold(conn: AsyncConnection, user, access, queue_id: int, reason: str):
@@ -70,31 +55,6 @@ async def pass_hold(conn: AsyncConnection, user, access, queue_id: int, reason: 
         project_id=access.project_id,
     )
     return await queue.row_of(conn, row.id)
-
-
-async def standing(conn: AsyncConnection, row_id: int, gate: int) -> Pass | None:
-    """The newest admin's pass of the hold of merge request ``row_id`` at ``gate`` that still holds: no head came after
-    it; None without one."""
-    e = tables.merge_events
-    query = (
-        select(e.c.id, e.c.sha, e.c.reason, e.c.detail)
-        .where(
-            e.c.queue_id == row_id,
-            e.c.kind == "gate",
-            e.c.gate == gate,
-            e.c.passed.is_(True),
-            e.c.detail.has_key(PERSON),
-        )
-        .order_by(e.c.id.desc())
-        .limit(1)
-    )
-    found = (await conn.execute(query)).first()
-    if found is None:
-        return None
-    later = exists().where(e.c.queue_id == row_id, e.c.kind == "head", e.c.id > found.id)
-    if (await conn.execute(select(later))).scalar_one():
-        return None
-    return Pass(found.id, found.sha, str(found.detail.get(PERSON)), found.reason or "")
 
 
 async def covers(conn: AsyncConnection, row) -> Pass | None:

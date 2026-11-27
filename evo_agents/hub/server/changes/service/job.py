@@ -98,7 +98,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import approval_heads, diff_signs, guard, judge, tiers
-from evo_agents.hub.server import audit, merge_gate, skill_release
+from evo_agents.hub.server import audit, skill_release
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.changes.repository import job as store
 from evo_agents.hub.server.changes.repository.job import night_paused, unchanged
@@ -108,6 +108,7 @@ from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.changes.service.watch import settle_by_branch, watch_pass
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.merge.service import gate as merge_gate
 from evo_agents.hub.server.protection import (
     Target,
     check_rulesets,

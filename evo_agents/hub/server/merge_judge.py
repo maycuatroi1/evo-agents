@@ -43,8 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate, merge_infra, runs, tables, tiers
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, merge_pass
-from evo_agents.hub.server import merge_gate as queue
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.changes.models.views import (
     HiddenResult,
@@ -55,6 +54,8 @@ from evo_agents.hub.server.changes.models.views import (
     security_findings,
 )
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.merge.service import gate as queue
+from evo_agents.hub.server.merge.service import passes as merge_pass
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId, VerifyResult

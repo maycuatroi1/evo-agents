@@ -25,37 +25,40 @@ one) is made again on a later pass of the merge queue's job (``ask_again``). A h
 gone, or the check was held ``merge_infra.TRIAGE_ROUNDS`` times at its head, ``hold`` holds nothing: the failure goes
 back to the plan run, whose message says the failure was the hub's (``failed_by``), and asking for the check again
 judges it again.
+
+Its keys, its bounds and its frame are ``models.holds``'s, its queries ``repository.holds``'s.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, findings, merge_infra, runs, tables
+from evo_agents.hub import chats, findings, merge_infra, runs
 from evo_agents.hub.server.chats.service import agents as chat_agents
-from evo_agents.hub.server.chats.service.agents import AgentRun
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
+from evo_agents.hub.server.merge.models.holds import (
+    ACTIONS,  # noqa: F401  # merge_check reads the actions here
+    ASK_EVERY,
+    ASKS,
+    COMMAND,
+    KEY,
+    REASON_CHARS,
+    REJUDGE,
+    RETURN,
+    ROUND_KEYS,
+    SKILL,
+    Frame,
+)
+from evo_agents.hub.server.merge.repository import holds as checks
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.triage.models.threads import Thread
 from evo_agents.hub.server.triage.service import threads as triage
 
 log = logging.getLogger(__name__)
-
-KEY = "triage"  # the key of a check's verdict that holds its hold and its thread
-ACTIONS = REJUDGE, RETURN = ("rejudge", "return")
-ROUND_KEYS = ("first", "second", "paths", "hidden_count")  # what a verdict holds of the judging of this head
-REASON_CHARS = 1200
-ASKS = 4  # mentions of the agent a hold makes at most while none made a chat run
-ASK_EVERY = timedelta(minutes=10)
-SKILL = "evo-hub:triaging-failed-runs"
-COMMAND = "evo-agents worker triage merge-check"
 
 
 # The hold in the check's verdict
@@ -171,23 +174,11 @@ def _facts(row, project: str, owner: str, state: dict, judge_run: int | None) ->
     return lines
 
 
-async def _owner(conn: AsyncConnection, row):
-    """(the id and login of the owner of the plan run that asked for check ``row``, its project's name), or None."""
-    r, p, u = tables.runs, tables.projects, tables.users
-    query = (
-        select(r.c.dispatched_by, u.c.login, p.c.name)
-        .join_from(r, p, p.c.id == r.c.project_id)
-        .join(u, u.c.id == r.c.dispatched_by)
-        .where(r.c.id == row.run_id)
-    )
-    return (await conn.execute(query)).one_or_none()
-
-
 async def _ask(conn: AsyncConnection, row, reason: str, causes: list[str], judge_run: int | None) -> dict | None:
     rounds = int(state_of(row.verdict).get("rounds") or 0)
     if rounds >= merge_infra.TRIAGE_ROUNDS or row.run_id is None:
         return None
-    found = await _owner(conn, row)
+    found = await checks.owner(conn, row)
     if found is None:
         return None
     now = datetime.now(UTC)
@@ -253,7 +244,7 @@ async def ask_again(conn: AsyncConnection, row, now: datetime) -> dict | None:
     thread = thread_of(row)
     if now - asked < ASK_EVERY or thread is None:
         return None
-    found = await _owner(conn, row)
+    found = await checks.owner(conn, row)
     if found is None:
         return None
     text = (
@@ -287,18 +278,6 @@ async def tell(conn: AsyncConnection, row, text: str) -> None:
 # The agent's route
 
 
-@dataclass(frozen=True)
-class Frame:
-    """What the agent of a held check's thread acts on: its chat run, the thread, the check and the owner."""
-
-    agent: AgentRun
-    chat_run_id: int
-    chat_id: int
-    root_id: int
-    row: Any  # the check's row, locked
-    owner: Principal
-
-
 async def frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
     """The frame of chat run ``run_id`` in the thread of a held check, the check locked (see the module)."""
     agent = await chat_agents.agent_run(conn, user, run_id)
@@ -308,24 +287,12 @@ async def frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
             404,
             f"run {run_id} is a {agent.kind} run: only the agent of a chat run in a merge check's thread acts on it",
         )
-    m = tables.merge_checks
-    query = (
-        select(m)
-        .where(
-            m.c.verdict[KEY]["chat_id"].as_integer() == found.chat_id,
-            m.c.verdict[KEY]["root_id"].as_integer() == found.root_id,
-        )
-        .with_for_update()
-    )
-    row = (await conn.execute(query)).first()
+    row = await checks.thread_check(conn, found.chat_id, found.root_id)
     if row is None:
         raise HTTPException(404, f"chat run {run_id} is in no thread the hub opened for a merge check")
     if row.project_id != agent.project_id:
         raise HTTPException(409, f"merge check {row.id} is in another project than the agent of chat run {run_id}")
-    r = tables.runs
-    owner_id = None
-    if row.run_id is not None:
-        owner_id = (await conn.execute(select(r.c.dispatched_by).where(r.c.id == row.run_id))).scalar_one_or_none()
+    owner_id = await checks.dispatcher(conn, row.run_id) if row.run_id is not None else None
     if owner_id != agent.principal.user_id:
         raise HTTPException(
             403,
