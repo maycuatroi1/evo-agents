@@ -17,135 +17,20 @@ before schema 0030.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import aliased
+from fastapi import APIRouter, Header, Request
 
-from evo_agents.hub import tables
-from evo_agents.hub.credentials import (
-    HUB_KIND,
-    KG_RUN,
-    LEASED_KINDS,
-    PROVIDERS,
-    RUN_ACCESS,
-    agent_lease_name,
-    github_repo,
-)
-from evo_agents.hub.gateway_runs import GATEWAY
-from evo_agents.hub.server import kg_run_access
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.runs.service.views import readable_run
+from evo_agents.hub.server.runs.models.run_leases import RunLease as RunLease
+from evo_agents.hub.server.runs.service import run_leases as service
 from evo_agents.hub.server.security import CurrentUser
 
 router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
-
-
-class RunLease(BaseModel):
-    """A lease a run got, as its owner sees it: everything but the value."""
-
-    id: int
-    name: str = Field(
-        description="the secret's name, github-app:<account>, @<handle>:<name> for an account of an agent, "
-        "gateway:<model> for a run's key of the model gateway, or the provider account's name that key reaches"
-    )
-
-    provider: Literal[(*PROVIDERS, GATEWAY, RUN_ACCESS)] = Field(
-        description="secret: the owner's; github-app: a token the hub's App made; gateway: the model gateway's; "
-        "run-access: the run's own token of the hub, as its owner (evo_agents.hub.server.run_access)"
-    )
-    kind: Literal[(*LEASED_KINDS, GATEWAY, HUB_KIND)] = Field(
-        description="env: a variable of the agent; git: what git's helper answered; gateway: a run's key of the "
-        "model gateway, or a provider account it reaches; hub: the run's token of the hub"
-    )
-    target: str = Field(
-        description="kind env and hub: the variable it set; kind git: the origins of the run's repos it answered for, "
-        "space-separated, in the form of normalize_origin; kind gateway: the model"
-    )
-    worker: str = Field(description="the worker it was leased to")
-    issued_at: datetime
-    expires_at: datetime | None = Field(description="when it stops working: a GitHub token's hour, a secret's end")
-    revoked_at: datetime | None = Field(description="when the run gave it back or the hub took it; null while out")
-    profile: str | None = Field(
-        None, description="the handle of the agent profile it was handed out under; null for a lease before schema 0030"
-    )
-    profile_id: int | None = Field(None, description="that profile's id")
-    profile_version: int | None = Field(None, description="the version of that profile")
-
-
-def _run_owner(run_id: int):
-    r, users = tables.runs, tables.users
-    return (
-        select(r.c.dispatched_by, users.c.login)
-        .join_from(r, users, users.c.id == r.c.dispatched_by)
-        .where(r.c.id == run_id)
-    )
-
-
-def _run_leases(run_id: int):
-    """Every lease of run ``run_id``, with the worker's name and the secret's name and kind (none for a GitHub token),
-    in the order they were made."""
-    cl, w, s, ap, t = tables.credential_leases, tables.workers, tables.secrets, tables.agent_profiles, tables.tokens
-    owner = aliased(tables.agent_profiles)  # the agent that owns the secret, when one does
-    return (
-        select(
-            cl.c.id,
-            s.c.name.label("secret"),
-            cl.c.provider,
-            s.c.kind.label("secret_kind"),
-            cl.c.target,
-            w.c.name.label("worker"),
-            cl.c.issued_at,
-            cl.c.expires_at,
-            cl.c.revoked_at,
-            ap.c.handle.label("profile"),
-            owner.c.handle.label("agent"),
-            cl.c.profile_id,
-            cl.c.profile_version,
-            t.c.host.label("token_host"),
-        )
-        .join_from(cl, w, w.c.id == cl.c.worker_id)
-        .outerjoin(s, s.c.id == cl.c.secret_id)
-        .outerjoin(t, t.c.id == cl.c.token_id)
-        .outerjoin(ap, ap.c.id == cl.c.profile_id)
-        .outerjoin(owner, owner.c.id == s.c.profile_id)
-        .where(cl.c.run_id == run_id)
-        .order_by(cl.c.id)
-    )
-
-
-def _token_name(target: str) -> str:
-    """The name a GitHub token's lease was handed out with, github-app:<owner>, from the origins it answered for."""
-    origins = target.split()
-    found = github_repo(origins[0]) if origins else None
-    return f"github-app:{found[0]}" if found else "github-app"
-
-
-def _lease_name(row, owner: str, project: str) -> str:
-    if row.provider == GATEWAY:
-        return row.secret or f"{GATEWAY}:{row.target}"
-    if row.provider == RUN_ACCESS and (row.token_host or "").startswith(f"{KG_RUN}:"):
-        return kg_run_access.lease_name(project)
-    if row.provider == RUN_ACCESS:
-        return f"{RUN_ACCESS}:{owner}"
-    if row.provider != "secret":
-        return _token_name(row.target)
-    return row.secret if row.agent is None else agent_lease_name(row.agent, row.secret)
-
-
-def _lease_kind(row) -> str:
-    if row.provider == GATEWAY:
-        return GATEWAY
-    if row.provider == RUN_ACCESS:
-        return HUB_KIND
-    return row.secret_kind if row.provider == "secret" else "git"
 
 
 @router.get("/{project}/runs/{run_id}/credentials", response_model=list[RunLease], responses=REFUSALS)
@@ -157,26 +42,4 @@ async def run_credentials(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> list[RunLease]:
     """Every lease the run got, given back or not, without a value; for the member who dispatched it."""
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
-        owner_id, owner = (await conn.execute(_run_owner(run_id))).one()
-        if owner_id != user.user_id:
-            raise HTTPException(403, f"only {owner}, who dispatched run {run_id}, sees the credentials it got")
-        rows = (await conn.execute(_run_leases(run_id))).all()
-    return [
-        RunLease(
-            id=row.id,
-            name=_lease_name(row, owner, project),
-            provider=row.provider,
-            kind=_lease_kind(row),
-            target=row.target,
-            worker=row.worker,
-            issued_at=row.issued_at,
-            expires_at=row.expires_at,
-            revoked_at=row.revoked_at,
-            profile=row.profile,
-            profile_id=row.profile_id,
-            profile_version=row.profile_version,
-        )
-        for row in rows
-    ]
+    return await service.run_credentials(request.app.state.engine, user, project, run_id, sink)

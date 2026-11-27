@@ -27,198 +27,35 @@ The MCP tool run_tool_stats answers both.
 
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Iterable
-from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Header, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Date, cast, delete, distinct, func, insert, select
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
-from evo_agents.hub.digest import MAX_NAME, SKILL_TOOL, TOOL_NAME
+from evo_agents.hub import runs
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import models as plan_models
-from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.runs.service.views import readable_run, visible_plans
+from evo_agents.hub.server.runs.models.tool_stats import MAX_STATS_DAYS, STATS_DAYS
+from evo_agents.hub.server.runs.models.tool_stats import ProjectToolStats as ProjectToolStats
+from evo_agents.hub.server.runs.models.tool_stats import RuntimeSkillStat as RuntimeSkillStat
+from evo_agents.hub.server.runs.models.tool_stats import RuntimeToolStat as RuntimeToolStat
+from evo_agents.hub.server.runs.models.tool_stats import RunToolStats as RunToolStats
+from evo_agents.hub.server.runs.models.tool_stats import SkillStat as SkillStat
+from evo_agents.hub.server.runs.models.tool_stats import ToolFigures as ToolFigures
+from evo_agents.hub.server.runs.models.tool_stats import ToolStat as ToolStat
+from evo_agents.hub.server.runs.service import tool_stats as service
+from evo_agents.hub.server.runs.service.tool_stats import (  # noqa: F401 (run_state, run_events, run_reaper, tests)
+    record,
+    summarize,
+    tool_name,
+)
 from evo_agents.hub.server.security import CurrentUser
 
-TOOL_EVENTS = ("tool_call", "tool_call_update")
-ENDED = ("completed", "failed")  # the statuses that end a call
-NAMED_BY_TITLE = "claude-code"  # the runtime whose title of a call is its tool's name
-UNNAMED = "unknown"
-STATS_DAYS = 7
-MAX_STATS_DAYS = 90
 READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
 
 router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
-
-
-# Figures
-
-
-def tool_name(runtime: str, title: str | None, kind: str | None) -> str:
-    """The name the figures of a call go under: see the module."""
-    title, kind = (title or "").strip(), (kind or "").strip()
-    if runtime == NAMED_BY_TITLE and title:
-        name = title
-    elif kind and kind != "other":
-        name = kind
-    else:
-        name = title or kind or UNNAMED
-    return name[:MAX_NAME]
-
-
-@dataclass
-class ToolFigures:
-    name: str
-    calls: int = 0
-    errors: int = 0
-    duration_ms: int = 0
-    skills: list[dict] = field(default_factory=list)  # the Skill tool's: per skill, its calls and errors
-
-
-def _skills(loaded: dict[str, str], failed: set[str]) -> list[dict]:
-    """Per skill of ``loaded`` (call id: skill), its calls and the calls that failed, the most called first."""
-    calls, errors = Counter(loaded.values()), Counter(name for call, name in loaded.items() if call in failed)
-    ranked = sorted(calls.items(), key=lambda kv: (-kv[1], kv[0]))
-    return [{"skill": name, "calls": n, "errors": errors[name]} for name, n in ranked]
-
-
-def summarize(runtime: str, events: Iterable) -> list[ToolFigures]:
-    """The figures per tool of a run of ``runtime`` whose tool events, in seq order, are ``events``: each with ``at``,
-    ``kind``, ``call_id``, ``title``, ``tool_kind``, ``status`` and, for a call of the Skill tool, ``skill``. The most
-    called first."""
-    started: dict[str, tuple[str, datetime]] = {}  # call id: (tool, when it started)
-    ended: dict[str, datetime] = {}
-    failed: set[str] = set()
-    loaded: dict[str, str] = {}  # call id of the Skill tool: the skill
-    for event in events:
-        call = event.call_id
-        if not call:
-            continue
-        if event.kind == "tool_call":
-            if call in started:
-                continue  # a call is counted once
-            started[call] = (tool_name(runtime, event.title, event.tool_kind), event.at)
-            skill = getattr(event, "skill", None)
-            if started[call][0] == SKILL_TOOL and runtime == NAMED_BY_TITLE and isinstance(skill, str) and skill:
-                loaded[call] = skill[:MAX_NAME]
-        elif call not in started:
-            continue  # an update of a call whose start is not in the log
-        if event.status == "failed":
-            failed.add(call)
-        if event.status in ENDED and call not in ended:
-            ended[call] = event.at
-    figures: dict[str, ToolFigures] = {}
-    for call, (name, at) in started.items():
-        found = figures.setdefault(name, ToolFigures(name))
-        found.calls += 1
-        found.errors += call in failed
-        if call in ended:
-            found.duration_ms += max(0, round((ended[call] - at).total_seconds() * 1000))
-    if loaded:
-        figures[SKILL_TOOL].skills = _skills(loaded, failed)
-    return sorted(figures.values(), key=lambda item: (-item.calls, item.name))
-
-
-def _tool_events(run_id: int):
-    e = tables.run_events
-    body = e.c.body
-    return (
-        select(
-            e.c.at,
-            e.c.kind,
-            body["toolCallId"].astext.label("call_id"),
-            body["title"].astext.label("title"),
-            body["kind"].astext.label("tool_kind"),
-            body["status"].astext.label("status"),
-            body["rawInput"]["skill"].astext.label("skill"),
-        )
-        .where(e.c.run_id == run_id, e.c.kind.in_(TOOL_EVENTS))
-        .order_by(e.c.seq)
-    )
-
-
-async def record(conn: AsyncConnection, run_id: int) -> list[ToolFigures]:
-    """Write the figures of run ``run_id`` from its events, in place of the ones it had; what was written."""
-    r, s = tables.runs, tables.run_tool_stats
-    runtime = (await conn.execute(select(r.c.runtime).where(r.c.id == run_id))).scalar_one()
-    figures = summarize(runtime, (await conn.execute(_tool_events(run_id))).all())
-    await conn.execute(delete(s).where(s.c.run_id == run_id))
-    if figures:
-        rows = [
-            {
-                "run_id": run_id,
-                "tool_name": item.name,
-                "calls": item.calls,
-                "errors": item.errors,
-                "duration_ms": item.duration_ms,
-                "skills": item.skills or None,
-            }
-            for item in figures
-        ]
-        await conn.execute(insert(s), rows)
-    return figures
-
-
-# Models
-
-
-class ToolStat(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str = Field(alias=TOOL_NAME, description="the tool, as the module of tool_stats names it")
-    calls: int
-    errors: int = Field(description="calls an update of which said failed")
-    duration_ms: int = Field(description="from each call to its result, added up; calls that never ended count none")
-
-
-class SkillStat(BaseModel):
-    skill: str = Field(description="the skill a call of the Skill tool loaded")
-    calls: int
-    errors: int = Field(description="calls an update of which said failed")
-
-
-class RunToolStats(BaseModel):
-    run_id: int
-    runtime: str
-    state: Literal[runs.RUN_STATES]
-    finished_at: datetime | None
-    tools: list[ToolStat] = Field(description="the most called first; empty for a run that has not ended")
-    skills: list[SkillStat] = Field(
-        default_factory=list, description="what the Skill tool loaded, the most called first; empty before schema 0087"
-    )
-
-
-class RuntimeSkillStat(SkillStat):
-    runs: int = Field(description="runs that loaded the skill")
-
-
-class RuntimeToolStat(ToolStat):
-    runtime: str
-    runs: int = Field(description="runs that called the tool")
-
-
-class ProjectToolStats(BaseModel):
-    project: str
-    days: int
-    first_day: date
-    last_day: date
-    runs: int = Field(description="runs that ended in those days, with tool calls or without")
-    tools: list[RuntimeToolStat] = Field(description="per tool and runtime, the most called first")
-    skills: list[RuntimeSkillStat] = Field(
-        default_factory=list, description="per skill the Skill tool loaded, the most called first"
-    )
-
-
-# Routes
 
 
 @router.get("/{project}/runs/{run_id}/tool-stats", response_model=RunToolStats, responses=READ_REFUSALS)
@@ -230,34 +67,7 @@ async def run_tool_stats(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> RunToolStats:
     """What the tool calls of run ``run_id`` came to, per tool."""
-    r, s = tables.runs, tables.run_tool_stats
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
-        run = (await conn.execute(select(r.c.runtime, r.c.state, r.c.finished_at).where(r.c.id == run_id))).one()
-        query = (
-            select(s.c.tool_name, s.c.calls, s.c.errors, s.c.duration_ms, s.c.skills)
-            .where(s.c.run_id == run_id)
-            .order_by(s.c.calls.desc(), s.c.tool_name)
-        )
-        rows = (await conn.execute(query)).all()
-    tools = [
-        ToolStat(name=row.tool_name, calls=row.calls, errors=row.errors, duration_ms=row.duration_ms) for row in rows
-    ]
-    skills = [SkillStat(**item) for row in rows for item in row.skills or []]
-    return RunToolStats(
-        run_id=run_id, runtime=run.runtime, state=run.state, finished_at=run.finished_at, tools=tools, skills=skills
-    )
-
-
-def skill_runs(rows) -> list[RuntimeSkillStat]:
-    """Per skill, the calls, failed calls and runs of ``rows`` (each with a run's ``skills``), the most called first."""
-    found: dict[str, Counter] = {}
-    for row in rows:
-        for item in row.skills or []:
-            counted = found.setdefault(item["skill"], Counter())
-            counted.update(calls=item["calls"], errors=item["errors"], runs=1)
-    ranked = sorted(found.items(), key=lambda kv: (-kv[1]["calls"], kv[0]))
-    return [RuntimeSkillStat(skill=name, **counted) for name, counted in ranked]
+    return await service.run_tool_stats(request.app.state.engine, user, project, run_id, sink)
 
 
 @router.get("/{project}/tool-stats", response_model=ProjectToolStats, responses=READ_REFUSALS)
@@ -276,55 +86,4 @@ async def project_tool_stats(
 ) -> ProjectToolStats:
     """The tool figures of the runs of the plans the caller may read that ended in the last ``days`` days, per tool and
     runtime."""
-    r, s = tables.runs, tables.run_tool_stats
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        plans = await visible_plans(conn, access, sink)
-        today: date = (await conn.execute(select(cast(func.timezone("UTC", func.now()), Date)))).scalar_one()
-        first = today - timedelta(days=days - 1)
-        since = datetime.combine(first, time.min, tzinfo=UTC)
-        until = datetime.combine(today + timedelta(days=1), time.min, tzinfo=UTC)
-        ended = [
-            r.c.project_id == access.project_id,
-            r.c.plan_id.in_(plans),
-            r.c.state.in_(runs.TERMINAL_STATES),
-            r.c.finished_at >= since,
-            r.c.finished_at < until,
-        ]
-        if plan_id is not None:
-            ended.append(r.c.plan_id == plan_id)
-        if runtime is not None:
-            ended.append(r.c.runtime == runtime)
-        counted = (await conn.execute(select(func.count()).select_from(r).where(*ended))).scalar_one()
-        calls = func.sum(s.c.calls)
-        query = (
-            select(
-                s.c.tool_name,
-                r.c.runtime,
-                calls.label("calls"),
-                func.sum(s.c.errors).label("errors"),
-                func.sum(s.c.duration_ms).label("duration_ms"),
-                func.count(distinct(s.c.run_id)).label("runs"),
-            )
-            .join_from(s, r, r.c.id == s.c.run_id)
-            .where(*ended)
-            .group_by(s.c.tool_name, r.c.runtime)
-            .order_by(calls.desc(), s.c.tool_name, r.c.runtime)
-        )
-        rows = (await conn.execute(query)).all()
-        loads = select(s.c.skills).join_from(s, r, r.c.id == s.c.run_id).where(*ended, s.c.skills.is_not(None))
-        skills = skill_runs((await conn.execute(loads)).all())
-    tools = [
-        RuntimeToolStat(
-            name=row.tool_name,
-            runtime=row.runtime,
-            calls=int(row.calls),
-            errors=int(row.errors),
-            duration_ms=int(row.duration_ms),
-            runs=row.runs,
-        )
-        for row in rows
-    ]
-    return ProjectToolStats(
-        project=access.name, days=days, first_day=first, last_day=today, runs=counted, tools=tools, skills=skills
-    )
+    return await service.project_tool_stats(request.app.state.engine, user, project, days, plan_id, runtime, sink)
