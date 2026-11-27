@@ -1,14 +1,6 @@
-"""What the web's autonomy pages read (plan autonomy-levels, step 7), under /v1/autonomy:
-
-- GET /v1/autonomy/settings: the caller's own autonomy for the page /settings/autonomy: the effective level and the
-  mode of each class with its source, their preference, the ceiling the other sources set over it (the options above it
-  show dimmed with its source), the stop that holds them, and for each class the hub records the figures of the last
-  30 days: the acts refused and held for an answer (the ledger ``autonomy.decided``), the decisions asked in its
-  categories, and for K5 and K6 the merges of their runs, the reverted ones and those PROD was rolled back from.
-- GET /v1/autonomy/org: every seat's effective mode of each class, as its ceiling, its units' and the instance's set
-  them, and the stops that hold; the org chart is everyone's to read, so is this.
-
-The preview of a stop is GET /v1/autonomy/stops/preview (``autonomy_stops``). A run's agent reads none of these.
+"""What the web's autonomy pages read (plan autonomy-levels, step 7; the routes are ``autonomy.routes.page``): the
+caller's own settings, with the figures of the last 30 days of each class the hub records, and every seat's effective
+mode of each class with the stops that hold. A run's agent reads none of these.
 """
 
 from __future__ import annotations
@@ -17,12 +9,10 @@ import re
 from collections import Counter
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import autonomy_card, autonomy_levels, org, post_merge, tables
-from evo_agents.hub.server import audit
+from evo_agents.hub import autonomy_card, autonomy_levels, org, post_merge
 from evo_agents.hub.server.autonomy.models.page import (
     FIGURE_DAYS,
     AutonomySettings,
@@ -33,14 +23,15 @@ from evo_agents.hub.server.autonomy.models.page import (
     SeatClasses,
     SettingsClass,
 )
+from evo_agents.hub.server.autonomy.models.stops import scope_name
+from evo_agents.hub.server.autonomy.repository import page as store
+from evo_agents.hub.server.autonomy.repository import stops as stop_store
+from evo_agents.hub.server.autonomy.repository.levels import newest_pref
 from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
 from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
-from evo_agents.hub.server.autonomy.service.levels import newest_pref
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.base.errors import Forbidden
 from evo_agents.hub.server.org_store import load, today
-from evo_agents.hub.server.security import CurrentUser, Principal
-
-router = APIRouter(prefix="/v1/autonomy", tags=["autonomy"], responses={401: {"model": ErrorBody}})
+from evo_agents.hub.server.security import Principal
 
 RECORDED = tuple(f"K{n}" for n in range(5, 13))  # the classes a gate of the hub or the worker's hook records
 DECIDED = re.compile(r" (K\d+) mode=\S+ result=(\w+)")
@@ -49,14 +40,14 @@ CATEGORY_CLASS = {category: klass for klass, held in autonomy_card.CLASS_CATEGOR
 
 def _agent_refusal(user: Principal) -> None:
     if user.scope is not None:
-        raise HTTPException(403, "the agent of a run reads no autonomy page")
+        raise Forbidden("the agent of a run reads no autonomy page")
 
 
 def held_stop(row) -> HeldStop:
     return HeldStop(
         id=row.id,
         scope=row.scope,
-        target=autonomy_hold.scope_name(row.scope, row.login, row.slug),
+        target=scope_name(row.scope, row.login, row.slug),
         login=row.login,
         unit=row.slug,
         reason=row.reason,
@@ -66,10 +57,8 @@ def held_stop(row) -> HeldStop:
 
 async def _ledger(conn: AsyncConnection, user_id: int, since) -> tuple[Counter, Counter]:
     """(refused, asked) of each class in the decisions of the ledger whose principal is ``user_id``."""
-    a = tables.audit
-    query = select(a.c.target).where(a.c.action == audit.AUTONOMY_DECIDED, a.c.actor_id == user_id, a.c.at >= since)
     refused, asked = Counter(), Counter()
-    for (target,) in await conn.execute(query):
+    for target in await store.decided(conn, user_id, since):
         found = DECIDED.search(target)
         if found is None:
             continue
@@ -83,35 +72,19 @@ async def _ledger(conn: AsyncConnection, user_id: int, since) -> tuple[Counter, 
 
 async def _decisions(conn: AsyncConnection, user_id: int, since) -> Counter:
     """The decisions asked by the runs of ``user_id``, by the class of their category."""
-    d, r = tables.decisions, tables.runs
-    query = (
-        select(d.c.category, func.count())
-        .join_from(d, r, r.c.id == d.c.run_id)
-        .where(r.c.principal_id == user_id, d.c.asked_at >= since, d.c.category.in_(list(CATEGORY_CLASS)))
-        .group_by(d.c.category)
-    )
     found = Counter()
-    for category, count in await conn.execute(query):
+    for category, count in await store.asked(conn, user_id, since, list(CATEGORY_CLASS)):
         found[CATEGORY_CLASS[category]] += count
     return found
 
 
 async def _merges(conn: AsyncConnection, user_id: int, since) -> tuple[int, int, int]:
     """(merged, reverted, rolled back) of the merges of the runs of ``user_id``."""
-    q, r, e = tables.merge_queue, tables.runs, tables.merge_events
-    mine = (
-        select(q.c.id, q.c.state)
-        .join_from(q, r, r.c.id == q.c.run_id)
-        .where(r.c.principal_id == user_id, q.c.merged_at >= since, q.c.source != post_merge.REVERT)
-    )
-    rows = (await conn.execute(mine)).all()
+    rows = await store.merges(conn, user_id, since)
     if not rows:
         return 0, 0, 0
     reverted = sum(1 for row in rows if row.state in post_merge.CULPRIT_STATES)
-    rolled = select(func.count(func.distinct(e.c.queue_id))).where(
-        e.c.queue_id.in_([row.id for row in rows]), e.c.kind == "rollback"
-    )
-    return len(rows), reverted, (await conn.execute(rolled)).scalar_one()
+    return len(rows), reverted, await store.rolled_back(conn, [row.id for row in rows])
 
 
 async def figures(conn: AsyncConnection, user_id: int) -> dict[str, ClassFigures]:
@@ -121,7 +94,7 @@ async def figures(conn: AsyncConnection, user_id: int) -> dict[str, ClassFigures
     decisions = await _decisions(conn, user_id, since)
     merged, reverted, rolled_back = await _merges(conn, user_id, since)
     found = {
-        klass: ClassFigures(refused=refused[klass], asked=asked[klass], decisions=decisions[klass])
+        klass: ClassFigures(refused=refused[klass], asked=asked[klass], decisions=decisions[klass])  # pyright: ignore[reportCallIssue]
         for klass in RECORDED
     }
     found["K5"] = found["K5"].model_copy(update={"merged": merged, "reverted": reverted})
@@ -145,10 +118,10 @@ def _classes(reached, ceiling, pref, counted: dict[str, ClassFigures]) -> dict[s
             mode=choice.mode,
             source=choice.source,
             detail=choice.detail,
-            modes=_modes(klass),
+            modes=_modes(klass),  # pyright: ignore[reportArgumentType]
             ceiling=top.mode,
             ceiling_source=top.source,
-            pref=wanted,
+            pref=wanted,  # pyright: ignore[reportArgumentType]
             lowered=wanted is not None and rank(choice.mode) < rank(wanted),
             figures=counted.get(klass),
         )
@@ -168,12 +141,12 @@ async def settings(conn: AsyncConnection, user: Principal) -> AutonomySettings:
     stop = await autonomy_hold.held_by(conn, user.user_id)
     return AutonomySettings(
         principal=user.login,
-        level=reached.level,
+        level=reached.level,  # pyright: ignore[reportArgumentType]
         level_source=reached.level_source,
         revision=None if pref is None else pref.revision,
         pref_level=None if pref is None else pref.level,
         pref_classes={} if pref is None else dict(pref.overrides),
-        ceiling=ceiling.level,
+        ceiling=ceiling.level,  # pyright: ignore[reportArgumentType]
         ceiling_source=ceiling.level_source,
         ceiling_detail=detail,
         classes=_classes(reached, ceiling, pref, await figures(conn, user.user_id)),
@@ -189,22 +162,9 @@ async def org_autonomy(conn: AsyncConnection, user: Principal) -> OrgAutonomy:
     for seat in sorted(chart.seats.values(), key=lambda seat: seat.id):
         reached = autonomy_levels.effective([*org.seat_sources(chart, seat, day), autonomy_levels.instance_source()])
         classes = {
-            klass: SeatClass(mode=choice.mode, source=choice.source) for klass, choice in reached.classes.items()
+            klass: SeatClass(mode=choice.mode, source=choice.source)  # pyright: ignore[reportArgumentType]
+            for klass, choice in reached.classes.items()
         }
         seats.append(SeatClasses(id=seat.id, classes=classes))
-    stops = [held_stop(row) for row in await conn.execute(autonomy_hold.live_stops())]
+    stops = [held_stop(row) for row in await stop_store.live_stops(conn)]
     return OrgAutonomy(seats=seats, stops=stops)
-
-
-@router.get("/settings", response_model=AutonomySettings, responses={403: {"model": ErrorBody}})
-async def show_settings(request: Request, user: CurrentUser) -> AutonomySettings:
-    """The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page."""
-    async with request.app.state.engine.connect() as conn:
-        return await settings(conn, user)
-
-
-@router.get("/org", response_model=OrgAutonomy, responses={403: {"model": ErrorBody}})
-async def show_org_autonomy(request: Request, user: CurrentUser) -> OrgAutonomy:
-    """Every seat's effective mode of each class, and the stops that hold, for the web's org page."""
-    async with request.app.state.engine.connect() as conn:
-        return await org_autonomy(conn, user)

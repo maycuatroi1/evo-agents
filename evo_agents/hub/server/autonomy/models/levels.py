@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
+from evo_agents.hub.credentials import RUN_REACH_GROUPS as REACH_GROUPS
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.org_models import CLASSES_FIELD, Level
-from evo_agents.hub.server.run_access_rules import REACH_GROUPS
 
 Mode = Literal["deny", "ask", "notify", "auto"]
 ReachGroup = Literal[REACH_GROUPS]
@@ -42,11 +43,9 @@ class AutonomyView(BaseModel):
     workers: list[str] | None = Field(description="the workers allowed; null: no limit")
 
 
-class PrefSet(BaseModel):
+class PrefSet(StrictModel):
     """The next revision of the caller's own preference: a level, class overrides merged onto those before, or a reset
     that drops them (to A5 without a level)."""
-
-    model_config = ConfigDict(extra="forbid")
 
     level: Level | None = None
     classes: dict[str, str] = Field(default_factory=dict, max_length=12, description=CLASSES_FIELD)
@@ -63,18 +62,16 @@ class PrefWritten(BaseModel):
 
 class RunReach(BaseModel):
     login: str = Field(description="the person whose runs it is")
-    groups: list[ReachGroup] = Field(description=REACH_FIELD)
+    groups: list[ReachGroup] = Field(description=REACH_FIELD)  # pyright: ignore[reportInvalidTypeForm]
 
 
-class RunReachSet(BaseModel):
+class RunReachSet(StrictModel):
     """The whole run reach of the caller: it replaces the one before, and an empty list clears it."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    groups: list[ReachGroup] = Field(max_length=len(REACH_GROUPS), description=REACH_FIELD)
+    groups: list[ReachGroup] = Field(max_length=len(REACH_GROUPS), description=REACH_FIELD)  # pyright: ignore[reportInvalidTypeForm]
 
 
 class RunReachWritten(BaseModel):
     login: str = Field(description="the person whose runs it is")
-    groups: list[ReachGroup] = Field(description=REACH_FIELD)
-    previous: list[ReachGroup] = Field(description="the groups before this write")
+    groups: list[ReachGroup] = Field(description=REACH_FIELD)  # pyright: ignore[reportInvalidTypeForm]
+    previous: list[ReachGroup] = Field(description="the groups before this write")  # pyright: ignore[reportInvalidTypeForm]

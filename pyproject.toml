@@ -809,6 +809,22 @@ service and the models, never the routes. A new module of the package goes into 
 docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-autonomy-layers"
+name = "The autonomy levels, policies, stops and gates go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.autonomy"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.autonomy a route handler only opens the transaction and passes the request's parts to a \
+public function of the service, which checks who may read or write and decides: the levels, the policies, the stops \
+and their hold, the gates and their ledger, the autonomy of a run and of a lease, and what the worker reports. The \
+repository holds every query of those tables; the models (the API's shapes and their limits) import none of them. \
+Move the code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
+repository, a shape into the models. Other modules import the service and the models, never the routes. A new module \
+of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

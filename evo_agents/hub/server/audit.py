@@ -406,7 +406,7 @@ ORG_SEAT_END = "org.seat_end"
 AUTONOMY_CEILING_SET = "autonomy.ceiling_set"
 AUTONOMY_PREF_SET = "autonomy.pref_set"
 # A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy.service.gates,
-# .lease_autonomy, .route_autonomy): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
+# .lease, .guards): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
 # act), "run:<id> <class> <act> decision:<id>" when it asked the principal, "run:<id> <class> <act>" when it acted and
 # told the principal; a route refused to a run's credential is "<class> <route> mode=<mode> source=<source> run:<id>".
 AUTONOMY_REFUSED = "autonomy.refused"

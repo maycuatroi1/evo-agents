@@ -31,12 +31,14 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Text, and_, false, func, literal, or_, select, true, update
+from sqlalchemy import Text, and_, false, func, literal, or_, true
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import autonomy, autonomy_levels, org, profiles, runs, tables
 from evo_agents.hub.autonomy_levels import Reached
+from evo_agents.hub.server.autonomy.repository import runs as store
+from evo_agents.hub.server.autonomy.repository.levels import newest_pref
 from evo_agents.plugins.run_environments import HOST
 
 HUB_KINDS = (*runs.CURATOR_KINDS, "release")  # the kinds of run the hub makes on its own
@@ -85,19 +87,13 @@ def run_repos(repo: str | None, repos) -> list[str]:
     return list(dict.fromkeys(names))
 
 
-async def _login(conn: AsyncConnection, user_id: int) -> str:
-    u = tables.users
-    return (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
-
-
 async def _policies(conn: AsyncConnection, project_id: int, repos: list[str]) -> list[autonomy_levels.Source]:
     """Source 4 for each of ``repos`` the project lists; a repo it does not list has none."""
     from evo_agents.hub.server.autonomy.service.policies import effective_policy
 
     if not repos:
         return []
-    p = tables.projects
-    project = (await conn.execute(select(p.c.name).where(p.c.id == project_id))).scalar_one()
+    project = await store.project_name(conn, project_id)
     held = (await effective_policy(conn, project_id))[autonomy.REPOS]
     return [
         autonomy_levels.policy_source(project, name, held[name]["mode"], held[name]["prod_release"])
@@ -109,8 +105,7 @@ async def _policies(conn: AsyncConnection, project_id: int, repos: list[str]) ->
 async def _profile(conn: AsyncConnection, profile_id: int | None) -> tuple[str, int] | None:
     if profile_id is None:
         return None
-    ap = tables.agent_profiles
-    handle = (await conn.execute(select(ap.c.handle).where(ap.c.id == profile_id))).scalar_one_or_none()
+    handle = await store.profile_handle(conn, profile_id)
     return None if handle is None else (handle, profile_id)
 
 
@@ -125,9 +120,7 @@ async def reached(
 ) -> Reached:
     """The effective autonomy of ``user_id`` running the agent profile ``profile_id`` on ``repos`` of the project now,
     under the credentials ``shares`` lend it (source 6): the strictest over the repos, each under its project policy."""
-    from evo_agents.hub.server.autonomy.service.levels import newest_pref
-
-    login = await _login(conn, user_id)
+    login = await store.login(conn, user_id)
     pref = await newest_pref(conn, user_id)
     held = autonomy_levels.pref_source(login, *((None,) if pref is None else (pref.level, pref.overrides)))
     profile = await _profile(conn, profile_id)
@@ -136,7 +129,7 @@ async def reached(
         sources = org.autonomy_sources(at.chart, user_id, at.day, held, policy=policy, profile=profile, shares=shares)
         one = autonomy_levels.effective(sources)
         found = one if found is None else autonomy_levels.stricter(found, one)
-    return found
+    return found  # pyright: ignore[reportReturnType]
 
 
 async def _bounded(
@@ -152,7 +145,7 @@ async def _bounded(
     for user_id in people:
         one = await reached(conn, at, user_id, project_id, repos, profile_id, shares)
         found = one if found is None else autonomy_levels.stricter(found, one)
-    return found
+    return found  # pyright: ignore[reportReturnType]
 
 
 def _lowered(found: Reached) -> Reached:
@@ -180,9 +173,7 @@ async def of_message(conn: AsyncConnection, message_id: int, run_as: int | None,
     the agent's run, within that run's snapshot (``origin``, the person at the origin of the chain, when the run is
     gone), or for a message of the hub its agent's sponsor; bounded by ``run_as`` too, the person an agent type runs
     as."""
-    m = tables.chat_messages
-    query = select(m.c.author_user_id, m.c.author_profile_id, m.c.run_id).where(m.c.id == message_id)
-    row = (await conn.execute(query)).one_or_none()
+    row = await store.message_author(conn, message_id)
     also = () if run_as is None else (run_as,)
     if row is not None and row.author_user_id is not None:
         return For(user_id=row.author_user_id, also=also, repos=tuple(repos))
@@ -193,11 +184,6 @@ async def of_message(conn: AsyncConnection, message_id: int, run_as: int | None,
     return For(user_id=origin, also=also, repos=tuple(repos))
 
 
-async def _parent(conn: AsyncConnection, run_id: int):
-    r = tables.runs
-    return (await conn.execute(select(r.c.principal_id, r.c.autonomy).where(r.c.id == run_id))).one_or_none()
-
-
 async def stamp(conn: AsyncConnection, values: dict, who: For | None = None) -> dict:
     """``values`` of a run being queued with its principal_id and its autonomy snapshot (see the module); values that
     carry a principal already are left as they are."""
@@ -205,7 +191,7 @@ async def stamp(conn: AsyncConnection, values: dict, who: For | None = None) -> 
         return values
     who = who or For()
     at = await context(conn)
-    parent = None if who.within is None else await _parent(conn, who.within)
+    parent = None if who.within is None else await store.principal_and_snapshot(conn, who.within)
     principal = who.user_id
     if principal is None and parent is not None:
         principal = parent.principal_id
@@ -218,20 +204,14 @@ async def stamp(conn: AsyncConnection, values: dict, who: For | None = None) -> 
     found = await _bounded(conn, at, people, values["project_id"], repos, values.get("profile_id"))
     if parent is not None and parent.autonomy is not None:
         found = autonomy_levels.stricter(found, autonomy_levels.from_snapshot(parent.autonomy))
-    also = [await _login(conn, user_id) for user_id in people[1:]]
+    also = [await store.login(conn, user_id) for user_id in people[1:]]
     return {**values, "principal_id": principal, "autonomy": body(found, also)}
 
 
 async def share_levels(conn: AsyncConnection, run_id: int, lending: Iterable[int] = ()) -> list[tuple[int, str | None]]:
     """(share id, level) of each credential share run ``run_id`` holds a live lease under, and of the shares
     ``lending`` (those a lease is about to lend it): source 6 of its autonomy."""
-    cl, cs = tables.credential_leases, tables.credential_shares
-    held = select(cl.c.share_id).where(cl.c.run_id == run_id, cl.c.share_id.is_not(None), cl.c.revoked_at.is_(None))
-    ids = {*(await conn.execute(held)).scalars(), *lending}
-    if not ids:
-        return []
-    rows = await conn.execute(select(cs.c.id, cs.c.level).where(cs.c.id.in_(sorted(ids))).order_by(cs.c.id))
-    return [(row.id, row.level) for row in rows]
+    return await store.share_levels(conn, run_id, lending)
 
 
 async def recheck(
@@ -243,9 +223,7 @@ async def recheck(
     run, one queued before schema 0113): the gate acts as before."""
     from evo_agents.hub.server.org_store import user_by_login
 
-    r = tables.runs
-    columns = (r.c.principal_id, r.c.autonomy, r.c.project_id, r.c.repo, r.c.repos, r.c.profile_id)
-    row = (await conn.execute(select(*columns).where(r.c.id == run_id))).one_or_none()
+    row = await store.snapshot_row(conn, run_id)
     if row is None or row.autonomy is None or row.principal_id is None:
         return None
     people = [row.principal_id]
@@ -261,7 +239,7 @@ async def recheck(
     if merged != held:
         written = {**body(merged, row.autonomy.get("also") or (), row.autonomy["taken_at"])}
         written["tightened_at"] = datetime.now(UTC).isoformat()
-        await conn.execute(update(r).where(r.c.id == run_id).values(autonomy=written))
+        await store.write_snapshot(conn, run_id, written)
     return merged
 
 

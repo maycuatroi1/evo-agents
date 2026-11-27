@@ -1,4 +1,4 @@
-"""The stop of autonomy S4 (``evo_agents.hub.server.autonomy.service.stops`` and ``autonomy_hold``), as criterion a11 of plan
+"""The stop of autonomy S4 (``evo_agents.hub.server.autonomy.routes.stops`` and ``service.hold``), as criterion a11 of plan
 autonomy-levels names it: ``hub stop --login | --unit | --all`` and ``--lift`` of the same scope; a person stops their
 own runs, a lead their unit and those below it, an admin anyone and the hub; the stop cancels the runs of every
 principal it covers as ``hub run cancel`` does, ends their leases (test_autonomy_level_ledger for the leases), and holds

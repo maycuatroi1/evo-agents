@@ -15,7 +15,7 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | Part | Where |
 | --- | --- |
 | the policy's keys, defaults and checks | `evo_agents/hub/autonomy.py` |
-| the policy's revisions and routes | `evo_agents/hub/server/autonomy_policies.py`, `evo_agents/hub/cli/policy.py` |
+| the policy's revisions and routes | `evo_agents/hub/server/autonomy/routes/policies.py`, `evo_agents/hub/cli/policy.py` |
 | the forge secret and the GitLab client | `evo_agents/hub/server/forge.py`, `evo_agents/hub/server/gitlab.py` |
 | scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge_gate.py`, `evo_agents/hub/server/merge_judge.py` |
 | the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge_turn.py` |
@@ -210,7 +210,7 @@ one more turn. Changing the model of the Judge's route changes the cost of the p
 ### The principal's K5 and K6
 
 Above the policy, the hub reads the autonomy of the person the run that made the merge request acts for, its principal
-(`docs/autonomy.md`, `evo_agents/hub/server/autonomy_gates.py`), as the stricter of the run's snapshot and the value
+(`docs/autonomy.md`, `evo_agents/hub/server/autonomy/service/gates.py`), as the stricter of the run's snapshot and the value
 now. A merge request no run made, a run without a snapshot, and a principal at A5 pass as before.
 
 - **K5 at the last gate** (`merge_gate.ready`). Auto lets the merge request into the queue; notify lets it in and,

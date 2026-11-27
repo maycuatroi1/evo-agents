@@ -53,8 +53,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import approval_heads, autonomy, diff_signs, findings, judge, merge_gate, runs, tables, task_runs
 from evo_agents.hub.server import audit, pull_trailers
+from evo_agents.hub.server.autonomy.repository.policies import project_repos
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
-from evo_agents.hub.server.autonomy.service.policies import project_repos
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.forge import forge_token, has_forge
 from evo_agents.hub.server.gitlab import GitLab, GitLabRefused, GitLabUnavailable, MergeRequest, project_of

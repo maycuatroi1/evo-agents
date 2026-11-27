@@ -551,8 +551,8 @@ def _include_curator_routes(app: FastAPI) -> None:
         worker_shares,
     )
     from evo_agents.hub.server.autonomy.routes import levels as autonomy_routes
-    from evo_agents.hub.server.autonomy.service import page as autonomy_page
-    from evo_agents.hub.server.autonomy.service import stops as autonomy_stops
+    from evo_agents.hub.server.autonomy.routes import page as autonomy_page
+    from evo_agents.hub.server.autonomy.routes import stops as autonomy_stops
     from evo_agents.hub.server.changes import routes as change_routes
     from evo_agents.hub.server.digests import routes as digests
     from evo_agents.hub.server.evolve import routes as evolve
@@ -665,8 +665,8 @@ def _include_member_routes(app: FastAPI) -> None:
         triage_actions,
         work_cards,
     )
+    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
     from evo_agents.hub.server.autonomy.routes import worker as worker_autonomy
-    from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
     from evo_agents.hub.server.chats.routes import agents as chat_agents
     from evo_agents.hub.server.chats.routes import bridges as chat_bridges
     from evo_agents.hub.server.chats.routes import chats

@@ -65,7 +65,7 @@ def secret_allowed(choice: Choice | None, kind: str, env_var: str | None, enviro
     which names why its origin gets none; an env secret is the runtime's, or labelled test under test_secrets."""
     if not limits(choice) or kind != "env" or runtime_secret(kind, env_var):
         return True
-    return choice.mode in ACTING and choice.condition == TEST_SECRETS and environment == TEST_ENVIRONMENT
+    return choice.mode in ACTING and choice.condition == TEST_SECRETS and environment == TEST_ENVIRONMENT  # pyright: ignore[reportOptionalMemberAccess]
 
 
 def why(choice: Choice, what: str) -> str:

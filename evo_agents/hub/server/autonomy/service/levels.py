@@ -14,11 +14,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import HTTPException
-from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import autonomy, autonomy_levels, org, tables
+from evo_agents.hub import autonomy, autonomy_levels, org
 from evo_agents.hub.server import audit, run_access_rules
 from evo_agents.hub.server.autonomy.models.levels import (
     AutonomyClass,
@@ -29,7 +27,10 @@ from evo_agents.hub.server.autonomy.models.levels import (
     RunReachSet,
     RunReachWritten,
 )
+from evo_agents.hub.server.autonomy.repository import levels as store
 from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
+from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.org_store import load, lock, profile_by_handle, today, user_by_login
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
@@ -41,18 +42,6 @@ def actor(user: Principal) -> org.Actor:
     return org.Actor(user_id=user.user_id, login=user.login, admin=user.admin)
 
 
-async def newest_pref(conn: AsyncConnection, user_id: int):
-    """(revision, level, overrides) of the person's newest preference; None when they set none."""
-    p = tables.autonomy_prefs
-    query = (
-        select(p.c.revision, p.c.level, p.c.overrides)
-        .where(p.c.user_id == user_id)
-        .order_by(p.c.revision.desc())
-        .limit(1)
-    )
-    return (await conn.execute(query)).first()
-
-
 def _words(classes: dict[str, str], reset: bool) -> str:
     return "".join(f" {klass}={mode}" for klass, mode in classes.items()) + (" reset" if reset else "")
 
@@ -60,41 +49,37 @@ def _words(classes: dict[str, str], reset: bool) -> str:
 async def write_pref(conn: AsyncConnection, user: Principal, body: PrefSet) -> PrefWritten:
     """The next revision of the caller's own preference, with its audit row; the agent of a run is refused."""
     if user.acts_for_run is not None:
-        raise HTTPException(403, "the agent of a run never changes an autonomy preference")
+        raise Forbidden("the agent of a run never changes an autonomy preference")
     if body.level is None and not body.classes and not body.reset:
-        raise HTTPException(422, "a preference sets a level, a class or a reset; nothing changed")
+        raise Unprocessable("a preference sets a level, a class or a reset; nothing changed")
     problem = autonomy_levels.overrides_problem(body.classes)
     if problem is not None:
-        raise HTTPException(422, f"{problem}; nothing changed")
+        raise Unprocessable(f"{problem}; nothing changed")
     await lock(conn)  # two writes of one person's preference take turns
-    before = await newest_pref(conn, user.user_id)
+    before = await store.newest_pref(conn, user.user_id)
     previous = None if before is None else before.level
     kept = {} if before is None or body.reset else dict(before.overrides)
     level = body.level or (autonomy_levels.HIGHEST if body.reset else previous) or autonomy_levels.HIGHEST
     merged = {**kept, **body.classes}
     classes = {klass: merged[klass] for klass in autonomy_levels.CLASSES if klass in merged}
     revision = 1 if before is None else before.revision + 1
-    values = {"user_id": user.user_id, "revision": revision, "level": level, "overrides": classes}
-    await conn.execute(insert(tables.autonomy_prefs).values(values))
+    await store.add_pref(conn, user.user_id, revision, level, classes)
     was = "none" if previous is None else previous
     target = f"pref {user.login} level={was}->{level}{_words(body.classes, body.reset)} revision={revision}"
-    await audit.record(
-        conn, actor_id=user.user_id, token_id=user.token_id, action=audit.AUTONOMY_PREF_SET, target=target
-    )
+    await Auditor(conn, None, user).record(audit.AUTONOMY_PREF_SET, target)
     log.info("autonomy preference set", extra={"login": user.login, "revision": revision})
     return PrefWritten(login=user.login, revision=revision, level=level, previous=previous, classes=classes)
 
 
 def _no_run_reach(user: Principal) -> None:
     if user.acts_for_run is not None:  # a run's token never gets here (run_access_rules); the agent on /mcp neither
-        raise HTTPException(403, "the agent of a run never reads or changes what its owner's runs reach")
+        raise Forbidden("the agent of a run never reads or changes what its owner's runs reach")
 
 
 async def run_reach(conn: AsyncConnection, user: Principal) -> RunReach:
     """The caller's own run reach; the agent of a run is refused."""
     _no_run_reach(user)
-    u = tables.users
-    held = (await conn.execute(select(u.c.run_reach).where(u.c.id == user.user_id))).scalar_one()
+    held = await store.run_reach(conn, user.user_id)
     return RunReach(login=user.login, groups=list(run_access_rules.reach_order(held)))
 
 
@@ -106,16 +91,12 @@ async def write_run_reach(conn: AsyncConnection, user: Principal, body: RunReach
     """Replace the caller's own run reach with ``body.groups``, with the audit row ``run_access.reach`` when it
     changes; the agent of a run is refused."""
     _no_run_reach(user)
-    u = tables.users
-    found = select(u.c.run_reach).where(u.c.id == user.user_id).with_for_update()
-    before = run_access_rules.reach_order((await conn.execute(found)).scalar_one())
+    before = run_access_rules.reach_order(await store.run_reach(conn, user.user_id, lock=True))
     groups = run_access_rules.reach_order(body.groups)
     if groups != before:
-        await conn.execute(update(u).values(run_reach=list(groups)).where(u.c.id == user.user_id))
+        await store.set_run_reach(conn, user.user_id, list(groups))
         target = f"reach {user.login} {_shown(before)}->{_shown(groups)}"
-        await audit.record(
-            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.RUN_ACCESS_REACH, target=target
-        )
+        await Auditor(conn, None, user).record(audit.RUN_ACCESS_REACH, target)
         log.info("run reach set", extra={"login": user.login, "groups": list(groups)})
     return RunReachWritten(login=user.login, groups=list(groups), previous=list(before))
 
@@ -124,7 +105,7 @@ async def _policy(conn: AsyncConnection, project: str, project_id: int, repo: st
     """Source 4: the project policy of ``repo``; 404 when the project lists no such repo."""
     repos = (await autonomy_policies.effective_policy(conn, project_id))[autonomy.REPOS]
     if repo not in repos:
-        raise HTTPException(404, f"project {project} lists no repo {repo}")
+        raise NotFound(f"project {project} lists no repo {repo}")
     held = repos[repo]
     return autonomy_levels.policy_source(project, repo, held["mode"], held["prod_release"])
 
@@ -132,7 +113,7 @@ async def _policy(conn: AsyncConnection, project: str, project_id: int, repo: st
 async def _profile(conn: AsyncConnection, project: str, agent: str) -> tuple[str, int]:
     found = await profile_by_handle(conn, agent, project)
     if found is None:
-        raise HTTPException(404, f"project {project} has no agent profile {agent}")
+        raise NotFound(f"project {project} has no agent profile {agent}")
     return found.handle, found.id
 
 
@@ -148,24 +129,24 @@ async def view(
     """The effective autonomy of ``login`` (the caller without one), running ``agent`` on ``repo`` of ``project`` when
     those are named; 403 when the caller may not see it, 404 for a name that is unknown or hidden from them."""
     if (agent is not None or repo is not None) and project is None:
-        raise HTTPException(422, "an agent or a repo is named within a project: name the project")
+        raise Unprocessable("an agent or a repo is named within a project: name the project")
     if login is None:
         user_id, principal = user.user_id, user.login
     else:
         found = await user_by_login(conn, login)
         if found is None:
-            raise HTTPException(404, f"no user {login}")
+            raise NotFound(f"no user {login}")
         user_id, principal = found.id, found.login
     chart, day = await load(conn), await today(conn)
     refused = org.view_refusal(chart, actor(user), user_id, principal, day)
     if refused is not None:
-        raise HTTPException(403, refused)
+        raise Forbidden(refused)
     policy = profile = None
     if project is not None:
         access = await project_access(conn, user, project)
         policy = None if repo is None else await _policy(conn, project, access.project_id, repo)
         profile = None if agent is None else await _profile(conn, project, agent)
-    pref = await newest_pref(conn, user_id)
+    pref = await store.newest_pref(conn, user_id)
     held = autonomy_levels.pref_source(principal, *((None,) if pref is None else (pref.level, pref.overrides)))
     sources = org.autonomy_sources(chart, user_id, day, held, policy=policy, profile=profile)
     reached = autonomy_levels.effective(sources)
@@ -173,9 +154,9 @@ async def view(
         principal=principal,
         project=project,
         agent=None if profile is None else profile[0],
-        level=reached.level,
+        level=reached.level,  # pyright: ignore[reportArgumentType]
         classes={
-            klass: AutonomyClass(mode=choice.mode, source=choice.source, detail=choice.detail)
+            klass: AutonomyClass(mode=choice.mode, source=choice.source, detail=choice.detail)  # pyright: ignore[reportArgumentType]
             for klass, choice in reached.classes.items()
         },
         environments=None if reached.environments is None else list(reached.environments),

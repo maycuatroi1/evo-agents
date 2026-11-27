@@ -15,7 +15,7 @@ A ceiling, with its class overrides, environments and workers, is written at PUT
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 
@@ -34,7 +34,7 @@ from evo_agents.hub.server.org_models import HANDLE_PATTERN, LOGIN_PATTERN
 from evo_agents.hub.server.security import CurrentUser
 
 Name = Annotated[str | None, Query(min_length=1, max_length=100)]  # a project or a repo, as the hub names them
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 422)}
 
 router = APIRouter(
     prefix="/v1/autonomy", tags=["autonomy"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}
