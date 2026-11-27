@@ -43,7 +43,9 @@ rank = ["lightgbm>=4.5", "numpy>=1.26"]
 links = ["numpy>=1.26"]
 # The reading of archives uploaded to a hub's graph (evo_agents.kg.extract_office): PDF, docx, xlsx, pptx and html to
 # markdown. The hub's image installs it; without it those files are kept as assets.
-ingest = ["markitdown[pdf,docx,xlsx,pptx]>=0.1"]
+# lxml below 6.2: under 6.2.0 BeautifulSoup's xml parser drops the w: prefix of a docx part, which markitdown's
+# pre_process writes back, so mammoth finds no w:body and every docx is read as unreadable.
+ingest = ["markitdown[pdf,docx,xlsx,pptx]>=0.1", "lxml<6.2"]
 hub-server = [
     "fastapi>=0.135",
     "uvicorn[standard]>=0.34",

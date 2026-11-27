@@ -883,6 +883,7 @@ hub-server = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 ingest = [
+    { name = "lxml" },
     { name = "markitdown", extra = ["docx", "pdf", "pptx", "xlsx"] },
 ]
 links = [
@@ -936,6 +937,7 @@ requires-dist = [
     { name = "httpx", extras = ["http2"], marker = "extra == 'hub-server'", specifier = ">=0.27" },
     { name = "import-linter", marker = "extra == 'test'", specifier = ">=2.15" },
     { name = "lightgbm", marker = "extra == 'rank'", specifier = ">=4.5" },
+    { name = "lxml", marker = "extra == 'ingest'", specifier = "<6.2" },
     { name = "markitdown", extras = ["docx", "pdf", "pptx", "xlsx"], marker = "extra == 'ingest'", specifier = ">=0.1" },
     { name = "mcp", marker = "extra == 'hub-server'", specifier = "==2.3.0" },
     { name = "moto", extras = ["server"], marker = "extra == 'test'", specifier = ">=5.1" },
