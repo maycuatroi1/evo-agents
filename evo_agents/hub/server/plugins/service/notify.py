@@ -4,12 +4,14 @@ link, and the key that makes a call once."""
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import plugin_calls, runs
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugins.models.notify import (
     CONTROL,
@@ -107,3 +109,11 @@ async def send(conn: AsyncConnection, plugin_id: int, project: str, body: Plugin
     )
     log.info("plugin notice sent", extra={"project": project, "plugin": enabled.name, "recipients": len(chosen)})
     return PluginNoticeSent(**result, duplicate=False)
+
+
+async def send_as(
+    engine: AsyncEngine, plugin_of: Callable[[AsyncConnection], Awaitable[int]], project: str, body: PluginNoticeIn
+) -> PluginNoticeSent:
+    """``send`` as the plugin ``plugin_of`` finds (401 for none), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await send(conn, await plugin_of(conn), project, body)

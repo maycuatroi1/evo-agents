@@ -23,8 +23,7 @@ async def list_shares(
     request: Request, name: SecretName, user: CurrentUser, response: Response
 ) -> list[CredentialShare]:
     """The shares of the caller's secret or account ``name``, revoked ones too, newest first."""
-    async with request.app.state.engine.begin() as conn:
-        found = await shares.listed(conn, user, name)
+    found = await shares.listed(request.app.state.engine, user, name)
     response.headers.update(NO_STORE)
     return found
 
@@ -35,8 +34,7 @@ async def create_share(
 ) -> CredentialShare:
     """Share the caller's secret or account ``name``; a personal subscription token needs ``terms_ack``."""
     shares.checked(body)
-    async with request.app.state.engine.begin() as conn:
-        share = await shares.create(conn, user, name, body)
+    share = await shares.create(request.app.state.engine, user, name, body)
     response.headers.update(NO_STORE)
     return share
 
@@ -44,7 +42,6 @@ async def create_share(
 @router.delete("/shares/{share_id}", response_model=CredentialShare, responses={**REFUSALS, 409: {"model": ErrorBody}})
 async def revoke_share(request: Request, share_id: ShareId, user: CurrentUser, response: Response) -> CredentialShare:
     """Revoke a share: its secret's owner may, and a hub admin may revoke any."""
-    async with request.app.state.engine.begin() as conn:
-        share = await shares.revoke(conn, user, share_id)
+    share = await shares.revoke(request.app.state.engine, user, share_id)
     response.headers.update(NO_STORE)
     return share

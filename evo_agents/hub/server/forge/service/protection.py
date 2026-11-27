@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import judge
 from evo_agents.hub.config import CURATOR_APP_VARIABLES, HubConfig
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.forges import GITHUB
 from evo_agents.hub.server.forge.models.github import GitHubUnavailable
@@ -67,12 +68,13 @@ def _repo_check(name: str, origin: str | None, row) -> RepoCheck:
     )
 
 
-async def protection(conn: AsyncConnection, user: Principal, project: str) -> Protection:
+async def protection(engine: AsyncEngine, user: Principal, project: str) -> Protection:
     """The project's repos, each with the last check of its ruleset, for a reader of the project."""
-    access = await project_access(conn, user, project)
-    need_reader(access)
-    origins = await store.repo_origins(conn, access.project_id)
-    checks = await store.checks(conn, access.project_id)
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        need_reader(access)
+        origins = await store.repo_origins(conn, access.project_id)
+        checks = await store.checks(conn, access.project_id)
     return Protection(
         project=access.name, repos=[_repo_check(name, origin, checks.get(name)) for name, origin in origins.items()]
     )

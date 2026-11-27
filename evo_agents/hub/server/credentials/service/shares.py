@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import org
 from evo_agents.hub.credential_shares import (
@@ -40,6 +40,7 @@ from evo_agents.hub.credential_shares import (
 from evo_agents.hub.credentials import FORGE_KIND
 from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.models.secrets import NO_SECRET
 from evo_agents.hub.server.credentials.models.shares import NO_SHARE, ShareWrite
 from evo_agents.hub.server.credentials.repository import shares as repository
@@ -62,10 +63,11 @@ async def _own_secret(conn: AsyncConnection, user: Principal, name: str, *, lock
     return row
 
 
-async def listed(conn: AsyncConnection, user: Principal, name: str) -> list[CredentialShare]:
+async def listed(engine: AsyncEngine, user: Principal, name: str) -> list[CredentialShare]:
     """The shares of the caller's secret or account ``name``, revoked ones too, newest first."""
-    secret = await _own_secret(conn, user, name)
-    return await repository.shares_of_secret(conn, secret.id)
+    async with UnitOfWork(engine) as conn:
+        secret = await _own_secret(conn, user, name)
+        return await repository.shares_of_secret(conn, secret.id)
 
 
 # Creating
@@ -168,48 +170,52 @@ def checked(body: ShareWrite) -> None:
         raise Unprocessable("expires_at is past already: a share's end is in the future")
 
 
-async def create(conn: AsyncConnection, user: Principal, name: str, body: ShareWrite) -> CredentialShare:
-    """Share the caller's secret or account ``name`` as ``body`` says, in the caller's transaction (``checked`` read it
-    first); audit rows share.create, and share.terms_ack for a personal subscription token."""
-    secret = await _own_secret(conn, user, name, lock=True)  # one write of a secret's shares at a time
-    if secret.kind == FORGE_KIND:
-        raise Unprocessable("a secret of kind forge is never shared: only the hub uses it")
-    credential = credential_class(secret.kind, secret.env_var)
-    acked = needs_terms_ack(credential)
-    if acked and not body.terms_ack:
-        raise Conflict(terms_refusal())
-    grantee = await _grantee(conn, user, body)
-    await _check_room(conn, secret.id, grantee)
-    share_id = await _insert(
-        conn, user, secret.id, body, {**grantee, "terms_ack_at": repository.NOW if acked else None}
-    )
-    share = await repository.share(conn, share_id)
-    record = {"actor_id": user.user_id, "token_id": user.token_id}
-    await audit.record(conn, **record, action=audit.SHARE_CREATE, target=_target(share, secret.id))
-    if acked:
-        warning = f"share:{share_id} {audit_target(secret.id)} warning={TERMS_WARNING}"
-        await audit.record(conn, **record, action=audit.SHARE_TERMS_ACK, target=warning)
-    extra = {"share": share_id, "login": user.login, "credential": credential, "grantee_kind": body.grantee_kind}
-    log.info("credential shared", extra=extra)
-    return share
+async def create(engine: AsyncEngine, user: Principal, name: str, body: ShareWrite) -> CredentialShare:
+    """Share the caller's secret or account ``name`` as ``body`` says, in a transaction of its own (``checked`` read
+    it first); audit rows share.create, and share.terms_ack for a personal subscription token."""
+    async with UnitOfWork(engine) as conn:
+        secret = await _own_secret(conn, user, name, lock=True)  # one write of a secret's shares at a time
+        if secret.kind == FORGE_KIND:
+            raise Unprocessable("a secret of kind forge is never shared: only the hub uses it")
+        credential = credential_class(secret.kind, secret.env_var)
+        acked = needs_terms_ack(credential)
+        if acked and not body.terms_ack:
+            raise Conflict(terms_refusal())
+        grantee = await _grantee(conn, user, body)
+        await _check_room(conn, secret.id, grantee)
+        share_id = await _insert(
+            conn, user, secret.id, body, {**grantee, "terms_ack_at": repository.NOW if acked else None}
+        )
+        share = await repository.share(conn, share_id)
+        record = {"actor_id": user.user_id, "token_id": user.token_id}
+        await audit.record(conn, **record, action=audit.SHARE_CREATE, target=_target(share, secret.id))
+        if acked:
+            warning = f"share:{share_id} {audit_target(secret.id)} warning={TERMS_WARNING}"
+            await audit.record(conn, **record, action=audit.SHARE_TERMS_ACK, target=warning)
+        extra = {"share": share_id, "login": user.login, "credential": credential, "grantee_kind": body.grantee_kind}
+        log.info("credential shared", extra=extra)
+        return share
 
 
 # Revoking
 
 
-async def revoke(conn: AsyncConnection, user: Principal, share_id: int) -> CredentialShare:
-    """Revoke share ``share_id``, in the caller's transaction: its secret's owner may, and a hub admin may revoke any;
+async def revoke(engine: AsyncEngine, user: Principal, share_id: int) -> CredentialShare:
+    """Revoke share ``share_id``, in a transaction of its own: its secret's owner may, and a hub admin may revoke any;
     one audit row share.revoke."""
-    row = await repository.share_to_revoke(conn, share_id)
-    if row is None or (row.owner_id != user.user_id and not user.admin):
-        raise NotFound(NO_SHARE.format(share_id=share_id))
-    if row.revoked_at is not None:
-        raise Conflict(f"share {share_id} is revoked already")
-    await repository.revoke(conn, share_id, user.user_id)
-    ended = await end_share_leases(conn, share_id)  # a lease under way waits on the share's row, then ends here
-    by = "owner" if row.owner_id == user.user_id else "admin"
-    target = f"share:{share_id} {audit_target(row.secret_id)} by={by}"
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SHARE_REVOKE, target=target)
-    share = await repository.share(conn, share_id)
-    log.info("credential share revoked", extra={"share": share_id, "login": user.login, "by": by, "leases": ended})
-    return share
+    async with UnitOfWork(engine) as conn:
+        row = await repository.share_to_revoke(conn, share_id)
+        if row is None or (row.owner_id != user.user_id and not user.admin):
+            raise NotFound(NO_SHARE.format(share_id=share_id))
+        if row.revoked_at is not None:
+            raise Conflict(f"share {share_id} is revoked already")
+        await repository.revoke(conn, share_id, user.user_id)
+        ended = await end_share_leases(conn, share_id)  # a lease under way waits on the share's row, then ends here
+        by = "owner" if row.owner_id == user.user_id else "admin"
+        target = f"share:{share_id} {audit_target(row.secret_id)} by={by}"
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SHARE_REVOKE, target=target
+        )
+        share = await repository.share(conn, share_id)
+        log.info("credential share revoked", extra={"share": share_id, "login": user.login, "by": by, "leases": ended})
+        return share

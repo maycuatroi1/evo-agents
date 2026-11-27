@@ -17,7 +17,6 @@ from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plugin_api.models.srs import ApprovedUseCases
 from evo_agents.hub.server.plugin_api.service import srs
 from evo_agents.hub.server.srs.models.doc import SrsError
-from evo_agents.hub.server.task_dispatch import plugin_of_request
 from evo_agents.hub.tables_srs import SLUG
 
 Slug = Annotated[str, Path(pattern=SLUG, description="the document's slug")]
@@ -30,9 +29,7 @@ router = APIRouter(prefix="/v1/plugin-api", tags=["plugin api"], responses={401:
 async def approved_use_cases(request: Request, project: ProjectName, slug: Slug):
     """The use cases of the version of document ``slug`` approved last: code and key of each."""
     try:
-        async with request.app.state.engine.begin() as conn:
-            plugin_id = await plugin_of_request(request, conn)
-            return await srs.approved_use_cases(conn, plugin_id, project, slug)
+        return await srs.approved_use_cases(request.app.state.engine, request, project, slug)
     except SrsError as exc:
         return error_response(request, exc.status, exc.message)
 

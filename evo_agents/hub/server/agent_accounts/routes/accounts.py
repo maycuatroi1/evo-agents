@@ -36,8 +36,7 @@ async def put_agent_account(
     response: Response,
 ) -> AgentAccountWritten:
     """Give the agent the account ``name``, or replace it whole; the value is sealed and never shown again."""
-    async with request.app.state.engine.begin() as conn:
-        written = await service.put(conn, request, user, project, handle, name, body)
+    written = await service.put(request.app.state.engine, request, user, project, handle, name, body)
     log.info(
         "agent account written",
         extra={"project": project, "handle": handle, "login": user.login, "was_created": written.created},
@@ -57,8 +56,7 @@ async def change_agent_account(
     response: Response,
 ) -> AgentAccount:
     """Renew the account (``value``), or change its weight, priority, workers or end, or pause or resume it."""
-    async with request.app.state.engine.begin() as conn:
-        changed, named = await service.change(conn, request, user, project, handle, name, body)
+    changed, named = await service.change(request.app.state.engine, request, user, project, handle, name, body)
     log.info(
         "agent account changed", extra={"project": project, "handle": handle, "login": user.login, "fields": named}
     )
@@ -73,8 +71,7 @@ async def delete_agent_account(
     request: Request, project: ProjectName, handle: Handle, name: AccountName, user: CurrentUser
 ) -> Response:
     """Delete the account: its value and bindings go, and its leases not given back are revoked."""
-    async with request.app.state.engine.begin() as conn:
-        revoked = await service.delete(conn, user, project, handle, name)
+    revoked = await service.delete(request.app.state.engine, user, project, handle, name)
     log.info(
         "agent account deleted",
         extra={"project": project, "handle": handle, "login": user.login, "leases_revoked": revoked},

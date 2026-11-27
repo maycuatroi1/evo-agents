@@ -1,5 +1,5 @@
 """The routes of the seller under ``/v1/seller`` (``evo_agents.hub.server.seller.service.keys`` says what each does):
-they open a transaction at most and leave the rest to the service."""
+they pass the app's engine to the service, which opens the transaction and does the rest."""
 
 from __future__ import annotations
 
@@ -46,23 +46,20 @@ async def seller_info(request: Request, user: CurrentUser) -> SellerInfo:
 @router.get("/listings", response_model=Listings)
 async def listings(request: Request, user: CurrentUser) -> Listings:
     """What this hub sells, with each listing's versions and the licences of it that cover today."""
-    async with request.app.state.engine.begin() as conn:
-        return Listings(listings=await listing_service.listings(conn))
+    return await listing_service.all_listings(request.app.state.engine)
 
 
 @router.post("/listings", response_model=Listing, status_code=201, responses=REFUSALS)
 async def add_listing(request: Request, body: ListingIn, user: CurrentUser) -> Listing:
     """List plugin ``plugin`` of publisher ``publisher`` for sale, owned by the caller, as a draft until its first
     bundle."""
-    async with request.app.state.engine.begin() as conn:
-        return await listing_service.add_listing(conn, body, user)
+    return await listing_service.add_listing(request.app.state.engine, body, user)
 
 
 @router.patch("/listings/{plugin}", response_model=Listing, responses=REFUSALS)
 async def change_listing(request: Request, plugin: ListingPlugin, body: ListingChange, user: CurrentUser) -> Listing:
     """Change a listing's price (for orders placed from now on), its signer, or list or withdraw it."""
-    async with request.app.state.engine.begin() as conn:
-        return await listing_service.change_listing(conn, plugin, body, user)
+    return await listing_service.change_listing(request.app.state.engine, plugin, body, user)
 
 
 @router.post("/listings/{plugin}/bundles", response_model=Listing, status_code=201, responses=REFUSALS)
@@ -81,8 +78,7 @@ async def orders(
     state: Annotated[Literal["open", "paid", "cancelled"] | None, Query()] = None,
 ) -> Orders:
     """The orders buying hubs placed, the newest first; ``state`` keeps those in it."""
-    async with request.app.state.engine.begin() as conn:
-        return await order_service.orders(conn, state)
+    return await order_service.orders(request.app.state.engine, state)
 
 
 @router.post("/orders/{number}/paid", response_model=Order, responses=REFUSALS)
@@ -95,8 +91,7 @@ async def mark_paid(request: Request, number: ORDER_NUMBER, body: OrderPaidIn, u
 @router.post("/orders/{number}/cancel", response_model=Order, responses=REFUSALS)
 async def cancel_order(request: Request, number: ORDER_NUMBER, user: AdminUser) -> Order:
     """Cancel an open order, which was never paid."""
-    async with request.app.state.engine.begin() as conn:
-        return await order_service.cancel_order(conn, number, user)
+    return await order_service.cancel_order(request.app.state.engine, number, user)
 
 
 # Revenue
@@ -107,13 +102,11 @@ async def revenue(
     request: Request, user: AdminUser, month: Annotated[str | None, Query(pattern=MONTH)] = None
 ) -> Revenue:
     """The revenue of ``month`` (YYYY-MM, this month in UTC when left out) by publisher, split 80/20."""
-    async with request.app.state.engine.begin() as conn:
-        return await revenue_service.revenue_of(conn, month or revenue_service.this_month())
+    return await revenue_service.month_revenue(request.app.state.engine, month)
 
 
 @router.post("/payouts", response_model=Revenue, responses=REFUSALS)
 async def mark_paid_out(request: Request, body: PayoutIn, user: AdminUser) -> Revenue:
     """Mark a publisher's share of a month paid out; once per publisher and month, after the month is over."""
     revenue_service.check_over(body.month)
-    async with request.app.state.engine.begin() as conn:
-        return await revenue_service.mark_paid_out(conn, body, user)
+    return await revenue_service.mark_paid_out(request.app.state.engine, body, user)

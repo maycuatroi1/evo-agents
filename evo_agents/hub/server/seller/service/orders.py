@@ -8,11 +8,12 @@ import secrets
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import Request
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.seller.models.seller import ORDER_TTL, Order, OrderPaidIn, Orders
 from evo_agents.hub.server.seller.repository import orders as repository
@@ -65,10 +66,11 @@ async def order_row(conn: AsyncConnection, number: str, *, lock: bool = False):
     return row
 
 
-async def orders(conn: AsyncConnection, state: str | None) -> Orders:
+async def orders(engine: AsyncEngine, state: str | None) -> Orders:
     """The orders, the newest first; those in ``state`` alone, when given."""
-    await expire_orders(conn)
-    return Orders(orders=[order_model(row) for row in await repository.orders(conn, state)])
+    async with UnitOfWork(engine) as conn:
+        await expire_orders(conn)
+        return Orders(orders=[order_model(row) for row in await repository.orders(conn, state)])
 
 
 async def licence_start(conn: AsyncConnection, row, today: date) -> date:
@@ -138,10 +140,11 @@ async def mark_paid(request: Request, number: str, body: OrderPaidIn, user: Prin
     return result
 
 
-async def cancel_order(conn: AsyncConnection, number: str, user: Principal) -> Order:
+async def cancel_order(engine: AsyncEngine, number: str, user: Principal) -> Order:
     """Cancel open order ``number``."""
-    row = await order_row(conn, number, lock=True)
-    _open(row, number)
-    await repository.close(conn, row.id, state="cancelled", closed_by=user.user_id)
-    await record(conn, user, audit.MARKET_ORDER_CANCEL, f"order:{number} hub:{row.buyer_hub}")
-    return order_model(await order_row(conn, number))
+    async with UnitOfWork(engine) as conn:
+        row = await order_row(conn, number, lock=True)
+        _open(row, number)
+        await repository.close(conn, row.id, state="cancelled", closed_by=user.user_id)
+        await record(conn, user, audit.MARKET_ORDER_CANCEL, f"order:{number} hub:{row.buyer_hub}")
+        return order_model(await order_row(conn, number))

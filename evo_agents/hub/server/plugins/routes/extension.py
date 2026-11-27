@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Respons
 from evo_agents.hub.plugin_calls import CoreRegistry, core_registry, load
 from evo_agents.hub.server.plugins.models.extension import METHODS, MOUNT, PluginName, ProjectName, RouteName
 from evo_agents.hub.server.plugins.service import extension as service
-from evo_agents.hub.server.plugins.service.extension import Sent, enabled_for, mount_of, stray_hooks
+from evo_agents.hub.server.plugins.service.extension import Sent, check_enabled, mount_of, stray_hooks
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -50,8 +50,7 @@ def _gate(plugin: str):
         project = request.path_params.get("project")
         if not project:
             raise HTTPException(404, f"the routes of plugin {plugin} are under {mount_of(plugin)}/<project>/")
-        async with request.app.state.engine.begin() as conn:
-            await enabled_for(conn, user, plugin, project)
+        await check_enabled(request.app.state.engine, user, plugin, project)
 
     return gate
 

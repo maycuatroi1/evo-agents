@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub.seller_client import SellerClient, SellerUnavailable
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable, market_purchase_aad
 from evo_agents.hub.server.market.models.licenses import (
     LAPSED,
@@ -77,9 +78,10 @@ def today_utc() -> date:
 # The hub's id
 
 
-async def hub_identity(conn: AsyncConnection, public_url: str | None) -> HubIdentity:
+async def hub_identity(engine: AsyncEngine, public_url: str | None) -> HubIdentity:
     """The hub's stable id, made the first time it is asked for, and its address."""
-    return HubIdentity(hub=await hub_id(conn), url=public_url)
+    async with UnitOfWork(engine) as conn:
+        return HubIdentity(hub=await hub_id(conn), url=public_url)
 
 
 # Buying
@@ -191,12 +193,13 @@ async def buy(request: Request, source: int, plugin: str, body: BuyIn, user: Pri
     return Bought(purchase=_purchase_model(found, today_utc()), instructions=instructions, trusted_publisher=new)
 
 
-async def purchases(conn: AsyncConnection) -> Purchases:
+async def purchases(engine: AsyncEngine) -> Purchases:
     """The hub's orders of paid plugins and their licences, the newest first."""
-    hub = await hub_id(conn)
-    rows = await repository.purchases(conn)
-    today = today_utc()
-    return Purchases(hub=hub, purchases=[_purchase_model(row, today) for row in rows])
+    async with UnitOfWork(engine) as conn:
+        hub = await hub_id(conn)
+        rows = await repository.purchases(conn)
+        today = today_utc()
+        return Purchases(hub=hub, purchases=[_purchase_model(row, today) for row in rows])
 
 
 # Checking

@@ -49,8 +49,7 @@ async def upload_image(request: Request, project: ProjectName):
         return await docs.writing(conn, await plugin_of_request(request, conn), project)
 
     try:
-        async with request.app.state.engine.begin() as conn:
-            who = await writing(conn)
+        who = await docs.acting_writer(request.app.state.engine, request, project)
 
         async def check(conn: AsyncConnection) -> int:
             return (await writing(conn)).access.project_id
@@ -66,9 +65,7 @@ async def save_document(request: Request, project: ProjectName, slug: Slug, body
     """Save the next version of a document of the plugin, or create it at version 1; a save that changes nothing
     writes nothing."""
     try:
-        async with request.app.state.engine.begin() as conn:
-            plugin_id = await plugin_of_request(request, conn)
-            return await docs.save(conn, plugin_id, project, slug, body)
+        return await docs.save(request.app.state.engine, request, project, slug, body)
     except DocsError as exc:
         return error_response(request, exc.status, exc.message)
     except IntegrityError:

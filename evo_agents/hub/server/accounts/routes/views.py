@@ -27,5 +27,4 @@ async def run_accounts(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> list[RunAccount]:
     """The accounts run ``run_id`` took, by variable, and each usage limit it hit; for the member who dispatched it."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.accounts_of_run(conn, user, project, run_id, sink)
+    return await service.accounts_of_run(request.app.state.engine, user, project, run_id, sink)

@@ -36,6 +36,7 @@ from evo_agents.hub.market_refresh import GitHubMarket, MarketUnavailable
 from evo_agents.hub.self_managed import ProjectScope
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import blob_store, put_bytes
 from evo_agents.hub.server.market.models.install import (
     BUNDLE_ASSET,
@@ -305,38 +306,39 @@ async def install_from_github(request: Request, body: GitHubInstallIn, user: Pri
 
 
 async def request_install(
-    conn: AsyncConnection, config: HubConfig, source: int, plugin: str, body: MarketRequestIn, user: Principal
+    engine: AsyncEngine, config: HubConfig, source: int, plugin: str, body: MarketRequestIn, user: Principal
 ) -> MarketRequest:
     """Ask the hub admins to install plugin ``plugin`` of market ``source`` for project ``body.project``, of which
     ``user`` is an admin; each hub admin gets a notice, once per open request."""
-    access = await project_access(conn, user, body.project)
-    check_admin(access, "asking for a plugin")
-    row = await source_row(conn, source)
-    item = entry_of(row, plugin)
-    found = await repository.add_request(conn, access.project_id, source, plugin, user.user_id)
-    if found is None:
-        open_one = await repository.open_request(conn, access.project_id, source, plugin)
-        return MarketRequest(id=open_one.id, project=body.project, plugin=plugin, state="open", created=False)  # pyright: ignore[reportOptionalMemberAccess]
-    target = f"{body.project}/market:{source}/{plugin}"
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=audit.MARKET_REQUEST,
-        target=target,
-        project_id=access.project_id,
-    )
-    for admin_id in await hub_admin_ids(conn, config.admins):
-        await NOTIFIER.notify(
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, body.project)
+        check_admin(access, "asking for a plugin")
+        row = await source_row(conn, source)
+        item = entry_of(row, plugin)
+        found = await repository.add_request(conn, access.project_id, source, plugin, user.user_id)
+        if found is None:
+            open_one = await repository.open_request(conn, access.project_id, source, plugin)
+            return MarketRequest(id=open_one.id, project=body.project, plugin=plugin, state="open", created=False)  # pyright: ignore[reportOptionalMemberAccess]
+        target = f"{body.project}/market:{source}/{plugin}"
+        await audit.record(
             conn,
-            user_id=admin_id,
-            kind="notice",
-            title=f"{user.login} asks for {item['name']} in {body.project}",
-            body=f"{item['name']} ({plugin}) of market {row.repo}, by {item['publisher']['id']}",
-            notice_kind=NOTICE,
-            # Of no project: a hub admin need hold no grant on it to read it (the Inbox shows a project's notices
-            # to its members only); the project is in the title and the details.
-            details={"source": source, "plugin": plugin, "project": body.project},
-            link=f"/market/{source}/{plugin}",
+            actor_id=user.user_id,
+            token_id=user.token_id,
+            action=audit.MARKET_REQUEST,
+            target=target,
+            project_id=access.project_id,
         )
-    return MarketRequest(id=found.id, project=body.project, plugin=plugin, state=found.state, created=True)
+        for admin_id in await hub_admin_ids(conn, config.admins):
+            await NOTIFIER.notify(
+                conn,
+                user_id=admin_id,
+                kind="notice",
+                title=f"{user.login} asks for {item['name']} in {body.project}",
+                body=f"{item['name']} ({plugin}) of market {row.repo}, by {item['publisher']['id']}",
+                notice_kind=NOTICE,
+                # Of no project: a hub admin need hold no grant on it to read it (the Inbox shows a project's notices
+                # to its members only); the project is in the title and the details.
+                details={"source": source, "plugin": plugin, "project": body.project},
+                link=f"/market/{source}/{plugin}",
+            )
+        return MarketRequest(id=found.id, project=body.project, plugin=plugin, state=found.state, created=True)

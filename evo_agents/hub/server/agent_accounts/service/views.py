@@ -17,7 +17,7 @@ its meaning: the caller's own accounts alone (``accounts``).
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.server.accounts.service.views import agent_account_figures
 from evo_agents.hub.server.agent_accounts.models.views import icon_url
@@ -25,6 +25,7 @@ from evo_agents.hub.server.agent_accounts.repository import accounts as reposito
 from evo_agents.hub.server.agent_accounts.service.accounts import view_of
 from evo_agents.hub.server.agent_accounts.service.shapes import AgentAccount, ListedAgentAccount
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.repository.secrets import bound_names
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
@@ -53,41 +54,46 @@ async def _profile_id(conn: AsyncConnection, user: Principal, project: str, hand
     return profile_id
 
 
-async def list_accounts(conn: AsyncConnection, user: Principal, project: str, handle: str) -> list[AgentAccount]:
+async def list_accounts(engine: AsyncEngine, user: Principal, project: str, handle: str) -> list[AgentAccount]:
     """The live accounts of agent ``handle``, by variable and name, with their figures."""
-    profile_id = await _profile_id(conn, user, project, handle)
-    found = await _views(conn, [profile_id])
-    return [AgentAccount(**view) for view in found.get(profile_id, [])]
+    async with UnitOfWork(engine) as conn:
+        profile_id = await _profile_id(conn, user, project, handle)
+        found = await _views(conn, [profile_id])
+        return [AgentAccount(**view) for view in found.get(profile_id, [])]
 
 
-async def show(conn: AsyncConnection, user: Principal, project: str, handle: str, name: str) -> AgentAccount:
+async def show(engine: AsyncEngine, user: Principal, project: str, handle: str, name: str) -> AgentAccount:
     """The account ``name`` of agent ``handle`` with its figures; 404 when the agent has no live account of that
     name."""
-    profile_id = await _profile_id(conn, user, project, handle)
-    found = await _views(conn, [profile_id], name)
-    if not found:
-        raise NotFound(f"@{handle} has no account named {name}")
-    return AgentAccount(**found[profile_id][0])
+    async with UnitOfWork(engine) as conn:
+        profile_id = await _profile_id(conn, user, project, handle)
+        found = await _views(conn, [profile_id], name)
+        if not found:
+            raise NotFound(f"@{handle} has no account named {name}")
+        return AgentAccount(**found[profile_id][0])
 
 
 async def list_all(
-    conn: AsyncConnection, user: Principal, project: str | None, handle: str | None
+    engine: AsyncEngine, user: Principal, project: str | None, handle: str | None
 ) -> list[ListedAgentAccount]:
     """The live accounts of the agents of every project the caller holds a grant on and reaches, by project, handle,
     variable and name."""
-    rows = [
-        row for row in await repository.listed_agents(conn, user.user_id, project, handle) if user.reaches(row.project)
-    ]
-    found = await _views(conn, [row.id for row in rows])
-    return [
-        ListedAgentAccount(
-            **view,
-            project=row.project,
-            handle=row.handle,
-            agent_name=row.name,
-            color=row.color,
-            icon_url=icon_url(row.project, row.handle, row.avatar_sha256),
-        )
-        for row in rows
-        for view in found.get(row.id, [])
-    ]
+    async with UnitOfWork(engine) as conn:
+        rows = [
+            row
+            for row in await repository.listed_agents(conn, user.user_id, project, handle)
+            if user.reaches(row.project)
+        ]
+        found = await _views(conn, [row.id for row in rows])
+        return [
+            ListedAgentAccount(
+                **view,
+                project=row.project,
+                handle=row.handle,
+                agent_name=row.name,
+                color=row.color,
+                icon_url=icon_url(row.project, row.handle, row.avatar_sha256),
+            )
+            for row in rows
+            for view in found.get(row.id, [])
+        ]

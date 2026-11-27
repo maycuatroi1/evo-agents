@@ -40,15 +40,13 @@ async def market(
 ) -> MarketList:
     """The plugins of every market this hub reads, by market then as each lists them; filtered by the words of
     ``q`` (in the id, name, description and publisher), an industry, a category and a market."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.market_list(conn, q, industry, category, source)
+    return await service.market_list(request.app.state.engine, q, industry, category, source)
 
 
 @router.get("/{source}/{plugin}", response_model=MarketPluginDetail, responses=REFUSALS)
 async def market_plugin(request: Request, source: SourceId, plugin: PluginId, user: CurrentUser) -> MarketPluginDetail:
     """One plugin of one market, with the permissions its latest release asks for."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.market_plugin(conn, request.app.state.config, source, plugin)
+    return await service.market_plugin(request.app.state.engine, request.app.state.config, source, plugin)
 
 
 @sources_router.get("", response_model=MarketSources)
@@ -66,14 +64,12 @@ async def add_source(request: Request, body: MarketSourceIn, user: AdminUser) ->
 @sources_router.delete("/{source_id}", response_model=MarketSources, responses=WRITE_REFUSALS)
 async def remove_source(request: Request, source_id: SourceId, user: AdminUser) -> MarketSources:
     """Stop reading a market; the plugins installed from it stay installed. The operator's market stays."""
-    async with request.app.state.engine.begin() as conn:
-        await service.remove_source(conn, source_id, user)
+    await service.remove_source(request.app.state.engine, source_id, user)
     return await service.sources_model(request)
 
 
 @sources_router.post("/{source_id}/refresh", response_model=MarketSource, responses=WRITE_REFUSALS)
 async def refresh_source(request: Request, source_id: SourceId, user: AdminUser) -> MarketSource:
     """Read a market again now: its index, and the latest release of each of its free plugins."""
-    async with request.app.state.engine.begin() as conn:
-        await service.source_row(conn, source_id)
+    await service.check_source(request.app.state.engine, source_id)
     return await service.refreshed(request, source_id)

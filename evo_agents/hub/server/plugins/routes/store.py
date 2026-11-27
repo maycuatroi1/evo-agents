@@ -35,9 +35,7 @@ from evo_agents.hub.server.plugins.models.store import (
     PluginPublished,
     PluginPublishIn,
 )
-from evo_agents.hub.server.plugins.service.actions import backend_of, install, instance_place, publish, remove
-from evo_agents.hub.server.plugins.service.configs import layer_versions, read_layer, rollback_layer, write_layer
-from evo_agents.hub.server.plugins.service.store import detail, list_plugins
+from evo_agents.hub.server.plugins.service import actions
 from evo_agents.hub.server.security import AdminUser, admin
 
 READ_REFUSALS = {404: {"model": ErrorBody}}
@@ -54,40 +52,39 @@ router = APIRouter(
 @router.get("", response_model=list[Plugin])
 async def plugins(request: Request) -> list[Plugin]:
     """Every plugin of the hub's store, by name."""
-    async with request.app.state.engine.begin() as conn:
-        return await list_plugins(conn, request.app.state.hub_version)
+    return await actions.plugins(request.app.state.engine, request.app.state.hub_version)
 
 
 @router.get("/{name}", response_model=PluginDetail, responses=READ_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def show_plugin(request: Request, name: PluginName) -> PluginDetail:
     """One plugin with every version, newest first."""
-    async with request.app.state.engine.begin() as conn:
-        return await detail(conn, name, request.app.state.hub_version)
+    return await actions.plugin_detail(request.app.state.engine, name, request.app.state.hub_version)
 
 
 @router.post("/{name}/versions", response_model=PluginPublished, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def publish_version(request: Request, name: PluginName, body: PluginPublishIn, user: AdminUser):
     """Publish a signed bundle the hub holds as a version of plugin ``name``, after checking it whole."""
-    return await publish(request.app.state, blob_store(request), user, name, body)
+    return await actions.publish(request.app.state, blob_store(request), user, name, body)
 
 
 @router.post("/{name}/install", response_model=Plugin, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def install_plugin(request: Request, name: PluginName, body: PluginInstallIn, user: AdminUser) -> Plugin:
     """Install a version of plugin ``name``: the one asked for, or the newest that runs on this hub."""
-    return await install(request.app.state, lambda: blob_store(request), user, name, body.version, upgrade=False)
+    state = request.app.state
+    return await actions.install(state, lambda: blob_store(request), user, name, body.version, upgrade=False)
 
 
 @router.post("/{name}/upgrade", response_model=Plugin, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def upgrade_plugin(request: Request, name: PluginName, body: PluginInstallIn, user: AdminUser) -> Plugin:
     """Move the installed version of plugin ``name`` to a newer one: the one asked for, or the newest that runs."""
-    return await install(request.app.state, lambda: blob_store(request), user, name, body.version, upgrade=True)
+    state = request.app.state
+    return await actions.install(state, lambda: blob_store(request), user, name, body.version, upgrade=True)
 
 
 @router.post("/{name}/remove", response_model=Plugin, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def remove_plugin(request: Request, name: PluginName, user: AdminUser) -> Plugin:
     """Remove the installed version of plugin ``name``; every version stays in the store."""
-    async with request.app.state.engine.begin() as conn:
-        return await remove(conn, user, name, request.app.state.hub_version)
+    return await actions.remove(request.app.state.engine, user, name, request.app.state.hub_version)
 
 
 # The hub's own layer of a plugin's config
@@ -97,24 +94,19 @@ async def remove_plugin(request: Request, name: PluginName, user: AdminUser) -> 
 async def plugin_backend(request: Request, name: PluginName) -> BackendStatus:
     """The state of the plugin's backend as the plugin host last reported it: running, restarting, or in backoff with
     its last failure, for a hub admin to read. A plugin the host has not reported on reads as such."""
-    async with request.app.state.engine.begin() as conn:
-        return await backend_of(conn, name)
+    return await actions.backend_of(request.app.state.engine, name)
 
 
 @router.get("/{name}/config", response_model=PluginConfigLayer, responses=READ_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def instance_config(request: Request, name: PluginName) -> PluginConfigLayer:
     """The current version of the hub's own layer of the plugin's config."""
-    async with request.app.state.engine.begin() as conn:
-        place, _ = await instance_place(conn, name)
-        return await read_layer(conn, place)
+    return await actions.instance_config(request.app.state.engine, name)
 
 
 @router.get("/{name}/config/versions", response_model=list[PluginConfigLayer], responses=READ_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def instance_config_versions(request: Request, name: PluginName) -> list[PluginConfigLayer]:
     """Every version of the hub's own layer, the newest first."""
-    async with request.app.state.engine.begin() as conn:
-        place, _ = await instance_place(conn, name)
-        return await layer_versions(conn, place)
+    return await actions.instance_config_versions(request.app.state.engine, name)
 
 
 @router.post("/{name}/config", response_model=PluginConfigLayer, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -122,9 +114,7 @@ async def write_instance_config(
     request: Request, name: PluginName, body: PluginConfigWrite, user: AdminUser
 ) -> PluginConfigLayer:
     """Write the next version of the hub's own layer: the fields ``values`` sets, those ``unset`` clears."""
-    async with request.app.state.engine.begin() as conn:
-        place, schema = await instance_place(conn, name, lock=True)
-        return await write_layer(conn, user, place, schema, body, request.app.state.sealer)
+    return await actions.write_instance_config(request.app.state.engine, user, name, body, request.app.state.sealer)
 
 
 @router.post("/{name}/config/rollback", response_model=PluginConfigLayer, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -132,6 +122,4 @@ async def rollback_instance_config(
     request: Request, name: PluginName, body: PluginConfigRollback, user: AdminUser
 ) -> PluginConfigLayer:
     """Copy an older version of the hub's own layer as its next version."""
-    async with request.app.state.engine.begin() as conn:
-        place, _ = await instance_place(conn, name, lock=True)
-        return await rollback_layer(conn, user, place, body)
+    return await actions.rollback_instance_config(request.app.state.engine, user, name, body)

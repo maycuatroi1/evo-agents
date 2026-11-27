@@ -24,8 +24,7 @@ RepoName = Annotated[str, Path(min_length=1, max_length=200, pattern=LINE)]
 @router.get("/{project}/curator/protection", response_model=Protection, responses=REFUSALS)  # pyright: ignore[reportArgumentType]
 async def protection(request: Request, project: ProjectName, user: CurrentUser) -> Protection:
     """The project's repos, and whether the hub checked that a ruleset keeps the Curator off each default branch."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.protection(conn, user, project)
+    return await service.protection(request.app.state.engine, user, project)
 
 
 @router.post(

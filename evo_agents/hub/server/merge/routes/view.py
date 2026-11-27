@@ -59,8 +59,7 @@ async def show_queue(
 ) -> MergeQueueView:
     """The merge requests of the project's queue (``repo``'s alone when given), newest first, each with its ledger, and
     its audit samples."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.queue_view(conn, user, project, repo, limit)
+    return await view.queue_view(request.app.state.engine, user, project, repo, limit)
 
 
 @router.get("/{project}/merge-queue/figures", response_model=MergeFigures, responses=REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -73,8 +72,7 @@ async def queue_figures(
 ) -> MergeFigures:
     """For each repo, agent and model, the merges of the last ``days``: how many, reverted, rolled back, passed by
     the Judge and found wrong, and the time in the queue and to the checks."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.figures(conn, user, project, repo, days)
+    return await view.figures(request.app.state.engine, user, project, repo, days)
 
 
 @router.post("/{project}/merge-queue/samples/{sample_id}", response_model=MergeSample, responses=ANSWER_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -82,8 +80,7 @@ async def answer_sample(
     request: Request, project: ProjectName, sample_id: RowId, body: SampleAnswer, user: CurrentUser
 ) -> MergeSample:
     """An admin of the project answers an audit sample: ``ok``, or ``faulty``, which counts against the Judge."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.answer_sample(conn, user, project, sample_id, body.result, body.note)
+    return await view.answer_sample(request.app.state.engine, user, project, sample_id, body.result, body.note)
 
 
 @router.post("/{project}/merge-queue/{queue_id}/release", response_model=QueuedMergeRequest, responses=ANSWER_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -92,16 +89,14 @@ async def approve_release(
 ) -> QueuedMergeRequest:
     """An admin approves the PROD release of a merge whose repo the policy releases by hand (``prod_release``
     manual): the hub's next pass runs its deploy job, carrying the merges before it."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.approve_release(conn, user, project, queue_id)
+    return await view.approve_release(request.app.state.engine, user, project, queue_id)
 
 
 @router.post("/{project}/merge-queue/{queue_id}/revert", response_model=QueuedMergeRequest, responses=ANSWER_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def ask_revert(request: Request, project: ProjectName, queue_id: RowId, user: CurrentUser) -> QueuedMergeRequest:
     """An admin asks the hub to revert a merge it followed after its merge, such as one of the suspects of a failed
     check it could not tell apart: the hub's next pass opens its revert, first in the queue."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.ask_revert(conn, user, project, queue_id)
+    return await view.ask_revert(request.app.state.engine, user, project, queue_id)
 
 
 @router.post("/{project}/merge-queue/{queue_id}/pass", response_model=QueuedMergeRequest, responses=ANSWER_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -111,13 +106,11 @@ async def pass_hold(
     """An admin of the project passes the hold of a merge request at a gate that holds it for a person (gate 3, score
     hacking), with a reason: it is gated again at the same head, and the queue goes on from that gate; the later gates,
     the Judges, its turn and its pipeline still apply, and a new push takes the pass back."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.pass_hold(conn, user, project, queue_id, body.reason)
+    return await view.pass_hold(request.app.state.engine, user, project, queue_id, body.reason)
 
 
 @router.post("/{project}/merge-queue/repos/{repo}/resume", response_model=BreakerReset, responses=ANSWER_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def resume_repo(request: Request, project: ProjectName, repo: RepoName, user: CurrentUser) -> BreakerReset:
     """An admin of the project resets the breaker of a repo that tripped: its paused merge requests wait for their turn
     again, at their place, and what trips it counts from now."""
-    async with request.app.state.engine.begin() as conn:
-        return await view.resume_repo(conn, user, project, repo)
+    return await view.resume_repo(request.app.state.engine, user, project, repo)

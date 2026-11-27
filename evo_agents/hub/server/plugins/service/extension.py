@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from fastapi import APIRouter, HTTPException, Response
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub.plugin_calls import (
     CoreContext,
@@ -21,6 +22,7 @@ from evo_agents.hub.plugin_calls import (
     enabled_in,
     manifest_of,
 )
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.plugins.models.delegation import PERMISSION
 from evo_agents.hub.server.plugins.models.extension import (
     ANSWERED_HEADERS,
@@ -68,6 +70,13 @@ async def enabled_for(conn, user: Principal, plugin: str, project: str) -> tuple
     if row is None:
         raise not_enabled(plugin, project)
     return access, row
+
+
+async def check_enabled(engine: AsyncEngine, user: Principal, plugin: str, project: str) -> None:
+    """404 unless ``project`` enables ``plugin`` and the caller holds a grant there (``enabled_for``), in a
+    transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        await enabled_for(conn, user, plugin, project)
 
 
 def route_paths(router: APIRouter, prefix: str = "") -> list[str]:

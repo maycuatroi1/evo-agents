@@ -1,5 +1,5 @@
 """The operations on the records of an isolated plugin (``evo_agents.hub.plugin_records``) that both doors of
-``routes.records`` run, the plugin's backend's and a member's, each in the transaction its route opens. A refusal of
+``routes.records`` run, the plugin's backend's and a member's, each in a transaction of its own. A refusal of
 the store is the HTTP error of its status; a record the call may not see answers 404, as one that does not exist."""
 
 from __future__ import annotations
@@ -8,10 +8,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import plugin_calls, plugin_records
 from evo_agents.hub.plugin_records import RecordError
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.plugin_api.models.records import RecordIn, RecordOut, RecordPage
 from evo_agents.hub.server.plugins.models.delegation import Resolved
 from evo_agents.hub.server.plugins.service import delegation
@@ -41,55 +42,57 @@ async def direct(conn: AsyncConnection, user: Any, plugin: str, project: str) ->
     return Resolved(reach, access.role)
 
 
-async def listing(conn: AsyncConnection, door: Door, collection: str, after: str | None, limit: int) -> RecordPage:
+async def listing(engine: AsyncEngine, door: Door, collection: str, after: str | None, limit: int) -> RecordPage:
     """At most ``limit`` records of ``collection`` after the key ``after``."""
-    try:
-        resolved = await door(conn)
-        records, more = await plugin_records.listing(conn, resolved.reach, collection, after=after, limit=limit)
-    except RecordError as exc:
-        raise _fail(exc) from None
-    return RecordPage(records=records, next_after=more)  # pyright: ignore[reportArgumentType]
+    async with UnitOfWork(engine) as conn:
+        try:
+            resolved = await door(conn)
+            records, more = await plugin_records.listing(conn, resolved.reach, collection, after=after, limit=limit)
+        except RecordError as exc:
+            raise _fail(exc) from None
+        return RecordPage(records=records, next_after=more)  # pyright: ignore[reportArgumentType]
 
 
-async def show(conn: AsyncConnection, door: Door, collection: str, key: str) -> RecordOut:
+async def show(engine: AsyncEngine, door: Door, collection: str, key: str) -> RecordOut:
     """The record ``key`` of ``collection``."""
-    try:
-        resolved = await door(conn)
-        return RecordOut(**await plugin_records.get(conn, resolved.reach, collection, key))
-    except RecordError as exc:
-        raise _fail(exc) from None
+    async with UnitOfWork(engine) as conn:
+        try:
+            resolved = await door(conn)
+            return RecordOut(**await plugin_records.get(conn, resolved.reach, collection, key))
+        except RecordError as exc:
+            raise _fail(exc) from None
 
 
-async def write(
-    conn: AsyncConnection, door: Door, collection: str, key: str, given: RecordIn
-) -> tuple[RecordOut, bool]:
+async def write(engine: AsyncEngine, door: Door, collection: str, key: str, given: RecordIn) -> tuple[RecordOut, bool]:
     """(the record ``key`` of ``collection`` as written, whether it is new)."""
-    try:
-        resolved = await door(conn)
-        may_write(resolved)
-        record, new = await plugin_records.put(
-            conn,
-            resolved.reach,
-            collection,
-            key,
-            given.body,
-            level=given.level,
-            audience=given.audience,
-            revision=given.revision,
-        )
-    except RecordError as exc:
-        raise _fail(exc) from None
-    return RecordOut(**record), new
+    async with UnitOfWork(engine) as conn:
+        try:
+            resolved = await door(conn)
+            may_write(resolved)
+            record, new = await plugin_records.put(
+                conn,
+                resolved.reach,
+                collection,
+                key,
+                given.body,
+                level=given.level,
+                audience=given.audience,
+                revision=given.revision,
+            )
+        except RecordError as exc:
+            raise _fail(exc) from None
+        return RecordOut(**record), new
 
 
-async def erase(conn: AsyncConnection, door: Door, collection: str, key: str, revision: int | None) -> None:
+async def erase(engine: AsyncEngine, door: Door, collection: str, key: str, revision: int | None) -> None:
     """Delete the record ``key`` of ``collection``, only at ``revision`` when given."""
-    try:
-        resolved = await door(conn)
-        may_write(resolved)
-        await plugin_records.remove(conn, resolved.reach, collection, key, revision=revision)
-    except RecordError as exc:
-        raise _fail(exc) from None
+    async with UnitOfWork(engine) as conn:
+        try:
+            resolved = await door(conn)
+            may_write(resolved)
+            await plugin_records.remove(conn, resolved.reach, collection, key, revision=revision)
+        except RecordError as exc:
+            raise _fail(exc) from None
 
 
 __all__ = ["Door", "direct", "erase", "listing", "show", "write"]

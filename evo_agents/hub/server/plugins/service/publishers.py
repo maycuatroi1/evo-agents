@@ -10,10 +10,11 @@ naming ``publisher:<id> signer:<signer>``.
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.plugins.models.publishers import CORE, LOCKED, PluginPublisher, TrustedSigner
 from evo_agents.hub.server.plugins.repository import publishers as repository
 from evo_agents.hub.server.security import Principal
@@ -85,3 +86,27 @@ async def list_publishers(conn: AsyncConnection, config: HubConfig) -> list[Plug
             )
         )
     return found
+
+
+async def all_publishers(engine: AsyncEngine, config: HubConfig) -> list[PluginPublisher]:
+    """``list_publishers``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await list_publishers(conn, config)
+
+
+async def trust_and_list(
+    engine: AsyncEngine, user: Principal, config: HubConfig, publisher: str, signer: str, note: str | None
+) -> list[PluginPublisher]:
+    """``trust`` ``signer`` for ``publisher``, then the publishers, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        await trust(conn, user, config, publisher, signer, note)
+        return await list_publishers(conn, config)
+
+
+async def remove_and_list(
+    engine: AsyncEngine, user: Principal, config: HubConfig, entry_id: int
+) -> list[PluginPublisher]:
+    """``remove`` signer ``entry_id``, then the publishers, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        await remove(conn, user, entry_id)
+        return await list_publishers(conn, config)

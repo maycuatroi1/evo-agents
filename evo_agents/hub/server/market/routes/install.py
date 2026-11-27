@@ -46,5 +46,4 @@ async def request_install(
     request: Request, source: SourceId, plugin: PluginId, body: MarketRequestIn, user: CurrentUser
 ) -> MarketRequest:
     """Ask the hub admins to install a plugin of a market for project ``project``, of which the caller is an admin."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.request_install(conn, request.app.state.config, source, plugin, body, user)
+    return await service.request_install(request.app.state.engine, request.app.state.config, source, plugin, body, user)

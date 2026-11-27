@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from typing import cast
 
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import features, plugin_calls
 from evo_agents.hub.server import hub_settings
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.messages import ChatMessageIn
 from evo_agents.hub.server.chats.repository.views import message_rows
@@ -37,6 +38,7 @@ from evo_agents.hub.server.plugin_api.models.chats import (
 from evo_agents.hub.server.plugin_api.repository import chats as store
 from evo_agents.hub.server.plugin_api.service.access import acting, granted
 from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.task_dispatch import plugin_of_request
 
 # Who acts, and in which chat
 
@@ -82,30 +84,36 @@ async def _in_chat(
 
 
 async def post(
-    conn: AsyncConnection, plugin_id: int, project: str, chat_id: int, body: PluginMessageIn
+    engine: AsyncEngine, request: Request, project: str, chat_id: int, body: PluginMessageIn
 ) -> tuple[str, PluginChatMessage]:
     """(the plugin's name, its message as its author reads it), posted in the name of the admin who granted it its
     permissions, in the thread of ``reply_to`` when given."""
-    who, author, chat = await _in_chat(conn, plugin_id, project, chat_id, WRITES)
-    message = ChatMessageIn(body=body.body, reply_to=body.reply_to)
-    message_id = await deliver_message(conn, chat, author, message, plugin=who.plugin)
-    (row,) = await message_rows(conn, chat_id, [message_id])
-    progress = by_message(await chat_progress(conn, author, chat_id))
-    (view,) = await messages_view(conn, [row], await label_reader(conn, author.user_id, [row.label]), progress)
-    return who.plugin, PluginChatMessage(**view.model_dump(), thread=view.thread_root_id or view.id)
+    async with UnitOfWork(engine) as conn:
+        plugin_id = await plugin_of_request(request, conn)
+        who, author, chat = await _in_chat(conn, plugin_id, project, chat_id, WRITES)
+        message = ChatMessageIn(body=body.body, reply_to=body.reply_to)
+        message_id = await deliver_message(conn, chat, author, message, plugin=who.plugin)
+        (row,) = await message_rows(conn, chat_id, [message_id])
+        progress = by_message(await chat_progress(conn, author, chat_id))
+        (view,) = await messages_view(conn, [row], await label_reader(conn, author.user_id, [row.label]), progress)
+        return who.plugin, PluginChatMessage(**view.model_dump(), thread=view.thread_root_id or view.id)
 
 
 async def thread(
-    conn: AsyncConnection, plugin_id: int, project: str, chat_id: int, of: int, before: int | None, limit: int
+    engine: AsyncEngine, request: Request, project: str, chat_id: int, of: int, before: int | None, limit: int
 ) -> PluginThread:
     """The latest ``limit`` messages of the thread of message ``of`` before ``before``, oldest first."""
-    _, author, chat = await _in_chat(conn, plugin_id, project, chat_id, READS)
-    found = await visible_message(conn, chat, of)
-    root = found.thread_root_id or found.id
-    rows = await store.thread_rows(conn, chat_id, root, before, limit)
-    page = list(reversed(rows[:limit]))
-    messages = await messages_view(conn, page, await label_reader(conn, author.user_id, [row.label for row in page]))
-    return PluginThread(chat_id=chat_id, thread=root, messages=messages, more=len(rows) > limit)
+    async with UnitOfWork(engine) as conn:
+        plugin_id = await plugin_of_request(request, conn)
+        _, author, chat = await _in_chat(conn, plugin_id, project, chat_id, READS)
+        found = await visible_message(conn, chat, of)
+        root = found.thread_root_id or found.id
+        rows = await store.thread_rows(conn, chat_id, root, before, limit)
+        page = list(reversed(rows[:limit]))
+        messages = await messages_view(
+            conn, page, await label_reader(conn, author.user_id, [row.label for row in page])
+        )
+        return PluginThread(chat_id=chat_id, thread=root, messages=messages, more=len(rows) > limit)
 
 
 __all__ = ["post", "thread"]

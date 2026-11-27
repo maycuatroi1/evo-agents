@@ -6,11 +6,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import payments
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.seller.models.seller import Payout, PayoutIn, Revenue, RevenueLine
 from evo_agents.hub.server.seller.repository import revenue as repository
@@ -61,6 +62,13 @@ def this_month() -> str:
     return datetime.now(UTC).strftime("%Y-%m")
 
 
+async def month_revenue(engine: AsyncEngine, month: str | None) -> Revenue:
+    """The revenue of ``month`` (this month in UTC when None), as ``revenue_of`` reads it, in a transaction of its
+    own."""
+    async with UnitOfWork(engine) as conn:
+        return await revenue_of(conn, month or this_month())
+
+
 def check_over(month: str) -> None:
     """409 while ``month`` is not over."""
     _, end = month_bounds(month)
@@ -68,26 +76,27 @@ def check_over(month: str) -> None:
         raise Conflict(f"{month} is not over yet: its revenue can still grow")
 
 
-async def mark_paid_out(conn: AsyncConnection, body: PayoutIn, user: Principal) -> Revenue:
+async def mark_paid_out(engine: AsyncEngine, body: PayoutIn, user: Principal) -> Revenue:
     """Mark the share of ``body.publisher`` for ``body.month`` paid out, once."""
-    start, _ = month_bounds(body.month)
-    found = await revenue_of(conn, body.month)
-    line = next((line for line in found.publishers if line.publisher == body.publisher), None)
-    if line is None:
-        raise NotFound(f"publisher {body.publisher} has no revenue in {body.month}")
-    if line.paid_out is not None:
-        raise Conflict(f"the share of {body.publisher} for {body.month} is marked paid out already")
-    gross = payments.usd(line.gross_usd)
-    share, platform = payments.split(gross)
-    await repository.add_payout(
-        conn,
-        month=start.date(),
-        publisher=body.publisher,
-        gross_usd=gross,
-        publisher_usd=share,
-        platform_usd=platform,
-        paid_by=user.user_id,
-        note=body.note,
-    )
-    await record(conn, user, audit.MARKET_PAYOUT, f"payout:{body.month} publisher:{body.publisher} usd={share}")
-    return await revenue_of(conn, body.month)
+    async with UnitOfWork(engine) as conn:
+        start, _ = month_bounds(body.month)
+        found = await revenue_of(conn, body.month)
+        line = next((line for line in found.publishers if line.publisher == body.publisher), None)
+        if line is None:
+            raise NotFound(f"publisher {body.publisher} has no revenue in {body.month}")
+        if line.paid_out is not None:
+            raise Conflict(f"the share of {body.publisher} for {body.month} is marked paid out already")
+        gross = payments.usd(line.gross_usd)
+        share, platform = payments.split(gross)
+        await repository.add_payout(
+            conn,
+            month=start.date(),
+            publisher=body.publisher,
+            gross_usd=gross,
+            publisher_usd=share,
+            platform_usd=platform,
+            paid_by=user.user_id,
+            note=body.note,
+        )
+        await record(conn, user, audit.MARKET_PAYOUT, f"payout:{body.month} publisher:{body.publisher} usd={share}")
+        return await revenue_of(conn, body.month)

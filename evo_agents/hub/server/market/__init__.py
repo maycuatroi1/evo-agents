@@ -3,7 +3,7 @@
 (``service.install``), and buying a paid plugin from its seller (``service.licenses``).
 
 The package has four layers, which lint-imports keeps in this order (contract hub-market-layers in pyproject.toml):
-``routes`` opens a transaction at most and passes the request's parts to ``service``, which checks and decides, and
-reads and writes through ``repository``; ``models`` holds the request and response models and the constants. Other
-modules import ``service`` and ``models``, never ``routes``.
+``routes`` passes the request's parts and the app's engine to ``service``, which opens the transaction, checks and
+decides, and reads and writes through ``repository``; ``models`` holds the request and response models and the
+constants. Other modules import ``service`` and ``models``, never ``routes``.
 """

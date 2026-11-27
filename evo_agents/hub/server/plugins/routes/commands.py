@@ -36,8 +36,7 @@ async def cli_plugins(
     user: CurrentUser,
     if_none_match: Annotated[str | None, Header(description="the ETag of the answer the CLI holds")] = None,
 ) -> Response:
-    async with request.app.state.engine.begin() as conn:
-        body = await plugin_commands(conn)
+    body = await plugin_commands(request.app.state.engine)
     etag = etag_of(body)
     headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
     if if_none_match is not None and etag in {tag.strip() for tag in if_none_match.split(",")}:

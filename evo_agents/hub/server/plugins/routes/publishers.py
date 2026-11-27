@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Path, Request
 
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugins.models.publishers import PluginPublisher, PublisherTrustIn
-from evo_agents.hub.server.plugins.service.publishers import list_publishers, remove, trust
+from evo_agents.hub.server.plugins.service.publishers import all_publishers, remove_and_list, trust_and_list
 from evo_agents.hub.server.security import AdminUser, admin
 
 router = APIRouter(
@@ -38,17 +38,14 @@ router = APIRouter(
 async def publishers(request: Request) -> list[PluginPublisher]:
     """The publishers this hub trusts: the operator's in the order EVO_HUB_PLUGIN_PUBLISHERS names them, then those
     only hub admins trusted."""
-    async with request.app.state.engine.begin() as conn:
-        return await list_publishers(conn, request.app.state.config)
+    return await all_publishers(request.app.state.engine, request.app.state.config)
 
 
 @router.post("", response_model=list[PluginPublisher], responses={409: {"model": ErrorBody}, 422: {"model": ErrorBody}})
 async def add_publisher(request: Request, body: PublisherTrustIn, user: AdminUser) -> list[PluginPublisher]:
     """Trust ``signer`` to sign the plugins of ``publisher``; nothing changes when the hub trusts it already."""
-    config = request.app.state.config
-    async with request.app.state.engine.begin() as conn:
-        await trust(conn, user, config, body.publisher, body.signer, body.note)
-        return await list_publishers(conn, config)
+    state = request.app.state
+    return await trust_and_list(state.engine, user, state.config, body.publisher, body.signer, body.note)
 
 
 @router.delete("/{entry_id}", response_model=list[PluginPublisher], responses={404: {"model": ErrorBody}})
@@ -57,7 +54,4 @@ async def remove_publisher(
 ) -> list[PluginPublisher]:
     """Stop trusting a signer hub admins trusted; a plugin it signed stays installed, and installing or upgrading
     it again is refused until something the hub trusts signs it."""
-    config = request.app.state.config
-    async with request.app.state.engine.begin() as conn:
-        await remove(conn, user, entry_id)
-        return await list_publishers(conn, config)
+    return await remove_and_list(request.app.state.engine, user, request.app.state.config, entry_id)
