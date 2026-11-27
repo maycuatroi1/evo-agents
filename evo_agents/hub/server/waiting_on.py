@@ -3,7 +3,7 @@
 
 ``kind`` says which of six it is, and the field of that name holds what the hub knows of it:
 
-- ``merge_check``: the merge check whose verdict answers it (``merge_check._open_wait``, merge_checks.decision_id): its
+- ``merge_check``: the merge check whose verdict answers it (``merge.service.check._open_wait``, merge_checks.decision_id): its
   pull request, repo, head, state and the state of each Judge;
 - ``agent_answer``: the run of another agent whose end answers it (``agent_asks.open_wait``, decisions.awaits_run_id):
   the agent's handle and project, that run and its state, the question the waiting run asked and when that run last did

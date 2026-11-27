@@ -10,7 +10,7 @@ config:
 
 - ``commit``, the commit the source read in the latest successful build (kg_source_files; the commit the build's
   coverage names as ``read``);
-- what the forge says now, read with the workers' GitHub App and ``contents: read`` (``evo_agents.hub.server.pulls``):
+- what the forge says now, read with the workers' GitHub App and ``contents: read`` (``evo_agents.hub.server.merge.service.pulls``):
   the repo's default branch and the commit it points at (``head``), how many of its commits the commit read lacks
   (``behind``) and how long the oldest of them has waited (``lag_hours``, 0 when none does), and the files of the
   branch against those the build holds (``kg_coverage.compare_files``): ``missing``, ``stale`` and ``deleted``, each
@@ -72,12 +72,13 @@ from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.heap import give_back
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
-from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
+from evo_agents.hub.server import hub_settings, kg_eval_sets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.kg import built_graphs
 from evo_agents.hub.server.kg_audience import agent_audience
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access

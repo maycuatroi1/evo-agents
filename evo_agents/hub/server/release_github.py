@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 from evo_agents import __version__
 from evo_agents.hub import release_runs, releases
 from evo_agents.hub.nightly import DELIM, FLUSH, pkt_line, pkt_lines
-from evo_agents.hub.server import pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.merge.service import pulls
 
 TAGS = "refs/tags/"
 HEADERS = {

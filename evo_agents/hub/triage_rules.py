@@ -173,9 +173,7 @@ def edit_problems(old: dict, new: dict, repos: set[str]) -> list[str]:
 FAILED, STALE, ESCALATE = "failed", "stale", "escalate"  # what an agent's run or turn did
 LOOP, IDLE, ROUNDS, BUDGET = "loop", "idle", "rounds", "budget"  # the rules of progress on a trace
 OPS = "ops"  # a batch of the ops queue closed with items left (``evo_agents.hub.server.ops.service.threads``)
-DRAFT = (
-    "draft"  # a draft pull request of a run's branch the hub could not settle (``evo_agents.hub.server.draft_pulls``)
-)
+DRAFT = "draft"  # a draft pull request of a run's branch the hub could not settle (``hub.server.merge.service.draft_pulls``)
 ORCHESTRATOR_RULES = (FAILED, STALE, ESCALATE, LOOP, IDLE, ROUNDS, BUDGET, OPS, DRAFT)
 LOOP_COUNT = 3  # an agent that receives the same work this many times in one trace is in a loop
 IDLE_MINUTES = {"hub": 10, "worker": 30}  # a trace with no new span this long is idle, by the runtime of its runs

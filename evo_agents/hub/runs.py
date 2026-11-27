@@ -213,7 +213,7 @@ LAZY_CHAT_REPOS = "lazy_chat_repos"
 # request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
 UPDATE_NOW = "update_now"
 # a daemon whose judge run judges a merge request of the hub's merge queue on GitLab when its claim names no change
-# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge_judge): the hub pins such a run to no other
+# (GET .../merge-judge, POST .../merge-verdict; evo_agents.hub.server.merge.service.judge): the hub pins such a run to no other
 MERGE_JUDGE = "merge_judge"
 # a daemon that clones a repo of a run it has no checkout of before the run starts (evo_agents.worker.runner.clones):
 # the hub hands such a worker a run whatever its checkouts, and keeps an older one to the runs of repos it has
@@ -555,7 +555,7 @@ SURROGATE_STAND_IN = "\ufffd"  # what a lone surrogate of an event body is store
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
 # What a run makes beside the work to run it, at any depth: a virtualenv, or a link to one in a cache of the machine.
 # The worker leaves a new one out of a run's commit (``worker.gitops.commit_run``); the hub opens no draft pull request
-# of a branch that changes nothing else (``hub.server.draft_pulls``).
+# of a branch that changes nothing else (``hub.server.merge.service.draft_pulls``).
 WORKER_MADE = (".venv",)
 
 

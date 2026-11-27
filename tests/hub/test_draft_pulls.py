@@ -1,4 +1,4 @@
-"""The draft pull requests of run branches (``evo_agents.hub.server.draft_pulls``), from the push to the end.
+"""The draft pull requests of run branches (``evo_agents.hub.server.merge.service.draft_pulls``), from the push to the end.
 
 Opening: a branch with nothing its base lacks, or that changes only what a run makes beside the work (a ``.venv``
 link), gets no pull request, and its open draft is closed; the draft goes into the base the worker names, an open one
@@ -23,7 +23,7 @@ if pg.DSN:
     from sqlalchemy import select, update
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server import draft_pulls
+    from evo_agents.hub.server.merge.service import draft_pulls
     from evo_agents.hub.server.orchestrator.service import threads as orchestrator
     from tests.hub.fake_github import FakePull
     from tests.hub.live import sql

@@ -388,7 +388,7 @@ class WorkerHub:
         return await self.call("POST", self.run(run_id, "waits"), body)
 
     async def merge_check(self, run_id: int, body: dict) -> dict:
-        """Have the hub judge plan run ``run_id``'s pull request at its head (``evo_agents.hub.server.merge_check``)."""
+        """Have the hub judge plan run ``run_id``'s pull request at its head (``evo_agents.hub.server.merge.service.check``)."""
         return await self.call("POST", self.run(run_id, "merge-check"), body)
 
     async def notice(self, run_id: int, body: dict) -> dict:

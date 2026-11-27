@@ -39,9 +39,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import blob_gc, judge, replay, skills, tables
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStoreUnavailable
-from evo_agents.hub.server import audit, pulls
+from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.protection import github_target
 
 log = logging.getLogger(__name__)

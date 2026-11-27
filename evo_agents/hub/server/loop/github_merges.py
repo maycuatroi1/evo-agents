@@ -47,7 +47,6 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.autonomy import AUTO
 from evo_agents.hub.plans import PlanProblem
-from evo_agents.hub.server import pulls
 from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.forge import forge_token
@@ -56,6 +55,7 @@ from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.gitlab import GitLabRefused, GitLabUnavailable, MergeRequest, project_of
 from evo_agents.hub.server.loop.model import DELIVER, FINISHED
 from evo_agents.hub.server.loop.view import RELEASED, run_chains
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.protection import Target, github_target
 from evo_agents.hub.server.repo_origins import repo_origins
 

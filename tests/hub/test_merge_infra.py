@@ -19,7 +19,8 @@ pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub
 
 from evo_agents.hub import judge, merge_gate, merge_infra
 from evo_agents.hub.server import merge_holds
-from evo_agents.hub.server.merge_judge import Judged, MergeVerdictIn
+from evo_agents.hub.server.merge.models.judge import MergeVerdictIn
+from evo_agents.hub.server.merge.service.judging import Judged
 
 HEAD = "a1" * 20
 VERIFY = "python -m pytest -q"

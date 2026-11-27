@@ -2165,7 +2165,7 @@ and a person who looks. At its start and every hour it cleans up (`Daemon.cleanu
   with those of its runs that ended and that no run going on resumes, whose plan marks every repo of the run merged
   or not needed (a person, or the Loop once the pull request of a deliver's plan run merged on GitHub), that built or
   judged a change of the Curator the hub merged, that made or judged a merge request the merge queue on GitLab merged,
-  or a task run every pull request of which GitHub says merged (`evo_agents.hub.server.merged_work`). It asks only
+  or a task run every pull request of which GitHub says merged (`evo_agents.hub.server.merge.service.merged_work`). It asks only
   about runs it may remove: not a run it holds, a parked run, a run another run went on from (it adopted the
   directory), nor one whose directory or a worktree of it a run that has not ended uses. A hub before this route
   answers 404, and the daemon stops asking until it restarts.

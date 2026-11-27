@@ -457,13 +457,13 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.MERGE_QUEUE, pass_context=True, lock=jobs.MERGE_QUEUE, queueing_lock=jobs.MERGE_QUEUE)
 async def merge_queue(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server import (
-        merge_ancestry,
-        merge_check,
-    )  # a run's pull request on github.com, judged at its head
     from evo_agents.hub.server.changes.service.job import (
         merge_gate,  # the queue's job, through the module of the Curator's changes
     )
+    from evo_agents.hub.server.merge.service import (  # a run's pull request on github.com, judged at its head
+        ancestry as merge_ancestry,
+    )
+    from evo_agents.hub.server.merge.service import check as merge_check
 
     found = hub(context)
     outcomes = await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)

@@ -1,5 +1,5 @@
 """The rule ``draft`` of orchestrator_threads: the thread the hub opens to the Orchestrator of an agent about a draft pull
-request of its run's branch the hub could not settle once the run's trace ended (``evo_agents.hub.server.draft_pulls``).
+request of its run's branch the hub could not settle once the run's trace ended (``evo_agents.hub.server.merge.service.draft_pulls``).
 
 Revision ID: 0242
 Revises: 0241

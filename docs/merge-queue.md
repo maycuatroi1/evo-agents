@@ -17,12 +17,12 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | the policy's keys, defaults and checks | `evo_agents/hub/autonomy.py` |
 | the policy's revisions and routes | `evo_agents/hub/server/autonomy/routes/policies.py`, `evo_agents/hub/cli/policy.py` |
 | the forge secret and the GitLab client | `evo_agents/hub/server/forge.py`, `evo_agents/hub/server/gitlab.py` |
-| scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge_gate.py`, `evo_agents/hub/server/merge_judge.py` |
+| scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge_gate.py`, `evo_agents/hub/server/merge/service/judge.py`, `evo_agents/hub/server/merge/service/judging.py` |
 | the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge_turn.py` |
 | after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/post_merge.py` |
 | the breaker | `evo_agents/hub/merge_breaker.py`, `evo_agents/hub/server/merge_breaker.py` |
 | an admin's pass of a hold for a person | `evo_agents/hub/server/merge_pass.py` |
-| the merge check of a pull request on GitHub | `evo_agents/hub/server/merge_check.py`, `evo_agents/worker/cli/merge_check.py` |
+| the merge check of a pull request on GitHub | `evo_agents/hub/server/merge/service/check.py`, `evo_agents/worker/cli/merge_check.py` |
 | the routes of the queue and the command line | `evo_agents/hub/server/merge_view.py`, `evo_agents/hub/cli/merge.py` |
 | the web's Merge queue pages | `web/src/components/merge-queue/`, `web/src/lib/merge-queue.ts`, `web/DESIGN.md` |
 | the tables (schema 0079 to 0084) | `autonomy_policies` (`tables_settings.py`); `merge_queue`, `merge_events`, `merge_samples`, `merge_breakers` (`tables_merge.py`); `merge_checks` (schema 0187, `tables_merge.py`) |
@@ -407,7 +407,7 @@ to the run. A hold nobody ended within 6 hours is judged again by the hub, which
 goes back to the run with a message saying the hub caused it, and asking again judges it again.
 
 Once a check settles, the next pass of `hub.merge_queue` comments on the pull request, once a head
-(`hub/server/merge_comments.py`): the state and why, each Judge's run on the hub, model, verdict and reasons, the
+(`hub/server/merge/service/comments.py`): the state and why, each Judge's run on the hub, model, verdict and reasons, the
 hidden checks by number with exit code and time (never what they run), the verify commands with exit code and time,
 the signs the Judge weighed, the open findings, and the merge command when it passed. The reasons of the safety, auth
 and security dimensions and the findings of the security pass stay on the hub. The comment needs the workers' App to

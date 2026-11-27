@@ -37,8 +37,8 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.merge.service.pulls import check_ruleset
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.pulls import check_ruleset
 from evo_agents.hub.server.runs.models import LINE
 from evo_agents.hub.server.security import CurrentUser
 

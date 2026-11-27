@@ -29,105 +29,32 @@ verdict's marks of them are checked here (``merge_gate.judge_round``), not taken
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
 import secrets
-from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import diff_signs, findings, judge, judges, merge_gate, merge_infra, runs, tables, tiers
-from evo_agents.hub.access import has_role
+from evo_agents.hub import findings, merge_gate
 from evo_agents.hub.server import audit, merge_pass
 from evo_agents.hub.server import merge_gate as queue
-from evo_agents.hub.server.auth import NO_STORE
-from evo_agents.hub.server.changes.models.views import (
-    HiddenResult,
-    JudgeKey,
-    SecurityPass,
-    Sign,
-    security_dimension,
-    security_findings,
-)
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.merge.models.judge import MAX_DIMENSIONS, MergeJudgeInputs, MergeVerdict, MergeVerdictIn
+from evo_agents.hub.server.merge.repository import check as check_rows
+from evo_agents.hub.server.merge.repository import judge as repository
+from evo_agents.hub.server.merge.service import check, judging
 from evo_agents.hub.server.run_state import notify_queued, write_event
-from evo_agents.hub.server.runs.models import NOT_HELD, OBJECT_NAME, RunId, VerifyResult
-from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
-
-JUDGE_TIMEOUT_S = 3600  # a judge run of the queue, its checks and its agent
-MAX_DIMENSIONS = 20
-NIGHT_SHIFT = "night_shift"
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-
-
-def _digest(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
 
 
 # Queueing a judge run
 
 
-async def queue_judge_run(
-    conn: AsyncConnection, project, *, repo: str, branch: str, title: str, builder_model, built: bool, second: bool
-) -> tuple[int | None, str | None, str]:
-    """Queue a judge run of ``project`` (``merge_gate.Project``) on ``branch`` of ``repo``, its second Judge when
-    ``second``: (its id, its model, why that model), or (None, None, why it waits). The merge queue's and the merge
-    check's (``merge_check``) judge runs both start here."""
-    if project.owner_id is None:
-        return None, None, "the project's policy has no revision to name who dispatches its Judge"
-    u = tables.users
-    login = (await conn.execute(select(u.c.login).where(u.c.id == project.owner_id))).scalar_one()
-    member = Principal(user_id=project.owner_id, login=login, admin=False, token_id=0, kind=MACHINE, token_hash="")
-    try:
-        access = await project_access(conn, member, project.name)
-    except HTTPException:
-        access = None
-    if access is None or not has_role(access.role, "writer"):
-        return None, None, f"{login}, who wrote the policy, no longer holds writer on project {project.name}"
-    model, chosen = judges.merge_judge_model(
-        project.policy["judge"]["model"], builder_model, built=built, second=second
-    )
-    values = {
-        "kind": "judge",
-        "project_id": project.id,
-        "plan_id": None,
-        "plan_revision": None,
-        "title": title[:200],
-        "dispatched_by": project.owner_id,
-        "dispatched_via": MACHINE,
-        "pinned_worker_id": None,
-        "requested_runtime": judges.CLAUDE_CODE,
-        "runtime": judges.CLAUDE_CODE,
-        "model": model,
-        "mode": "headless",
-        "approval": "auto",
-        "timeout_s": JUDGE_TIMEOUT_S,
-        "repos": [{"repo": repo, "branch": branch}],
-        "max_attempts": 1,  # a judge run that ends without a verdict is tried again by the queue, not the reaper
-    }
-    try:
-        run_id = await insert_run(conn, values)
-    except IntegrityError:
-        return None, None, "another judge run of the project is active: this one comes after it"
-    return run_id, model, chosen
-
-
 async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> str | None:
     """Queue the judge run of merge request ``row`` of ``project`` (``merge_gate.Project``), its second Judge when
     ``second``; None once queued, else why it waits."""
-    run_id, model, chosen = await queue_judge_run(
+    run_id, model, chosen = await judging.queue_judge_run(
         conn,
         project,
         repo=row.repo,
@@ -164,23 +91,15 @@ async def queue_judge(conn: AsyncConnection, project, row, *, second: bool) -> s
 # The claim and the prompt
 
 
-async def _judged(conn: AsyncConnection, run_id: int, *, lock: bool = False):
-    q = tables.merge_queue
-    query = select(q).where(q.c.judge_run_id == run_id)
-    return (await conn.execute(query.with_for_update() if lock else query)).one_or_none()
-
-
 async def merge_claim(conn: AsyncConnection, view) -> dict | None:
     """What the claim of judge run ``view`` tells its worker when it judges a merge request of the queue, as a judge
     run of the Curator is told of its change (``changes.run_curator``), with a new key of its own; None for any other
     run."""
     if view.kind != "judge" or view.plan_id:
         return None
-    row = await _judged(conn, view.id, lock=True)
+    row = await repository.judged_entry(conn, view.id, lock=True)
     if row is None:
-        from evo_agents.hub.server import merge_check  # it reads this module
-
-        return await merge_check.claim(conn, view)
+        return await check.claim(conn, view)
     charter = await queue.charter_of(conn, row.project_id)
     found = {
         "role": "judge",
@@ -195,7 +114,7 @@ async def merge_claim(conn: AsyncConnection, view) -> dict | None:
     }
     if row.state == "judging":
         key = secrets.token_urlsafe(32)
-        await queue.set_row(conn, row.id, judge_key=_digest(key))
+        await queue.set_row(conn, row.id, judge_key=judging.digest(key))
         found["judge_key"] = key
     return found
 
@@ -204,8 +123,7 @@ async def _plan_and_task(conn: AsyncConnection, row) -> tuple[dict | None, str |
     plan = await queue.plan_body(conn, row.project_id, row.plan_id) if row.source in ("plan", "builder") else None
     task = None
     if row.source == "task" and row.run_id is not None:
-        r = tables.runs
-        task = (await conn.execute(select(r.c.request).where(r.c.id == row.run_id))).scalar_one_or_none()
+        task = await repository.run_request(conn, row.run_id)
     return plan, task
 
 
@@ -213,11 +131,9 @@ async def merge_prompt(conn: AsyncConnection, view) -> str | None:
     """The prompt of judge run ``view`` when it judges a merge request of the queue; None for any other run."""
     if view.kind != "judge" or view.plan_id:
         return None
-    row = await _judged(conn, view.id)
+    row = await repository.judged_entry(conn, view.id)
     if row is None:
-        from evo_agents.hub.server import merge_check  # it reads this module
-
-        return await merge_check.prompt(conn, view)
+        return await check.prompt(conn, view)
     plan, task = await _plan_and_task(conn, row)
     mr = {
         "iid": row.iid,
@@ -245,153 +161,27 @@ async def merge_prompt(conn: AsyncConnection, view) -> str | None:
 # The judge run's side
 
 
-class MergeJudgeInputs(BaseModel):
-    """What a judge run of the queue reads: the merge request, the verify of its plan's steps in the repo, the
-    charter's protected paths, and the project's hidden checks, which no other run reads."""
-
-    queue_id: int
-    repo: str
-    iid: int
-    branch: str
-    base_branch: str
-    head_sha: str | None
-    second: bool = Field(description="the second Judge, of a merge request of high risk")
-    verify: list[str]
-    protected_paths: list[str]
-    hidden_checks: list[str] = Field(description="commands run in the worktree; never logged, never shown")
-
-
-class Dimension(BaseModel):
-    verdict: Literal[judge.VERDICTS]
-    reason: str = Field("", max_length=2000)
-
-
-class JudgeFinding(BaseModel):
-    """A thing the Judge found wrong, on one of the dimensions it judges."""
-
-    dimension: str = Field(min_length=1, max_length=findings.MAX_DIMENSION_CHARS)
-    path: str | None = Field(None, max_length=findings.MAX_PATH_CHARS)
-    line: int | None = Field(None, ge=1)
-    text: str = Field(min_length=1, max_length=findings.MAX_TEXT_CHARS)
-
-
-class FindingMark(BaseModel):
-    """What the Judge says of a finding of an earlier round."""
-
-    status: Literal[findings.MARKS]
-    where: str | None = Field(None, max_length=findings.MAX_WHERE_CHARS, description="the file:line that shows it")
-    reason: str = Field("", max_length=findings.MAX_TEXT_CHARS)
-
-
-class MergeVerdictIn(BaseModel):
-    verdict: Literal[judge.VERDICTS] | None = Field(description="the Judge agent's; null when it gave none")
-    reasons: str | None = Field(None, max_length=judge.MAX_REASONS_CHARS)
-    head_sha: str = Field(pattern=OBJECT_NAME, description="the commit the worktree was at")
-    base_sha: str | None = Field(None, pattern=OBJECT_NAME)
-    verify: list[VerifyResult] = Field(default_factory=list, max_length=50)
-    hidden: list[HiddenResult] = Field(default_factory=list, max_length=50)
-    signs: list[Sign] = Field(default_factory=list, max_length=diff_signs.MAX_SIGNS)
-    paths: list[Annotated[str, Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)]] = Field(
-        default_factory=list, max_length=judge.MAX_PATHS
-    )
-    dimensions: dict[str, Dimension] | None = Field(
-        None, description="each dimension the Judge judged apart, with its verdict and reason"
-    )
-    findings: list[JudgeFinding] = Field(
-        default_factory=list, max_length=findings.MAX_NEW, description="what the Judge found wrong in this round"
-    )
-    prior: dict[str, FindingMark] | None = Field(
-        None, description="the Judge's mark of each finding of an earlier round its prompt listed, by id"
-    )
-    security: SecurityPass | None = Field(
-        None, description="the security pass of the run, which judges the dimension security apart from the agent"
-    )
-    conflicts: list[Annotated[str, Field(min_length=1, max_length=tiers.MAX_PATH_CHARS)]] | None = Field(
-        None,
-        max_length=judge.MAX_PATHS,
-        description="a merge check's: the paths where merging the base into the head conflicts; null when it merged",
-    )
-    signs_weighed: bool = Field(
-        False,
-        description="the Judge weighed the signs of score hacking against the plan (judge.WEIGH_SIGNS) instead of the "
-        "signs failing the change unjudged: a merge check's Judge, or the queue's when its claim said signs_passed",
-    )
-
-
-class MergeVerdict(BaseModel):
-    queue_id: int
-    passed: bool = Field(description="this Judge's verdict, its checks and the worker's reading of the diff")
-    state: str = Field(description="where the merge request stands now")
-    reason: str | None
-
-
-async def held_judge(conn: AsyncConnection, user: Principal, run_id: int):
-    """The row of judge run ``run_id`` of the queue or of a merge check, which the worker of ``user`` holds, locked;
-    404 for any other run."""
-    worker_id = (await worker_of(conn, user))[0]
-    r = tables.runs
-    run = (
-        await conn.execute(
-            select(r.c.id, r.c.state, r.c.worker_id, r.c.kind, r.c.project_id, r.c.plan_id, r.c.model)
-            .where(r.c.id == run_id)
-            .with_for_update()
-        )
-    ).one_or_none()
-    if run is None or run.worker_id != worker_id or run.state not in runs.HELD_STATES:
-        raise HTTPException(404, NOT_HELD.format(id=run_id))
-    if run.kind != "judge" or run.plan_id is not None:
-        raise HTTPException(404, f"run {run_id} is no judge run of the merge queue")
-    return run
-
-
-def require_key(run_id: int, key: str | None, stored: str | None) -> None:
-    """403 unless ``key`` is the run's own key, whose digest is ``stored``."""
-    if not key or stored is None or not hmac.compare_digest(_digest(key), stored):
-        raise HTTPException(
-            403,
-            f"run {run_id} is a judge run: what it reads and its verdict take the run's own key "
-            f"({judge.JUDGE_KEY_HEADER}), which its claim handed the daemon",
-        )
-
-
 async def _held(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
     """(run row, queue row) of the judge run ``run_id`` of the queue the worker of ``user`` holds, whose merge request
     waits for its verdict, asked with the run's key; 404 for any other run, 409 for a merge request that waits for no
     verdict of it, 403 without the key."""
-    run = await held_judge(conn, user, run_id)
-    row = await _judged(conn, run_id, lock=True)
+    run = await judging.held_judge(conn, user, run_id)
+    row = await repository.judged_entry(conn, run_id, lock=True)
     if row is None or row.state != "judging":
         raise HTTPException(409, f"run {run_id} judges no merge request that waits for its verdict")
-    require_key(run_id, key, row.judge_key)
+    judging.require_key(run_id, key, row.judge_key)
     return run, row
 
 
-def hidden_of(charter: dict) -> list[str]:
-    """The hidden checks of a project's ``charter``, which only its judge runs read."""
-    return [item for item in (charter.get("judge") or {}).get("hidden_checks") or [] if isinstance(item, str)]
-
-
-async def _checks(conn: AsyncConnection, run_id: int):
-    """The module of the merge checks when judge run ``run_id`` judges one; None for a run of the queue."""
-    from evo_agents.hub.server import merge_check  # it reads this module
-
-    return merge_check if await merge_check.judged_check(conn, run_id) is not None else None
-
-
-@worker_router.get("/runs/{run_id}/merge-judge", response_model=MergeJudgeInputs, responses=REFUSALS)
-async def merge_judge_inputs(
-    request: Request, run_id: RunId, user: CurrentUser, response: Response, judge_key: JudgeKey = None
-) -> MergeJudgeInputs:
-    """What the judge run of the queue this worker holds reads, with the run's own key."""
-    async with request.app.state.engine.begin() as conn:
-        checks = await _checks(conn, run_id)
-        if checks is not None:  # a pull request on github.com
-            found = await checks.inputs(conn, user, run_id, judge_key)
-            response.headers.update(NO_STORE)
-            return found
+async def inputs(engine: AsyncEngine, user: Principal, run_id: int, judge_key: str | None) -> MergeJudgeInputs:
+    """What the judge run ``run_id`` of the queue or of a merge check, which the worker of ``user`` holds, reads,
+    with the run's own key ``judge_key``."""
+    async with engine.begin() as conn:
+        if await check_rows.judged_check(conn, run_id) is not None:  # a pull request on github.com
+            return await check.inputs(conn, user, run_id, judge_key)
         run, row = await _held(conn, user, run_id, judge_key)
         charter = await queue.charter_of(conn, row.project_id)
-        hidden = hidden_of(charter)
+        hidden = judging.hidden_of(charter)
         plan, _ = await _plan_and_task(conn, row)
         verify = merge_gate.verify_of(plan, row.repo)
         verdict = {**(row.verdict or {}), "hidden_count": len(hidden), "fingerprint": row.fingerprint}
@@ -401,7 +191,6 @@ async def merge_judge_inputs(
             "check(s) of the project, which only this run reads."
         )
         await write_event(conn, run_id, {"text": text, "queue_id": row.id})
-    response.headers.update(NO_STORE)
     return MergeJudgeInputs(
         queue_id=row.id,
         repo=row.repo,
@@ -416,27 +205,26 @@ async def merge_judge_inputs(
     )
 
 
-@worker_router.post("/runs/{run_id}/merge-verdict", response_model=MergeVerdict, responses=REFUSALS)
-async def merge_verdict(
-    request: Request, run_id: RunId, body: MergeVerdictIn, user: CurrentUser, judge_key: JudgeKey = None
+async def verdict(
+    engine: AsyncEngine, user: Principal, run_id: int, body: MergeVerdictIn, judge_key: str | None
 ) -> MergeVerdict:
-    """The verdict of the judge run of the queue this worker holds, with the run's own key: the gates it closes."""
+    """Take the verdict of the judge run ``run_id`` of the queue or of a merge check, which the worker of ``user``
+    holds, with the run's own key ``judge_key``: the gates it closes."""
     if body.dimensions is not None and len(body.dimensions) > MAX_DIMENSIONS:
         raise HTTPException(422, f"a verdict names at most {MAX_DIMENSIONS} dimensions")
     if body.prior is not None and len(body.prior) > findings.MAX_LEDGER:
         raise HTTPException(422, f"a verdict marks at most {findings.MAX_LEDGER} findings")
-    async with request.app.state.engine.begin() as conn:
-        checks = await _checks(conn, run_id)
-        if checks is not None:  # a pull request on github.com
-            return await checks.verdict(conn, user, run_id, body, judge_key)
+    async with engine.begin() as conn:
+        if await check_rows.judged_check(conn, run_id) is not None:  # a pull request on github.com
+            return await check.verdict(conn, user, run_id, body, judge_key)
         run, row = await _held(conn, user, run_id, judge_key)
         second = queue.next_round(row.verdict, row.risk) == "second"
         plan, _ = await _plan_and_task(conn, row)
         hidden_count = (row.verdict or {}).get("hidden_count")
         if not isinstance(hidden_count, int):
-            hidden_count = len(hidden_of(await queue.charter_of(conn, row.project_id)))
+            hidden_count = len(judging.hidden_of(await queue.charter_of(conn, row.project_id)))
         passed_signs = await merge_pass.covers(conn, row)  # an admin passed gate 3 at the head judged
-        found = Judged(
+        found = judging.Judged(
             body=body,
             second=second,
             expected=merge_gate.verify_of(plan, row.repo),
@@ -456,136 +244,17 @@ async def merge_verdict(
         await queue.set_row(conn, row.id, verdict=verdict, judge_run_id=None, judge_key=None, judge_attempts=0)
         row = await queue.row_of(conn, row.id)
         await _close_gates(conn, row, found, entry, passed_signs=passed_signs is not None)
-        row = await queue.row_of(conn, row.id)
+        row = await queue.row_of(conn, row.id)  # pyright: ignore[reportOptionalMemberAccess]
         said = "passed" if entry["passed"] else "failed"
-        text = f"The merge queue took the verdict: the Judge {said} merge request !{row.iid}; it is {row.state} now."
-        await write_event(conn, run_id, {"text": text, "queue_id": row.id, "passed": entry["passed"]})
-    log.info("merge verdict recorded", extra={"run_id": run_id, "queue_id": row.id, "passed": entry["passed"]})
-    return MergeVerdict(queue_id=row.id, passed=entry["passed"], state=row.state, reason=row.reason)
+        text = f"The merge queue took the verdict: the Judge {said} merge request !{row.iid}; it is {row.state} now."  # pyright: ignore[reportOptionalMemberAccess]
+        await write_event(conn, run_id, {"text": text, "queue_id": row.id, "passed": entry["passed"]})  # pyright: ignore[reportOptionalMemberAccess]
+    log.info("merge verdict recorded", extra={"run_id": run_id, "queue_id": row.id, "passed": entry["passed"]})  # pyright: ignore[reportOptionalMemberAccess]
+    return MergeVerdict(queue_id=row.id, passed=entry["passed"], state=row.state, reason=row.reason)  # pyright: ignore[reportOptionalMemberAccess]
 
 
-class Judged:
-    """What a verdict of the queue's Judge says of each gate it closes."""
-
-    def __init__(
-        self,
-        *,
-        body: MergeVerdictIn,
-        second: bool,
-        expected: list[str],
-        hidden_count: int,
-        head,
-        ledger: list[dict] | None = None,
-        run_id: int | None = None,
-        signs_weighed: bool = False,
-        skip_unchanged: bool = False,
-    ):
-        """``signs_weighed``: the Judge weighed the signs of score hacking against the plan (``judge.WEIGH_SIGNS``: a
-        merge check of a pull request, or a merge request of the queue whose gate 3 an admin passed at the head
-        judged, ``merge_pass.covers``), so they fail nothing by themselves; any other signs of the queue hold at gate
-        3. ``skip_unchanged``: a merge check's, whose verify of done steps the pull request does not change
-        (``merge_infra.unchanged``) count as passed, each named in the entry (``unchanged``)."""
-        self.body, self.second = body, second
-        self.signs_weighed = signs_weighed
-        self.expected, self.hidden_count = expected, hidden_count
-        self.verify = [item.model_dump(exclude_none=True) for item in body.verify]
-        self.unchanged = [item["command"] for item in self.verify if skip_unchanged and merge_infra.unchanged(item)]
-        counted = merge_infra.without_unchanged(self.verify) if skip_unchanged else self.verify
-        self.counted = counted
-        self.hidden = [item.model_dump(exclude_none=True) for item in body.hidden]
-        self.signs = [sign.model_dump() for sign in body.signs]
-        self.dimensions = {name: item.model_dump() for name, item in (body.dimensions or {}).items()}
-        self.dimensions[merge_gate.SECURITY] = security_dimension(body.security)
-        self.checks_ok, self.checks_why = judge.final_verdict(
-            agent="pass",
-            verify=counted,
-            expected_verify=expected,
-            hidden=self.hidden,
-            hidden_count=hidden_count,
-            signs=[],
-            head_matches=True,
-        )
-        names = merge_gate.gate_names(second)
-        ledger = ledger or []
-        if body.security is not None:  # the pass ran on this head: what it finds now is all it finds
-            ledger = findings.supersede(ledger, merge_gate.SECURITY, run_id=run_id, head=body.head_sha)
-        new = findings.read_new([item.model_dump() for item in body.findings], names) + security_findings(body.security)
-        self.marks = findings.read_marks({key: item.model_dump() for key, item in (body.prior or {}).items()})
-        self.judge_ok, self.judge_why = merge_gate.judge_round(
-            body.verdict, self.dimensions, names, ledger=ledger, marks=self.marks, new=new
-        )
-        self.round = (names, ledger, new)  # what ``infra_causes`` judges the round again with
-        self.ledger, self.raised = findings.record_round(
-            ledger,
-            names=names,
-            marks=self.marks,
-            new=new,
-            dimensions=merge_gate.read_dimensions(self.dimensions),
-            run_id=run_id,
-            head=body.head_sha,
-        )
-        self.head_matches = body.head_sha == head
-        if not self.head_matches:
-            self.judge_ok = False
-            self.judge_why.append("the Judge read another commit than the merge request's head")
-
-    @property
-    def passed(self) -> bool:
-        return (self.signs_weighed or not self.signs) and self.checks_ok and self.judge_ok
-
-    def infra_causes(self) -> list[str]:
-        """The hub's own causes of this verdict's fail (``merge_infra.verdict_causes``): none when it passed, or when
-        the pull request fails it too."""
-        names, ledger, new = self.round
-        checks_ok_without_base, _ = judge.final_verdict(
-            agent="pass",
-            verify=merge_infra.without_base(self.counted),
-            expected_verify=self.expected,
-            hidden=merge_infra.without_base(self.hidden),
-            hidden_count=self.hidden_count,
-            signs=[],
-            head_matches=True,
-        )
-        judge_ok_with_security = False
-        if self.body.security is None and self.body.verdict is not None:
-            passing = {**self.dimensions, merge_gate.SECURITY: {"verdict": "pass", "reason": ""}}
-            judge_ok_with_security, _ = merge_gate.judge_round(
-                self.body.verdict, passing, names, ledger=ledger, marks=self.marks, new=new
-            )
-        return merge_infra.verdict_causes(
-            passed=self.passed,
-            unweighed_signs=bool(self.signs) and not self.signs_weighed,
-            head_matches=self.head_matches,
-            checks_ok=self.checks_ok,
-            checks_ok_without_base=checks_ok_without_base,
-            agent=self.body.verdict,
-            judge_ok=self.judge_ok,
-            judge_ok_with_security=judge_ok_with_security,
-        )
-
-    def entry(self, run_id: int, model: str | None) -> dict:
-        passed = self.passed
-        return {
-            "run_id": run_id,
-            "model": model,
-            "agent": self.body.verdict,
-            "reasons": self.body.reasons,
-            "dimensions": self.dimensions,
-            "head_sha": self.body.head_sha,
-            "verify": self.verify,
-            "unchanged": self.unchanged,
-            "hidden": self.hidden,
-            "signs": self.signs,
-            "signs_weighed": self.signs_weighed,
-            "failures": self.checks_why + self.judge_why,
-            "passed": passed,
-            "findings": [item["id"] for item in self.raised],
-            "prior": self.marks,
-            "security": self.body.security.model_dump(exclude={"findings"}) if self.body.security else None,
-        }
-
-
-async def _close_gates(conn: AsyncConnection, row, found: Judged, entry: dict, *, passed_signs: bool = False) -> None:
+async def _close_gates(
+    conn: AsyncConnection, row, found: judging.Judged, entry: dict, *, passed_signs: bool = False
+) -> None:
     """The ledger of the gates a verdict closes, and where the merge request goes. The worker's reading of the diff
     holds it at gate 3 again unless an admin's pass covers the head judged and the Judge weighed the signs
     (``passed_signs``, ``found.signs_weighed``)."""

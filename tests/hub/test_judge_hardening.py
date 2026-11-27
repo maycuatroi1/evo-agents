@@ -241,7 +241,7 @@ def test_merge_never_when_the_head_commit_skips_ci(world, message):  # noqa: F81
 
 @pytest.mark.parametrize("cut", ["claimed", "pages"])
 def test_hack_a_pull_request_whose_files_github_cuts_short_fails_closed(world, monkeypatch, cut):  # noqa: F811
-    from evo_agents.hub.server import pulls
+    from evo_agents.hub.server.merge.service import pulls
 
     proposal = accepted(world)
     if cut == "pages":

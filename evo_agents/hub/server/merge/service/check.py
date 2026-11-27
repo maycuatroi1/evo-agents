@@ -2,7 +2,8 @@
 run opened, at its head, before the run merges it, in a repo whose policy has ``merge_check`` on
 (``autonomy.MERGE_CHECK``). A repo that leaves it off keeps its behaviour: nothing here reads it.
 
-The agent of the plan run asks with ``evo-agents worker merge-check REPO`` (POST /v1/worker/runs/{id}/merge-check).
+The agent of the plan run asks with ``evo-agents worker merge-check REPO`` (POST /v1/worker/runs/{id}/merge-check,
+``routes.check``, ``ask``).
 The hub reads the pull request with the workers' GitHub App (a token of pull_requests read alone): it must be open,
 of the run's branch, and not of a fork. Its row in merge_checks (schema 0187, one a pull request) holds the head read
 then; the verdict holds for that head alone, so a check asked at a new head starts again, with the findings of the
@@ -13,7 +14,7 @@ parks the run, and no worker slot is held while the Judges work. The verdict ans
 where the check stands.
 
 ``advance``, on each pass of the job hub.merge_queue, queues the judge run of each check that waits for one: the
-merge queue's own judge run (``merge_judge.queue_judge_run``: pinned to the policy's judge.worker or the charter's
+merge queue's own judge run (``judging.queue_judge_run``: pinned to the policy's judge.worker or the charter's
 worker on duty, on Claude Code with a model other than the Builder's, one judge run active a project), tried again
 when one ends without a verdict, up to ``judge.JUDGE_ATTEMPTS``. Its claim (``claim``) names the pull request, its head
 and its base branch, with ``merge_result``: the worker merges the current base into the head in a scratch worktree, a
@@ -25,8 +26,8 @@ pull request's head alone: failing on all three, the pull request changes nothin
 another repo, or one that calls GitHub or the hub with a login only the plan run had), and the check skips it
 (``merge_infra.unchanged``), naming it in the verdict, instead of failing the pull request or holding it for triage. Its prompt is ``merge_gate.build_prompt`` for a pull request (``prompt``), it reads its inputs
 from GET /v1/worker/runs/{id}/merge-judge and posts its verdict to
-POST /v1/worker/runs/{id}/merge-verdict, the merge queue's routes, which hand a run of a check to this module. The
-verdict is read as the queue reads its own (``merge_judge.Judged``: the checks, the Judge's dimensions, the findings of
+POST /v1/worker/runs/{id}/merge-verdict, the merge queue's routes (``routes.judge``), which hand a run of a check to this module. The
+verdict is read as the queue reads its own (``judging.Judged``: the checks, the Judge's dimensions, the findings of
 each round with its marks of earlier ones, and the security pass, ``evo_agents.hub.security_pass``). Once the first
 Judge passed, ``advance`` weighs the risk of the paths it read (``merge_gate.risk_of``, with the project's graph); a
 high one has the second Judge judge it too. The Judge never reads the Builder's transcript.
@@ -34,7 +35,7 @@ high one has the second Judge judge it too. The Judge never reads the Builder's 
 The signs of score hacking the worker reads in the diff do not fail a merge check by themselves, as they fail a
 Curator's change: the Judge weighs each against the plan (``judge.WEIGH_SIGNS``), since a plan may ask for a golden
 file, a verify command or a test's expectations to change (run #1673 failed pull request #462 unjudged on the golden
-contract additions its criterion a7 asked for), and its pass holds (``merge_judge.Judged``, ``signs_weighed``). A
+contract additions its criterion a7 asked for), and its pass holds (``judging.Judged``, ``signs_weighed``). A
 failed hidden check fails it still, and its reason tells the Builder each check's exit code and time
 (``judge.hidden_exits``), never what it runs.
 
@@ -43,7 +44,7 @@ without a verdict, the last one failing before its agent ran, the Judge's agent 
 the base branch alone too, the security pass gave no result) is held for the project's triage instead
 (``merge_holds``): it stays judging, the run's wait stays open, and the agent of a thread of the triage chat fixes the
 system, then judges it again or hands the failure back (POST /v1/worker/runs/{id}/triage/merge-check,
-``triage_check``). A failure of the pull request goes back to the run as before. A hold nobody ended within
+``triage``). A failure of the pull request goes back to the run as before. A hold nobody ended within
 ``merge_infra.HOLD_HOURS`` is judged again by ``advance``; a failure of the hub that is not held (triage off, the
 rounds of ``merge_infra.TRIAGE_ROUNDS`` used up) goes back to the run saying it was the hub's, and asking again judges
 it again.
@@ -51,97 +52,48 @@ it again.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
-from sqlalchemy import func, insert, select, update
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import autonomy, findings, judge, merge_gate, merge_infra, runs, tables
-from evo_agents.hub.server import audit, merge_holds, pulls, run_events, run_waits
+from evo_agents.hub import autonomy, findings, judge, merge_gate, merge_infra, runs
+from evo_agents.hub.server import audit, merge_holds, run_events, run_waits
 from evo_agents.hub.server import merge_gate as queue
-from evo_agents.hub.server import merge_judge as judging
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.decisions.models import OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
-from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.models.check import (
+    COMMAND,
+    FAILED,
+    JUDGING,
+    PASSED,
+    REBASE,
+    WAIT_HOURS,
+    MergeCheck,
+    MergeCheckIn,
+    MergeGate,
+    MergeGateIn,
+    MergeTriaged,
+    MergeTriageIn,
+)
+from evo_agents.hub.server.merge.models.judge import MergeJudgeInputs, MergeVerdict, MergeVerdictIn
+from evo_agents.hub.server.merge.repository import check as rows
+from evo_agents.hub.server.merge.repository.check import fresh_row, row_of, set_row
+from evo_agents.hub.server.merge.service import judging, pulls
 from evo_agents.hub.server.protection import github_target
 from evo_agents.hub.server.run_state import notify_queued, write_event
-from evo_agents.hub.server.runs.models import LINE, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
 
-STATES = JUDGING, PASSED, FAILED = ("judging", "passed", "failed")
-REBASE = "needs a rebase"
-WAIT_HOURS = 24  # a wait whose verdict never came wakes then: asking again reads where the check stands
-COMMAND = "evo-agents worker merge-check"
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-
-
-def _digest(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
-
-
-# The rows
-
-
-async def row_of(conn: AsyncConnection, check_id: int, *, lock: bool = False):
-    m = tables.merge_checks
-    query = select(m).where(m.c.id == check_id)
-    return (await conn.execute(query.with_for_update() if lock else query)).one_or_none()
-
-
-async def fresh_row(conn: AsyncConnection, check_id: int):
-    """Check ``check_id`` as it is now, one the caller knows is there."""
-    m = tables.merge_checks
-    return (await conn.execute(select(m).where(m.c.id == check_id))).one()
-
-
-async def judged_check(conn: AsyncConnection, run_id: int, *, lock: bool = False):
-    """The merge check judge run ``run_id`` judges; None for any other run."""
-    m = tables.merge_checks
-    query = select(m).where(m.c.judge_run_id == run_id)
-    return (await conn.execute(query.with_for_update() if lock else query)).one_or_none()
-
-
-async def set_row(conn: AsyncConnection, check_id: int, **values) -> None:
-    m = tables.merge_checks
-    await conn.execute(update(m).values(**values, updated_at=func.now()).where(m.c.id == check_id))
-
 
 # Asking for it
-
-
-class MergeCheckIn(BaseModel):
-    repo: str = Field(min_length=1, max_length=200, pattern=LINE, description="the repo of the run's pull request")
-    number: int | None = Field(None, ge=1, description="the pull request; null: the open one of the run's branch")
-    branch: str | None = Field(
-        None, min_length=1, max_length=255, pattern=LINE, description="the branch the run pushes, as its worker has it"
-    )
-
-
-class MergeCheck(BaseModel):
-    """Where the merge check of a pull request stands, and the wait its verdict answers."""
-
-    id: int
-    repo: str
-    number: int
-    head_sha: str = Field(description="the head the verdict holds for; a new push needs a new check")
-    state: str = Field(description="judging, passed or failed")
-    reason: str | None
-    web_url: str | None
-    decision_id: int | None = Field(description="the run's wait the verdict answers; null when the verdict is there")
-    wake_at: datetime | None = Field(description="when the wait wakes at the latest")
 
 
 def _repo_of(project, run, body: MergeCheckIn, plan: dict | None) -> tuple[str, object]:
@@ -196,39 +148,35 @@ def pull_refusal(pull: dict, target, branch: str) -> str | None:
     number = pull.get("number")
     if pull.get("state") != "open":
         return f"pull request #{number} is {pull.get('state') or 'not open'}: the hub judges an open one"
-    if head.get("ref") != branch:
-        return f"pull request #{number} is of branch {head.get('ref')}, not of the run's branch {branch}"
-    if "repo" in head and not (
-        isinstance(head["repo"], dict)
-        and str(head["repo"].get("full_name") or "").lower() == f"{target.owner}/{target.name}".lower()
+    if head.get("ref") != branch:  # pyright: ignore[reportOptionalMemberAccess]
+        return f"pull request #{number} is of branch {head.get('ref')}, not of the run's branch {branch}"  # pyright: ignore[reportOptionalMemberAccess]
+    if "repo" in head and not (  # pyright: ignore[reportOperatorIssue]
+        isinstance(head["repo"], dict)  # pyright: ignore[reportOptionalSubscript]
+        and str(head["repo"].get("full_name") or "").lower() == f"{target.owner}/{target.name}".lower()  # pyright: ignore[reportOptionalSubscript]
     ):
         return f"pull request #{number} comes from a fork: the hub judges a branch of {target.owner}/{target.name}"
-    if not judge.is_sha(head.get("sha")) or type(number) is not int:
+    if not judge.is_sha(head.get("sha")) or type(number) is not int:  # pyright: ignore[reportOptionalMemberAccess]
         return f"GitHub gave pull request #{number} no head commit"
     return None
 
 
 async def _upsert(conn: AsyncConnection, project, run_id: int, run, repo: str, pull: dict, branch: str):
     """The row of ``pull`` at its head now: a new one, or the one there, started again at a new head."""
-    m, r = tables.merge_checks, tables.runs
     head, base = pull["head"]["sha"], (pull.get("base") or {}).get("ref") or "main"
-    model = (await conn.execute(select(r.c.model).where(r.c.id == run_id))).scalar_one_or_none()
     seen = {
         "run_id": run_id,
         "plan_id": run.plan_id,
-        "model": model,
+        "model": await rows.run_model(conn, run_id),
         "title": pull.get("title"),
         "description": merge_gate.kept_description(pull.get("body")),
         "web_url": pull.get("html_url"),
         "source_branch": branch,
         "base_branch": base,
     }
-    query = select(m).where(m.c.project_id == project.id, m.c.repo == repo, m.c.number == pull["number"])
-    row = (await conn.execute(query.with_for_update())).one_or_none()
+    row = await rows.of_pull(conn, project.id, repo, pull["number"], lock=True)
     if row is None:
         values = {"project_id": project.id, "repo": repo, "number": pull["number"], "head_sha": head, **seen}
-        check_id = (await conn.execute(insert(m).values(values).returning(m.c.id))).scalar_one()
-        return await row_of(conn, check_id)
+        return await row_of(conn, await rows.insert_check(conn, values))
     if row.head_sha != head:  # a new head: the old verdict holds no more, its open findings and its thread stay
         fresh = {"head_sha": head, "base_sha": None, "state": JUDGING, "reason": None, "risk": None}
         fresh |= {"verdict": merge_holds.at_new_head(row.verdict), "judge_run_id": None, "judge_key": None}
@@ -244,11 +192,8 @@ async def _upsert(conn: AsyncConnection, project, run_id: int, run, repo: str, p
 
 async def _open_wait(conn: AsyncConnection, run_id: int, run, row, project: str) -> tuple[int, datetime]:
     """The wait of run ``run_id`` the verdict of ``row`` answers: the open one there, else a new one."""
-    d = tables.decisions
     if row.decision_id is not None:
-        found = (
-            await conn.execute(select(d.c.run_id, d.c.state, d.c.wake_at).where(d.c.id == row.decision_id))
-        ).one_or_none()
+        found = await rows.wait_of(conn, row.decision_id)
         if found is not None and found.run_id == run_id and found.state == "open":
             return row.decision_id, found.wake_at
     wake_at = datetime.now(UTC) + timedelta(hours=WAIT_HOURS)
@@ -274,21 +219,15 @@ async def _open_wait(conn: AsyncConnection, run_id: int, run, row, project: str)
     return view.id, wake_at
 
 
-@worker_router.post(
-    "/runs/{run_id}/merge-check",
-    response_model=MergeCheck,
-    responses={**REFUSALS, 409: {"model": ErrorBody}, 422: {"model": ErrorBody}, 503: {"model": ErrorBody}},
-)
-async def ask_check(request: Request, run_id: RunId, body: MergeCheckIn, user: CurrentUser) -> MergeCheck:
-    """Have the hub judge the run's pull request on github.com at its head before the run merges it: where the check
-    stands, and the wait of the run its verdict answers while it judges."""
-    engine = request.app.state.engine
+async def ask(engine: AsyncEngine, app, user: Principal, run_id: int, body: MergeCheckIn) -> MergeCheck:
+    """Have the hub judge the run's pull request on github.com at its head, read with the workers' GitHub App
+    ``app``: where the check stands, and the wait of the run its verdict answers while it judges."""
     async with engine.begin() as conn:
         _, run = await held_plan_run(conn, user, run_id)
         project = await queue._load(conn, run.project_id)
         plan = await queue.plan_body(conn, run.project_id, run.plan_id)
         branch, target = _repo_of(project, run, body, plan)
-    pull = await _read_pull(getattr(request.app.state, "github_app", None), target, branch, body.number)
+    pull = await _read_pull(app, target, branch, body.number)
     why = pull_refusal(pull, target, branch)
     if why is not None:
         raise HTTPException(409, why)
@@ -296,40 +235,24 @@ async def ask_check(request: Request, run_id: RunId, body: MergeCheckIn, user: C
         _, run = await held_plan_run(conn, user, run_id, lock=True)
         row = await _upsert(conn, project, run_id, run, body.repo, pull, branch)
         decision_id = wake_at = None
-        if row.state == JUDGING:
+        if row.state == JUDGING:  # pyright: ignore[reportOptionalMemberAccess]
             decision_id, wake_at = await _open_wait(conn, run_id, run, row, project.name)
-            row = await row_of(conn, row.id)
-    log.info("merge check asked", extra={"run_id": run_id, "check_id": row.id, "state": row.state})
+            row = await row_of(conn, row.id)  # pyright: ignore[reportOptionalMemberAccess]
+    log.info("merge check asked", extra={"run_id": run_id, "check_id": row.id, "state": row.state})  # pyright: ignore[reportOptionalMemberAccess]
     return MergeCheck(
-        id=row.id,
-        repo=row.repo,
-        number=row.number,
-        head_sha=row.head_sha,
-        state=row.state,
-        reason=row.reason,
-        web_url=row.web_url,
+        id=row.id,  # pyright: ignore[reportOptionalMemberAccess]
+        repo=row.repo,  # pyright: ignore[reportOptionalMemberAccess]
+        number=row.number,  # pyright: ignore[reportOptionalMemberAccess]
+        head_sha=row.head_sha,  # pyright: ignore[reportOptionalMemberAccess]
+        state=row.state,  # pyright: ignore[reportOptionalMemberAccess]
+        reason=row.reason,  # pyright: ignore[reportOptionalMemberAccess]
+        web_url=row.web_url,  # pyright: ignore[reportOptionalMemberAccess]
         decision_id=decision_id,
         wake_at=wake_at,
     )
 
 
 # The gate of the agent's merge command
-
-
-class MergeGateIn(BaseModel):
-    repo: str = Field(min_length=1, max_length=200, pattern=LINE, description="owner/name of the pull request's repo")
-    number: int = Field(ge=1, description="the pull request the merge command merges")
-    head: str | None = Field(
-        None, description="the head of the pull request as the hook read it now; null when it could not"
-    )
-
-
-class MergeGate(BaseModel):
-    gated: bool = Field(description="false: the repo does not have merge_check on, so the command is not the hub's")
-    passed: bool = Field(description="the hub holds a passed verdict for the head named, and the command may go on")
-    head_sha: str | None = Field(description="the head the hub's verdict holds for; the merge pins it")
-    reason: str | None = Field(description="why the command does not pass")
-    command: str = Field(description="the command that asks for the check")
 
 
 def _slug(target) -> str:
@@ -363,17 +286,13 @@ def gate_of(row, number: int, repo: str, head: str | None) -> tuple[bool, str | 
     return True, None
 
 
-@worker_router.post(
-    "/runs/{run_id}/merge-gate", response_model=MergeGate, responses={**REFUSALS, 422: {"model": ErrorBody}}
-)
-async def merge_gate_act(request: Request, run_id: RunId, body: MergeGateIn, user: CurrentUser) -> MergeGate:
+async def gate(engine: AsyncEngine, user: Principal, run_id: int, body: MergeGateIn) -> MergeGate:
     """The word of the hub on a merge command of the run's agent (K5): whether the pull request's repo has the merge
     check on, and when it has, whether a passed verdict holds for the head the command merges."""
     head = body.head.lower() if body.head and judge.is_sha(body.head.lower()) else None
-    async with request.app.state.engine.begin() as conn:
+    async with engine.begin() as conn:
         await run_events.claimed_run(conn, user, run_id)
-        r = tables.runs
-        project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
+        project_id = await rows.run_project(conn, run_id)
         project = await queue._load(conn, project_id)
         name = next(
             (
@@ -387,10 +306,8 @@ async def merge_gate_act(request: Request, run_id: RunId, body: MergeGateIn, use
         command = f"{COMMAND} {name or body.repo}"
         if settings is None or settings[autonomy.MERGE_CHECK] != autonomy.ON:
             return MergeGate(gated=False, passed=True, head_sha=None, reason=None, command=command)
-        m = tables.merge_checks
-        query = select(m).where(m.c.project_id == project_id, m.c.repo == name, m.c.number == body.number)
-        row = (await conn.execute(query)).one_or_none()
-    passed, why = gate_of(row, body.number, name, head)
+        row = await rows.of_pull(conn, project_id, name, body.number)  # pyright: ignore[reportArgumentType]
+    passed, why = gate_of(row, body.number, name, head)  # pyright: ignore[reportArgumentType]
     return MergeGate(
         gated=True, passed=passed, head_sha=row.head_sha if row is not None else None, reason=why, command=command
     )
@@ -436,8 +353,7 @@ async def settle(conn: AsyncConnection, row, state: str, reason: str, causes: li
         )
     if row.decision_id is None:
         return
-    d = tables.decisions
-    plan_id = (await conn.execute(select(d.c.plan_id).where(d.c.id == row.decision_id))).scalar_one_or_none()
+    plan_id = await rows.decision_plan(conn, row.decision_id)
     settled = await row_of(conn, row.id)
     await run_waits.wake(conn, row.decision_id, row.project_id, plan_id, woke_text(row.decision_id, settled))
 
@@ -459,30 +375,11 @@ async def _failed(conn: AsyncConnection, row, reason: str, causes: list[str], ju
 # The agent of a held check's thread
 
 
-class MergeTriageIn(BaseModel):
-    action: Literal["rejudge", "return"] = Field(  # merge_holds.ACTIONS
-        description="rejudge: judge it again from its first Judge, once the system is fixed; return: hand the failure "
-        "back to the plan run, which caused it after all"
-    )
-    reason: str = Field(min_length=1, max_length=600, description="why, for the Decision: line")
-
-
-class MergeTriaged(BaseModel):
-    check_id: int
-    state: str = Field(description="judging again after rejudge, failed after return")
-    message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
-
-
-@worker_router.post(
-    "/runs/{run_id}/triage/merge-check",
-    response_model=MergeTriaged,
-    responses={**REFUSALS, 409: {"model": ErrorBody}, 422: {"model": ErrorBody}},
-)
-async def triage_check(request: Request, run_id: RunId, body: MergeTriageIn, user: CurrentUser) -> MergeTriaged:
+async def triage(engine: AsyncEngine, user: Principal, run_id: int, body: MergeTriageIn) -> MergeTriaged:
     """In the thread of a merge check its triage holds (``merge_holds``), for the plan run's owner: judge it again, or
     hand its failure back to the plan run; 403 for another member's run, 404 outside such a thread, 409 for a check no
     longer held."""
-    async with request.app.state.engine.begin() as conn:
+    async with engine.begin() as conn:
         frame = await merge_holds.frame(conn, user, run_id)
         row, why = frame.row, " ".join(body.reason.split())
         what = f"the merge check of pull request #{row.number} of {row.repo} at {row.head_sha[:12]}"
@@ -513,7 +410,7 @@ async def triage_check(request: Request, run_id: RunId, body: MergeTriageIn, use
 async def claim(conn: AsyncConnection, view) -> dict | None:
     """What the claim of judge run ``view`` tells its worker when it judges a merge check, with a new key of its own;
     None for any other run."""
-    row = await judged_check(conn, view.id, lock=True)
+    row = await rows.judged_check(conn, view.id, lock=True)
     if row is None:
         return None
     charter = await queue.charter_of(conn, row.project_id)
@@ -529,7 +426,7 @@ async def claim(conn: AsyncConnection, view) -> dict | None:
     }
     if row.state == JUDGING:
         key = secrets.token_urlsafe(32)
-        await set_row(conn, row.id, judge_key=_digest(key))
+        await set_row(conn, row.id, judge_key=judging.digest(key))
         found["judge_key"] = key
     return found
 
@@ -547,7 +444,7 @@ def _pull(row) -> dict:
 
 async def prompt(conn: AsyncConnection, view) -> str | None:
     """The prompt of judge run ``view`` when it judges a merge check; None for any other run."""
-    row = await judged_check(conn, view.id)
+    row = await rows.judged_check(conn, view.id)
     if row is None:
         return None
     return merge_gate.build_prompt(
@@ -567,18 +464,18 @@ async def prompt(conn: AsyncConnection, view) -> str | None:
 
 async def held(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
     """(run row, check row) of the judge run ``run_id`` of a merge check the worker of ``user`` holds, whose check
-    waits for its verdict, asked with the run's key; as ``merge_judge.held_judge`` refuses, 409 for a check that waits
+    waits for its verdict, asked with the run's key; as ``judging.held_judge`` refuses, 409 for a check that waits
     for no verdict of it."""
     run = await judging.held_judge(conn, user, run_id)
-    row = await judged_check(conn, run_id, lock=True)
+    row = await rows.judged_check(conn, run_id, lock=True)
     if row is None or row.state != JUDGING:
         raise HTTPException(409, f"run {run_id} judges no pull request that waits for its verdict")
     judging.require_key(run_id, key, row.judge_key)
     return run, row
 
 
-async def inputs(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
-    """What judge run ``run_id`` of a merge check reads (``merge_judge.MergeJudgeInputs``), with the run's key."""
+async def inputs(conn: AsyncConnection, user: Principal, run_id: int, key: str | None) -> MergeJudgeInputs:
+    """What judge run ``run_id`` of a merge check reads (``MergeJudgeInputs``), with the run's key."""
     _, row = await held(conn, user, run_id, key)
     charter = await queue.charter_of(conn, row.project_id)
     hidden = judging.hidden_of(charter)
@@ -589,7 +486,7 @@ async def inputs(conn: AsyncConnection, user: Principal, run_id: int, key: str |
         "the project, which only this run reads; they run on the pull request's head merged with its base."
     )
     await write_event(conn, run_id, {"text": text, "merge_check": row.id})
-    return judging.MergeJudgeInputs(
+    return MergeJudgeInputs(
         queue_id=row.id,
         repo=row.repo,
         iid=row.number,
@@ -611,9 +508,9 @@ def _conflict_entry(run_id: int, model, body) -> dict:
     return {"run_id": run_id, "model": model, "head_sha": body.head_sha, "passed": False, "failures": [why]}
 
 
-async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key: str | None):
-    """Take the verdict of judge run ``run_id`` of a merge check (``merge_judge.MergeVerdictIn``), with the run's
-    key: a fail ends the check, the first Judge's pass waits for ``advance`` to weigh the risk, the second's ends it."""
+async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body: MergeVerdictIn, key: str | None):
+    """Take the verdict of judge run ``run_id`` of a merge check (``MergeVerdictIn``), with the run's key: a fail
+    ends the check, the first Judge's pass waits for ``advance`` to weigh the risk, the second's ends it."""
     run, row = await held(conn, user, run_id, key)
     second = queue.next_round(row.verdict, row.risk) == "second"
     causes: list[str] = []
@@ -647,14 +544,14 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
     elif second:
         await settle(conn, row, PASSED, "the Judge and the second Judge passed it")
     else:
-        await set_row(conn, row.id, reason="the Judge passed it; the hub weighs its risk next")
-    row = await fresh_row(conn, row.id)
+        await set_row(conn, row.id, reason="the Judge passed it; the hub weighs its risk next")  # pyright: ignore[reportOptionalMemberAccess]
+    row = await fresh_row(conn, row.id)  # pyright: ignore[reportOptionalMemberAccess]
     said = "passed" if entry["passed"] else "failed"
     now = "held for the hub's triage" if merge_holds.held_at(row) else row.state
     text = f"The merge check took the verdict: the Judge {said} pull request #{row.number}; it is {now} now."
     await write_event(conn, run_id, {"text": text, "merge_check": row.id, "passed": entry["passed"]})
     log.info("merge check verdict", extra={"run_id": run_id, "check_id": row.id, "passed": entry["passed"]})
-    return judging.MergeVerdict(queue_id=row.id, passed=entry["passed"], state=row.state, reason=row.reason)
+    return MergeVerdict(queue_id=row.id, passed=entry["passed"], state=row.state, reason=row.reason)
 
 
 # The job's pass
@@ -663,10 +560,9 @@ async def verdict(conn: AsyncConnection, user: Principal, run_id: int, body, key
 async def advance(engine: AsyncEngine, *, blobs=None, data_dir=None) -> dict:
     """One pass over the merge checks that judge, on each pass of the job hub.merge_queue: how many ended in each
     outcome (an empty dict when none judges)."""
-    m = tables.merge_checks
     outcomes: Counter = Counter()
     async with engine.begin() as conn:
-        ids = (await conn.execute(select(m.c.id).where(m.c.state == JUDGING).order_by(m.c.id))).scalars().all()
+        ids = await rows.judging_ids(conn)
     reader = change_tiers.GraphReader.at(blobs, data_dir) if ids else None
     for check_id in ids:
         try:
@@ -745,9 +641,7 @@ async def _ended(conn: AsyncConnection, row, outcomes) -> str | None:
     another is due, ``failed`` or ``held`` once it was the last of JUDGE_ATTEMPTS (``_failed``); None without one."""
     if row.judge_run_id is None:
         return None
-    r = tables.runs
-    query = select(r.c.state, r.c.failure_cause, r.c.error).where(r.c.id == row.judge_run_id)
-    last = (await conn.execute(query)).one_or_none()
+    last = await rows.run_end(conn, row.judge_run_id)
     if last is not None and last.state not in runs.TERMINAL_STATES:
         return "running"
     attempts = row.judge_attempts + 1

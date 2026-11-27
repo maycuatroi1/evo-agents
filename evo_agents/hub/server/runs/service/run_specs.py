@@ -237,7 +237,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         return await question_prompt(conn, view)
     if view.kind == "judge":  # the merge queue's on no plan, else the Curator's
         from evo_agents.hub.server.changes.service.policy import judge_prompt
-        from evo_agents.hub.server.merge_judge import merge_prompt
+        from evo_agents.hub.server.merge.service.judge import merge_prompt
 
         return await merge_prompt(conn, view) or await judge_prompt(conn, view)
     if view.kind == "history":
@@ -411,7 +411,7 @@ async def _curator_spec(conn: AsyncConnection, project_id: int, view: Run) -> Cu
 
     found = await run_curator(conn, project_id, view)
     if found is None and view.kind == "judge":  # a judge run of the merge queue is guarded as the Curator's are
-        from evo_agents.hub.server.merge_judge import merge_claim
+        from evo_agents.hub.server.merge.service.judge import merge_claim
 
         found = await merge_claim(conn, view)
     if found is not None and view.kind == "history":

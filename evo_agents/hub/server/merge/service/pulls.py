@@ -8,7 +8,7 @@ head and base branches of a private repo and compares them first (``compare_file
 list the pull requests of a branch, or those of a repo updated since a time (``updated_pulls``), with pull_requests
 read alone (``pulls``, the Loop's ``github_merges``);
 write the Judge's check run with checks write; comment on a pull request with pull_requests write (``comment_pull``,
-the merge check's comment, ``evo_agents.hub.server.merge_comments``); merge with contents and pull_requests write; read a branch, a tree and
+the merge check's comment, ``evo_agents.hub.server.merge.service.comments``); merge with contents and pull_requests write; read a branch, a tree and
 a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
 its failed jobs again with actions write, ``evo_agents.hub.server.release_actions``), uses it, and revokes it.
 The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
@@ -16,7 +16,7 @@ no redirect, one log line without the token): GitHub failing raises ``GitHubUnav
 again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
 GitHub's ``message`` and the field, code and message of each item of its ``errors`` (``Refused.errors``).
 
-For the draft pull requests of run branches (``evo_agents.hub.server.draft_pulls``, ``SERVER_PERMISSIONS["settle"]``)
+For the draft pull requests of run branches (``evo_agents.hub.server.merge.service.draft_pulls``, ``SERVER_PERMISSIONS["settle"]``)
 it compares a branch with its base and lists the paths that changes (``compare_paths``), lists the pull requests that
 hold a commit (``commit_pulls``), and closes a pull request or moves its base (``update_pull``).
 
@@ -51,7 +51,6 @@ import asyncio
 import base64
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TypeVar
 from urllib.parse import quote
@@ -59,6 +58,7 @@ from urllib.parse import quote
 from evo_agents.hub.judge import JUDGE_CHECK_NAME, RULE_REQUIRED_CHECKS, RULE_UPDATE, required_checks
 from evo_agents.hub.server.github import API_HEADERS, GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp, not_installed
+from evo_agents.hub.server.merge.models.pulls import Refused, RulesetCheck, Truncated
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ SERVER_PERMISSIONS = {
     "pulls": {"pull_requests": "read", "metadata": "read"},
     "merged": {"pull_requests": "read", "contents": "read", "metadata": "read"},  # a merged pull request and its base
     "check": {"checks": "write", "metadata": "read"},
-    "comment": {"pull_requests": "write", "metadata": "read"},  # the merge check's comment (merge_comments)
+    "comment": {"pull_requests": "write", "metadata": "read"},  # the merge check's comment (merge.service.comments)
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
     "tree": {"contents": "read", "metadata": "read"},
@@ -89,32 +89,6 @@ HEAD_WAITS = (1.0, 3.0)  # seconds before each new try of a pull request whose h
 MAX_ERRORS = 5  # items of GitHub's errors a refusal repeats
 MAX_SHOWN = 200  # characters of each text of GitHub's a refusal repeats
 FILE_MODES = ("100644", "100755")  # a regular file and an executable one, as a git tree names them
-
-
-class Refused(GitHubRefused):
-    """GitHub answered a call with a refusal: its ``status`` and the items of its ``errors``, each {field, code,
-    message} as far as GitHub gave them."""
-
-    def __init__(self, text: str, status: int | None = None, errors: list[dict] | None = None):
-        super().__init__(text)
-        self.status = status
-        self.errors = errors or []
-
-
-class Truncated(GitHubRefused):
-    """GitHub lists more than the hub reads: the list is not read in part."""
-
-
-@dataclass(frozen=True)
-class RulesetCheck:
-    """What ``check_ruleset`` found of a repo: whether its default branch keeps the Curator's App off, and why; and the
-    checks its active rulesets require before a merge."""
-
-    protected: bool
-    default_branch: str | None
-    reason: str
-    rulesets: list[dict] = field(default_factory=list)  # each {id, enforcement, can_bypass}
-    required_checks: list[dict] = field(default_factory=list)  # each {context, integration_id}
 
 
 def _path(*parts: str | int) -> str:
@@ -351,9 +325,9 @@ async def compare_commits(
             raise _refused(response, doing)
         data = app._json(response, doing)
         listed = data.get("commits") if isinstance(data.get("commits"), list) else []
-        found += [item for item in listed if isinstance(item, dict)]
+        found += [item for item in listed if isinstance(item, dict)]  # pyright: ignore[reportOptionalIterable]
         total = data.get("total_commits") if type(data.get("total_commits")) is int else total
-        if len(listed) < page or (total is not None and len(found) >= total):
+        if len(listed) < page or (total is not None and len(found) >= total):  # pyright: ignore[reportArgumentType]
             break
     return found, total
 
@@ -689,8 +663,8 @@ async def check_ruleset(curator_app: GitHubApp, owner: str, repo: str) -> Rulese
         doing = f"reading the rules of {branch} on {owner}/{repo}"
         path = _path("repos", owner, repo, "rules", "branches", branch)
         rules = await _pages(curator_app, token, path, doing)
-        blocking = sorted({rule.get("ruleset_id") for rule in rules if rule.get("type") == RULE_UPDATE} - {None})
-        asking = sorted({rule.get("ruleset_id") for rule in rules if rule.get("type") == RULE_REQUIRED_CHECKS} - {None})
+        blocking = sorted({rule.get("ruleset_id") for rule in rules if rule.get("type") == RULE_UPDATE} - {None})  # pyright: ignore[reportArgumentType]
+        asking = sorted({rule.get("ruleset_id") for rule in rules if rule.get("type") == RULE_REQUIRED_CHECKS} - {None})  # pyright: ignore[reportArgumentType]
         rulesets: dict = {}
 
         async def ruleset(ruleset_id) -> dict | None:
@@ -727,7 +701,7 @@ async def check_ruleset(curator_app: GitHubApp, owner: str, repo: str) -> Rulese
                 isinstance(actor, dict)
                 and actor.get("actor_type") == "Integration"
                 and actor.get("actor_id") == curator_app.app_id
-                for actor in actors
+                for actor in actors  # pyright: ignore[reportOptionalIterable]
             )
             seen.append({"id": ruleset_id, "enforcement": data.get("enforcement"), "can_bypass": bypass})
             if data.get("enforcement") == "active" and bypass == "never" and not listed:

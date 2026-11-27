@@ -1,7 +1,7 @@
 """The hub's comment on a pull request once its merge check settled, so the people who read the pull request on
 github.com see what the Judges found without opening the hub.
 
-``post`` runs on each pass of the job hub.merge_queue, after ``merge_check.advance``, from ``merge_ancestry.settle``. Each check that passed or failed
+``post`` runs on each pass of the job hub.merge_queue, after ``check.advance``, from ``ancestry.settle``. Each check that passed or failed
 within WINDOW_DAYS (and after FIRST, when the comments came in) and whose verdict names no comment for its head (``verdict.commented``) gets one comment on its pull
 request, written with the workers' GitHub App and a token of pull_requests write alone
 (``pulls.SERVER_PERMISSIONS["comment"]``); the check's verdict then records it (``commented``: the head, the state,
@@ -22,14 +22,15 @@ from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import findings, merge_gate, tables
-from evo_agents.hub.server import merge_check as checks
-from evo_agents.hub.server import pulls
+from evo_agents.hub import findings, merge_gate
+from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.merge.models.check import PASSED
+from evo_agents.hub.server.merge.repository import check as checks
+from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.protection import github_target
 
 log = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ def _judge(entry: Mapping, which: str, public_url: str | None, project: str) -> 
 def comment_body(row, project: str, public_url: str | None) -> str:
     """The comment on the pull request of merge check ``row`` once it settled (the module's docstring)."""
     verdict = row.verdict if isinstance(row.verdict, Mapping) else {}
-    state = "passed" if row.state == checks.PASSED else "failed"
+    state = "passed" if row.state == PASSED else "failed"
     lines = [MARK, f"## evo-agents merge check: {state}", ""]
     lines.append(f"At head `{row.head_sha[:12]}`" + (f": {_clip(row.reason, MAX_REASON_CHARS)}" if row.reason else "."))
     lines.append("The checks ran on this head merged with the current `" + row.base_branch + "`.")
@@ -143,7 +144,7 @@ def comment_body(row, project: str, public_url: str | None) -> str:
             )
         if len(open_ones) > MAX_FINDINGS:
             lines.append(f"- and {len(open_ones) - MAX_FINDINGS} more on the hub.")
-    if row.state == checks.PASSED:
+    if row.state == PASSED:
         lines += [
             "",
             f"The verdict holds for this head alone: `gh pr merge {row.number} --match-head-commit {row.head_sha}`.",
@@ -159,16 +160,14 @@ async def post(engine: AsyncEngine, app: GitHubApp | None, public_url: str | Non
     posted (``commented``) and refused (``comment_refused``). Nothing without the workers' App."""
     if app is None:
         return {}
-    m = tables.merge_checks
     since = max(datetime.now(UTC) - timedelta(days=WINDOW_DAYS), FIRST)
     base = (public_url or "").rstrip("/") or None
     async with engine.begin() as conn:
-        query = select(m).where(m.c.state.in_((checks.PASSED, checks.FAILED)), m.c.updated_at >= since).order_by(m.c.id)
-        rows = [row for row in await conn.execute(query) if _due(row)]
+        rows = [row for row in await checks.settled_since(conn, since) if _due(row)]
         projects = {}
         for row in rows:
             if row.project_id not in projects:
-                projects[row.project_id] = await checks.queue._load(conn, row.project_id)
+                projects[row.project_id] = await queue._load(conn, row.project_id)
     outcomes: Counter = Counter()
     for row in rows:
         project = projects[row.project_id]

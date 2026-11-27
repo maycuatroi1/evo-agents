@@ -51,13 +51,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs, webhook_events
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules
+from evo_agents.hub.server import audit, run_access_rules
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agents.service.agent_types import contributed, enabled_type, type_left, type_spend
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.merge.repository import draft_pulls as draft_rows
+from evo_agents.hub.server.merge.service import draft_pulls, trailers
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugins.service.tokens import plugin_of_token
 from evo_agents.hub.server.profile_store import by_id
@@ -679,7 +681,7 @@ async def _keep(conn: AsyncConnection, run_id: int, pull: TaskPull, entry: dict 
     elif not pull.opened:
         said = f"the draft pull request {pull.url} of {pull.branch} of {pull.repo} was open already"
     if entry is not None:
-        await draft_pulls.keep(conn, run_id, entry)
+        await draft_rows.keep(conn, run_id, entry)
     await write_event(conn, run_id, {"text": said, "pull": kept})
 
 
@@ -693,7 +695,7 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
         agent_type, plugin = (
             await conn.execute(query.join(pl, pl.c.id == t.c.plugin_id).where(r.c.id == run_id))
         ).one()
-        signed = await pull_trailers.block(conn, run_id)
+        signed = await trailers.block(conn, run_id)
         policy = await guard.policy(conn)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
