@@ -604,30 +604,17 @@ def _include_curator_routes(app: FastAPI) -> None:
 
 def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
-        branding,
         claude_sign_in,
-        context_answer_reuse,
         credential_shares,
         credentials,
-        features,
-        kg_shared_pool_api,
-        merge_check,
-        merge_judge,
-        merge_view,
-        model_catalog,
-        opportunity_evidence,
-        problem_evidence,
-        project_admin,
-        project_archive,
         rate_limits,
         run_leases,
         run_waits,
-        runnable_models,
         secrets,
         task_dispatch,
         work_cards,
     )
-    from evo_agents.hub.server.accounts.routes import accounts, provider_accounts
+    from evo_agents.hub.server.accounts.routes import accounts
     from evo_agents.hub.server.accounts.routes import pools as account_pools
     from evo_agents.hub.server.accounts.routes import views as account_views
     from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
@@ -638,7 +625,6 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.agents.routes import packs as agent_packs
     from evo_agents.hub.server.agents.routes import profiles as agent_profiles
     from evo_agents.hub.server.agents.routes import reads as agent_reads
-    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
     from evo_agents.hub.server.autonomy.routes import worker as worker_autonomy
     from evo_agents.hub.server.browser.routes import asks as browser_asks
     from evo_agents.hub.server.browser.routes import identities as browser_identities
@@ -658,13 +644,6 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import read as chat_read
     from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
-    from evo_agents.hub.server.gateway.routes import proxy as gateway_proxy
-    from evo_agents.hub.server.goals import routes as goals
-    from evo_agents.hub.server.intake import routes as intake
-    from evo_agents.hub.server.market.routes import install as market_install
-    from evo_agents.hub.server.market.routes import licenses as market_licenses
-    from evo_agents.hub.server.market.routes import market
-    from evo_agents.hub.server.opportunities import routes as opportunities
     from evo_agents.hub.server.ops import routes as ops_routes
     from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
@@ -675,17 +654,7 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.plugin_api.routes import runs as plugin_runs_api
     from evo_agents.hub.server.plugin_api.routes import srs as plugin_srs_api
     from evo_agents.hub.server.plugin_api.routes import tasks as plugin_tasks_api
-    from evo_agents.hub.server.plugins.routes import commands as plugin_command_list
-    from evo_agents.hub.server.plugins.routes import host as plugin_host
     from evo_agents.hub.server.plugins.routes import notify as plugin_notify
-    from evo_agents.hub.server.plugins.routes import projects as project_plugins
-    from evo_agents.hub.server.plugins.routes import publishers as plugin_publishers
-    from evo_agents.hub.server.plugins.routes import store as plugins
-    from evo_agents.hub.server.plugins.routes import ui as plugin_ui
-    from evo_agents.hub.server.problems import routes as problems
-    from evo_agents.hub.server.seller.routes import api as seller_api
-    from evo_agents.hub.server.seller.routes import seller
-    from evo_agents.hub.server.signals import routes as signals
     from evo_agents.hub.server.systems.routes import ops as system_ops
     from evo_agents.hub.server.systems.routes import systems as agent_systems
     from evo_agents.hub.server.triage import routes as triage_routes
@@ -752,6 +721,51 @@ def _include_member_routes(app: FastAPI) -> None:
         ops_routes.worker_router,  # and the Orchestrator of a default system in its ops threads
         work_cards.worker_router,  # the entry agent of a system sets the work of its trace
         curator_thread_routes.worker_router,  # the agent of a proposal's thread answers it
+    ):
+        app.include_router(routes)
+    _include_store_routes(app)
+
+
+def _include_store_routes(app: FastAPI) -> None:
+    """The routes of the plugin store, the markets and sellers, a project's admin and plugins, the hub's branding and
+    features, the model catalog and gateway, signals, goals, problems, opportunities, intake and merges, included
+    after the member routes in this order."""
+    from evo_agents.hub.server import (
+        branding,
+        context_answer_reuse,
+        features,
+        kg_shared_pool_api,
+        merge_check,
+        merge_judge,
+        merge_view,
+        model_catalog,
+        opportunity_evidence,
+        problem_evidence,
+        project_admin,
+        project_archive,
+        runnable_models,
+    )
+    from evo_agents.hub.server.accounts.routes import provider_accounts
+    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
+    from evo_agents.hub.server.gateway.routes import proxy as gateway_proxy
+    from evo_agents.hub.server.goals import routes as goals
+    from evo_agents.hub.server.intake import routes as intake
+    from evo_agents.hub.server.market.routes import install as market_install
+    from evo_agents.hub.server.market.routes import licenses as market_licenses
+    from evo_agents.hub.server.market.routes import market
+    from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.plugins.routes import commands as plugin_command_list
+    from evo_agents.hub.server.plugins.routes import host as plugin_host
+    from evo_agents.hub.server.plugins.routes import projects as project_plugins
+    from evo_agents.hub.server.plugins.routes import publishers as plugin_publishers
+    from evo_agents.hub.server.plugins.routes import store as plugins
+    from evo_agents.hub.server.plugins.routes import ui as plugin_ui
+    from evo_agents.hub.server.problems import routes as problems
+    from evo_agents.hub.server.seller.routes import api as seller_api
+    from evo_agents.hub.server.seller.routes import seller
+    from evo_agents.hub.server.signals import routes as signals
+
+    for routes in (
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
         plugin_publishers.router,
