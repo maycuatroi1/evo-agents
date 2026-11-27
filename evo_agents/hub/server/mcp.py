@@ -75,7 +75,6 @@ from evo_agents.hub.server import (
     kg_optimize,
     local_runs,
     opportunity_mcp,
-    plugin_tools,
     problem_evidence,
     projects,
     run_events,
@@ -110,6 +109,7 @@ from evo_agents.hub.server.mcp_text import (
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.plans import routes as plans
+from evo_agents.hub.server.plugins.service import tools as plugin_tools
 from evo_agents.hub.server.probes import mcp as probe_report
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access

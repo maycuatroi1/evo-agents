@@ -42,7 +42,6 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import plugin_calls, plugin_events, tables
 from evo_agents.hub.openapi import document
 from evo_agents.hub.server import core_plugin_api as hub
-from evo_agents.hub.server import plugin_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.posting import insert_message
@@ -50,6 +49,8 @@ from evo_agents.hub.server.core_plugin_api import _acts
 from evo_agents.hub.server.notifications.service import channels as notice_channels
 from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
+from evo_agents.hub.server.plugins.routes import extension as plugin_routes
+from evo_agents.hub.server.plugins.service.extension import route_paths
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token
 from evo_agents.plugins import core
@@ -691,7 +692,7 @@ def test_a_router_with_a_webhook_under_another_plugins_prefix_is_left_out(monkey
     app = FastAPI()
     with caplog.at_level(logging.ERROR, logger=plugin_routes.__name__):
         plugin_routes.include(app)
-    paths = set(plugin_routes.route_paths(app.router))
+    paths = set(route_paths(app.router))
     assert f"{HOOK}/{{secret}}" in paths and LINK in paths
     assert "/v1/hooks/northwind-chat/steal" not in paths
     (record,) = [record for record in caplog.records if record.getMessage() == "core plugin route not included"]

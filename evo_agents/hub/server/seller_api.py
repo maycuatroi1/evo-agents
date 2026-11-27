@@ -39,7 +39,7 @@ from evo_agents.hub.seller_client import HUB_ID_HEADER, LICENSE_SCHEME, ORDER_SE
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plugin_store import fetch_bundle
+from evo_agents.hub.server.plugins.service.store import fetch_bundle
 from evo_agents.hub.server.projects import PRINTABLE
 from evo_agents.hub.server.seller import NOT_SELLING, expire_orders, own_keys, seller_key, selling
 from evo_agents.hub.server.workers.service.codes import client_address

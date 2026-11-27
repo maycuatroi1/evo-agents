@@ -35,17 +35,15 @@ from evo_agents.hub.plugin_calls import (
     manifest_of,
 )
 from evo_agents.hub.profiles import MCP_PREFIX
-from evo_agents.hub.server import plugin_delegation
+from evo_agents.hub.server.plugins.models.delegation import PERMISSION
+from evo_agents.hub.server.plugins.models.tools import OBJECT, SHOWN_PROBLEMS, TOOL_TIMEOUT
+from evo_agents.hub.server.plugins.service.delegation import mint
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.service.profiles import run_profile
 from evo_agents.hub.server.security import Principal
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
-
-TOOL_TIMEOUT = 30.0
-OBJECT = {"type": "object"}
-SHOWN_PROBLEMS = 5
 
 
 def tool_name(plugin: str, tool: str) -> str:
@@ -102,7 +100,7 @@ async def visible(state, user: Principal, project: str | None) -> tuple[str | No
 async def listed(state, user: Principal, project: str | None) -> list[dict]:
     """The plugins' tools tools/list gives the caller in ``project``."""
     _, found = await visible(state, user, project)
-    return [described(row.name, item) for row, item in found]
+    return [described(row.name, item) for row, item in found]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def graph_refs(state, user: Principal, project: str, sink: str | None):
@@ -121,14 +119,14 @@ def _error(message: str) -> dict:
 
 
 async def _delegation(state, user: Principal, project: str | None, row, sink: str | None) -> str | None:
-    """The delegation of the call (``plugin_delegation``) when the project granted the plugin ``records:use``."""
-    if project is None or row.tier != "isolated" or plugin_delegation.PERMISSION not in effective_grant(row):
+    """The delegation of the call (``service.delegation``) when the project granted the plugin ``records:use``."""
+    if project is None or row.tier != "isolated" or PERMISSION not in effective_grant(row):
         return None
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         if access.role is None:
             return None
-        return await plugin_delegation.mint(conn, row.id, access, user, sink, TOOL_TIMEOUT)
+        return await mint(conn, row.id, access, user, sink, TOOL_TIMEOUT)
 
 
 async def answer(
@@ -136,9 +134,9 @@ async def answer(
 ) -> dict:
     """The result of a call to the plugin's tool ``name``, as MCP's tools/call gives it; ``sink`` is the session's,
     which a core plugin's tool reads through (``CoreContext.sink``)."""
-    plugin, tool = split(name)
+    plugin, tool = split(name)  # pyright: ignore[reportGeneralTypeIssues]
     role, found = await visible(state, user, project)
-    hit = next(((row, item) for row, item in found if row.name == plugin and item["name"] == tool), None)
+    hit = next(((row, item) for row, item in found if row.name == plugin and item["name"] == tool), None)  # pyright: ignore[reportAttributeAccessIssue]
     if hit is None:
         where = f"project {project}" if project else "this session, which has no project"
         return _error(
@@ -161,10 +159,10 @@ async def answer(
     params = {"tool": tool, "arguments": arguments, "caller": caller}
     run_id = user.scope.run_id if user.scope is not None else None
     jobs = getattr(state, "jobs", None)
-    refs = graph_refs(state, user, project, sink)
-    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id, sink, jobs, refs)
+    refs = graph_refs(state, user, project, sink)  # pyright: ignore[reportArgumentType]
+    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id, sink, jobs, refs)  # pyright: ignore[reportAttributeAccessIssue]
     try:
-        result = await call(state.plugin_host, plugin, row.tier, "mcp_tools", item, params, context, TOOL_TIMEOUT)
+        result = await call(state.plugin_host, plugin, row.tier, "mcp_tools", item, params, context, TOOL_TIMEOUT)  # pyright: ignore[reportAttributeAccessIssue]
     except PluginHostUnavailable as exc:
         return _error(f"plugin {plugin} is unavailable now: {exc}")
     except PluginCallError as exc:

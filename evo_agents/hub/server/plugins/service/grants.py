@@ -30,92 +30,24 @@ followed by `` permissions=<names>``.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Annotated, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import features, tables
+from evo_agents.hub import features
 from evo_agents.hub.access import has_role
 from evo_agents.hub.feature_rule import FEATURES
-from evo_agents.hub.plugin_calls import (  # noqa: F401 (where the routes and the tokens read them, as before)
-    asked_for,
-    effective_grant,
-    enabled_plugins,
-    enabled_query,
-    enablements,
-)
+from evo_agents.hub.plugin_calls import asked_for, effective_grant
 from evo_agents.hub.server import audit, hub_settings
-from evo_agents.hub.server.plugin_pages import PluginPage, pages_of
+from evo_agents.hub.server.plugins.models.grants import PluginPermission, ProjectPlugin
+from evo_agents.hub.server.plugins.repository import grants as repository
+from evo_agents.hub.server.plugins.service.pages import pages_of
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.plugins.manifest import PERMISSION_TEXT, PERMISSIONS, TIERS, is_per_project
+from evo_agents.plugins.manifest import PERMISSION_TEXT, is_per_project
 
 log = logging.getLogger(__name__)
-
-PROJECT_STATES = ("installed", "disabled")
-Permission = Annotated[str, Field(min_length=1, max_length=100)]
-
-
-class PluginPermission(BaseModel):
-    name: str
-    text: str = Field(description="what it lets the plugin do in the project")
-    granted: bool
-
-
-class ProjectPlugin(BaseModel):
-    """An installed plugin as one project sees it: what it asks for, and whether the project enabled it."""
-
-    name: str
-    title: str = Field(description="the name its manifest gives it")
-    description: str
-    tier: Literal[TIERS]
-    publisher: str
-    version: str = Field(description="the version installed on the hub")
-    state: Literal[PROJECT_STATES] = Field(description="disabled: the hub turned it off, and it does nothing anywhere")
-    disabled_reason: str | None
-    enabled: bool
-    builtin: bool = Field(
-        False,
-        description="a feature of the hub (canvas, srs, tasks), not a plugin of the store: the project's features turn "
-        "it on and off, and it may do what it asks for while on",
-    )
-    permissions: list[PluginPermission] = Field(description="what the installed version asks for, granted or not")
-    granted: list[str] = Field(
-        description="what it may do in the project: what an admin of the project granted it that the installed version "
-        "still asks for, in force while state is installed; empty while not enabled"
-    )
-    pending: list[str] = Field(
-        description="asked for and not granted, after an upgrade asked for more: enable it again to grant them"
-    )
-    records_level: str | None = Field(
-        None,
-        description="the highest level of the project's ladder its jobs and events, which have no caller, reach in its "
-        "records (records:use); none: they reach none",
-    )
-    config_schema: dict | None = Field(description="the JSON Schema of its config, secret fields marked x-secret")
-    pages: list[PluginPage] = Field(description="the pages it adds to the project's part of the web")
-    enabled_by: str | None
-    enabled_at: datetime | None
-    granted_by: str | None
-    granted_at: datetime | None
-
-
-class PluginEnable(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    permissions: list[Permission] = Field(
-        max_length=len(PERMISSIONS),
-        description="the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it",
-    )
-    records_level: str | None = Field(
-        None,
-        description="a level of the project's ladder: the highest its jobs and events, which have no caller, reach in "
-        "the plugin's records; left out, what is set stays (none at first)",
-    )
 
 
 # Access
@@ -135,40 +67,9 @@ def check_admin(access: ProjectAccess, doing: str) -> None:
 # Reading
 
 
-def _query(project_id: int):
-    """The installed plugins, by name, with what project ``project_id`` enabled and granted."""
-    p, v, pp, e = tables.plugins, tables.plugin_versions, tables.project_plugins, enablements()
-    enabler, granter = tables.users.alias("enabler"), tables.users.alias("granter")
-    return (
-        select(
-            p.c.id,
-            p.c.name,
-            p.c.publisher,
-            p.c.installed_version,
-            p.c.disabled_reason,
-            p.c.builtin,
-            v.c.manifest,
-            v.c.sha256,
-            e.c.plugin_id.label("enabled_id"),
-            e.c.permissions,
-            enabler.c.login.label("enabled_by"),
-            pp.c.enabled_at,
-            granter.c.login.label("granted_by"),
-            pp.c.granted_at,
-            pp.c.records_level,
-        )
-        .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
-        .where(or_(p.c.project_id.is_(None), p.c.project_id == project_id))  # one installed for another is not seen
-        .outerjoin(e, (e.c.plugin_id == p.c.id) & (e.c.project_id == project_id))
-        .outerjoin(pp, (pp.c.plugin_id == p.c.id) & (pp.c.project_id == project_id))
-        .outerjoin(enabler, enabler.c.id == pp.c.enabled_by)
-        .outerjoin(granter, granter.c.id == pp.c.granted_by)
-        .order_by(p.c.name)
-    )
-
-
 def view(row, project: str, secret: str | None) -> ProjectPlugin:
-    """Plugin ``row`` of ``_query`` as project ``project`` sees it; ``secret`` signs the tickets of its pages."""
+    """Plugin ``row`` of ``repository.project_query`` as project ``project`` sees it; ``secret`` signs the tickets of
+    its pages."""
     asked = asked_for(row.manifest)
     enabled = row.enabled_id is not None
     granted = list(effective_grant(row)) if enabled else []  # an upgrade that asks for less narrows it
@@ -199,7 +100,7 @@ def view(row, project: str, secret: str | None) -> ProjectPlugin:
 
 
 async def list_project_plugins(conn: AsyncConnection, access: ProjectAccess, secret: str | None) -> list[ProjectPlugin]:
-    rows = await conn.execute(_query(access.project_id))
+    rows = await repository.project_rows(conn, access.project_id)
     return [view(row, access.name, secret) for row in rows if is_per_project(row.manifest)]
 
 
@@ -218,12 +119,9 @@ def hub_wide(name: str) -> HTTPException:
 
 
 async def installed_row(conn: AsyncConnection, access: ProjectAccess, name: str, *, lock: bool = False):
-    """The row of the installed plugin ``name`` from ``_query``; 404 when none is installed, or when it runs
-    hub-wide."""
-    query = _query(access.project_id).where(tables.plugins.c.name == name)
-    if lock:  # enabling waits for an install, upgrade or removal under way, and they for it
-        query = query.with_for_update(of=tables.plugins)
-    row = (await conn.execute(query)).first()
+    """The row of the installed plugin ``name`` from ``repository.project_query``; 404 when none is installed, or
+    when it runs hub-wide."""
+    row = await repository.installed_in_project(conn, access.project_id, name, lock=lock)
     if row is None:
         raise not_installed(name)
     if not is_per_project(row.manifest):
@@ -287,7 +185,6 @@ async def enable(
             raise HTTPException(422, f"plugin {name} does not ask for records:use, so records_level has no use")
     if row.builtin:
         return await _turn_feature(conn, user, access, row, on=True)
-    pp = tables.project_plugins
     grant = {"permissions": asked, "granted_by": user.user_id, "granted_at": func.now()}
     if records_level is not None:
         grant["records_level"] = records_level
@@ -296,13 +193,12 @@ async def enable(
         granted += f" records_level={records_level}"
     if row.enabled_id is None:
         values = {"project_id": access.project_id, "plugin_id": row.id, "enabled_by": user.user_id, **grant}
-        await conn.execute(insert(pp).values(values))
+        await repository.add_enablement(conn, values)
         await _record(conn, user, access, audit.PLUGIN_PROJECT_ENABLE, _target(access, row))
     elif set(row.permissions) == set(asked) and records_level in (None, row.records_level):
         return False
     else:
-        mine = (pp.c.project_id == access.project_id) & (pp.c.plugin_id == row.id)
-        await conn.execute(update(pp).where(mine).values(grant))
+        await repository.set_grant(conn, access.project_id, row.id, grant)
     await _record(conn, user, access, audit.PLUGIN_GRANT, granted)
     log.info("plugin enabled", extra={"project": access.name, "plugin": name, "permissions": asked})
     return True
@@ -316,8 +212,7 @@ async def disable(conn: AsyncConnection, user: Principal, access: ProjectAccess,
     if row.builtin:
         await _turn_feature(conn, user, access, row, on=False)
         return
-    pp = tables.project_plugins
-    await conn.execute(delete(pp).where((pp.c.project_id == access.project_id) & (pp.c.plugin_id == row.id)))
+    await repository.delete_enablement(conn, access.project_id, row.id)
     await _record(conn, user, access, audit.PLUGIN_PROJECT_DISABLE, _target(access, row))
     log.info("plugin disabled", extra={"project": access.name, "plugin": name})
 
@@ -338,13 +233,3 @@ async def _turn_feature(conn: AsyncConnection, user: Principal, access: ProjectA
         await _record(conn, user, access, audit.PLUGIN_PROJECT_DISABLE, _target(access, row))
     log.info("feature turned %s", "on" if on else "off", extra={"project": access.name, "feature": row.name})
     return True
-
-
-# What a plugin may do
-
-
-async def project_grants(conn: AsyncConnection, name: str) -> dict[str, tuple[str, ...]]:
-    """project name -> what plugin ``name`` may do there, for each project that enabled it; empty when it is not
-    installed or turned off."""
-    query = enabled_query().where(tables.plugins.c.name == name).order_by(tables.projects.c.name)
-    return {row.project: effective_grant(row) for row in await conn.execute(query)}

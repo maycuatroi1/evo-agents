@@ -46,7 +46,7 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.blobs import blob_store, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plugin_publishers import SIGNER
+from evo_agents.hub.server.plugins.models.publishers import SIGNER
 from evo_agents.hub.server.projects import PRINTABLE
 from evo_agents.hub.server.security import AdminUser, CurrentUser, Principal
 from evo_agents.hub.server.signals.models import SignalIn

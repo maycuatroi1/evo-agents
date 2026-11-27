@@ -46,23 +46,20 @@ from evo_agents.hub.server.blobs import blob_store, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-from evo_agents.hub.server.plugin_grants import check_admin
-from evo_agents.hub.server.plugin_publishers import SIGNER, check_may_trust, trust
-from evo_agents.hub.server.plugin_store import (
-    Plugin,
-    PluginPublishIn,
+from evo_agents.hub.server.plugins.models.publishers import SIGNER
+from evo_agents.hub.server.plugins.models.store import Plugin, PluginPublishIn
+from evo_agents.hub.server.plugins.repository.store import find, version_rows
+from evo_agents.hub.server.plugins.service.grants import check_admin
+from evo_agents.hub.server.plugins.service.publishers import check_may_trust, trust
+from evo_agents.hub.server.plugins.service.store import (
     check_bundle,
     check_placeable,
-    find,
     hub_admin_ids,
     record_version,
     set_installed,
     trusted_publishers,
-    version_rows,
 )
-from evo_agents.hub.server.plugin_store import (
-    plugin as stored_plugin,
-)
+from evo_agents.hub.server.plugins.service.store import plugin as stored_plugin
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import AdminUser, CurrentUser, admin
 from evo_agents.plugins.bundle import BundleError, read_bundle

@@ -20,7 +20,7 @@ from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.core_plugin_api._reads import MAX_ROWS, enabled_project
 from evo_agents.hub.server.core_plugin_api._types import Plugin, ProjectRef, Refused, UserRef, own_plugin
-from evo_agents.hub.server.plugin_routes import not_enabled
+from evo_agents.hub.server.plugins.service.extension import not_enabled
 
 # PROJECT_NAME: the pattern of a project's name, as the hub's routes take it in a path.
 

@@ -342,7 +342,7 @@ def test_hostile_plugin_cannot_use_a_delegation_that_is_not_its_own_or_not_live_
 
 def delegation_of(client, db, plugin: str) -> str:
     """A delegation of ``plugin``'s own for a call of the owner (the spy has no route: mint through the hub's helper)."""
-    from evo_agents.hub.server import plugin_delegation as delegations
+    from evo_agents.hub.server.plugins.service import delegation as delegations
     from evo_agents.hub.server.projects import access_of
 
     owner = user_id(db, OWNER)

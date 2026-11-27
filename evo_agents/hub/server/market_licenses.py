@@ -44,16 +44,12 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.market import PluginId, SourceId, entry_of, source_row, source_rows
 from evo_agents.hub.server.market_install import Installing, check_trust, install_checked
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
-from evo_agents.hub.server.plugin_publishers import trust
-from evo_agents.hub.server.plugin_store import (
-    ADMIN_PAGE,
-    MAX_REASON_CHARS,
-    find,
-    hub_admin_ids,
-    set_installed,
-)
-from evo_agents.hub.server.plugin_store import NOTICE as DISABLED_NOTICE
-from evo_agents.hub.server.plugin_tokens import revoke_tokens
+from evo_agents.hub.server.plugins.models.store import ADMIN_PAGE, MAX_REASON_CHARS
+from evo_agents.hub.server.plugins.models.store import NOTICE as DISABLED_NOTICE
+from evo_agents.hub.server.plugins.repository.store import find
+from evo_agents.hub.server.plugins.repository.tokens import revoke_tokens
+from evo_agents.hub.server.plugins.service.publishers import trust
+from evo_agents.hub.server.plugins.service.store import hub_admin_ids, set_installed
 from evo_agents.hub.server.sealing import Sealer, Unsealable, market_purchase_aad
 from evo_agents.hub.server.security import AdminUser
 from evo_agents.hub.server.seller_api import Contact

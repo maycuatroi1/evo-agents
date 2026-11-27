@@ -26,11 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_calls, plugin_records
 from evo_agents.hub.plugin_records import COLLECTION, KEY, MAX_PAGE, RecordError
-from evo_agents.hub.server import plugin_delegation as delegation
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plugin_delegation import Resolved, may_write
-from evo_agents.hub.server.plugin_routes import PluginName, enabled_for
+from evo_agents.hub.server.plugins.models.delegation import Resolved
+from evo_agents.hub.server.plugins.models.extension import PluginName
+from evo_agents.hub.server.plugins.service import delegation
+from evo_agents.hub.server.plugins.service.delegation import may_write
+from evo_agents.hub.server.plugins.service.extension import enabled_for
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.hub.server.task_dispatch import plugin_of_request
 

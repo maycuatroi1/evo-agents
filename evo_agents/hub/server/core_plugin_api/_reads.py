@@ -36,7 +36,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     UserRef,
     own_plugin,
 )
-from evo_agents.hub.server.plugin_routes import not_enabled
+from evo_agents.hub.server.plugins.service.extension import not_enabled
 
 MAX_ROWS = 5000  # the most rows one read returns
 NO_PLAN = "project {project} has no plan {plan}"

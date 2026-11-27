@@ -45,6 +45,7 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
+from evo_agents.hub.plugin_calls import PluginHostClient
 from evo_agents.hub.server import (
     admin,
     app_sessions,
@@ -77,8 +78,7 @@ from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
 from evo_agents.hub.server.memories.routes import restore_router as restore_routes
 from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
 from evo_agents.hub.server.notifications import routes as notifications
-from evo_agents.hub.server.plugin_bridge import bridge_gate
-from evo_agents.hub.server.plugin_host import PluginHostClient
+from evo_agents.hub.server.plugins.routes.bridge import bridge_gate
 from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.hub.server.systems.routes import traces as system_trace_views
@@ -177,7 +177,7 @@ def create_app(config: HubConfig) -> FastAPI:
     _include_kg_routes(app)
     _include_run_routes(app, config)
     _include_curator_routes(app)
-    from evo_agents.hub.server import plugin_routes
+    from evo_agents.hub.server.plugins.routes import extension as plugin_routes
 
     # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
     app.state.core_plugins = plugin_routes.include(app)
@@ -624,21 +624,14 @@ def _include_member_routes(app: FastAPI) -> None:
         model_catalog,
         opportunity_evidence,
         plugin_chats_api,
-        plugin_command_list,
         plugin_docs_api,
-        plugin_host,
-        plugin_notify,
-        plugin_publishers,
         plugin_records_api,
         plugin_runs_api,
         plugin_srs_api,
         plugin_tasks_api,
-        plugin_ui,
-        plugins,
         problem_evidence,
         project_admin,
         project_archive,
-        project_plugins,
         provider_accounts,
         rate_limits,
         run_leases,
@@ -685,6 +678,13 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
+    from evo_agents.hub.server.plugins.routes import commands as plugin_command_list
+    from evo_agents.hub.server.plugins.routes import host as plugin_host
+    from evo_agents.hub.server.plugins.routes import notify as plugin_notify
+    from evo_agents.hub.server.plugins.routes import projects as project_plugins
+    from evo_agents.hub.server.plugins.routes import publishers as plugin_publishers
+    from evo_agents.hub.server.plugins.routes import store as plugins
+    from evo_agents.hub.server.plugins.routes import ui as plugin_ui
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.signals import routes as signals
     from evo_agents.hub.server.systems.routes import ops as system_ops
@@ -814,7 +814,7 @@ def _include_websockets(app: FastAPI) -> None:
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
     """Record the core plugins of the image in the store, then turn off the installed plugins that do not run on this
     release (``plugin_store``); a failure is logged and the hub serves on."""
-    from evo_agents.hub.server.plugin_store import disable_incompatible, register_core_plugins
+    from evo_agents.hub.server.plugins.service.startup import disable_incompatible, register_core_plugins
 
     try:
         await register_core_plugins(app.state.engine, app.state.core_plugins.plugins)

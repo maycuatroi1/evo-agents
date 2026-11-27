@@ -394,12 +394,12 @@ def test_plugin_compat_at_start_turns_off_what_no_longer_runs_and_tells_the_hub_
 def test_plugin_compat_check_that_fails_at_start_leaves_the_hub_serving(hub_db, tmp_path, s3, monkeypatch, caplog):
     from fastapi.testclient import TestClient
 
-    from evo_agents.hub.server import plugin_store
+    from evo_agents.hub.server.plugins.service import startup
 
     async def broken(*args):
         raise RuntimeError("the database went away")
 
-    monkeypatch.setattr(plugin_store, "disable_incompatible", broken)
+    monkeypatch.setattr(startup, "disable_incompatible", broken)
     with TestClient(make_app(hub_db, tmp_path, s3)) as client:
         assert client.get("/v1/health/live").status_code == 200
     assert any("cannot check the installed plugins" in record.getMessage() for record in caplog.records)

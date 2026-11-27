@@ -34,7 +34,7 @@ from evo_agents.hub.server.agents.service.agent_types import enabled_type, type_
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.notifications.repository.channels import project_rules, rules_of
 from evo_agents.hub.server.notifications.service.member_channels import kept_from
-from evo_agents.hub.server.plugin_routes import not_enabled
+from evo_agents.hub.server.plugins.service.extension import not_enabled
 from evo_agents.hub.server.profile_store import by_id
 from evo_agents.hub.server.run_state import move_run, notify_queued
 from evo_agents.hub.server.runs.service.dispatch import insert_run

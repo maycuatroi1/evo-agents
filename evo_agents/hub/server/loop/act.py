@@ -28,7 +28,7 @@ from evo_agents.hub.server.loop.admit import TYPE_REFUSED, Handed
 from evo_agents.hub.server.loop.model import CLOSED_GROUPS, ItemView
 from evo_agents.hub.server.loop.runs_of import goal_owner
 from evo_agents.hub.server.loop.view import status_groups
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.tables_tasks import MAX_TITLE_CHARS
 from evo_agents.plugins import config as plugin_config
 

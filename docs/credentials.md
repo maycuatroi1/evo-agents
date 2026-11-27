@@ -883,7 +883,7 @@ A plugin holds two kinds of credential, and neither reaches a worker ([plugins.m
   base64url, of which Postgres keeps only the SHA-256 (`plugin_tokens`, schema 0036). Minting revokes the plugin's
   older tokens, so a token lives as long as the backend it was made for; removing the plugin or the hub turning it off
   revokes them at once. It never signs in: only the plugin API under `/v1/plugin-api/` takes it, for what the plugin's
-  installed version asks for and the project granted (`evo_agents/hub/server/plugin_tokens.py`).
+  installed version asks for and the project granted (`evo_agents/hub/server/plugins/service/tokens.py`).
 - **The secret fields of its config.** A field its schema marks `"x-secret": true` is sealed with
   `EVO_HUB_SECRETS_KEY`, bound to the plugin, the layer, the project and the agent profile and the field's name
   (`plugin_config_aad`), and never shown again: answers name it as set, and the digest of an effective config counts

@@ -84,7 +84,7 @@ def grants_of(db, name: str = "sandbox") -> dict:
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from evo_agents.hub.server.plugin_grants import project_grants
+    from evo_agents.hub.server.plugins.repository.grants import project_grants
 
     async def read() -> dict:
         engine = create_async_engine(

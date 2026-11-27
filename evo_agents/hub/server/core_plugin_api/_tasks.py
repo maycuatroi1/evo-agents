@@ -37,7 +37,7 @@ from evo_agents.hub.server.core_plugin_api._types import (
     issue_session,
     own_plugin,
 )
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.server.security import member_principal
 from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX
 from evo_agents.plugins import config as plugin_config

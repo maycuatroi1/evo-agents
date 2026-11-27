@@ -29,124 +29,30 @@ import binascii
 import hashlib
 import json
 import logging
-from dataclasses import dataclass, replace
-from datetime import datetime
-from typing import Any, Literal
+from dataclasses import replace
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, func, insert, or_, select
-from sqlalchemy.dialects.postgresql import distinct_on
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub.plugin_calls import enabled_plugins
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.plugin_grants import enabled_plugins
-from evo_agents.hub.server.sealing import Sealed, Sealer, plugin_config_aad
+from evo_agents.hub.server.plugins.models.configs import (
+    NO_KEY,
+    ConfigField,
+    EffectiveConfig,
+    Place,
+    PluginConfigLayer,
+    PluginConfigRollback,
+    PluginConfigWrite,
+    RunPlugin,
+)
+from evo_agents.hub.server.plugins.repository import configs as repository
+from evo_agents.hub.server.sealing import Sealed, Sealer
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import config as plugin_config
 from evo_agents.plugins.config import Layer
 
 log = logging.getLogger(__name__)
-
-MAX_FIELDS = 200  # fields one write sets or unsets
-NO_KEY = (
-    "this hub keeps no secrets: it needs EVO_HUB_SECRETS_KEY, the key that seals them; ask its operator to set it "
-    "(docs/credentials.md); nothing changed"
-)
-
-
-class PluginConfigLayer(BaseModel):
-    """One stored layer of a plugin's config at one version."""
-
-    plugin: str
-    layer: Literal[plugin_config.STORED_LAYERS]
-    project: str | None
-    agent: str | None = Field(description="the handle of the agent profile of an agent layer")
-    version: int = Field(description="0 while it was never written")
-    values: dict[str, Any] = Field(description="the plain values it sets")
-    secrets: list[str] = Field(description="the secret fields it sets; the hub never shows their values")
-    rolled_back_to: int | None = Field(description="the older version this one copies, for a rollback")
-    changed_by: str | None
-    changed_at: datetime | None
-
-
-class PluginConfigWrite(BaseModel):
-    """The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    values: dict[str, Any] = Field(
-        default_factory=dict,
-        max_length=MAX_FIELDS,
-        description="field -> value; a secret field's value is a string the hub seals and never shows again",
-    )
-    unset: list[str] = Field(default_factory=list, max_length=MAX_FIELDS, description="fields the layer sets now")
-    if_version: int | None = Field(None, ge=0, description="409 unless the layer is at this version now")
-
-
-class PluginConfigRollback(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    version: int = Field(ge=1, description="the older version of the layer to copy as its next one")
-    if_version: int | None = Field(None, ge=0, description="409 unless the layer is at this version now")
-
-
-class ConfigField(BaseModel):
-    name: str
-    value: Any = Field(None, description="null for a secret, whose value the hub never shows")
-    secret: bool
-    layer: Literal[plugin_config.LAYERS] = Field(description="the highest layer that sets it")
-    version: int | None = Field(description="that layer's version; null for the defaults and a run's own layer")
-
-
-class EffectiveConfig(BaseModel):
-    """The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer."""
-
-    plugin: str
-    version: str = Field(description="the installed version, whose schema the layers are checked against")
-    project: str
-    agent: str = Field(description="the agent profile whose layer it includes")
-    fields: list[ConfigField]
-    problems: list[str] = Field(description="what does not fit the schema now, such as a required field none sets")
-    digest: str = Field(description="sha256 of the effective config, a secret counted by its sealed value")
-
-
-class RunPlugin(BaseModel):
-    name: str
-    version: str = Field(description="the version installed when a worker claimed the run")
-    config_digest: str = Field(description="the digest of the run's effective config then")
-    recorded_at: datetime
-
-
-@dataclass(frozen=True)
-class Place:
-    """Where a stored layer lives: its plugin, its layer, and the project and agent profile it belongs to."""
-
-    plugin_id: int
-    plugin: str
-    layer: str
-    project_id: int | None = None
-    project: str | None = None
-    profile_id: int | None = None
-    handle: str | None = None
-
-    def clause(self):
-        c = tables.plugin_configs.c
-        return and_(
-            c.plugin_id == self.plugin_id,
-            c.layer == self.layer,
-            c.project_id.is_not_distinct_from(self.project_id),
-            c.profile_id.is_not_distinct_from(self.profile_id),
-        )
-
-    def aad(self, name: str) -> bytes:
-        return plugin_config_aad(self.plugin_id, self.layer, self.project_id, self.profile_id, name)
-
-    def target(self, version: int) -> str:
-        where = {"instance": "", "project": f"{self.project}/", "agent": f"{self.project}/@{self.handle}/"}
-        return f"{where[self.layer]}plugin:{self.plugin} config {self.layer} v{version}"
 
 
 # Sealed values
@@ -185,23 +91,6 @@ def as_layer(name: str, values: dict, secrets: dict, version: int | None) -> Lay
 # Reading a layer
 
 
-def _versions_query(place: Place):
-    c, u = tables.plugin_configs, tables.users
-    return (
-        select(
-            c.c.version,
-            c.c["values"].label("plain"),
-            c.c.secrets,
-            c.c.rolled_back_to,
-            u.c.login.label("changed_by"),
-            c.c.changed_at,
-        )
-        .join_from(c, u, u.c.id == c.c.changed_by)
-        .where(place.clause())
-        .order_by(c.c.version.desc())
-    )
-
-
 def layer_model(place: Place, row) -> PluginConfigLayer:
     common = {"plugin": place.plugin, "layer": place.layer, "project": place.project, "agent": place.handle}
     if row is None:
@@ -218,18 +107,13 @@ def layer_model(place: Place, row) -> PluginConfigLayer:
     )
 
 
-async def current(conn: AsyncConnection, place: Place):
-    """The current version of the layer at ``place`` (version, values, secrets, ...); None when never written."""
-    return (await conn.execute(_versions_query(place).limit(1))).first()
-
-
 async def read_layer(conn: AsyncConnection, place: Place) -> PluginConfigLayer:
-    return layer_model(place, await current(conn, place))
+    return layer_model(place, await repository.current(conn, place))
 
 
 async def layer_versions(conn: AsyncConnection, place: Place) -> list[PluginConfigLayer]:
     """Every version of the layer, the newest first."""
-    return [layer_model(place, row) for row in await conn.execute(_versions_query(place))]
+    return [layer_model(place, row) for row in await repository.versions(conn, place)]
 
 
 # Writing a layer
@@ -266,7 +150,7 @@ def _next(schema: dict | None, held, body: PluginConfigWrite, sealer: Sealer | N
     changed = []
     for name, value in body.values.items():
         if secret.get(name):
-            secrets[name] = seal(sealer, place, name, value)
+            secrets[name] = seal(sealer, place, name, value)  # pyright: ignore[reportArgumentType]
             changed.append(name)
         elif name not in values or values[name] != value:
             values[name] = value
@@ -281,21 +165,6 @@ def _next(schema: dict | None, held, body: PluginConfigWrite, sealer: Sealer | N
             f"the values of one layer are at most {plugin_config.MAX_LAYER_BYTES // 1024} KiB as JSON; nothing changed",
         )
     return values, secrets, sorted(changed)
-
-
-async def _insert(conn: AsyncConnection, user: Principal, place: Place, version: int, values, secrets, back=None):
-    row = {
-        "plugin_id": place.plugin_id,
-        "layer": place.layer,
-        "project_id": place.project_id,
-        "profile_id": place.profile_id,
-        "version": version,
-        "values": values,
-        "secrets": secrets,
-        "rolled_back_to": back,
-        "changed_by": user.user_id,
-    }
-    await conn.execute(insert(tables.plugin_configs).values(row))
 
 
 async def _audit(conn: AsyncConnection, user: Principal, place: Place, target: str) -> None:
@@ -314,7 +183,7 @@ async def write_layer(
 ) -> PluginConfigLayer:
     """Write ``body`` as the next version of the layer at ``place``, checked against ``schema``; the layer as it is
     now. The caller holds a lock that serialises the writes of the layer."""
-    held = await current(conn, place)
+    held = await repository.current(conn, place)
     now = 0 if held is None else held.version
     _check_version(place, now, body.if_version)
     problems = _changes(schema, held, body)
@@ -326,56 +195,39 @@ async def write_layer(
     values, secrets, changed = _next(schema, held, body, sealer, place)
     if not changed:
         return layer_model(place, held)
-    await _insert(conn, user, place, now + 1, values, secrets)
+    await repository.insert_version(conn, user.user_id, place, now + 1, values, secrets)
     await _audit(conn, user, place, f"{place.target(now + 1)} fields={','.join(changed)}")
     log.info(
         "plugin config changed",
         extra={"plugin": place.plugin, "layer": place.layer, "project": place.project, "version": now + 1},
     )
-    return layer_model(place, await current(conn, place))
+    return layer_model(place, await repository.current(conn, place))
 
 
 async def rollback_layer(
     conn: AsyncConnection, user: Principal, place: Place, body: PluginConfigRollback
 ) -> PluginConfigLayer:
     """Copy version ``body.version`` of the layer at ``place`` as its next version; the layer as it is now."""
-    held = await current(conn, place)
+    held = await repository.current(conn, place)
     now = 0 if held is None else held.version
     _check_version(place, now, body.if_version)
     if body.version >= now:
         raise HTTPException(
             409, f"the {place.layer} layer of plugin {place.plugin} is at version {now}: roll back to an older one"
         )
-    older = (await conn.execute(_versions_query(place).where(tables.plugin_configs.c.version == body.version))).first()
+    older = await repository.version_of(conn, place, body.version)
     if older is None:
         raise HTTPException(404, f"the {place.layer} layer of plugin {place.plugin} has no version {body.version}")
-    await _insert(conn, user, place, now + 1, older.plain, older.secrets, back=body.version)
+    await repository.insert_version(conn, user.user_id, place, now + 1, older.plain, older.secrets, back=body.version)
     await _audit(conn, user, place, f"{place.target(now + 1)} rollback-to=v{body.version}")
     log.info(
         "plugin config rolled back",
         extra={"plugin": place.plugin, "layer": place.layer, "project": place.project, "version": body.version},
     )
-    return layer_model(place, await current(conn, place))
+    return layer_model(place, await repository.current(conn, place))
 
 
 # The effective config
-
-
-def _stacks_query(plugin_ids: list[int], project_id: int, profile_id: int | None):
-    """The current version of each stored layer of ``plugin_ids`` that a run of the project under agent profile
-    ``profile_id`` gets."""
-    c = tables.plugin_configs.c
-    scope = or_(
-        c.layer == "instance",
-        and_(c.layer == "project", c.project_id == project_id),
-        and_(c.layer == "agent", c.project_id == project_id, c.profile_id == profile_id),
-    )
-    return (
-        select(c.plugin_id, c.layer, c.version, c["values"].label("plain"), c.secrets)
-        .where(c.plugin_id.in_(plugin_ids), scope)
-        .ext(distinct_on(c.plugin_id, c.layer))
-        .order_by(c.plugin_id, c.layer, c.version.desc())
-    )
 
 
 async def stored_stacks(
@@ -384,7 +236,7 @@ async def stored_stacks(
     """plugin id -> its stored layers a run of the project under ``profile_id`` gets, lowest first."""
     found: dict[int, dict[str, Layer]] = {}
     if plugin_ids:
-        for row in await conn.execute(_stacks_query(plugin_ids, project_id, profile_id)):
+        for row in await repository.stack_rows(conn, plugin_ids, project_id, profile_id):
             found.setdefault(row.plugin_id, {})[row.layer] = as_layer(row.layer, row.plain, row.secrets, row.version)
     order = plugin_config.STORED_LAYERS
     return {plugin_id: [layers[name] for name in order if name in layers] for plugin_id, layers in found.items()}
@@ -437,46 +289,26 @@ async def check_run_layer(conn: AsyncConnection, project_id: int, project: str, 
     return {name: values for name, values in given.items() if values}
 
 
-async def run_layer_of(conn: AsyncConnection, run_id: int) -> dict | None:
-    r = tables.runs
-    return (await conn.execute(select(r.c.plugin_config).where(r.c.id == run_id))).scalar_one_or_none()
-
-
 async def record_run_plugins(conn: AsyncConnection, run_id: int) -> int:
     """Write, for each plugin enabled on the project of run ``run_id``, installed and turned on, its version and the
     digest of the run's effective config; how many."""
-    r = tables.runs
-    run = (await conn.execute(select(r.c.project_id, r.c.profile_id, r.c.plugin_config).where(r.c.id == run_id))).one()
+    run = await repository.run_row(conn, run_id)
     enabled = await enabled_plugins(conn, run.project_id)
     if not enabled:
         return 0
     stacks = await stored_stacks(conn, [plugin.id for plugin in enabled], run.project_id, run.profile_id)
     own = run.plugin_config or {}
-    rp = tables.run_plugins
     for plugin in enabled:
         layers = stacks.get(plugin.id, [])
         if own.get(plugin.name):
             layers = [*layers, Layer("run", own[plugin.name])]
         merged = plugin_config.merge(plugin.manifest.get("config"), layers)
-        row = {"run_id": run_id, "plugin_id": plugin.id, "version": plugin.installed_version}
-        recorded = {"version": plugin.installed_version, "config_digest": merged.digest, "recorded_at": func.now()}
-        await conn.execute(
-            pg_insert(rp)
-            .values(**row, config_digest=merged.digest)
-            .on_conflict_do_update(index_elements=[rp.c.run_id, rp.c.plugin_id], set_=recorded)
-        )
+        await repository.put_run_plugin(conn, run_id, plugin.id, plugin.installed_version, merged.digest)
     return len(enabled)
 
 
 async def run_plugins(conn: AsyncConnection, run_id: int) -> list[RunPlugin]:
-    rp, p = tables.run_plugins, tables.plugins
-    query = (
-        select(p.c.name, rp.c.version, rp.c.config_digest, rp.c.recorded_at)
-        .join_from(rp, p, p.c.id == rp.c.plugin_id)
-        .where(rp.c.run_id == run_id)
-        .order_by(p.c.name)
-    )
-    return [RunPlugin(**row._mapping) for row in await conn.execute(query)]
+    return [RunPlugin(**row._mapping) for row in await repository.run_plugin_rows(conn, run_id)]
 
 
 def place_of(plugin, layer: str, **where) -> Place:

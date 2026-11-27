@@ -36,7 +36,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.market_refresh import place_builtin, refresh
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.plugin_store import IMAGE, trusted_publishers
+from evo_agents.hub.server.plugins.models.store import IMAGE
+from evo_agents.hub.server.plugins.service.store import trusted_publishers
 from evo_agents.hub.server.sealing import market_source_aad
 from evo_agents.hub.server.security import AdminUser, CurrentUser, admin
 from evo_agents.plugins.compat import plugin_version_key

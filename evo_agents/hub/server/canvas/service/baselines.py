@@ -55,7 +55,7 @@ from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow, Eviden
 from evo_agents.hub.server.canvas.repository import baselines as rows
 from evo_agents.hub.server.canvas.repository import store
 from evo_agents.hub.server.canvas.service import events
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.plugins import config as plugin_config
 
 PLUGIN = MANIFEST["id"]  # acting.PLUGIN, not imported here: it loads the server's agent types
