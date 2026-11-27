@@ -21,12 +21,12 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import kg_entity_relay as relay
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.server import project_archive
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import REFUSALS, queue, writer
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.kg import REFUSALS
+from evo_agents.hub.server.kg.service.entities import keep_answers, latest_requests
+from evo_agents.hub.server.kg.service.graph import writer_access
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -60,8 +60,7 @@ class AnswersKept(BaseModel):
 
 
 async def _requests(request: Request, project_id: int) -> tuple[int | None, list[dict]]:
-    async with request.app.state.engine.begin() as conn:
-        found = await relay.latest_requests(conn, project_id)
+    found = await latest_requests(request.app.state.engine, project_id)
     if found is None:
         return None, []
     build_id, sha, _ = found
@@ -80,9 +79,7 @@ async def _requests(request: Request, project_id: int) -> tuple[int | None, list
 @router.get("/{project}/entities/requests", response_model=EntityRequests, responses=REFUSALS)
 async def entity_requests(request: Request, project: ProjectName, user: CurrentUser) -> EntityRequests:
     """The items the latest succeeded build deferred to a run that has Claude Code."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        writer(access, "reading the entity requests of")
+    access = await writer_access(request.app.state.engine, user, project, "reading the entity requests of")
     build_id, rows = await _requests(request, access.project_id)
     return EntityRequests(build_id=build_id, requests=[EntityRequest(**row) for row in rows])
 
@@ -96,9 +93,7 @@ async def entity_answers(request: Request, project: ProjectName, body: EntityAns
             "entity answers come from a run of the project's agent pool, on its login: "
             "run `evo-agents hub kg entities` inside such a run",
         )
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        writer(access, "answering the entity requests of")
+    access = await writer_access(request.app.state.engine, user, project, "answering the entity requests of")
     try:
         answers = relay.clean_answers(body.answers)
     except relay.RelayError as exc:
@@ -118,10 +113,8 @@ async def entity_answers(request: Request, project: ProjectName, body: EntityAns
         path.write_bytes(data)
         try:
             await asyncio.to_thread(store.put_file, sha, path)
-            async with request.app.state.engine.begin() as conn:
-                await relay.hold(conn, store, access.project_id, sha, path, len(data), relay.ANSWERS_KIND, user.user_id)
-                await project_archive.refuse_archived(conn, access.project_id, "its graph is not built again")
-                _, queued = await queue(request, conn, access.project_id, project, user.user_id)
+            state = request.app.state
+            queued = await keep_answers(state.engine, state.jobs, store, access, project, user, sha, path, len(data))
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None
     log.info(

@@ -20,17 +20,16 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from evo_agents.hub import kg_entity_map_db
 from evo_agents.hub import kg_entity_maps as maps
-from evo_agents.hub import kg_entity_relay as relay
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import kg_run_access, project_archive
+from evo_agents.hub.server import kg_run_access
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import REFUSALS, queue, visible_nodes, writer
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.kg import REFUSALS, visible_nodes
+from evo_agents.hub.server.kg.service.entity_map import keep_map
+from evo_agents.hub.server.kg.service.graph import writer_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg import entity_map
 
@@ -79,15 +78,14 @@ async def post_entity_map(request: Request, project: ProjectName, body: EntityMa
         raise HTTPException(
             403, "an entity map comes from a run of the project: post it with the run's token, inside the run"
         )
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        writer(access, "posting an entity map of")
+    state = request.app.state
+    access = await writer_access(state.engine, user, project, "posting an entity map of")
     try:
         found, rejected = entity_map.parse(body.model_dump())
     except entity_map.EntityMapError as exc:
         raise HTTPException(422, str(exc)) from None
     sink = kg_run_access.sink(user, AGENT_SINK)
-    nodes = await visible_nodes(request.app.state, access, user, project, sink, _cited(found))
+    nodes = await visible_nodes(state, access, user, project, sink, _cited(found))
     kept, refused = entity_map.check(found, nodes.get)
     rejected += refused
     kept["run"] = user.acts_for_run
@@ -109,11 +107,7 @@ async def post_entity_map(request: Request, project: ProjectName, body: EntityMa
         path.write_bytes(data)
         try:
             await asyncio.to_thread(store.put_file, sha, path)
-            async with request.app.state.engine.begin() as conn:
-                await relay.hold(conn, store, access.project_id, sha, path, len(data), maps.MAP_KIND, user.user_id)
-                await project_archive.refuse_archived(conn, access.project_id, "its graph is not built again")
-                await kg_entity_map_db.posted(conn, user.acts_for_run)  # the entity map run it belongs to, if any
-                _, queued = await queue(request, conn, access.project_id, project, user.user_id)
+            queued = await keep_map(state.engine, state.jobs, store, access, project, user, sha, path, len(data))
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None
     log.info(
