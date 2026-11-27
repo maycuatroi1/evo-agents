@@ -24,7 +24,6 @@ from evo_agents.hub.server.outputs.service.serving import serve
 from evo_agents.hub.server.plugin_api.models.runs import TaskRunOutputs, TaskRunSummary
 from evo_agents.hub.server.plugin_api.service import runs
 from evo_agents.hub.server.runs.models import MAX_ID, RunId
-from evo_agents.hub.server.task_dispatch import plugin_of_request
 
 OutputId = Annotated[int, Path(ge=1, le=MAX_ID)]
 Sources = Annotated[list[Literal[outputs.SOURCES]], Query(description="only these sources; repeat it")]
@@ -37,9 +36,7 @@ router = APIRouter(prefix="/v1/plugin-api", tags=["plugin api"], responses={401:
 @router.get("/projects/{project}/runs/{run_id}/summary", response_model=TaskRunSummary, responses=REFUSALS)
 async def run_summary(request: Request, project: ProjectName, run_id: RunId) -> TaskRunSummary:
     """A task run of an agent type of the plugin, with its evidence and error."""
-    async with request.app.state.engine.begin() as conn:
-        plugin_id = await plugin_of_request(request, conn)
-        return await runs.summary(conn, plugin_id, project, run_id)
+    return await runs.summary(request.app.state.engine, request, project, run_id)
 
 
 @router.get("/projects/{project}/runs/{run_id}/outputs", response_model=TaskRunOutputs, responses=REFUSALS)
@@ -51,9 +48,7 @@ async def run_outputs(
     after: After = 0,
 ) -> TaskRunOutputs:
     """The outputs of a task run of an agent type of the plugin, oldest first, each with the URL of its bytes."""
-    async with request.app.state.engine.begin() as conn:
-        plugin_id = await plugin_of_request(request, conn)
-        return await runs.outputs(conn, plugin_id, project, run_id, [str(one) for one in source], after)
+    return await runs.outputs(request.app.state.engine, request, project, run_id, [str(one) for one in source], after)
 
 
 @router.get(
@@ -71,9 +66,7 @@ async def output_content(
     if_none_match: IfNoneMatch = None,
 ) -> Response:
     """The bytes of an output of a task run of an agent type of the plugin."""
-    async with request.app.state.engine.begin() as conn:
-        plugin_id = await plugin_of_request(request, conn)
-        row = await runs.output(conn, plugin_id, project, run_id, output_id)
+    row = await runs.output(request.app.state.engine, request, project, run_id, output_id)
     return await serve(request, row, download, range_, if_none_match)
 
 

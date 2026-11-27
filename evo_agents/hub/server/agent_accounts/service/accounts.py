@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 
 from fastapi import Request
 from pydantic import SecretStr
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.account_providers import category_of, provider_of
 from evo_agents.hub.accounts import account_state
@@ -51,6 +51,7 @@ from evo_agents.hub.server.agent_accounts.service.shapes import (
 )
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.models.sealing import agent_secret_aad
 from evo_agents.hub.server.credentials.repository.secrets import bound_names
 from evo_agents.hub.server.credentials.service.secrets import sealer_of
@@ -154,7 +155,7 @@ def agent_target(project: str, handle: str, secret_id: int, fields: list[str] | 
 
 
 async def put(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     request: Request,
     user: Principal,
     project: str,
@@ -162,32 +163,33 @@ async def put(
     name: str,
     body: AgentAccountWrite,
 ) -> AgentAccountWritten:
-    """Give the agent the account ``name``, or replace it whole, in the transaction of ``conn``."""
-    if (refusal := env_name_refusal(body.env_var)) is not None:
-        raise Unprocessable(refusal)
-    value = value_of(body.value)
-    check_end(body.expires_at)
-    access, profile_id = await admin_agent(conn, user, project, handle)
-    sealer = sealer_of(request)
-    worker_ids = await agent_workers(conn, user, access, unique(body.workers))
-    if await repository.agent_provider_holds(conn, profile_id, name):
-        raise Conflict(f"{name} is a provider account of @{handle}: change it under provider-accounts")
-    if await repository.live_agent_accounts(conn, profile_id, name) >= MAX_ACCOUNTS_PER_AGENT:
-        raise Conflict(f"@{handle} keeps {MAX_ACCOUNTS_PER_AGENT} accounts already: delete one first")
-    sealed = sealer.seal(value, agent_secret_aad(profile_id, name))
-    fields = {
-        "env_var": body.env_var,
-        "sealed": sealed.ciphertext,
-        "nonce": sealed.nonce,
-        "key_id": sealed.key_id,
-        "expires_at": body.expires_at,
-    }
-    secret_id, created = await repository.put_secret(conn, profile_id, name, "env", fields)
-    await repository.bind_agent_account(conn, secret_id, access.project_id, worker_ids)
-    await drop_tokens(conn, secret_id)
-    await repository.account_settings(conn, secret_id, body.weight, body.priority)
-    await Auditor.of(conn, user, access).record(audit.AGENT_ACCOUNT_PUT, agent_target(project, handle, secret_id))
-    return AgentAccountWritten(**await view(conn, profile_id, name), created=created)
+    """Give the agent the account ``name``, or replace it whole, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        if (refusal := env_name_refusal(body.env_var)) is not None:
+            raise Unprocessable(refusal)
+        value = value_of(body.value)
+        check_end(body.expires_at)
+        access, profile_id = await admin_agent(conn, user, project, handle)
+        sealer = sealer_of(request)
+        worker_ids = await agent_workers(conn, user, access, unique(body.workers))
+        if await repository.agent_provider_holds(conn, profile_id, name):
+            raise Conflict(f"{name} is a provider account of @{handle}: change it under provider-accounts")
+        if await repository.live_agent_accounts(conn, profile_id, name) >= MAX_ACCOUNTS_PER_AGENT:
+            raise Conflict(f"@{handle} keeps {MAX_ACCOUNTS_PER_AGENT} accounts already: delete one first")
+        sealed = sealer.seal(value, agent_secret_aad(profile_id, name))
+        fields = {
+            "env_var": body.env_var,
+            "sealed": sealed.ciphertext,
+            "nonce": sealed.nonce,
+            "key_id": sealed.key_id,
+            "expires_at": body.expires_at,
+        }
+        secret_id, created = await repository.put_secret(conn, profile_id, name, "env", fields)
+        await repository.bind_agent_account(conn, secret_id, access.project_id, worker_ids)
+        await drop_tokens(conn, secret_id)
+        await repository.account_settings(conn, secret_id, body.weight, body.priority)
+        await Auditor.of(conn, user, access).record(audit.AGENT_ACCOUNT_PUT, agent_target(project, handle, secret_id))
+        return AgentAccountWritten(**await view(conn, profile_id, name), created=created)
 
 
 async def _change(conn: AsyncConnection, sealer, profile_id: int, name: str, body: AgentAccountChange) -> int:
@@ -207,7 +209,7 @@ async def _change(conn: AsyncConnection, sealer, profile_id: int, name: str, bod
 
 
 async def change(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     request: Request,
     user: Principal,
     project: str,
@@ -216,37 +218,41 @@ async def change(
     body: AgentAccountChange,
 ) -> tuple[AgentAccount, list[str]]:
     """The account after the changes of ``body``, and the names of what changed."""
-    named = sorted(body.model_fields_set)
-    if not named:
-        raise Unprocessable("give something to change: value, workers, expires_at, weight, priority or paused")
-    if body.value is not None:
-        value_of(body.value)
-    if "expires_at" in body.model_fields_set:
-        check_end(body.expires_at)
-    access, profile_id = await admin_agent(conn, user, project, handle)
-    sealer = sealer_of(request) if body.value is not None else None
-    worker_ids = None if body.workers is None else await agent_workers(conn, user, access, unique(body.workers))
-    secret_id = await _change(conn, sealer, profile_id, name, body)
-    if worker_ids is not None:
-        await repository.bind_agent_account(conn, secret_id, access.project_id, worker_ids)
-    await repository.account_settings(conn, secret_id, body.weight, body.priority, body.paused)
-    if body.paused is False and await end_cooldown(conn, secret_id):
-        named.append("cooldown")
-    await Auditor.of(conn, user, access).record(
-        audit.AGENT_ACCOUNT_SET, agent_target(project, handle, secret_id, named)
-    )
-    return AgentAccount(**await view(conn, profile_id, name)), named
+    async with UnitOfWork(engine) as conn:
+        named = sorted(body.model_fields_set)
+        if not named:
+            raise Unprocessable("give something to change: value, workers, expires_at, weight, priority or paused")
+        if body.value is not None:
+            value_of(body.value)
+        if "expires_at" in body.model_fields_set:
+            check_end(body.expires_at)
+        access, profile_id = await admin_agent(conn, user, project, handle)
+        sealer = sealer_of(request) if body.value is not None else None
+        worker_ids = None if body.workers is None else await agent_workers(conn, user, access, unique(body.workers))
+        secret_id = await _change(conn, sealer, profile_id, name, body)
+        if worker_ids is not None:
+            await repository.bind_agent_account(conn, secret_id, access.project_id, worker_ids)
+        await repository.account_settings(conn, secret_id, body.weight, body.priority, body.paused)
+        if body.paused is False and await end_cooldown(conn, secret_id):
+            named.append("cooldown")
+        await Auditor.of(conn, user, access).record(
+            audit.AGENT_ACCOUNT_SET, agent_target(project, handle, secret_id, named)
+        )
+        return AgentAccount(**await view(conn, profile_id, name)), named
 
 
-async def delete(conn: AsyncConnection, user: Principal, project: str, handle: str, name: str) -> int:
+async def delete(engine: AsyncEngine, user: Principal, project: str, handle: str, name: str) -> int:
     """Delete the account ``name`` of the agent; the number of its leases revoked."""
-    access, profile_id = await admin_agent(conn, user, project, handle)
-    secret_id = await repository.locked_env_account(conn, profile_id, name)
-    if secret_id is None:
-        raise NotFound(f"the agent has no account named {name}")
-    revoked = await repository.retire_accounts(conn, [secret_id])
-    await Auditor.of(conn, user, access).record(audit.AGENT_ACCOUNT_DELETE, agent_target(project, handle, secret_id))
-    return revoked
+    async with UnitOfWork(engine) as conn:
+        access, profile_id = await admin_agent(conn, user, project, handle)
+        secret_id = await repository.locked_env_account(conn, profile_id, name)
+        if secret_id is None:
+            raise NotFound(f"the agent has no account named {name}")
+        revoked = await repository.retire_accounts(conn, [secret_id])
+        await Auditor.of(conn, user, access).record(
+            audit.AGENT_ACCOUNT_DELETE, agent_target(project, handle, secret_id)
+        )
+        return revoked
 
 
 async def retire_profile_accounts(conn: AsyncConnection, profile_id: int) -> int:

@@ -959,13 +959,14 @@ containers = ["evo_agents.hub.server.agent_accounts"]
 layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
-In evo_agents.hub.server.agent_accounts a route handler opens a transaction at most and passes the request's parts \
-to a public function of the service (accounts, views, provider_accounts, mask), which checks the caller, the agent \
-and the workers, seals and decides; the repository holds the SQL of the accounts, their bindings and settings and \
-their masking; the models (the API's shapes) import none of them, nor a module of the hub that reaches the service. \
-Move the code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
-repository, a shape into the models. Other modules import the service and the models, never the routes. A new \
-module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+In evo_agents.hub.server.agent_accounts a route handler passes the request's parts and the app's engine to a public \
+function of the service (accounts, views, provider_accounts, mask), which opens the transaction, checks the caller, \
+the agent and the workers, seals and decides; the repository holds the SQL of the accounts, their bindings and \
+settings and their masking; the models (the API's shapes) import none of them, nor a module of the hub that reaches \
+the service. Move the code that reaches up into the layer that needs it: a check or a message into the service, a \
+query into the repository, a shape into the models. Other modules import the service and the models, never the \
+routes. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-core-plugin-api-layers"
@@ -993,15 +994,15 @@ containers = ["evo_agents.hub.server.accounts"]
 layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
-In evo_agents.hub.server.accounts a route handler opens a connection or a transaction at most and passes the \
-request's parts to a public function of the service (accounts, views, pools, provider_accounts), which checks the \
-caller, chooses an account for a run, refreshes an OAuth token, calls a provider's endpoint and decides; the \
-repository holds the SQL of the accounts, their policies, budgets, cooldowns, pools, OAuth tokens and provider \
+In evo_agents.hub.server.accounts a route handler passes the request's parts and the app's engine to a public \
+function of the service (accounts, views, pools, provider_accounts), which opens the connection or the transaction, \
+checks the caller, chooses an account for a run, refreshes an OAuth token, calls a provider's endpoint and decides; \
+the repository holds the SQL of the accounts, their policies, budgets, cooldowns, pools, OAuth tokens and provider \
 accounts; the models (the API's shapes and limits) import none of them, nor a module of the hub that reaches the \
 service (admin, secrets, projects). Move the code that reaches up into the layer that needs it: a check or a message \
-into the service, a query into the repository, a shape into the models. Other modules import the service, the \
-models and the repository, never the routes; only the app includes them. A new module of the package goes into one \
-of the four layers. See docs/structure.md, section Package boundaries."""
+into the service, a query into the repository, a shape into the models. Other modules import the service, the models \
+and the repository, never the routes; only the app includes them. A new module of the package goes into one of the \
+four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-agents-layers"
@@ -1125,16 +1126,16 @@ containers = ["evo_agents.hub.server.plugin_api"]
 layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
-In evo_agents.hub.server.plugin_api a route handler keeps the special auth of its route (the plugin's token, read with \
-task_dispatch.plugin_of_request, or a member's credential for the records of a plugin), opens the transaction and \
-passes the request's parts to the service (access, who a call acts as; tasks, docs, runs, srs, chats and records), \
-which checks the grant, the feature and the acting admin and decides; the repository holds the SQL of the enabled \
-plugin and its granter, the plugin's tasks by external key, its task runs and their outputs, the use cases of a \
-version and a page of a thread; the models (the API's shapes, the permissions, features and refusal texts) import \
-none of them. Move the code that reaches up into the layer that needs it: a check or a message into the service, a \
-query into the repository, a shape or a constant into the models. Other modules import the routes only to include \
-them (app.py) or to name a handler (plugin_bridge). A new module of the package goes into one of the four layers. See \
-docs/structure.md, section Package boundaries."""
+In evo_agents.hub.server.plugin_api a route handler keeps the special auth of its route (the plugin's token, which \
+the service reads with task_dispatch.plugin_of_request, or a member's credential for the records of a plugin) and \
+passes the request's parts and the app's engine to the service (access, who a call acts as; tasks, docs, runs, srs, \
+chats and records), which opens the transaction, checks the grant, the feature and the acting admin and decides; the \
+repository holds the SQL of the enabled plugin and its granter, the plugin's tasks by external key, its task runs \
+and their outputs, the use cases of a version and a page of a thread; the models (the API's shapes, the permissions, \
+features and refusal texts) import none of them. Move the code that reaches up into the layer that needs it: a check \
+or a message into the service, a query into the repository, a shape or a constant into the models. Other modules \
+import the routes only to include them (app.py) or to name a handler (plugin_bridge). A new module of the package \
+goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-market-layers"
@@ -1144,15 +1145,15 @@ containers = ["evo_agents.hub.server.market"]
 layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
-In evo_agents.hub.server.market a route handler opens a transaction at most and passes the request's parts to a \
-public function of the service (market reads the markets and their sources, install installs a plugin from a market \
-or a GitHub release, licenses buys a paid plugin and checks its licences), which checks the caller, the publisher \
-and the licence and decides; the repository holds the SQL of the sources, the installs, the install requests and the \
-purchases; the models (the API's shapes and their constants) import none of them, nor a module of the hub that \
-reaches the service. Move the code that reaches up into the layer that needs it: a check or a message into the \
-service, a query into the repository, a shape into the models. Other modules import the service and the models, \
-never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, section \
-Package boundaries."""
+In evo_agents.hub.server.market a route handler passes the request's parts and the app's engine to a public function \
+of the service (market reads the markets and their sources, install installs a plugin from a market or a GitHub \
+release, licenses buys a paid plugin and checks its licences), which opens the transaction, checks the caller, the \
+publisher and the licence and decides; the repository holds the SQL of the sources, the installs, the install \
+requests and the purchases; the models (the API's shapes and their constants) import none of them, nor a module of \
+the hub that reaches the service. Move the code that reaches up into the layer that needs it: a check or a message \
+into the service, a query into the repository, a shape into the models. Other modules import the service and the \
+models, never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, \
+section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-seller-layers"
@@ -1162,14 +1163,14 @@ containers = ["evo_agents.hub.server.seller"]
 layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
-In evo_agents.hub.server.seller a route handler opens a transaction at most and passes the request's parts to a \
-public function of the service (keys, listings, orders, revenue, signals, and api, the seller's API for buying \
-hubs), which checks the caller, the bundle and the order, signs the licence and decides; the repository holds the SQL \
-of the listings, bundles, orders, payouts and signals; the models (the API's shapes and their constants) import none \
-of them, nor a module of the hub that reaches the service. Move the code that reaches up into the layer that needs \
-it: a check or a message into the service, a query into the repository, a shape into the models. Other modules \
-import the service and the models, never the routes. A new module of the package goes into one of the four layers. \
-See docs/structure.md, section Package boundaries."""
+In evo_agents.hub.server.seller a route handler passes the request's parts and the app's engine to a public function \
+of the service (keys, listings, orders, revenue, signals, and api, the seller's API for buying hubs), which opens \
+the transaction, checks the caller, the bundle and the order, signs the licence and decides; the repository holds \
+the SQL of the listings, bundles, orders, payouts and signals; the models (the API's shapes and their constants) \
+import none of them, nor a module of the hub that reaches the service. Move the code that reaches up into the layer \
+that needs it: a check or a message into the service, a query into the repository, a shape into the models. Other \
+modules import the service and the models, never the routes. A new module of the package goes into one of the four \
+layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-gateway-layers"
@@ -1201,9 +1202,10 @@ exhaustive = true
 broken_contract_guidance = """\
 In evo_agents.hub.server.plugins a route handler (the store under /v1/plugins, the publishers, a project's plugins, \
 the plugin host's internal routes, a plugin's notices, its framed pages and the UI kit, the CLI's commands, the \
-routes of isolated plugins under /v1/x and the bridge's check of a page's calls) opens the transaction and passes the \
-request's parts to the service (store, actions, startup, publishers, grants, configs, tokens, host, notify, \
-delegation, extension, pages, projects, tools, ui, commands), which checks the caller and decides; the repository \
+routes of isolated plugins under /v1/x and the bridge's check of a page's calls) passes the request's parts and the \
+app's engine to the service (store, actions, startup, publishers, grants, configs, tokens, host, notify, \
+delegation, extension, pages, projects, tools, ui, commands), which opens the transaction, checks the caller and \
+decides; the repository \
 holds the SQL of the plugins, their versions, enablements, config layers, tokens, backends, notices and leases; the \
 models (the API's shapes, the patterns of names, the refusal texts and constants more than one layer gives) import \
 none of them. Move the code that reaches up into the layer that needs it: a check or a message into the service, a \
@@ -1219,15 +1221,16 @@ containers = ["evo_agents.hub.server.credentials"]
 layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
-In evo_agents.hub.server.credentials a route handler keeps the special auth of its route (a worker token to lease and \
-give back a run's credentials, a member's session for the secrets and their shares), opens the transaction and \
-passes the request's parts to the service (leases, survey, secrets, shares, answers, resolver), which checks the \
-caller and decides; the repository holds the SQL of the leases, the secrets, their bindings and their shares; the \
-models (the API's shapes, the lease and refusal texts more than one layer gives, and sealing, the Sealer, whose sealed \
-format never changes) import none of them. Move the code that reaches up into the layer that needs it: a check or a \
-message into the service, a query into the repository, a shape or a constant into the models. Other modules import \
-the service, the repository and the models, never the routes but put_secret, which the Claude sign-in calls. A new \
-module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+In evo_agents.hub.server.credentials a route handler keeps the special auth of its route (a worker token to lease \
+and give back a run's credentials, a member's session for the secrets and their shares) and passes the request's \
+parts and the app's engine to the service (leases, survey, secrets, shares, answers, resolver), which opens the \
+transaction, checks the caller and decides; the repository holds the SQL of the leases, the secrets, their bindings \
+and their shares; the models (the API's shapes, the lease and refusal texts more than one layer gives, and sealing, \
+the Sealer, whose sealed format never changes) import none of them. Move the code that reaches up into the layer \
+that needs it: a check or a message into the service, a query into the repository, a shape or a constant into the \
+models. Other modules import the service, the repository and the models, never the routes but put_secret, which the \
+Claude sign-in calls. A new module of the package goes into one of the four layers. See docs/structure.md, section \
+Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-forge-layers"
@@ -1238,8 +1241,9 @@ layers = ["routes", "service", "repository | client", "models"]
 exhaustive = true
 broken_contract_guidance = """\
 In evo_agents.hub.server.forge the route handlers of the Curator's ruleset checks (protection) keep their auth and \
-pass the request's parts to the service (protection, the checks of rulesets, why a Builder waits and the job's own \
-checks; secrets, the forge secrets the hub opens for GitLab), which checks the caller and decides; the repository \
+pass the request's parts and the app's engine to the service (protection, the checks of rulesets, why a Builder \
+waits and the job's own checks; secrets, the forge secrets the hub opens for GitLab), which opens the transaction, \
+checks the caller and decides; the repository \
 holds the SQL of the ruleset checks and of the forge secrets; the client, next to the repository, holds the HTTP \
 clients to GitHub (github, the OAuth App, and github_app, the GitHub Apps) and to GitLab (gitlab), and imports neither \
 the repository nor the service; the models (the errors and shapes of GitHub and GitLab, the shapes and texts of the \

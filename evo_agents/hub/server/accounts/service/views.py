@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.accounts.models.views import (
@@ -39,6 +39,7 @@ from evo_agents.hub.server.accounts.models.views import (
 from evo_agents.hub.server.accounts.repository import views as repository
 from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
 from evo_agents.hub.server.base.errors import Forbidden
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import Principal
 
@@ -149,28 +150,29 @@ def _event(at: datetime, body: dict, names: dict[int, str]) -> RunAccountEvent |
 
 
 async def accounts_of_run(
-    conn: AsyncConnection, user: Principal, project: str, run_id: int, sink: str | None
+    engine: AsyncEngine, user: Principal, project: str, run_id: int, sink: str | None
 ) -> list[RunAccount]:
     """The accounts run ``run_id`` took, by variable, and each usage limit it hit; 403 for any member but the one who
     dispatched it."""
-    await readable_run(conn, user, project, run_id, sink)
-    owner_id, login = await repository.run_owner(conn, run_id)
-    if owner_id != user.user_id:
-        raise Forbidden(f"only {login}, who dispatched run {run_id}, sees the accounts it took")
-    names = await repository.secret_names(conn, owner_id)
-    taken = await repository.run_accounts(conn, run_id)
-    limits = await repository.usage_limits(conn, run_id)
-    found = []
-    for row in taken:
-        events = [_event(at, body, names) for at, body in limits if body.get("env_var") == row.env_var]
-        found.append(
-            RunAccount(
-                env_var=row.env_var,
-                account=names.get(row.secret_id),
-                how=row.how,
-                failovers=row.failovers,
-                chosen_at=row.chosen_at,
-                events=[event for event in events if event is not None],
+    async with UnitOfWork(engine) as conn:
+        await readable_run(conn, user, project, run_id, sink)
+        owner_id, login = await repository.run_owner(conn, run_id)
+        if owner_id != user.user_id:
+            raise Forbidden(f"only {login}, who dispatched run {run_id}, sees the accounts it took")
+        names = await repository.secret_names(conn, owner_id)
+        taken = await repository.run_accounts(conn, run_id)
+        limits = await repository.usage_limits(conn, run_id)
+        found = []
+        for row in taken:
+            events = [_event(at, body, names) for at, body in limits if body.get("env_var") == row.env_var]
+            found.append(
+                RunAccount(
+                    env_var=row.env_var,
+                    account=names.get(row.secret_id),
+                    how=row.how,
+                    failovers=row.failovers,
+                    chosen_at=row.chosen_at,
+                    events=[event for event in events if event is not None],
+                )
             )
-        )
-    return found
+        return found

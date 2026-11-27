@@ -54,7 +54,7 @@ from urllib.parse import urlsplit
 import psycopg
 from fastapi import HTTPException, Request
 from sqlalchemy import exc as sa_exc
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
@@ -71,6 +71,7 @@ from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR, OAuthToke
 from evo_agents.hub.server.accounts.repository.choice import clear_relogin
 from evo_agents.hub.server.accounts.repository.oauth import drop_tokens, seal_tokens, store_tokens
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, secret_aad
 from evo_agents.hub.server.credentials.models.secrets import (
     MAX_URL_PREFIX_CHARS,
@@ -101,6 +102,12 @@ async def owned_secrets(conn: AsyncConnection, owner_id: int, name: str | None =
     rows = await repository.owned_secret_rows(conn, owner_id, name)
     shares = await shares_of(conn, [row.id for row in rows])
     return [Secret(**row._mapping, shares=shares.get(row.id, [])) for row in rows]
+
+
+async def list_owned(engine: AsyncEngine, owner_id: int) -> list[Secret]:
+    """The live secrets of ``owner_id`` as their owner sees them (``owned_secrets``), in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await owned_secrets(conn, owner_id)
 
 
 # Writing secrets
@@ -324,52 +331,59 @@ def checked_write(sealer: Sealer, user: Principal, name: str, body: SecretWrite)
 
 
 async def put(
-    conn: AsyncConnection, sealer: Sealer, user: Principal, name: str, body: SecretWrite, write: Checked
+    engine: AsyncEngine, sealer: Sealer, user: Principal, name: str, body: SecretWrite, write: Checked
 ) -> SecretWritten:
-    """Create the caller's secret ``name`` or replace it whole, in the caller's transaction, as ``write`` says; one
+    """Create the caller's secret ``name`` or replace it whole, in a transaction of its own, as ``write`` says; one
     audit row secret.put."""
-    env_var, url_prefix, username = write.target
-    sealed = write.sealed
-    project_ids = await writable_projects(conn, user, write.projects, body.kind)
-    worker_ids = await own_workers(conn, user, write.workers)
-    pool_ids = await own_pools(conn, user, write.pools)
-    await repository.lock_owner(conn, user.user_id)
-    if await repository.provider_holds(conn, user.user_id, name):
-        raise Conflict(PROVIDER_HOLDS.format(name=name))
-    live = await repository.live_secrets(conn, user.user_id, name)
-    if live >= MAX_SECRETS_PER_OWNER:
-        raise Conflict(f"you keep {MAX_SECRETS_PER_OWNER} secrets already: delete one before adding another")
-    try:
-        secret_id, created = await repository.upsert(
-            conn,
-            user.user_id,
-            name,
-            kind=body.kind,
-            env_var=env_var,
-            url_prefix=url_prefix,
-            username=username,
-            environment=body.environment,
-            sealed=sealed.ciphertext,
-            nonce=sealed.nonce,
-            key_id=sealed.key_id,
-            expires_at=write.expires_at,
-        )
-    except sa_exc.IntegrityError as exc:  # what the checks above let through and the table does not take
-        if not isinstance(exc.orig, psycopg.errors.CheckViolation):
-            raise
-        raise Unprocessable("the secrets table refused this secret's kind, target or username") from None
-    await repository.bind_secret(conn, secret_id, project_ids, worker_ids, pool_ids)
-    if write.oauth is not None:
-        await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, write.value, write.oauth))
-        await clear_relogin(conn, secret_id)  # a new sign-in ends a cooldown for a dead refresh token
-    else:  # written whole: a set of OAuth tokens the secret had before does not outlive its value
-        await drop_tokens(conn, secret_id)
-    target = audit_target(secret_id)
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
-    (secret,) = await owned_secrets(conn, user.user_id, name)
-    extra = {"secret": name, "kind": body.kind, "login": user.login, "replaced": not created, "key_id": sealed.key_id}
-    log.info("secret written", extra=extra)
-    return SecretWritten(**secret.model_dump(), created=created)
+    async with UnitOfWork(engine) as conn:
+        env_var, url_prefix, username = write.target
+        sealed = write.sealed
+        project_ids = await writable_projects(conn, user, write.projects, body.kind)
+        worker_ids = await own_workers(conn, user, write.workers)
+        pool_ids = await own_pools(conn, user, write.pools)
+        await repository.lock_owner(conn, user.user_id)
+        if await repository.provider_holds(conn, user.user_id, name):
+            raise Conflict(PROVIDER_HOLDS.format(name=name))
+        live = await repository.live_secrets(conn, user.user_id, name)
+        if live >= MAX_SECRETS_PER_OWNER:
+            raise Conflict(f"you keep {MAX_SECRETS_PER_OWNER} secrets already: delete one before adding another")
+        try:
+            secret_id, created = await repository.upsert(
+                conn,
+                user.user_id,
+                name,
+                kind=body.kind,
+                env_var=env_var,
+                url_prefix=url_prefix,
+                username=username,
+                environment=body.environment,
+                sealed=sealed.ciphertext,
+                nonce=sealed.nonce,
+                key_id=sealed.key_id,
+                expires_at=write.expires_at,
+            )
+        except sa_exc.IntegrityError as exc:  # what the checks above let through and the table does not take
+            if not isinstance(exc.orig, psycopg.errors.CheckViolation):
+                raise
+            raise Unprocessable("the secrets table refused this secret's kind, target or username") from None
+        await repository.bind_secret(conn, secret_id, project_ids, worker_ids, pool_ids)
+        if write.oauth is not None:
+            await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, write.value, write.oauth))
+            await clear_relogin(conn, secret_id)  # a new sign-in ends a cooldown for a dead refresh token
+        else:  # written whole: a set of OAuth tokens the secret had before does not outlive its value
+            await drop_tokens(conn, secret_id)
+        target = audit_target(secret_id)
+        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
+        (secret,) = await owned_secrets(conn, user.user_id, name)
+        extra = {
+            "secret": name,
+            "kind": body.kind,
+            "login": user.login,
+            "replaced": not created,
+            "key_id": sealed.key_id,
+        }
+        log.info("secret written", extra=extra)
+        return SecretWritten(**secret.model_dump(), created=created)
 
 
 # Rebinding a secret
@@ -394,41 +408,47 @@ def binding_text(secret: Secret) -> str:
     return "anywhere"
 
 
-async def rebind(conn: AsyncConnection, user: Principal, name: str, workers: list[str], pools: list[str]) -> Secret:
-    """Bind the caller's secret ``name`` to ``workers`` or ``pools``, or to any worker of theirs, in the caller's
-    transaction; one audit row secret.rebind."""
-    row = await repository.live_secret(conn, user.user_id, name)
-    if row is None:
-        raise NotFound(NO_SECRET.format(name=name))
-    if row.kind == PROVIDER_KIND:
-        raise Conflict(PROVIDER_HOLDS.format(name=name))
-    refusal = binding_refusal(row.kind, workers, pools)
-    if refusal is not None:
-        raise Unprocessable(refusal)
-    worker_ids = await own_workers(conn, user, workers)
-    pool_ids = await own_pools(conn, user, pools)
-    project_ids = await repository.bound_projects(conn, row.id)
-    if not project_ids:  # personal, or its projects went: nothing to bind them on
-        raise Conflict(f"secret {name} is bound to no project: write it whole with PUT, naming them")
-    await repository.bind_secret(conn, row.id, project_ids, worker_ids, pool_ids)
-    (secret,) = await owned_secrets(conn, user.user_id, name)
-    target = f"{audit_target(row.id)} {binding_text(secret)}"
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_REBIND, target=target)
-    extra = {"secret": name, "login": user.login, "workers": len(worker_ids), "pools": len(pool_ids)}
-    log.info("secret rebound", extra=extra)
-    return secret
+async def rebind(engine: AsyncEngine, user: Principal, name: str, workers: list[str], pools: list[str]) -> Secret:
+    """Bind the caller's secret ``name`` to ``workers`` or ``pools``, or to any worker of theirs, in a transaction of
+    its own; one audit row secret.rebind."""
+    async with UnitOfWork(engine) as conn:
+        row = await repository.live_secret(conn, user.user_id, name)
+        if row is None:
+            raise NotFound(NO_SECRET.format(name=name))
+        if row.kind == PROVIDER_KIND:
+            raise Conflict(PROVIDER_HOLDS.format(name=name))
+        refusal = binding_refusal(row.kind, workers, pools)
+        if refusal is not None:
+            raise Unprocessable(refusal)
+        worker_ids = await own_workers(conn, user, workers)
+        pool_ids = await own_pools(conn, user, pools)
+        project_ids = await repository.bound_projects(conn, row.id)
+        if not project_ids:  # personal, or its projects went: nothing to bind them on
+            raise Conflict(f"secret {name} is bound to no project: write it whole with PUT, naming them")
+        await repository.bind_secret(conn, row.id, project_ids, worker_ids, pool_ids)
+        (secret,) = await owned_secrets(conn, user.user_id, name)
+        target = f"{audit_target(row.id)} {binding_text(secret)}"
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_REBIND, target=target
+        )
+        extra = {"secret": name, "login": user.login, "workers": len(worker_ids), "pools": len(pool_ids)}
+        log.info("secret rebound", extra=extra)
+        return secret
 
 
 # Deleting a secret
 
 
-async def delete(conn: AsyncConnection, user: Principal, name: str) -> None:
-    """Delete the caller's secret ``name`` softly, in the caller's transaction (``repository.retire_secret``); one
+async def delete(engine: AsyncEngine, user: Principal, name: str) -> None:
+    """Delete the caller's secret ``name`` softly, in a transaction of its own (``repository.retire_secret``); one
     audit row secret.delete."""
-    secret_id = await repository.deletable_secret(conn, user.user_id, name)
-    if secret_id is None:
-        raise NotFound(NO_SECRET.format(name=name))
-    revoked = await repository.retire_secret(conn, secret_id, user.user_id)
-    target = audit_target(secret_id)
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_DELETE, target=target)
-    log.info("secret deleted", extra={"secret": name, "login": user.login, "leases_revoked": revoked})
+    async with UnitOfWork(engine) as conn:
+        secret_id = await repository.deletable_secret(conn, user.user_id, name)
+        if secret_id is None:
+            raise NotFound(NO_SECRET.format(name=name))
+        revoked = await repository.retire_secret(conn, secret_id, user.user_id)
+        target = audit_target(secret_id)
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_DELETE, target=target
+        )
+        log.info("secret deleted", extra={"secret": name, "login": user.login, "leases_revoked": revoked})

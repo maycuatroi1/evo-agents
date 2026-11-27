@@ -28,7 +28,6 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_api.models.chats import PluginChatMessage, PluginMessageIn, PluginThread
 from evo_agents.hub.server.plugin_api.service import chats
 from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.task_dispatch import plugin_of_request
 
 log = logging.getLogger(__name__)
 
@@ -46,9 +45,7 @@ router = APIRouter(prefix="/v1/plugin-api", tags=["plugin api"], responses={401:
 async def post_message(request: Request, project: ProjectName, chat_id: ChatId, body: PluginMessageIn):
     """Post a message to the chat in the name of the admin who granted the plugin its permissions, in the thread of
     ``reply_to`` when given, as their own message goes."""
-    async with request.app.state.engine.begin() as conn:
-        plugin_id = await plugin_of_request(request, conn)
-        plugin, message = await chats.post(conn, plugin_id, project, chat_id, body)
+    plugin, message = await chats.post(request.app.state.engine, request, project, chat_id, body)
     log.info(
         "plugin chat message sent",
         extra={"project": project, "plugin": plugin, "chat_id": chat_id, "message_id": message.id},
@@ -66,9 +63,7 @@ async def read_thread(
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = PAGE,
 ) -> PluginThread:
     """The latest ``limit`` messages of the thread of message ``thread`` before ``before``, oldest first."""
-    async with request.app.state.engine.begin() as conn:
-        plugin_id = await plugin_of_request(request, conn)
-        return await chats.thread(conn, plugin_id, project, chat_id, thread, before, limit)
+    return await chats.thread(request.app.state.engine, request, project, chat_id, thread, before, limit)
 
 
 __all__ = ["router"]

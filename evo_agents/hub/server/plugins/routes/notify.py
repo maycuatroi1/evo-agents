@@ -20,12 +20,14 @@ The audit row ``plugin.notify`` names the plugin, the project and the number of 
 
 from __future__ import annotations
 
+from functools import partial
+
 from fastapi import APIRouter, Request, Response
 
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugins.models.notify import PluginNoticeIn, PluginNoticeSent
-from evo_agents.hub.server.plugins.service.notify import check_body, send
+from evo_agents.hub.server.plugins.service.notify import check_body, send_as
 from evo_agents.hub.server.task_dispatch import plugin_of_request
 
 REFUSALS = {code: {"model": ErrorBody} for code in (401, 403, 422)}
@@ -39,9 +41,7 @@ async def send_notice(
 ) -> PluginNoticeSent:
     """Send a notice to members of the project, as the plugin whose token the request carries."""
     check_body(body)
-    async with request.app.state.engine.begin() as conn:
-        plugin_id = await plugin_of_request(request, conn)
-        sent = await send(conn, plugin_id, project, body)
+    sent = await send_as(request.app.state.engine, partial(plugin_of_request, request), project, body)
     if sent.duplicate:
         response.status_code = 200
     return sent

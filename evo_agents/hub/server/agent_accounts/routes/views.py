@@ -25,8 +25,7 @@ async def list_agent_accounts(
     request: Request, project: ProjectName, handle: Handle, user: CurrentUser, response: Response
 ) -> list[AgentAccount]:
     """The live accounts of agent ``handle``, by variable and name, with their figures; never a value."""
-    async with request.app.state.engine.begin() as conn:
-        found = await service.list_accounts(conn, user, project, handle)
+    found = await service.list_accounts(request.app.state.engine, user, project, handle)
     response.headers.update(NO_STORE)
     return found
 
@@ -36,8 +35,7 @@ async def get_agent_account(
     request: Request, project: ProjectName, handle: Handle, name: AccountName, user: CurrentUser, response: Response
 ) -> AgentAccount:
     """The account ``name`` of agent ``handle`` with its figures; 404 when the agent has no live account of that name."""
-    async with request.app.state.engine.begin() as conn:
-        found = await service.show(conn, user, project, handle, name)
+    found = await service.show(request.app.state.engine, user, project, handle, name)
     response.headers.update(NO_STORE)
     return found
 
@@ -54,7 +52,6 @@ async def list_all_agent_accounts(
 ) -> list[ListedAgentAccount]:
     """The live accounts of the agents of every project the caller holds a grant on, by project, handle, variable and
     name; a hub admin's grants alone count, as for reading a profile."""
-    async with request.app.state.engine.begin() as conn:
-        found = await service.list_all(conn, user, project, handle)
+    found = await service.list_all(request.app.state.engine, user, project, handle)
     response.headers.update(NO_STORE)
     return found

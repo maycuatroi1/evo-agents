@@ -18,8 +18,7 @@ router = APIRouter(prefix="/v1/market", tags=["market"], responses={401: {"model
 @router.get("/hub", response_model=HubIdentity)
 async def hub_identity(request: Request, user: AdminUser) -> HubIdentity:
     """The hub's stable id, which a seller's licence names."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.hub_identity(conn, request.app.state.config.public_url)
+    return await service.hub_identity(request.app.state.engine, request.app.state.config.public_url)
 
 
 @router.post("/{source}/{plugin}/buy", response_model=Bought, status_code=201, responses=REFUSALS)
@@ -31,8 +30,7 @@ async def buy(request: Request, source: SourceId, plugin: PluginId, body: BuyIn,
 @router.get("/licenses", response_model=Purchases)
 async def purchases(request: Request, user: AdminUser) -> Purchases:
     """The hub's orders of paid plugins and their licences, the newest first."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.purchases(conn)
+    return await service.purchases(request.app.state.engine)
 
 
 @router.post("/licenses/check", response_model=Checked, responses=REFUSALS)

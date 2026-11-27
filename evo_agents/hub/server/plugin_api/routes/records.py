@@ -63,27 +63,23 @@ def _member_door(user, plugin: str, project: str) -> Door:
 
 
 async def _list(request: Request, door: Door, collection: str, after: str | None, limit: int) -> RecordPage:
-    async with request.app.state.engine.begin() as conn:
-        return await records.listing(conn, door, collection, after, limit)
+    return await records.listing(request.app.state.engine, door, collection, after, limit)
 
 
 async def _show(request: Request, door: Door, collection: str, key: str) -> RecordOut:
-    async with request.app.state.engine.begin() as conn:
-        return await records.show(conn, door, collection, key)
+    return await records.show(request.app.state.engine, door, collection, key)
 
 
 async def _write(
     request: Request, response: Response, door: Door, collection: str, key: str, given: RecordIn
 ) -> RecordOut:
-    async with request.app.state.engine.begin() as conn:
-        record, new = await records.write(conn, door, collection, key, given)
+    record, new = await records.write(request.app.state.engine, door, collection, key, given)
     response.status_code = 201 if new else 200
     return record
 
 
 async def _erase(request: Request, door: Door, collection: str, key: str, revision: int | None) -> Response:
-    async with request.app.state.engine.begin() as conn:
-        await records.erase(conn, door, collection, key, revision)
+    await records.erase(request.app.state.engine, door, collection, key, revision)
     return Response(status_code=204)
 
 

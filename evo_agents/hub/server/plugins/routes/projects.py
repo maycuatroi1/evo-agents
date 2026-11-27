@@ -30,26 +30,8 @@ from evo_agents.hub.server.plugins.models.configs import (
 )
 from evo_agents.hub.server.plugins.models.grants import PluginEnable, ProjectPlugin
 from evo_agents.hub.server.plugins.models.store import PluginName
-from evo_agents.hub.server.plugins.service import projects as checks
-from evo_agents.hub.server.plugins.service.configs import (
-    effective,
-    layer_versions,
-    read_layer,
-    rollback_layer,
-    run_plugins,
-    write_layer,
-)
-from evo_agents.hub.server.plugins.service.grants import (
-    check_admin,
-    disable,
-    enable,
-    installed_row,
-    list_project_plugins,
-    project_plugin,
-)
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.plugins.service import projects as service
 from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.security import CurrentUser
 
 AgentHandle = Annotated[
@@ -77,15 +59,13 @@ def _secret(request: Request) -> str | None:
 @router.get("/{project}/plugins", response_model=list[ProjectPlugin], responses=READ_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def plugins_of_project(request: Request, project: ProjectName, user: CurrentUser) -> list[ProjectPlugin]:
     """Every plugin installed on the hub, by name, with what it asks for and whether the project enabled it."""
-    async with request.app.state.engine.begin() as conn:
-        return await list_project_plugins(conn, await checks.reading(conn, user, project), _secret(request))
+    return await service.plugins_of(request.app.state.engine, user, project, _secret(request))
 
 
 @router.get("/{project}/plugins/{name}", response_model=ProjectPlugin, responses=READ_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def plugin_of_project(request: Request, project: ProjectName, name: PluginName, user: CurrentUser):
     """One installed plugin: what it asks for, each permission with what it lets it do, before an admin grants it."""
-    async with request.app.state.engine.begin() as conn:
-        return await project_plugin(conn, await checks.reading(conn, user, project), name, _secret(request))
+    return await service.plugin_of(request.app.state.engine, user, project, name, _secret(request))
 
 
 @router.post("/{project}/plugins/{name}/enable", response_model=ProjectPlugin, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -94,21 +74,14 @@ async def enable_plugin(
 ) -> ProjectPlugin:
     """Enable the plugin for the project, granting exactly what its installed version asks for; or grant that again
     after an upgrade asked for more."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        check_admin(access, f"enabling plugin {name}")
-        await enable(conn, user, access, name, body.permissions, body.records_level)
-        return await project_plugin(conn, access, name, _secret(request))
+    engine, secret = request.app.state.engine, _secret(request)
+    return await service.enable_in(engine, user, project, name, body.permissions, body.records_level, secret)
 
 
 @router.post("/{project}/plugins/{name}/disable", response_model=ProjectPlugin, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
 async def disable_plugin(request: Request, project: ProjectName, name: PluginName, user: CurrentUser) -> ProjectPlugin:
     """Disable the plugin for the project: its grants go, the versions of its config stay."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        check_admin(access, f"disabling plugin {name}")
-        await disable(conn, user, access, name)
-        return await project_plugin(conn, access, name, _secret(request))
+    return await service.disable_in(request.app.state.engine, user, project, name, _secret(request))
 
 
 # Config
@@ -119,10 +92,7 @@ async def config_layer(
     request: Request, project: ProjectName, name: PluginName, user: CurrentUser, agent: AgentHandle = None
 ) -> PluginConfigLayer:
     """The current version of the project's layer of the plugin's config, or of agent profile ``agent``'s."""
-    async with request.app.state.engine.begin() as conn:
-        access = await checks.reading(conn, user, project)
-        plugin = await checks.enabled(conn, access, name)
-        return await read_layer(conn, await checks.place(conn, access, plugin, agent))
+    return await service.config_layer(request.app.state.engine, user, project, name, agent)
 
 
 @router.get(
@@ -134,10 +104,7 @@ async def config_versions(
     request: Request, project: ProjectName, name: PluginName, user: CurrentUser, agent: AgentHandle = None
 ) -> list[PluginConfigLayer]:
     """Every version of the layer, the newest first."""
-    async with request.app.state.engine.begin() as conn:
-        access = await checks.reading(conn, user, project)
-        plugin = await checks.enabled(conn, access, name)
-        return await layer_versions(conn, await checks.place(conn, access, plugin, agent))
+    return await service.config_versions(request.app.state.engine, user, project, name, agent)
 
 
 @router.post("/{project}/plugins/{name}/config", response_model=PluginConfigLayer, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -150,13 +117,8 @@ async def write_config(
     agent: AgentHandle = None,
 ) -> PluginConfigLayer:
     """Write the layer's next version: the fields ``values`` sets, those ``unset`` clears, every other as it is."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        check_admin(access, f"changing the config of plugin {name}")
-        await installed_row(conn, access, name, lock=True)  # one write of the plugin's config at a time
-        plugin = await checks.enabled(conn, access, name)
-        place = await checks.place(conn, access, plugin, agent, live=True)
-        return await write_layer(conn, user, place, plugin.manifest.get("config"), body, request.app.state.sealer)
+    state = request.app.state
+    return await service.write_config(state.engine, user, project, name, agent, body, state.sealer)
 
 
 @router.post("/{project}/plugins/{name}/config/rollback", response_model=PluginConfigLayer, responses=WRITE_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -169,12 +131,7 @@ async def rollback_config(
     agent: AgentHandle = None,
 ) -> PluginConfigLayer:
     """Copy an older version of the layer as its next version."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        check_admin(access, f"rolling back the config of plugin {name}")
-        await installed_row(conn, access, name, lock=True)
-        plugin = await checks.enabled(conn, access, name)
-        return await rollback_layer(conn, user, await checks.place(conn, access, plugin, agent, live=True), body)
+    return await service.rollback_config(request.app.state.engine, user, project, name, agent, body)
 
 
 @router.get("/{project}/plugins/{name}/config/effective", response_model=EffectiveConfig, responses=CONFIG_REFUSALS)  # pyright: ignore[reportArgumentType]
@@ -183,11 +140,7 @@ async def effective_config(
 ) -> EffectiveConfig:
     """The config the plugin gets in the project for runs under ``agent`` (the default profile without one) that give
     no layer of their own: each field with its value (none for a secret), the layer that set it, and the digest."""
-    async with request.app.state.engine.begin() as conn:
-        access = await checks.reading(conn, user, project)
-        plugin = await checks.enabled(conn, access, name)
-        profile_id, handle = await checks.profile(conn, access, agent)
-        return await effective(conn, plugin, access.project_id, access.name, profile_id, handle)
+    return await service.effective_config(request.app.state.engine, user, project, name, agent)
 
 
 # Runs
@@ -203,6 +156,4 @@ async def plugins_of_run(
 ) -> list[RunPlugin]:
     """The plugins run ``run_id`` ran with, each with its version and the digest of its effective config, as a
     worker claimed it; empty for a run not claimed yet, or on a project with no plugin enabled."""
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
-        return await run_plugins(conn, run_id)
+    return await service.plugins_of_run(request.app.state.engine, user, project, run_id, sink)

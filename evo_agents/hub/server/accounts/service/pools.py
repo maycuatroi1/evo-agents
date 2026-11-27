@@ -22,7 +22,7 @@ members. A pool that an agent uses cannot be deleted (409). Each change adds one
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.account_providers import MODEL_ENV_VARS, provider_of
 from evo_agents.hub.server import audit
@@ -36,6 +36,7 @@ from evo_agents.hub.server.accounts.models.pools import (
 from evo_agents.hub.server.accounts.repository import pools as repository
 from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, holds
 
@@ -134,26 +135,29 @@ async def _record(conn: AsyncConnection, user: Principal, access: ProjectAccess,
 # What the routes do
 
 
-async def list_pools(conn: AsyncConnection, user: Principal, project: str) -> list[AccountPool]:
+async def list_pools(engine: AsyncEngine, user: Principal, project: str) -> list[AccountPool]:
     """The account pools of the project, by name, each with its accounts and the agents that use it."""
-    access = await _admitted(conn, user, project, "reading")
-    return await _views(conn, access, await repository.pools(conn, access.project_id))
+    async with engine.connect() as conn:
+        access = await _admitted(conn, user, project, "reading")
+        return await _views(conn, access, await repository.pools(conn, access.project_id))
 
 
-async def create(conn: AsyncConnection, user: Principal, project: str, body: PoolWrite) -> tuple[AccountPool, int]:
+async def create(engine: AsyncEngine, user: Principal, project: str, body: PoolWrite) -> tuple[AccountPool, int]:
     """An empty account pool named ``name``, and its id; 409 when the project has one of that name."""
-    access = await _admitted(conn, user, project, "making")
-    if await repository.name_taken(conn, access.project_id, body.name):
-        raise Conflict(f"project {project} has an account pool {body.name} already")
-    pool_id = await repository.create(conn, access.project_id, user.user_id, body.model_dump())
-    await _record(conn, user, access, audit.ACCOUNT_POOL_CREATE, f"account-pool:{pool_id}")
-    return await pool_view(conn, access, body.name), pool_id
+    async with UnitOfWork(engine) as conn:
+        access = await _admitted(conn, user, project, "making")
+        if await repository.name_taken(conn, access.project_id, body.name):
+            raise Conflict(f"project {project} has an account pool {body.name} already")
+        pool_id = await repository.create(conn, access.project_id, user.user_id, body.model_dump())
+        await _record(conn, user, access, audit.ACCOUNT_POOL_CREATE, f"account-pool:{pool_id}")
+        return await pool_view(conn, access, body.name), pool_id
 
 
-async def read(conn: AsyncConnection, user: Principal, project: str, pool: str) -> AccountPool:
+async def read(engine: AsyncEngine, user: Principal, project: str, pool: str) -> AccountPool:
     """Pool ``pool`` of the project."""
-    access = await _admitted(conn, user, project, "reading")
-    return await pool_view(conn, access, pool)
+    async with engine.connect() as conn:
+        access = await _admitted(conn, user, project, "reading")
+        return await pool_view(conn, access, pool)
 
 
 def _policy_target(pool_id: int, row) -> str:
@@ -163,28 +167,30 @@ def _policy_target(pool_id: int, row) -> str:
     )
 
 
-async def set_policy(conn: AsyncConnection, user: Principal, project: str, pool: str, body: PoolPolicy) -> AccountPool:
+async def set_policy(engine: AsyncEngine, user: Principal, project: str, pool: str, body: PoolPolicy) -> AccountPool:
     """The pool's strategy and thresholds of quota-pacing set; a field left out stays."""
-    access = await _admitted(conn, user, project, "changing")
-    row = await _pool_row(conn, access, pool, lock=True)
-    values = body.model_dump(exclude_none=True)
-    if values:
-        changed = await repository.set_policy(conn, row.id, values)
-        await _record(conn, user, access, audit.ACCOUNT_POOL_POLICY, _policy_target(row.id, changed))
-    return await pool_view(conn, access, pool)
+    async with UnitOfWork(engine) as conn:
+        access = await _admitted(conn, user, project, "changing")
+        row = await _pool_row(conn, access, pool, lock=True)
+        values = body.model_dump(exclude_none=True)
+        if values:
+            changed = await repository.set_policy(conn, row.id, values)
+            await _record(conn, user, access, audit.ACCOUNT_POOL_POLICY, _policy_target(row.id, changed))
+        return await pool_view(conn, access, pool)
 
 
-async def delete(conn: AsyncConnection, user: Principal, project: str, pool: str) -> None:
+async def delete(engine: AsyncEngine, user: Principal, project: str, pool: str) -> None:
     """The pool and its list of accounts gone (the accounts stay); 409 while an agent uses it."""
-    access = await _admitted(conn, user, project, "deleting")
-    row = await _pool_row(conn, access, pool, lock=True)
-    users = await repository.agents_using(conn, row.id)
-    if users:
-        raise Conflict(
-            f"account pool {row.name} is attached to {', '.join('@' + h for h in sorted(users))}: detach it first"
-        )
-    await repository.delete_pool(conn, row.id)
-    await _record(conn, user, access, audit.ACCOUNT_POOL_DELETE, f"account-pool:{row.id}")
+    async with UnitOfWork(engine) as conn:
+        access = await _admitted(conn, user, project, "deleting")
+        row = await _pool_row(conn, access, pool, lock=True)
+        users = await repository.agents_using(conn, row.id)
+        if users:
+            raise Conflict(
+                f"account pool {row.name} is attached to {', '.join('@' + h for h in sorted(users))}: detach it first"
+            )
+        await repository.delete_pool(conn, row.id)
+        await _record(conn, user, access, audit.ACCOUNT_POOL_DELETE, f"account-pool:{row.id}")
 
 
 async def _secret_to_add(conn: AsyncConnection, user: Principal, access: ProjectAccess, body: AccountAdd):
@@ -202,29 +208,31 @@ async def _secret_to_add(conn: AsyncConnection, user: Principal, access: Project
     return found
 
 
-async def add(conn: AsyncConnection, user: Principal, project: str, pool: str, body: AccountAdd) -> AccountPool:
+async def add(engine: AsyncEngine, user: Principal, project: str, pool: str, body: AccountAdd) -> AccountPool:
     """An account added to the pool; 409 when the pool holds an account of that name already."""
-    access = await _admitted(conn, user, project, "changing")
-    row = await _pool_row(conn, access, pool, lock=True)
-    secret = await _secret_to_add(conn, user, access, body)
-    held = await repository.same_named(conn, row.id, secret.name)
-    if secret.id in held:
+    async with UnitOfWork(engine) as conn:
+        access = await _admitted(conn, user, project, "changing")
+        row = await _pool_row(conn, access, pool, lock=True)
+        secret = await _secret_to_add(conn, user, access, body)
+        held = await repository.same_named(conn, row.id, secret.name)
+        if secret.id in held:
+            return await pool_view(conn, access, pool)
+        if held:
+            raise Conflict(f"account pool {row.name} holds an account named {secret.name} already")
+        await repository.add_member(conn, row.id, secret.id, user.user_id)
+        await _record(conn, user, access, audit.ACCOUNT_POOL_ADD, f"account-pool:{row.id} secret:{secret.id}")
         return await pool_view(conn, access, pool)
-    if held:
-        raise Conflict(f"account pool {row.name} holds an account named {secret.name} already")
-    await repository.add_member(conn, row.id, secret.id, user.user_id)
-    await _record(conn, user, access, audit.ACCOUNT_POOL_ADD, f"account-pool:{row.id} secret:{secret.id}")
-    return await pool_view(conn, access, pool)
 
 
-async def remove(conn: AsyncConnection, user: Principal, project: str, pool: str, secret_id: int) -> AccountPool:
+async def remove(engine: AsyncEngine, user: Principal, project: str, pool: str, secret_id: int) -> AccountPool:
     """An account taken out of the pool; 404 when the pool does not hold it."""
-    access = await _admitted(conn, user, project, "changing")
-    row = await _pool_row(conn, access, pool, lock=True)
-    if not await repository.remove_member(conn, row.id, secret_id):
-        raise NotFound(f"account pool {row.name} holds no account {secret_id}")
-    await _record(conn, user, access, audit.ACCOUNT_POOL_REMOVE, f"account-pool:{row.id} secret:{secret_id}")
-    return await pool_view(conn, access, pool)
+    async with UnitOfWork(engine) as conn:
+        access = await _admitted(conn, user, project, "changing")
+        row = await _pool_row(conn, access, pool, lock=True)
+        if not await repository.remove_member(conn, row.id, secret_id):
+            raise NotFound(f"account pool {row.name} holds no account {secret_id}")
+        await _record(conn, user, access, audit.ACCOUNT_POOL_REMOVE, f"account-pool:{row.id} secret:{secret_id}")
+        return await pool_view(conn, access, pool)
 
 
 async def attach(

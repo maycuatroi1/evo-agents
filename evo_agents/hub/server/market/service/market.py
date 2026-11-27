@@ -24,11 +24,12 @@ them. Adding and removing a source are audited as market.source.add and market.s
 from __future__ import annotations
 
 from fastapi import HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.market_refresh import place_builtin, refresh
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.models.sealing import market_source_aad
 from evo_agents.hub.server.market.models.market import (
     NO_KEY,
@@ -144,6 +145,12 @@ async def source_row(conn: AsyncConnection, source_id: int):
     return rows[0]
 
 
+async def check_source(engine: AsyncEngine, source_id: int) -> None:
+    """404 unless the hub reads market ``source_id``, as ``source_row`` checks, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        await source_row(conn, source_id)
+
+
 def brief(row) -> dict:
     index = row.index or {}
     return {
@@ -157,35 +164,37 @@ def brief(row) -> dict:
 
 
 async def market_list(
-    conn: AsyncConnection, q: str | None, industry: str | None, category: str | None, source: int | None
+    engine: AsyncEngine, q: str | None, industry: str | None, category: str | None, source: int | None
 ) -> MarketList:
     """The plugins of every market, filtered, with the industries and categories of them all and each market."""
-    rows = await source_rows(conn)
-    held = await installed_plugins(conn)
-    found, industries, categories = [], set(), set()
-    for row in rows:
-        for item in (row.index or {}).get("plugins", ()):
-            industries.update(item["industries"])
-            categories.update(item["categories"])
-            if (source is None or row.id == source) and _matches(item, q, industry, category):
-                found.append(MarketPlugin(**plugin_model(row, item, held.get(item["id"]))))
-    markets = [MarketBrief(**brief(row)) for row in rows]
-    return MarketList(plugins=found, industries=sorted(industries), categories=sorted(categories), markets=markets)
+    async with UnitOfWork(engine) as conn:
+        rows = await source_rows(conn)
+        held = await installed_plugins(conn)
+        found, industries, categories = [], set(), set()
+        for row in rows:
+            for item in (row.index or {}).get("plugins", ()):
+                industries.update(item["industries"])
+                categories.update(item["categories"])
+                if (source is None or row.id == source) and _matches(item, q, industry, category):
+                    found.append(MarketPlugin(**plugin_model(row, item, held.get(item["id"]))))
+        markets = [MarketBrief(**brief(row)) for row in rows]
+        return MarketList(plugins=found, industries=sorted(industries), categories=sorted(categories), markets=markets)
 
 
-async def market_plugin(conn: AsyncConnection, config, source: int, plugin: str) -> MarketPluginDetail:
+async def market_plugin(engine: AsyncEngine, config, source: int, plugin: str) -> MarketPluginDetail:
     """Plugin ``plugin`` of market ``source``, with whether the hub trusts its signer and may trust it."""
-    row = await source_row(conn, source)
-    item = entry_of(row, plugin)
-    held = await installed_plugins(conn)
-    publishers = await trusted_publishers(conn, config)
-    publisher = item["publisher"]
-    try:
-        trusted = trusts(publishers, publisher["id"], publisher["signer"])
-    except ValueError:
-        trusted = False
-    may = not config.plugin_publishers_locked and publisher["id"] not in config.plugin_core_publishers
-    return MarketPluginDetail(**plugin_model(row, item, held.get(plugin)), trusted=trusted, may_trust=may)
+    async with UnitOfWork(engine) as conn:
+        row = await source_row(conn, source)
+        item = entry_of(row, plugin)
+        held = await installed_plugins(conn)
+        publishers = await trusted_publishers(conn, config)
+        publisher = item["publisher"]
+        try:
+            trusted = trusts(publishers, publisher["id"], publisher["signer"])
+        except ValueError:
+            trusted = False
+        may = not config.plugin_publishers_locked and publisher["id"] not in config.plugin_core_publishers
+        return MarketPluginDetail(**plugin_model(row, item, held.get(plugin)), trusted=trusted, may_trust=may)
 
 
 # The sources
@@ -249,15 +258,16 @@ async def add_source(request: Request, body: MarketSourceIn, user: Principal) ->
     return await refreshed(request, source_id)
 
 
-async def remove_source(conn: AsyncConnection, source_id: int, user: Principal) -> None:
+async def remove_source(engine: AsyncEngine, source_id: int, user: Principal) -> None:
     """Stop reading market ``source_id``; 409 for the operator's market."""
-    row = await source_row(conn, source_id)
-    if row.builtin:
-        raise Conflict(
-            f"{row.repo} is this hub's default market: its operator removes it with EVO_HUB_MARKET_DEFAULT_SOURCE="
+    async with UnitOfWork(engine) as conn:
+        row = await source_row(conn, source_id)
+        if row.builtin:
+            raise Conflict(
+                f"{row.repo} is this hub's default market: its operator removes it with EVO_HUB_MARKET_DEFAULT_SOURCE="
+            )
+        await repository.delete_source(conn, source_id)
+        target = f"market:{row.repo}"
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=audit.MARKET_SOURCE_REMOVE, target=target
         )
-    await repository.delete_source(conn, source_id)
-    target = f"market:{row.repo}"
-    await audit.record(
-        conn, actor_id=user.user_id, token_id=user.token_id, action=audit.MARKET_SOURCE_REMOVE, target=target
-    )

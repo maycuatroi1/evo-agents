@@ -74,8 +74,7 @@ async def host_plugins(request: Request, _: HostCaller) -> list[BackendPlugin]:
     host asks for one when it starts a backend, so pulling again changes nothing."""
     state = request.app.state
     hub_url = state.config.public_url or ""
-    async with state.engine.begin() as conn:
-        return await backend_plugins(conn, state.sealer, hub_url)
+    return await backend_plugins(state.engine, state.sealer, hub_url)
 
 
 @router.post("/plugins/{name}/token", response_model=BackendToken)
@@ -84,8 +83,7 @@ async def host_token(request: Request, name: str, _: HostCaller) -> BackendToken
     is an installed, turned-on isolated plugin with a backend. The plugin's row stays locked until the token is
     written, as removing it and the hub turning it off lock it: either of those that runs at the same time waits and
     then revokes the token, or goes first and leaves no plugin to mint one for."""
-    async with request.app.state.engine.begin() as conn:
-        return BackendToken(token=await backend_token(conn, name))
+    return BackendToken(token=await backend_token(request.app.state.engine, name))
 
 
 @router.get("/plugins/{name}/bundle")
@@ -94,8 +92,7 @@ async def host_bundle(request: Request, name: str, _: HostCaller):
     from fastapi import Response
 
     state = request.app.state
-    async with state.engine.begin() as conn:
-        version = await installed_bundle_row(conn, name)
+    version = await installed_bundle_row(state.engine, name)
     data = await bundle_of(_blobs(request), version)
     return Response(content=data, media_type="application/gzip")
 
@@ -109,5 +106,4 @@ def _blobs(request: Request):
 @router.post("/status", status_code=204)
 async def report_status(request: Request, _: HostCaller, body: list[BackendStatusIn]) -> None:
     """The host reports each backend's state; the hub keeps it in plugin_backends for an admin to read."""
-    async with request.app.state.engine.begin() as conn:
-        await report(conn, body)
+    await report(request.app.state.engine, body)

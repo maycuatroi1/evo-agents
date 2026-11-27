@@ -7,16 +7,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import task_runs
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.outputs.models import view
 from evo_agents.hub.server.outputs.service.store import usage
 from evo_agents.hub.server.plugin_api.models.runs import TaskRunOutputs, TaskRunSummary, content_url
 from evo_agents.hub.server.plugin_api.repository import runs as store
 from evo_agents.hub.server.plugin_api.service.access import granted
-from evo_agents.hub.server.task_dispatch import task_view
+from evo_agents.hub.server.task_dispatch import plugin_of_request, task_view
 
 
 async def own_run(conn: AsyncConnection, plugin_id: int, project: str, run_id: int):
@@ -29,30 +30,36 @@ async def own_run(conn: AsyncConnection, plugin_id: int, project: str, run_id: i
     return found
 
 
-async def summary(conn: AsyncConnection, plugin_id: int, project: str, run_id: int) -> TaskRunSummary:
+async def summary(engine: AsyncEngine, request: Request, project: str, run_id: int) -> TaskRunSummary:
     """The task run with its evidence and error."""
-    found = await own_run(conn, plugin_id, project, run_id)
-    return TaskRunSummary(**task_view(found), summary=found.evidence, error=found.error)
+    async with UnitOfWork(engine) as conn:
+        plugin_id = await plugin_of_request(request, conn)
+        found = await own_run(conn, plugin_id, project, run_id)
+        return TaskRunSummary(**task_view(found), summary=found.evidence, error=found.error)
 
 
 async def outputs(
-    conn: AsyncConnection, plugin_id: int, project: str, run_id: int, sources: Sequence[str], after: int
+    engine: AsyncEngine, request: Request, project: str, run_id: int, sources: Sequence[str], after: int
 ) -> TaskRunOutputs:
     """The outputs of the task run after ``after``, of ``sources`` when given, each with the URL of its bytes."""
-    found = await own_run(conn, plugin_id, project, run_id)
-    rows = await store.outputs(conn, run_id, after, list(dict.fromkeys(sources)))
-    count, size = await usage(conn, run_id)
-    shown = [view(row, content_url(found.project, run_id, row.id)) for row in rows]
-    return TaskRunOutputs(run_id=run_id, outputs=shown, count=count, bytes=size)
+    async with UnitOfWork(engine) as conn:
+        plugin_id = await plugin_of_request(request, conn)
+        found = await own_run(conn, plugin_id, project, run_id)
+        rows = await store.outputs(conn, run_id, after, list(dict.fromkeys(sources)))
+        count, size = await usage(conn, run_id)
+        shown = [view(row, content_url(found.project, run_id, row.id)) for row in rows]
+        return TaskRunOutputs(run_id=run_id, outputs=shown, count=count, bytes=size)
 
 
-async def output(conn: AsyncConnection, plugin_id: int, project: str, run_id: int, output_id: int):
+async def output(engine: AsyncEngine, request: Request, project: str, run_id: int, output_id: int):
     """The row of output ``output_id`` of the task run; 404 for an output of another run, or none."""
-    await own_run(conn, plugin_id, project, run_id)
-    row = await store.output(conn, run_id, output_id)
-    if row is None:
-        raise HTTPException(404, f"run {run_id} has no output {output_id}: see GET .../runs/{run_id}/outputs")
-    return row
+    async with UnitOfWork(engine) as conn:
+        plugin_id = await plugin_of_request(request, conn)
+        await own_run(conn, plugin_id, project, run_id)
+        row = await store.output(conn, run_id, output_id)
+        if row is None:
+            raise HTTPException(404, f"run {run_id} has no output {output_id}: see GET .../runs/{run_id}/outputs")
+        return row
 
 
 __all__ = ["output", "outputs", "own_run", "summary"]
