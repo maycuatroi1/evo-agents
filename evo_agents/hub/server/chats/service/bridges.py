@@ -22,11 +22,12 @@ import logging
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, telegram
 from evo_agents.hub.plugin_calls import core_registry, effective_grant, enabled_in
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.bridges import (
     FROM_SESSION,
@@ -96,6 +97,12 @@ async def new_code(conn: AsyncConnection, user: Principal, chat_id: int, kind: s
     return code, expires_at
 
 
+async def make_code(engine: AsyncEngine, user: Principal, chat_id: int, kind: str) -> tuple[str, datetime]:
+    """``new_code`` in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await new_code(conn, user, chat_id, kind)
+
+
 async def redeem(conn: AsyncConnection, plugin: str, kind: str, code: str, group: str, config: dict):
     """Bridge the chat code ``code`` of ``kind`` was made for to group ``group``, with the plugin's ``config``: the
     bridge's row; None when the code is not one of the kind, was used, expired, or the session that made it ended.
@@ -144,18 +151,19 @@ async def move(conn: AsyncConnection, bridge_id: int, kind: str, group: str) -> 
     return await store.move_bridge(conn, bridge_id, group)
 
 
-async def remove_bridge(conn: AsyncConnection, user: Principal, chat_id: int, bridge_id: int) -> Chat:
+async def remove_bridge(engine: AsyncEngine, user: Principal, chat_id: int, bridge_id: int) -> Chat:
     """Take bridge ``bridge_id`` of chat ``chat_id`` off for ``user``, a chat admin (from the web or the CLI) or a hub
     admin: the chat as it reads now; 404 for a bridge the chat does not have, 403 for anyone else."""
-    chat = await chat_access(conn, user, chat_id, lock=True)
-    if not await store.has_bridge(conn, chat_id, bridge_id):
-        raise HTTPException(404, NO_BRIDGE.format(chat=chat_id, bridge=bridge_id))
-    if user.scope is None and await label_admin(conn, chat):
-        via = "web" if user.kind == WEB else "cli"
-    elif user.admin and user.scope is None:
-        via = "admin"
-    else:
-        names = ", ".join(p.name for p in chat.projects)
-        raise HTTPException(403, NOT_ADMIN.format(chat=chat_id, names=names))
-    await unlink(conn, bridge_id, via, actor_id=user.user_id, token_id=user.token_id)
-    return await chat_view(conn, chat)
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id, lock=True)
+        if not await store.has_bridge(conn, chat_id, bridge_id):
+            raise HTTPException(404, NO_BRIDGE.format(chat=chat_id, bridge=bridge_id))
+        if user.scope is None and await label_admin(conn, chat):
+            via = "web" if user.kind == WEB else "cli"
+        elif user.admin and user.scope is None:
+            via = "admin"
+        else:
+            names = ", ".join(p.name for p in chat.projects)
+            raise HTTPException(403, NOT_ADMIN.format(chat=chat_id, names=names))
+        await unlink(conn, bridge_id, via, actor_id=user.user_id, token_id=user.token_id)
+        return await chat_view(conn, chat)

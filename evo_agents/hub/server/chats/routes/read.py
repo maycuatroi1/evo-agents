@@ -21,8 +21,7 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 @worker_router.post("/runs/{run_id}/chat/read", response_model=ChatReading, responses=READ_REFUSALS)
 async def read_chat(request: Request, run_id: RunId, body: AgentReadIn, user: CurrentUser) -> ChatReading:
     """A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring)."""
-    async with request.app.state.engine.begin() as conn:
-        reading = await agent_read(conn, user, run_id, body.id, body.thread)
+    reading = await agent_read(request.app.state.engine, user, run_id, body.id, body.thread)
     log.info(
         "chat read by an agent", extra={"run_id": run_id, "chat_id": reading.chat_id, "read": len(reading.messages)}
     )

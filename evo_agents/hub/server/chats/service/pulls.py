@@ -27,6 +27,7 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import guard, runs
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.agents import ChatPull, ChatPushed, ChatRepo, ChatRepoIn
 from evo_agents.hub.server.chats.models.runs import ChatRun
 from evo_agents.hub.server.chats.repository import agents as store
@@ -133,33 +134,34 @@ async def _refuse_checkout(conn: AsyncConnection, run: AgentRun, worker, name: s
         raise HTTPException(409, f"worker {worker.name} has no checkout of {name} of project {project}: {why}")
 
 
-async def open_repo(conn: AsyncConnection, user: Principal, run_id: int, body: ChatRepoIn) -> ChatRepo:
+async def open_repo(engine: AsyncEngine, user: Principal, run_id: int, body: ChatRepoIn) -> ChatRepo:
     """The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's
     repos on the run's branch (see the module's docstring)."""
-    run = await agent_run(conn, user, run_id)
-    if run.kind != "chat":
-        raise HTTPException(404, f"run {run_id} is a {run.kind} run: only a chat run's agent opens a repo here")
-    project, name = run.profile.project, body.repo
-    names = await project_repos(conn, run.project_id)
-    if name not in names:
-        listed = ", ".join(names) or "none"
-        raise HTTPException(422, f"project {project} has no repo {name}: its repos are {listed}")
-    await _refuse_checkout(conn, run, await worker_of(conn, user), name)
-    repos = [dict(entry) for entry in run.repos if isinstance(entry, dict)]
-    added = name not in [entry.get("repo") for entry in repos]
-    if added:
-        if len(repos) >= runs.MAX_RUN_REPOS:
-            raise HTTPException(409, f"run {run_id} works in {len(repos)} repos, the most a run works in")
-        repos.append({"repo": name, "branch": run.branch})
-        await store.set_repos(conn, run_id, repos)
-        await audit.record(
-            conn,
-            actor_id=user.user_id,
-            token_id=user.token_id,
-            action=audit.RUN_OPEN_REPO,
-            target=f"{project}/chat run:{run_id} repo={name}",
-            project_id=run.project_id,
-        )
-    # a chat run has its branch; cast, so a run without one still fails as before, when ChatRepo validates it
-    branch = cast(str, run.branch)
-    return ChatRepo(repo=name, branch=branch, added=added, repos=[RunRepo(**entry) for entry in repos])
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        if run.kind != "chat":
+            raise HTTPException(404, f"run {run_id} is a {run.kind} run: only a chat run's agent opens a repo here")
+        project, name = run.profile.project, body.repo
+        names = await project_repos(conn, run.project_id)
+        if name not in names:
+            listed = ", ".join(names) or "none"
+            raise HTTPException(422, f"project {project} has no repo {name}: its repos are {listed}")
+        await _refuse_checkout(conn, run, await worker_of(conn, user), name)
+        repos = [dict(entry) for entry in run.repos if isinstance(entry, dict)]
+        added = name not in [entry.get("repo") for entry in repos]
+        if added:
+            if len(repos) >= runs.MAX_RUN_REPOS:
+                raise HTTPException(409, f"run {run_id} works in {len(repos)} repos, the most a run works in")
+            repos.append({"repo": name, "branch": run.branch})
+            await store.set_repos(conn, run_id, repos)
+            await audit.record(
+                conn,
+                actor_id=user.user_id,
+                token_id=user.token_id,
+                action=audit.RUN_OPEN_REPO,
+                target=f"{project}/chat run:{run_id} repo={name}",
+                project_id=run.project_id,
+            )
+        # a chat run has its branch; cast, so a run without one still fails as before, when ChatRepo validates it
+        branch = cast(str, run.branch)
+        return ChatRepo(repo=name, branch=branch, added=added, repos=[RunRepo(**entry) for entry in repos])

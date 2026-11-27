@@ -45,8 +45,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import (
     NOT_A_MEMBER,
     ChatAccess,
@@ -169,6 +170,13 @@ async def chat_access(conn: AsyncConnection, user: Principal, chat_id: int, *, l
             f"clear its label: {why}. Ask an admin of the project for a grant that reaches it",
         )
     return found
+
+
+async def check_access(engine: AsyncEngine, user: Principal, chat_id: int) -> None:
+    """The refusals of ``chat_access`` for ``user`` and chat ``chat_id``, in a transaction of their own: a stream checks
+    them before it starts, so a refusal is an ordinary error answer."""
+    async with UnitOfWork(engine) as conn:
+        await chat_access(conn, user, chat_id)
 
 
 async def label_admin(conn: AsyncConnection, chat: ChatAccess) -> bool:

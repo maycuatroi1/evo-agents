@@ -14,7 +14,6 @@ from evo_agents.hub.server.chats.models.images import DROP_REFUSALS, READ_REFUSA
 from evo_agents.hub.server.chats.models.members import ChatId
 from evo_agents.hub.server.chats.models.views import Chat
 from evo_agents.hub.server.chats.service import images
-from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -26,8 +25,7 @@ router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model":
 async def _set(request: Request, chat_id: int, user: Principal, image, data: bytes = b"") -> Chat:
     blobs = blob_store(request) if image is not None else None
     try:
-        async with request.app.state.engine.begin() as conn:
-            view, changed = await images.change_image(conn, blobs, chat_id, user, image, data)
+        view, changed = await images.change_image(request.app.state.engine, blobs, chat_id, user, image, data)
     except BlobStoreUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
     log.info("chat image changed", extra={"chat_id": chat_id, "set": image is not None, "changed": changed})
@@ -37,8 +35,8 @@ async def _set(request: Request, chat_id: int, user: Principal, image, data: byt
 @router.put("/{chat_id}/image", response_model=Chat, responses=SET_REFUSALS)
 async def put_image(request: Request, chat_id: ChatId, body: AvatarUpload, user: CurrentUser) -> Chat:
     """Set the group chat's image, a PNG, JPEG or WebP image: its members see it in their list and its header."""
-    async with request.app.state.engine.begin() as conn:  # the refusals of the caller before the bytes are stored
-        images.group(await chat_access(conn, user, chat_id))
+    # the refusals of the caller before the bytes are stored
+    await images.check_group(request.app.state.engine, user, chat_id)
     data, sha256 = images.image(body)
     await images.store_image(blob_store(request), sha256, data)
     return await _set(request, chat_id, user, (sha256, len(data)), data)
@@ -66,8 +64,7 @@ async def get_image(
     if_none_match: Annotated[str | None, Header(description="the ETag of the image the browser holds")] = None,
 ) -> Response:
     """The group chat's image, for its members; 404 when it has none."""
-    async with request.app.state.engine.begin() as conn:
-        sha256 = await images.image_sha256(conn, user, chat_id)
+    sha256 = await images.image_sha256(request.app.state.engine, user, chat_id)
     etag = f'"{sha256}"'
     headers = {"Cache-Control": "private, max-age=86400", "ETag": etag}
     if images.matches(if_none_match, etag):

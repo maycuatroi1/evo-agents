@@ -28,21 +28,22 @@ from __future__ import annotations
 from collections.abc import AsyncIterable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from evo_agents.hub.server.chats.models.events import MAX_EVENTS_PAGE, PROGRESS_PARAM, STREAM_BATCH
+from evo_agents.hub.server.chats.models.events import MAX_EVENTS_PAGE, PROGRESS_PARAM, STREAM_BATCH, STREAM_TOKEN_ENDED
 from evo_agents.hub.server.chats.models.members import REFUSALS, ChatId
 from evo_agents.hub.server.chats.models.views import ChatEvents, ChatProgress, ChatProgressNow
-from evo_agents.hub.server.chats.service.access import chat_access
-from evo_agents.hub.server.chats.service.events import ChatStreams, chat_events, look
+from evo_agents.hub.server.chats.service.access import check_access
+from evo_agents.hub.server.chats.service.events import ChatLooks, ChatStreams, chat_events
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_events import JSON_ERROR, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.security import CurrentUser, Principal, still_live
+from evo_agents.hub.server.security import CurrentUser, Principal
+
+__all__ = ["STREAM_POLL_SECONDS", "STREAM_TOKEN_ENDED", "router", "stream_router"]
 
 STREAM_POLL_SECONDS = 5.0  # a stream looks again this often, notification or not
-STREAM_TOKEN_ENDED = "the run's token that opened this stream is revoked or its run is no longer held"
 
 router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
 stream_router = APIRouter(
@@ -64,15 +65,13 @@ async def list_events(
 ) -> ChatEvents:
     """The chat's events after ``after``, oldest first; ``more`` when there are later ones. With ``progress``, the
     progress of the agents' runs on their way under the messages they took, as the reader may read them."""
-    async with request.app.state.engine.begin() as conn:
-        return await chat_events(conn, user, chat_id, after, limit, progress=progress)
+    return await chat_events(request.app.state.engine, user, chat_id, after, limit, progress=progress)
 
 
 async def _streamed_chat(request: Request, chat_id: ChatId, user: CurrentUser) -> tuple[int, Principal]:
     """The chat a stream follows and its reader, checked before the stream starts so a refusal is an ordinary error
     answer."""
-    async with request.app.state.engine.begin() as conn:
-        await chat_access(conn, user, chat_id)
+    await check_access(request.app.state.engine, user, chat_id)
     return chat_id, user
 
 
@@ -98,21 +97,12 @@ async def stream(
     chat_id, user = followed
     streams: ChatStreams = request.app.state.chat_streams
     streams.start()
-    # one snapshot per look: under read committed, a reader who left between the check of access and the read of the
-    # events would get the event of their leaving before the end
-    engine = request.app.state.engine.execution_options(isolation_level="REPEATABLE READ")
+    looks = ChatLooks(request.app.state.engine, user, chat_id, progress=progress)
     seen = last_event_id if last_event_id is not None else after
     sent: list[ChatProgress] | None = None  # the progress this stream sent last
     with streams.subscribe(chat_id) as wakeup:
         while True:
-            refusal, now = None, None
-            async with engine.begin() as conn:
-                try:
-                    if not await still_live(conn, user):
-                        raise HTTPException(401, STREAM_TOKEN_ENDED)
-                    events, last, now = await look(conn, user, chat_id, seen, STREAM_BATCH, progress=progress)
-                except HTTPException as refused:
-                    refusal = refused.detail
+            refusal, events, last, now = await looks.after(seen)
             if refusal is not None:
                 yield ServerSentEvent(event="end", data={"reason": refusal, "last_seq": seen})
                 return

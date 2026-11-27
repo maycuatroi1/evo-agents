@@ -17,10 +17,11 @@ new one. Setting the level a chat has already changes nothing; each change is au
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess, with_override, with_shares
 from evo_agents.hub.server.chats.models.views import Chat
 from evo_agents.hub.server.chats.repository import labels as store
@@ -81,9 +82,10 @@ async def _change(conn: AsyncConnection, user: Principal, chat: ChatAccess, leve
     return True
 
 
-async def set_level(conn: AsyncConnection, user: Principal, chat_id: int, level: str | None) -> tuple[Chat, bool]:
+async def set_level(engine: AsyncEngine, user: Principal, chat_id: int, level: str | None) -> tuple[Chat, bool]:
     """Make ``level`` (None: the default) the level of chat ``chat_id`` for ``user``: the chat as it reads now, and
     whether it changed."""
-    chat = await chat_access(conn, user, chat_id, lock=True)
-    changed = await _change(conn, user, chat, level)
-    return await chat_view(conn, await chat_access(conn, user, chat_id) if changed else chat), changed
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id, lock=True)
+        changed = await _change(conn, user, chat, level)
+        return await chat_view(conn, await chat_access(conn, user, chat_id) if changed else chat), changed

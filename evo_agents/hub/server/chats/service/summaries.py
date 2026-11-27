@@ -17,9 +17,10 @@ the traces of the work chats among them.
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import LabelReader
 from evo_agents.hub.server.chats.models.views import (
     ChatAuthor,
@@ -33,6 +34,7 @@ from evo_agents.hub.server.chats.repository import summaries as store
 from evo_agents.hub.server.chats.repository.views import profiles_by_id
 from evo_agents.hub.server.chats.service.access import label_reader
 from evo_agents.hub.server.profile_store import Profile
+from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.work_status import briefs
 from evo_agents.hub.server.work_status_models import WorkBrief
 
@@ -107,3 +109,9 @@ async def chat_summaries(conn: AsyncConnection, user_id: int) -> list[ChatSummar
             )
         )
     return found
+
+
+async def list_chats(engine: AsyncEngine, user: Principal) -> list[ChatSummary]:
+    """The chats ``user`` is in, as ``chat_summaries`` reads them, in a transaction of their own."""
+    async with UnitOfWork(engine) as conn:
+        return await chat_summaries(conn, user.user_id)

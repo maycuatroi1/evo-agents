@@ -30,8 +30,7 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 )
 async def post_chat(request: Request, run_id: RunId, body: ChatPost, user: CurrentUser) -> ChatPosted:
     """Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat."""
-    async with request.app.state.engine.begin() as conn:
-        seq = await service.post_chat(conn, user, run_id, body.text)
+    seq = await service.post_chat(request.app.state.engine, user, run_id, body.text)
     log.info("chat message of the agent", extra={"run_id": run_id, "seq": seq})
     return ChatPosted(run_id=run_id, seq=seq)
 
@@ -49,16 +48,14 @@ async def read_chat(
     sink: Annotated[str | None, Header(alias=plan_models.SINK_HEADER)] = None,
 ) -> RunChat:
     """The chat of an author run: the agent's messages and its owner's, oldest first, and whose turn it is."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.read_chat(conn, user, project, run_id, sink)
+    return await service.read_chat(request.app.state.engine, user, project, run_id, sink)
 
 
 @router.post("/{project}/runs/{run_id}/finish", response_model=Run, responses=REFUSALS)
 async def finish(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
     """End the chat of an author run one dispatched: a parked one is done at once, and the worker holding one ends it
     done once its agent's turn is over."""
-    async with request.app.state.engine.begin() as conn:
-        view, ended = await service.finish(conn, user, project, run_id)
+    view, ended = await service.finish(request.app.state.engine, user, project, run_id)
     if ended:
         log.info("author chat ended", extra={"run_id": run_id, "state": view.state, "login": user.login})
     return view

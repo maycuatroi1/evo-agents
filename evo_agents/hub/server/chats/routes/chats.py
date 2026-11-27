@@ -23,7 +23,7 @@ from evo_agents.hub.server.chats.models.messages import (
 )
 from evo_agents.hub.server.chats.models.views import Chat, ChatPage, ChatSummary, GroupMessage
 from evo_agents.hub.server.chats.service import chats as service
-from evo_agents.hub.server.chats.service.summaries import chat_summaries
+from evo_agents.hub.server.chats.service import summaries
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser
@@ -39,15 +39,13 @@ router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model":
 @router.get("", response_model=list[ChatSummary])
 async def list_chats(request: Request, user: CurrentUser) -> list[ChatSummary]:
     """The chats the caller is in, the latest active first, with the unread messages of others."""
-    async with request.app.state.engine.begin() as conn:
-        return await chat_summaries(conn, user.user_id)
+    return await summaries.list_chats(request.app.state.engine, user)
 
 
 @router.post("", status_code=201, response_model=Chat, responses=REFUSALS)
 async def create_chat(request: Request, body: ChatCreate, user: CurrentUser) -> Chat:
     """Create a chat with the caller in it, and the people and agents given."""
-    async with request.app.state.engine.begin() as conn:
-        view, chat_id, people, agents = await service.create_chat(conn, user, body)
+    view, chat_id, people, agents = await service.create_chat(request.app.state.engine, user, body)
     log.info("chat created", extra={"chat_id": chat_id, "people": people, "agents": agents})
     return view
 
@@ -55,8 +53,7 @@ async def create_chat(request: Request, body: ChatCreate, user: CurrentUser) -> 
 @router.get("/{chat_id}", response_model=Chat, responses=REFUSALS)
 async def show_chat(request: Request, chat_id: ChatId, user: CurrentUser) -> Chat:
     """The chat with its people and agents."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.show_chat(conn, user, chat_id)
+    return await service.show_chat(request.app.state.engine, user, chat_id)
 
 
 # Messages
@@ -72,15 +69,13 @@ async def list_messages(
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = PAGE,
 ) -> ChatPage:
     """The chat and the latest ``limit`` messages before ``before``, or of one thread, oldest first."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.list_messages(conn, user, chat_id, before, thread, limit)
+    return await service.list_messages(request.app.state.engine, user, chat_id, before, thread, limit)
 
 
 @router.post("/{chat_id}/messages", status_code=201, response_model=GroupMessage, responses=REFUSALS)
 async def send_message(request: Request, chat_id: ChatId, body: ChatMessageIn, user: CurrentUser) -> GroupMessage:
     """Send a message to the chat, in the thread of ``reply_to`` when given."""
-    async with request.app.state.engine.begin() as conn:
-        view = await service.send_message(conn, user, chat_id, body)
+    view = await service.send_message(request.app.state.engine, user, chat_id, body)
     log.info("chat message sent", extra={"chat_id": chat_id, "message_id": view.id, "mentions": len(view.mentions)})
     return view
 
@@ -93,8 +88,7 @@ async def react(
     request: Request, chat_id: ChatId, message_id: MessageId, body: ChatReactionIn, user: CurrentUser
 ) -> GroupMessage:
     """Put an emoji on a message; nothing changes when the caller put it already."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.react(conn, user, chat_id, message_id, body)
+    return await service.react(request.app.state.engine, user, chat_id, message_id, body)
 
 
 @router.delete("/{chat_id}/messages/{message_id}/reactions", response_model=GroupMessage, responses=REFUSALS)
@@ -106,8 +100,7 @@ async def unreact(
     emoji: Annotated[str, Query(min_length=1, max_length=chats.MAX_EMOJI_CHARS, description="the emoji to take off")],
 ) -> GroupMessage:
     """Take the caller's emoji off a message; nothing changes when it is not there."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.unreact(conn, user, chat_id, message_id, emoji)
+    return await service.unreact(request.app.state.engine, user, chat_id, message_id, emoji)
 
 
 # Reading
@@ -116,5 +109,4 @@ async def unreact(
 @router.post("/{chat_id}/read", response_model=ChatRead, responses=REFUSALS)
 async def read_chat(request: Request, chat_id: ChatId, body: ChatReadIn, user: CurrentUser) -> ChatRead:
     """Say how far the caller read: the seq of the last event they saw, at most the chat's last."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.read_chat(conn, user, chat_id, body)
+    return await service.read_chat(request.app.state.engine, user, chat_id, body)

@@ -15,16 +15,18 @@ the chat is work for its agent, as if it mentioned it (``direct_mention``, from 
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess
-from evo_agents.hub.server.chats.models.views import agent_author, person_author
+from evo_agents.hub.server.chats.models.views import Chat, agent_author, person_author
 from evo_agents.hub.server.chats.repository import direct as store
 from evo_agents.hub.server.chats.repository.access import projects_by_id
 from evo_agents.hub.server.chats.repository.store import add_member, member_event
-from evo_agents.hub.server.chats.service.access import uncleared
+from evo_agents.hub.server.chats.service.access import chat_access, uncleared
 from evo_agents.hub.server.chats.service.members import addable_agent, refuse_clash, refuse_uncleared
+from evo_agents.hub.server.chats.service.views import chat_view
 from evo_agents.hub.server.profile_store import Profile, by_handle
 from evo_agents.hub.server.security import Principal
 
@@ -65,6 +67,14 @@ async def direct_chat(conn: AsyncConnection, user: Principal, handle: str) -> tu
     if made is not None:
         return made, True
     return (await store.found(conn, user.user_id, profile.id)), False
+
+
+async def open_direct(engine: AsyncEngine, user: Principal, handle: str) -> tuple[Chat, int, bool]:
+    """``user``'s direct chat with agent ``handle`` (``direct_chat``), in a transaction of its own: (the chat as
+    ``user`` reads it, its id, whether it was made now)."""
+    async with UnitOfWork(engine) as conn:
+        chat_id, made = await direct_chat(conn, user, handle)
+        return await chat_view(conn, await chat_access(conn, user, chat_id)), chat_id, made
 
 
 async def direct_mention(conn: AsyncConnection, chat: ChatAccess, kept: list[dict]) -> list[dict]:

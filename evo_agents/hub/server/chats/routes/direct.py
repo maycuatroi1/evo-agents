@@ -8,9 +8,7 @@ from fastapi import APIRouter, Request, Response
 
 from evo_agents.hub.server.chats.models.members import REFUSALS, HandlePath
 from evo_agents.hub.server.chats.models.views import Chat
-from evo_agents.hub.server.chats.service.access import chat_access
-from evo_agents.hub.server.chats.service.direct import direct_chat
-from evo_agents.hub.server.chats.service.views import chat_view
+from evo_agents.hub.server.chats.service import direct
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 
@@ -26,9 +24,7 @@ router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model":
 )
 async def open_direct(request: Request, response: Response, handle: HandlePath, user: CurrentUser) -> Chat:
     """The caller's direct chat with agent ``handle``: the one there is (200), or one made now (201)."""
-    async with request.app.state.engine.begin() as conn:
-        chat_id, made = await direct_chat(conn, user, handle)
-        view = await chat_view(conn, await chat_access(conn, user, chat_id))
+    view, chat_id, made = await direct.open_direct(request.app.state.engine, user, handle)
     response.status_code = 201 if made else 200
     log.info("direct chat opened", extra={"chat_id": chat_id, "handle": handle, "made": made})
     return view

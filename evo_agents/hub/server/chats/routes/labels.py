@@ -19,8 +19,7 @@ router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model":
 
 
 async def _set(request: Request, chat_id: int, user: Principal, level: str | None) -> Chat:
-    async with request.app.state.engine.begin() as conn:
-        view, changed = await set_level(conn, user, chat_id, level)
+    view, changed = await set_level(request.app.state.engine, user, chat_id, level)
     log.info("chat label changed", extra={"chat_id": chat_id, "set": level is not None, "changed": changed})
     return view
 

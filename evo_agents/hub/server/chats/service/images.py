@@ -25,13 +25,14 @@ import base64
 import hashlib
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import blob_gc, chats
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.agents.models.profiles import AVATAR_MAX_BYTES, AVATAR_TYPES, AvatarUpload
 from evo_agents.hub.server.agents.service.profiles import media_type
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import fetch_bytes, put_bytes
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.images import IMAGE_KIND, UNAVAILABLE
@@ -65,6 +66,13 @@ def image(body: AvatarUpload) -> tuple[bytes, str]:
     return data, hashlib.sha256(data).hexdigest()
 
 
+async def check_group(engine: AsyncEngine, user: Principal, chat_id: int) -> None:
+    """The refusals of setting the image of chat ``chat_id`` for ``user`` (``chat_access``, ``group``), in a
+    transaction of their own, before the image's bytes are stored."""
+    async with UnitOfWork(engine) as conn:
+        group(await chat_access(conn, user, chat_id))
+
+
 async def store_image(blobs, sha256: str, data: bytes) -> None:
     """Put ``data``, of SHA-256 ``sha256``, in the blob store ``blobs``; 503 when it does not answer."""
     try:
@@ -93,14 +101,15 @@ async def _change(conn: AsyncConnection, blobs, chat: ChatAccess, user: Principa
 
 
 async def change_image(
-    conn: AsyncConnection, blobs, chat_id: int, user: Principal, image, data: bytes = b""
+    engine: AsyncEngine, blobs, chat_id: int, user: Principal, image, data: bytes = b""
 ) -> tuple[Chat, bool]:
     """Make ``image`` ((SHA-256, size), or None) the image of chat ``chat_id`` for ``user``, its bytes ``data`` in the
     blob store ``blobs`` (None to take it off): the chat as it reads now, and whether it changed."""
-    await blob_gc.lock_exclusive(conn)  # before the chat's row, so its messages never wait for the lock
-    chat = group(await chat_access(conn, user, chat_id, lock=True))
-    changed = await _change(conn, blobs, chat, user, image, data)
-    return await chat_view(conn, chat), changed
+    async with UnitOfWork(engine) as conn:
+        await blob_gc.lock_exclusive(conn)  # before the chat's row, so its messages never wait for the lock
+        chat = group(await chat_access(conn, user, chat_id, lock=True))
+        changed = await _change(conn, blobs, chat, user, image, data)
+        return await chat_view(conn, chat), changed
 
 
 def matches(if_none_match: str | None, etag: str) -> bool:
@@ -111,13 +120,14 @@ def matches(if_none_match: str | None, etag: str) -> bool:
     return "*" in tags or etag in tags
 
 
-async def image_sha256(conn: AsyncConnection, user: Principal, chat_id: int) -> str:
+async def image_sha256(engine: AsyncEngine, user: Principal, chat_id: int) -> str:
     """The SHA-256 of the image of chat ``chat_id``, which ``user`` reads; 404 when it has none."""
-    await chat_access(conn, user, chat_id)
-    sha256 = (await store.image_of(conn, chat_id)).image_sha256
-    if sha256 is None:
-        raise HTTPException(404, f"chat {chat_id} has no image: the web draws the faces of its members")
-    return sha256
+    async with UnitOfWork(engine) as conn:
+        await chat_access(conn, user, chat_id)
+        sha256 = (await store.image_of(conn, chat_id)).image_sha256
+        if sha256 is None:
+            raise HTTPException(404, f"chat {chat_id} has no image: the web draws the faces of its members")
+        return sha256
 
 
 async def image_bytes(blobs, chat_id: int, sha256: str) -> tuple[bytes, str]:

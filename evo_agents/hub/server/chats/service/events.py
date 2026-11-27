@@ -5,11 +5,19 @@ CHANNEL (``chats.repository.store``).
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess
-from evo_agents.hub.server.chats.models.events import MEMBER_EVENTS, MESSAGE_EVENTS, REACTION_EVENTS
+from evo_agents.hub.server.chats.models.events import (
+    MEMBER_EVENTS,
+    MESSAGE_EVENTS,
+    REACTION_EVENTS,
+    STREAM_BATCH,
+    STREAM_TOKEN_ENDED,
+)
 from evo_agents.hub.server.chats.models.views import (
     ChatAuthor,
     ChatEvent,
@@ -27,7 +35,7 @@ from evo_agents.hub.server.chats.service.progress import by_message, chat_progre
 from evo_agents.hub.server.chats.service.views import messages_view
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.run_events import RunStreams
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, still_live
 
 
 class ChatStreams(RunStreams):
@@ -92,16 +100,17 @@ async def events_after(
 
 
 async def chat_events(
-    conn: AsyncConnection, user: Principal, chat_id: int, after: int, limit: int, *, progress: bool
+    engine: AsyncEngine, user: Principal, chat_id: int, after: int, limit: int, *, progress: bool
 ) -> ChatEvents:
     """The events of chat ``chat_id`` after ``after`` that ``user`` reads, at most ``limit``; with ``progress``, the
     progress of the agents' runs on their way under the messages they took, as ``user`` may read them."""
-    chat = await chat_access(conn, user, chat_id)
-    events, last, found = await events_after(conn, chat, user, after, limit)
-    if progress and found is None:
-        found = await chat_progress(conn, user, chat_id)
-    now = found if progress else None
-    return ChatEvents(events=events, last_seq=chat.event_seq, more=last < chat.event_seq, progress=now)
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id)
+        events, last, found = await events_after(conn, chat, user, after, limit)
+        if progress and found is None:
+            found = await chat_progress(conn, user, chat_id)
+        now = found if progress else None
+        return ChatEvents(events=events, last_seq=chat.event_seq, more=last < chat.event_seq, progress=now)
 
 
 async def look(
@@ -114,3 +123,29 @@ async def look(
     if progress and now is None:
         now = await chat_progress(conn, user, chat_id)
     return events, last, now
+
+
+class ChatLooks:
+    """The looks of one stream of chat ``chat_id`` for ``user``, each one short transaction of its own. Each reads one
+    snapshot (REPEATABLE READ): under read committed, a reader who left between the check of access and the read of
+    the events would get the event of their leaving before the end."""
+
+    def __init__(self, engine: AsyncEngine, user: Principal, chat_id: int, *, progress: bool):
+        self.engine = engine.execution_options(isolation_level="REPEATABLE READ")
+        self.user = user
+        self.chat_id = chat_id
+        self.progress = progress
+
+    async def after(self, seen: int) -> tuple[str | None, list[ChatEvent], int, list[ChatProgress] | None]:
+        """(why the stream ends, None while ``user`` still reads the chat with a live token; the events after
+        ``seen``, at most STREAM_BATCH read; the seq of the last one read; the chat's progress when asked for)."""
+        async with UnitOfWork(self.engine) as conn:
+            try:
+                if not await still_live(conn, self.user):
+                    raise HTTPException(401, STREAM_TOKEN_ENDED)
+                events, last, now = await look(
+                    conn, self.user, self.chat_id, seen, STREAM_BATCH, progress=self.progress
+                )
+            except HTTPException as refused:
+                return refused.detail, [], seen, None
+        return None, events, last, now

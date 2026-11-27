@@ -25,10 +25,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess, LabelProject, LabelReader, shares_part
 from evo_agents.hub.server.chats.models.members import SHARE_HINT
 from evo_agents.hub.server.chats.models.views import Chat, agent_author, person_author
@@ -206,52 +207,56 @@ async def put_person(
     return True
 
 
-async def add_person(conn: AsyncConnection, user: Principal, chat_id: int, login: str) -> tuple[Chat, str, bool]:
+async def add_person(engine: AsyncEngine, user: Principal, chat_id: int, login: str) -> tuple[Chat, str, bool]:
     """Add person ``login`` to chat ``chat_id`` as ``user`` (``put_person``, sharing): the chat as it reads now, their
     login as they signed in, and whether they were not in it."""
-    chat = await chat_access(conn, user, chat_id, lock=True)
-    refuse_direct(chat, f"adding {login}")
-    user_id, found = await person(conn, login)
-    added = await put_person(conn, user, chat, user_id, found, share=True)
-    return await chat_view(conn, chat), found, added
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(chat, f"adding {login}")
+        user_id, found = await person(conn, login)
+        added = await put_person(conn, user, chat, user_id, found, share=True)
+        return await chat_view(conn, chat), found, added
 
 
-async def add_agent(conn: AsyncConnection, user: Principal, chat_id: int, handle: str) -> tuple[Chat, bool]:
+async def add_agent(engine: AsyncEngine, user: Principal, chat_id: int, handle: str) -> tuple[Chat, bool]:
     """Add agent ``handle`` to chat ``chat_id`` as ``user`` (``put_agent``, sharing): the chat as it reads now, and
     whether it was not in it."""
-    chat = await chat_access(conn, user, chat_id, lock=True)
-    refuse_direct(chat, f"adding @{handle}")
-    profile = await addable_agent(conn, user, handle)
-    added = await put_agent(conn, user, chat, profile, share=True)
-    return await chat_view(conn, await label_now(conn, chat)), added
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(chat, f"adding @{handle}")
+        profile = await addable_agent(conn, user, handle)
+        added = await put_agent(conn, user, chat, profile, share=True)
+        return await chat_view(conn, await label_now(conn, chat)), added
 
 
 # Removing
 
 
-async def remove_person(conn: AsyncConnection, user: Principal, chat_id: int, login: str) -> str:
+async def remove_person(engine: AsyncEngine, user: Principal, chat_id: int, login: str) -> str:
     """Take person ``login`` out of chat ``chat_id``: ``user`` leaving, or the chat's creator taking them out; their
     login as they signed in."""
-    chat = await chat_access(conn, user, chat_id, lock=True)
-    refuse_direct(chat, f"taking {login} out" if login.lower() != user.login.lower() else "leaving it")
-    user_id, found = await person(conn, login)
-    if user_id != user.user_id and user.user_id != chat.created_by:
-        raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, takes others out of it")
-    if not await remove_member(conn, chat_id, user_id=user_id):
-        raise HTTPException(404, f"{found} is not in chat {chat_id}")
-    await member_event(conn, chat_id, "member_removed", person_author(found), user.login)
-    await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} person:{found}")
-    return found
+    async with UnitOfWork(engine) as conn:
+        chat = await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(chat, f"taking {login} out" if login.lower() != user.login.lower() else "leaving it")
+        user_id, found = await person(conn, login)
+        if user_id != user.user_id and user.user_id != chat.created_by:
+            raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, takes others out of it")
+        if not await remove_member(conn, chat_id, user_id=user_id):
+            raise HTTPException(404, f"{found} is not in chat {chat_id}")
+        await member_event(conn, chat_id, "member_removed", person_author(found), user.login)
+        await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} person:{found}")
+        return found
 
 
-async def remove_agent(conn: AsyncConnection, user: Principal, chat_id: int, handle: str) -> None:
+async def remove_agent(engine: AsyncEngine, user: Principal, chat_id: int, handle: str) -> None:
     """Take agent ``handle`` out of chat ``chat_id`` as ``user``."""
-    refuse_direct(await chat_access(conn, user, chat_id, lock=True), f"taking @{handle} out")
-    profile = await by_handle(conn, handle)
-    if profile is None or not await remove_member(conn, chat_id, profile_id=profile.id):
-        raise HTTPException(404, f"@{handle} is not in chat {chat_id}")
-    await member_event(conn, chat_id, "member_removed", agent_author(profile), user.login)
-    await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} agent:@{handle}", profile.project_id)
+    async with UnitOfWork(engine) as conn:
+        refuse_direct(await chat_access(conn, user, chat_id, lock=True), f"taking @{handle} out")
+        profile = await by_handle(conn, handle)
+        if profile is None or not await remove_member(conn, chat_id, profile_id=profile.id):
+            raise HTTPException(404, f"@{handle} is not in chat {chat_id}")
+        await member_event(conn, chat_id, "member_removed", agent_author(profile), user.login)
+        await _record(conn, user, audit.CHAT_REMOVE, f"chat:{chat_id} agent:@{handle}", profile.project_id)
 
 
 async def label_now(conn: AsyncConnection, chat: ChatAccess) -> ChatAccess:

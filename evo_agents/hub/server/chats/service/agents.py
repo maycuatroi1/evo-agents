@@ -36,12 +36,13 @@ from dataclasses import dataclass
 from typing import cast
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.agents import (
     AgentChatIn,
@@ -199,13 +200,14 @@ async def _audit(conn: AsyncConnection, run: AgentRun, action: str, target: str)
 
 
 async def post_message(
-    conn: AsyncConnection, sealer, user: Principal, run_id: int, body: AgentMessageIn
+    engine: AsyncEngine, sealer, user: Principal, run_id: int, body: AgentMessageIn
 ) -> tuple[GroupMessage, int, int]:
     """A message of the agent of run ``run_id``, which the worker of ``user`` holds, in a chat it is in: the run's
     thread for a chat run. (The message as the run's dispatcher reads it, its chat's id, its id.)"""
-    run = await agent_run(conn, user, run_id)
-    chat, message_id = await agent_message(conn, sealer, run, body)
-    return await _view(conn, chat, message_id), chat.chat_id, message_id
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        chat, message_id = await agent_message(conn, sealer, run, body)
+        return await _view(conn, chat, message_id), chat.chat_id, message_id
 
 
 async def agent_message(conn: AsyncConnection, sealer, run: AgentRun, body: AgentMessageIn) -> tuple[ChatAccess, int]:
@@ -220,23 +222,24 @@ async def agent_message(conn: AsyncConnection, sealer, run: AgentRun, body: Agen
     return chat, message_id
 
 
-async def react(conn: AsyncConnection, user: Principal, run_id: int, body: AgentReactionIn) -> GroupMessage:
+async def react(engine: AsyncEngine, user: Principal, run_id: int, body: AgentReactionIn) -> GroupMessage:
     """Put an emoji of the agent of run ``run_id`` on a message of a chat it is in, or take it off."""
-    run = await agent_run(conn, user, run_id)
-    chat_id = await store.chat_of_message(conn, body.message_id)
-    if chat_id is None:
-        raise HTTPException(404, f"no message {body.message_id} in a chat @{run.profile.handle} is in")
-    chat = await _in_chat(conn, run, chat_id)
-    await _message(conn, chat, body.message_id)
-    by = agent_author(run.profile)
-    if body.remove:
-        await take_reaction(conn, chat_id, body.message_id, body.emoji, by, profile_id=run.profile.id)
-    else:
-        kinds = await emoji_kinds(conn, body.message_id)
-        if body.emoji not in kinds and len(kinds) >= chats.MAX_EMOJI_KINDS:
-            raise HTTPException(409, f"message {body.message_id} carries {len(kinds)} different emoji, the most")
-        await put_reaction(conn, chat_id, body.message_id, body.emoji, by, profile_id=run.profile.id)
-    return await _view(conn, chat, body.message_id)
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        chat_id = await store.chat_of_message(conn, body.message_id)
+        if chat_id is None:
+            raise HTTPException(404, f"no message {body.message_id} in a chat @{run.profile.handle} is in")
+        chat = await _in_chat(conn, run, chat_id)
+        await _message(conn, chat, body.message_id)
+        by = agent_author(run.profile)
+        if body.remove:
+            await take_reaction(conn, chat_id, body.message_id, body.emoji, by, profile_id=run.profile.id)
+        else:
+            kinds = await emoji_kinds(conn, body.message_id)
+            if body.emoji not in kinds and len(kinds) >= chats.MAX_EMOJI_KINDS:
+                raise HTTPException(409, f"message {body.message_id} carries {len(kinds)} different emoji, the most")
+            await put_reaction(conn, chat_id, body.message_id, body.emoji, by, profile_id=run.profile.id)
+        return await _view(conn, chat, body.message_id)
 
 
 async def _masked(conn: AsyncConnection, sealer, run: AgentRun, body: AgentMentionIn) -> str:
@@ -248,72 +251,74 @@ async def _masked(conn: AsyncConnection, sealer, run: AgentRun, body: AgentMenti
     return text if len(text.encode()) <= chats.MAX_MESSAGE_BYTES else said
 
 
-async def mention(conn: AsyncConnection, sealer, user: Principal, run_id: int, body: AgentMentionIn) -> AgentHanded:
+async def mention(engine: AsyncEngine, sealer, user: Principal, run_id: int, body: AgentMentionIn) -> AgentHanded:
     """A message of the agent of run ``run_id`` that hands the work to agent ``body.handle`` of the chat (see the
     module's docstring)."""
-    run = await agent_run(conn, user, run_id)
-    chat, root = await _chat_of(conn, run, body.chat_id)
-    root = await _thread(conn, chat, root, body.reply_to)
-    direct, opened = None, None
-    if chat.kind == chats.DIRECT and not await has_agent(conn, chat.chat_id, body.handle):
-        opened = await open_from(conn, chat, run.principal, root, [body.handle], run_id=run_id)
-        if opened.chat_id is not None:
-            direct = (chat, root)
-            chat, root = await _in_chat(conn, run, opened.chat_id), None
-    text = await _masked(conn, sealer, run, body)
-    origin = run.principal
-    author = f"@{run.profile.handle}"
-    hand = Hand(chat, 0, 0, run.profile, origin.user_id, origin.login, run.via, run.hop + 1, author, text)
-    message_id, kept = await post_agent(
-        conn, chat, run.profile, run_id, text, root, hand=hand, target=body.handle, output_ids=body.output_ids
-    )
-    handed = next((item for item in kept if item["name"] == body.handle), None)
-    run_made = handed.get("run_id") if handed else None
-    refusal = handed["refusal"] if handed else f"no agent @{body.handle} in this chat"
-    if opened is not None and body.handle in opened.refused:
-        refusal = f"@{body.handle} is not in this direct chat, and no group chat could take it: "
-        refusal += opened.refused[body.handle]
-    if direct is not None and opened is not None:
-        await hub_reply(conn, direct[0].chat_id, direct[1], opened.note())
-    if refusal is not None:
-        await hub_reply(conn, chat.chat_id, root or message_id, f"@{body.handle}: {refusal}")
-    await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
-    view = await _view(conn, chat, message_id)
-    group_id = None if direct is None else chat.chat_id
-    return AgentHanded(message=view, run_id=run_made, refusal=refusal, group_id=group_id)
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        chat, root = await _chat_of(conn, run, body.chat_id)
+        root = await _thread(conn, chat, root, body.reply_to)
+        direct, opened = None, None
+        if chat.kind == chats.DIRECT and not await has_agent(conn, chat.chat_id, body.handle):
+            opened = await open_from(conn, chat, run.principal, root, [body.handle], run_id=run_id)
+            if opened.chat_id is not None:
+                direct = (chat, root)
+                chat, root = await _in_chat(conn, run, opened.chat_id), None
+        text = await _masked(conn, sealer, run, body)
+        origin = run.principal
+        author = f"@{run.profile.handle}"
+        hand = Hand(chat, 0, 0, run.profile, origin.user_id, origin.login, run.via, run.hop + 1, author, text)
+        message_id, kept = await post_agent(
+            conn, chat, run.profile, run_id, text, root, hand=hand, target=body.handle, output_ids=body.output_ids
+        )
+        handed = next((item for item in kept if item["name"] == body.handle), None)
+        run_made = handed.get("run_id") if handed else None
+        refusal = handed["refusal"] if handed else f"no agent @{body.handle} in this chat"
+        if opened is not None and body.handle in opened.refused:
+            refusal = f"@{body.handle} is not in this direct chat, and no group chat could take it: "
+            refusal += opened.refused[body.handle]
+        if direct is not None and opened is not None:
+            await hub_reply(conn, direct[0].chat_id, direct[1], opened.note())
+        if refusal is not None:
+            await hub_reply(conn, chat.chat_id, root or message_id, f"@{body.handle}: {refusal}")
+        await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
+        view = await _view(conn, chat, message_id)
+        group_id = None if direct is None else chat.chat_id
+        return AgentHanded(message=view, run_id=run_made, refusal=refusal, group_id=group_id)
 
 
 async def create_chat(
-    conn: AsyncConnection, user: Principal, run_id: int, body: AgentChatIn
+    engine: AsyncEngine, user: Principal, run_id: int, body: AgentChatIn
 ) -> tuple[Chat, int, int, int]:
     """A new chat of the agent of run ``run_id`` and the person at the origin of the chain, with the people named:
     (the chat as that person reads it, its id, how many people and agents it starts with)."""
-    run = await agent_run(conn, user, run_id)
-    profile, origin = run.profile, run.principal
-    if profile.deleted_at is not None:
-        raise HTTPException(409, f"@{profile.handle} was deleted: it takes no new work")
-    people = dict([await person(conn, login) for login in body.people if login.lower() != origin.login.lower()])
-    others = [await addable_agent(conn, origin, handle) for handle in dict.fromkeys(body.agents)]
-    others = [other for other in others if other.id != profile.id]
-    refuse_clash([origin.login, *people.values()], [profile.handle, *(other.handle for other in others)])
-    projects = await projects_by_id(conn, [profile.project_id])
-    refuse_uncleared(await uncleared(conn, {origin.user_id: origin.login, **people}, projects), "the chat")
-    chat_id = await store.insert_chat(conn, body.title, origin.user_id)
-    by = f"@{profile.handle}"
-    await add_member(conn, chat_id, user_id=origin.user_id, added_by=origin.user_id, added_by_run_id=run_id)
-    await member_event(conn, chat_id, "member_added", person_author(origin.login), by)
-    await add_member(conn, chat_id, profile_id=profile.id, added_by=origin.user_id, added_by_run_id=run_id)
-    await member_event(conn, chat_id, "member_added", agent_author(profile), by)
-    for user_id, login in people.items():
-        await add_member(conn, chat_id, user_id=user_id, added_by=origin.user_id, added_by_run_id=run_id)
-        await member_event(conn, chat_id, "member_added", person_author(login), by)
-    chat = await agent_access(conn, chat_id, profile, origin.user_id)
-    assert chat is not None  # the agent was added to the chat just above
-    for other in others:  # the label checks of adding an agent, with the people in it now
-        await put_agent(conn, origin, chat, other)
-    chat = await agent_access(conn, chat_id, profile, origin.user_id)
-    assert chat is not None  # and is in it still
-    for user_id in (origin.user_id, *people):
-        await notice_added(conn, chat, user_id)
-    await _audit(conn, run, audit.CHAT_CREATE, f"chat:{chat_id} run:{run_id}")
-    return await chat_view(conn, chat), chat_id, len(people) + 1, len(others) + 1
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        profile, origin = run.profile, run.principal
+        if profile.deleted_at is not None:
+            raise HTTPException(409, f"@{profile.handle} was deleted: it takes no new work")
+        people = dict([await person(conn, login) for login in body.people if login.lower() != origin.login.lower()])
+        others = [await addable_agent(conn, origin, handle) for handle in dict.fromkeys(body.agents)]
+        others = [other for other in others if other.id != profile.id]
+        refuse_clash([origin.login, *people.values()], [profile.handle, *(other.handle for other in others)])
+        projects = await projects_by_id(conn, [profile.project_id])
+        refuse_uncleared(await uncleared(conn, {origin.user_id: origin.login, **people}, projects), "the chat")
+        chat_id = await store.insert_chat(conn, body.title, origin.user_id)
+        by = f"@{profile.handle}"
+        await add_member(conn, chat_id, user_id=origin.user_id, added_by=origin.user_id, added_by_run_id=run_id)
+        await member_event(conn, chat_id, "member_added", person_author(origin.login), by)
+        await add_member(conn, chat_id, profile_id=profile.id, added_by=origin.user_id, added_by_run_id=run_id)
+        await member_event(conn, chat_id, "member_added", agent_author(profile), by)
+        for user_id, login in people.items():
+            await add_member(conn, chat_id, user_id=user_id, added_by=origin.user_id, added_by_run_id=run_id)
+            await member_event(conn, chat_id, "member_added", person_author(login), by)
+        chat = await agent_access(conn, chat_id, profile, origin.user_id)
+        assert chat is not None  # the agent was added to the chat just above
+        for other in others:  # the label checks of adding an agent, with the people in it now
+            await put_agent(conn, origin, chat, other)
+        chat = await agent_access(conn, chat_id, profile, origin.user_id)
+        assert chat is not None  # and is in it still
+        for user_id in (origin.user_id, *people):
+            await notice_added(conn, chat, user_id)
+        await _audit(conn, run, audit.CHAT_CREATE, f"chat:{chat_id} run:{run_id}")
+        return await chat_view(conn, chat), chat_id, len(people) + 1, len(others) + 1
