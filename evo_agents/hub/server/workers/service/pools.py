@@ -30,12 +30,13 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.profile_store import POOL_PREFIX
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal, holds
@@ -109,12 +110,19 @@ async def shown(conn: AsyncConnection, row) -> Pool:
     )
 
 
-async def listed(conn: AsyncConnection, user: Principal) -> list[Pool]:
-    return [await shown(conn, row) for row in await store.listed(conn, user.user_id, admin=user.admin)]
+async def listed(engine: AsyncEngine, user: Principal) -> list[Pool]:
+    async with UnitOfWork(engine) as conn:
+        return [await shown(conn, row) for row in await store.listed(conn, user.user_id, admin=user.admin)]
 
 
 async def one_pool(conn: AsyncConnection, user: Principal, name: str) -> Pool:
     return await shown(conn, await pool_row(conn, user, name))
+
+
+async def read_pool(engine: AsyncEngine, user: Principal, name: str) -> Pool:
+    """``one_pool``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await one_pool(conn, user, name)
 
 
 # Creating and changing pools
@@ -128,25 +136,26 @@ def target(pool_id: int, name: str) -> str:
     return f"pool:{pool_id} name={name}"
 
 
-async def create(conn: AsyncConnection, user: Principal, body: PoolRequest) -> Pool:
+async def create(engine: AsyncEngine, user: Principal, body: PoolRequest) -> Pool:
     """A new pool of ``user``, serving ``body.projects`` (the writer role on each); 422 for a name of an agent's pool,
     409 for a name they have."""
-    if body.name.lower().startswith(POOL_PREFIX):
-        raise Unprocessable(
-            f"{POOL_PREFIX} starts the names of the pools of agents, which the hub makes with the agent: "
-            "choose another name"
-        )
-    values = body.model_dump(include={"name", "slots", "labels", "taints", "accepted_findings", "reap_after_days"})
-    project_ids = await writable(conn, user, body.projects)
-    if await store.name_taken(conn, user.user_id, body.name):
-        raise name_conflict(body.name)
-    pool_id = await store.insert_pool(conn, user.user_id, values)
-    if pool_id is None:  # another request took the name meanwhile
-        raise name_conflict(body.name)
-    await store.add_projects(conn, pool_id, project_ids)
-    await Auditor(conn, None, user).record(audit.WORKER_POOL_CREATE, target(pool_id, body.name))
-    log.info("worker pool created", extra={"pool_id": pool_id, "login": user.login})
-    return await one_pool(conn, user, body.name)
+    async with UnitOfWork(engine) as conn:
+        if body.name.lower().startswith(POOL_PREFIX):
+            raise Unprocessable(
+                f"{POOL_PREFIX} starts the names of the pools of agents, which the hub makes with the agent: "
+                "choose another name"
+            )
+        values = body.model_dump(include={"name", "slots", "labels", "taints", "accepted_findings", "reap_after_days"})
+        project_ids = await writable(conn, user, body.projects)
+        if await store.name_taken(conn, user.user_id, body.name):
+            raise name_conflict(body.name)
+        pool_id = await store.insert_pool(conn, user.user_id, values)
+        if pool_id is None:  # another request took the name meanwhile
+            raise name_conflict(body.name)
+        await store.add_projects(conn, pool_id, project_ids)
+        await Auditor(conn, None, user).record(audit.WORKER_POOL_CREATE, target(pool_id, body.name))
+        log.info("worker pool created", extra={"pool_id": pool_id, "login": user.login})
+        return await one_pool(conn, user, body.name)
 
 
 def shown_value(value) -> str:
@@ -166,44 +175,50 @@ async def serve_projects(conn: AsyncConnection, user: Principal, pool_id: int, w
         await store.add_projects(conn, pool_id, added_ids)
 
 
-async def update(conn: AsyncConnection, user: Principal, name: str, body: PoolUpdate) -> Pool:
+async def update(engine: AsyncEngine, user: Principal, name: str, body: PoolUpdate) -> Pool:
     """Change the settings ``body`` gives of the pool ``name``; its live nodes take them. Giving the values it has
     changes nothing and is not audited."""
-    wanted = body.model_dump(exclude_none=True)
-    if "projects" in wanted:  # a set: the order says nothing
-        wanted["projects"] = sorted(set(wanted["projects"]))
-    row = await pool_row(conn, user, name, lock=True)
-    if row.agent_id is not None and "projects" in wanted:
-        raise Unprocessable(f"pool {row.name} serves the project of its agent alone: leave projects out")
-    was_projects = await store.pool_projects(conn, row.id)
-    now = {field: row._mapping[field] for field in SETTINGS if field != "projects"}
-    now = {field: list(value) if isinstance(value, list) else value for field, value in now.items()}
-    now["projects"] = sorted(was_projects)
-    changed = {field: value for field, value in wanted.items() if value != now[field]}
-    if changed:  # the values it has already: nothing changes, nothing is audited
-        if "projects" in changed:
-            await serve_projects(conn, user, row.id, was_projects, changed["projects"])
-        await store.set_pool(conn, row.id, {field: value for field, value in changed.items() if field != "projects"})
-        if "slots" in changed:
-            await store.set_node_slots(conn, row.id, changed["slots"])
-        changes = " ".join(
-            f"{field}={shown_value(now[field])}->{shown_value(value)}" for field, value in changed.items()
-        )
-        await Auditor(conn, None, user).record(audit.WORKER_POOL_UPDATE, f"{target(row.id, row.name)} {changes}")
-        log.info("worker pool changed", extra={"pool_id": row.id, "fields": sorted(changed)})
-    return await one_pool(conn, user, name)
+    async with UnitOfWork(engine) as conn:
+        wanted = body.model_dump(exclude_none=True)
+        if "projects" in wanted:  # a set: the order says nothing
+            wanted["projects"] = sorted(set(wanted["projects"]))
+        row = await pool_row(conn, user, name, lock=True)
+        if row.agent_id is not None and "projects" in wanted:
+            raise Unprocessable(f"pool {row.name} serves the project of its agent alone: leave projects out")
+        was_projects = await store.pool_projects(conn, row.id)
+        now = {field: row._mapping[field] for field in SETTINGS if field != "projects"}
+        now = {field: list(value) if isinstance(value, list) else value for field, value in now.items()}
+        now["projects"] = sorted(was_projects)
+        changed = {field: value for field, value in wanted.items() if value != now[field]}
+        if changed:  # the values it has already: nothing changes, nothing is audited
+            if "projects" in changed:
+                await serve_projects(conn, user, row.id, was_projects, changed["projects"])
+            await store.set_pool(
+                conn, row.id, {field: value for field, value in changed.items() if field != "projects"}
+            )
+            if "slots" in changed:
+                await store.set_node_slots(conn, row.id, changed["slots"])
+            changes = " ".join(
+                f"{field}={shown_value(now[field])}->{shown_value(value)}" for field, value in changed.items()
+            )
+            await Auditor(conn, None, user).record(audit.WORKER_POOL_UPDATE, f"{target(row.id, row.name)} {changes}")
+            log.info("worker pool changed", extra={"pool_id": row.id, "fields": sorted(changed)})
+        return await one_pool(conn, user, name)
 
 
-async def delete(conn: AsyncConnection, user: Principal, name: str) -> int:
+async def delete(engine: AsyncEngine, user: Principal, name: str) -> int:
     """Delete the pool ``name`` of ``user`` once it has no live node, with its join tokens; its id. 409 for an agent's
     pool or one with live nodes."""
-    row = await pool_row(conn, user, name, lock=True)
-    if row.agent_id is not None:
-        raise Conflict(f"pool {row.name} is the pool of an agent: it goes when its agent is deleted")
-    live = await store.live_nodes(conn, row.id)
-    if live:
-        nodes = ", ".join(f"{node} (#{worker_id})" for worker_id, node in live)
-        raise Conflict(f"pool {row.name} still has live nodes: {nodes}; revoke them first (`evo-agents worker revoke`)")
-    await store.delete_pool(conn, row.id)
-    await Auditor(conn, None, user).record(audit.WORKER_POOL_DELETE, target(row.id, row.name))
-    return row.id
+    async with UnitOfWork(engine) as conn:
+        row = await pool_row(conn, user, name, lock=True)
+        if row.agent_id is not None:
+            raise Conflict(f"pool {row.name} is the pool of an agent: it goes when its agent is deleted")
+        live = await store.live_nodes(conn, row.id)
+        if live:
+            nodes = ", ".join(f"{node} (#{worker_id})" for worker_id, node in live)
+            raise Conflict(
+                f"pool {row.name} still has live nodes: {nodes}; revoke them first (`evo-agents worker revoke`)"
+            )
+        await store.delete_pool(conn, row.id)
+        await Auditor(conn, None, user).record(audit.WORKER_POOL_DELETE, target(row.id, row.name))
+        return row.id

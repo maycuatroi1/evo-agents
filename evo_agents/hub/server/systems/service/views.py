@@ -14,12 +14,13 @@ from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 from pydantic import Field
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import system_context
 from evo_agents.hub.server import work_observe, work_status
 from evo_agents.hub.server.agents.repository import tasking as agent_tasking
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, still_live
@@ -59,6 +60,13 @@ async def system(conn: AsyncConnection, user: Principal, project: str, slug: str
     if system_id is None and not await rows_of.has_trace(conn, access.project_id, slug):
         raise NotFound(f"project {access.name} has no agent system {slug} and no trace of one")
     return access, system_id
+
+
+async def system_id(engine: AsyncEngine, user: Principal, project: str, slug: str) -> int | None:
+    """The id of ``system``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        _, found = await system(conn, user, project, slug)
+    return found
 
 
 async def _reads(conn: AsyncConnection, user: Principal, chat_id: int) -> bool:
@@ -221,84 +229,90 @@ async def read_traces(
 
 
 async def listed(
-    conn: AsyncConnection, user: Principal, project: str, slug: str, limit: int, before: int | None
+    engine: AsyncEngine, user: Principal, project: str, slug: str, limit: int, before: int | None
 ) -> list[TraceSummary]:
     """The traces of the system the caller may read, the newest first."""
-    access, _ = await system(conn, user, project, slug)
-    return [summary for summary, _ in await read_traces(conn, user, access, slug, limit, before=before)]
+    async with UnitOfWork(engine) as conn:
+        access, _ = await system(conn, user, project, slug)
+        return [summary for summary, _ in await read_traces(conn, user, access, slug, limit, before=before)]
 
 
-async def metrics(conn: AsyncConnection, user: Principal, project: str, slug: str, limit: int) -> Metrics:
+async def metrics(engine: AsyncEngine, user: Principal, project: str, slug: str, limit: int) -> Metrics:
     """The numbers of each node and edge of the system over its last ``limit`` traces the caller may read."""
-    access, _ = await system(conn, user, project, slug)
-    found = await read_traces(conn, user, access, slug, limit)
-    return Metrics(**system_context.metrics([row for _, spans in found for row in _metric_rows(spans)]))
+    async with UnitOfWork(engine) as conn:
+        access, _ = await system(conn, user, project, slug)
+        found = await read_traces(conn, user, access, slug, limit)
+        return Metrics(**system_context.metrics([row for _, spans in found for row in _metric_rows(spans)]))
 
 
-async def distribution(conn: AsyncConnection, user: Principal, project: str, slug: str, days: int) -> TraceDistribution:
+async def distribution(engine: AsyncEngine, user: Principal, project: str, slug: str, days: int) -> TraceDistribution:
     """The numbers of each trace of the system that started in the last ``days`` days and the caller may read, and
     their spread."""
-    access, _ = await system(conn, user, project, slug)
-    since = await rows_of.now(conn) - timedelta(days=days)
-    window = models.MAX_WINDOW_TRACES
-    rows = await rows_of.window(conn, access.project_id, slug, since, window + 1)
-    truncated = len(rows) > window
-    rows = rows[:window]
-    kept = await _kept(conn, user, rows)
-    found = await system_trace_stats.numbers(conn, [(row.id, row.system_id, row.system_revision) for row in kept])
-    still = await rows_of.running(conn, [row.id for row in kept])
-    traces = [
-        TraceNumbers(
-            id=row.id,
-            revision=row.system_revision,
-            started_at=row.started_at,
-            last_at=row.last_at,
-            open=row.id in still,
-            **found[row.id],
+    async with UnitOfWork(engine) as conn:
+        access, _ = await system(conn, user, project, slug)
+        since = await rows_of.now(conn) - timedelta(days=days)
+        window = models.MAX_WINDOW_TRACES
+        rows = await rows_of.window(conn, access.project_id, slug, since, window + 1)
+        truncated = len(rows) > window
+        rows = rows[:window]
+        kept = await _kept(conn, user, rows)
+        found = await system_trace_stats.numbers(conn, [(row.id, row.system_id, row.system_revision) for row in kept])
+        still = await rows_of.running(conn, [row.id for row in kept])
+        traces = [
+            TraceNumbers(
+                id=row.id,
+                revision=row.system_revision,
+                started_at=row.started_at,
+                last_at=row.last_at,
+                open=row.id in still,
+                **found[row.id],
+            )
+            for row in kept
+        ]
+        summary = TraceSpread(**system_context.distribution([found[row.id] for row in kept]))
+        return TraceDistribution(
+            system=slug,
+            days=days,
+            since=since,
+            withheld=len(rows) - len(kept),
+            truncated=truncated,
+            summary=summary,
+            traces=traces,
         )
-        for row in kept
-    ]
-    summary = TraceSpread(**system_context.distribution([found[row.id] for row in kept]))
-    return TraceDistribution(
-        system=slug,
-        days=days,
-        since=since,
-        withheld=len(rows) - len(kept),
-        truncated=truncated,
-        summary=summary,
-        traces=traces,
-    )
 
 
-async def shown(conn: AsyncConnection, user: Principal, project: str, slug: str, trace_id: int) -> TraceOut:
+async def shown(engine: AsyncEngine, user: Principal, project: str, slug: str, trace_id: int) -> TraceOut:
     """One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its
     timeline by agent."""
-    access, _ = await system(conn, user, project, slug)
-    found = await read_traces(conn, user, access, slug, 1, trace_id=trace_id)
-    if not found:
-        raise NotFound(f"system {slug} of project {project} has no trace {trace_id} you may read")
-    summary, spans = found[0]
-    timeline = await work_observe.timeline(conn, trace_id, spans)
-    found_metrics = Metrics(**system_context.metrics(_metric_rows(spans)))
-    return TraceOut(**summary.model_dump(), spans=spans, metrics=found_metrics, timeline=timeline)
+    async with UnitOfWork(engine) as conn:
+        access, _ = await system(conn, user, project, slug)
+        found = await read_traces(conn, user, access, slug, 1, trace_id=trace_id)
+        if not found:
+            raise NotFound(f"system {slug} of project {project} has no trace {trace_id} you may read")
+        summary, spans = found[0]
+        timeline = await work_observe.timeline(conn, trace_id, spans)
+        found_metrics = Metrics(**system_context.metrics(_metric_rows(spans)))
+        return TraceOut(**summary.model_dump(), spans=spans, metrics=found_metrics, timeline=timeline)
 
 
 async def work_summary(
-    conn: AsyncConnection, user: Principal, project: str, slug: str, hours: int
+    engine: AsyncEngine, user: Principal, project: str, slug: str, hours: int
 ) -> work_observe.WorkSummary:
     """The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run still
     active."""
-    access, _ = await system(conn, user, project, slug)
-    since = await rows_of.now(conn) - timedelta(hours=hours)
-    active = work_observe.active_traces()
-    rows = await rows_of.moved(conn, access.project_id, slug, since, active, models.MAX_WINDOW_TRACES)
-    kept = await _kept(conn, user, rows)
-    return await work_observe.summary(conn, kept, hours, since, len(rows) - len(kept))
+    async with UnitOfWork(engine) as conn:
+        access, _ = await system(conn, user, project, slug)
+        since = await rows_of.now(conn) - timedelta(hours=hours)
+        active = work_observe.active_traces()
+        rows = await rows_of.moved(conn, access.project_id, slug, since, active, models.MAX_WINDOW_TRACES)
+        kept = await _kept(conn, user, rows)
+        return await work_observe.summary(conn, kept, hours, since, len(rows) - len(kept))
 
 
-async def now(conn: AsyncConnection) -> datetime:
+async def now(engine: AsyncEngine) -> datetime:
     """The database's clock, from which a stream counts what moved."""
-    return await rows_of.now(conn)
+    async with UnitOfWork(engine) as conn:
+        return await rows_of.now(conn)
 
 
 async def moved(
@@ -310,3 +324,17 @@ async def moved(
         raise HTTPException(401, "the token that opened this stream no longer holds")
     access, _ = await system(conn, user, project, slug)
     return await read_traces(conn, user, access, slug, MAX_TRACES, moved_after=seen)
+
+
+async def poll(
+    engine: AsyncEngine, user: Principal, project: str, slug: str, seen: datetime
+) -> tuple[object, list[tuple[TraceSummary, list[SpanOut]]]]:
+    """(refusal, traces): ``moved``, in a transaction of its own; the detail of its refusal and no traces when it
+    refuses."""
+    refusal, found = None, []
+    async with UnitOfWork(engine) as conn:
+        try:
+            found = await moved(conn, user, project, slug, seen)
+        except HTTPException as refused:
+            refusal = refused.detail
+    return refusal, found

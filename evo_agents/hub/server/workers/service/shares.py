@@ -22,11 +22,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.credentials.service.shares import live_unit
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.workers.models.shares import NO_WORKER, WorkerShares
@@ -64,40 +65,43 @@ async def record(conn: AsyncConnection, user: Principal, action: str, worker_id:
     await Auditor(conn, None, user).record(action, target)
 
 
-async def listed(conn: AsyncConnection, user: Principal) -> list[WorkerShares]:
+async def listed(engine: AsyncEngine, user: Principal) -> list[WorkerShares]:
     """The caller's live workers, every live worker for a hub admin, with whom each is shared."""
-    found = await store.rows(conn, None if user.admin else user.user_id)
-    return [WorkerShares(**row._mapping) for row in found]
+    async with UnitOfWork(engine) as conn:
+        found = await store.rows(conn, None if user.admin else user.user_id)
+        return [WorkerShares(**row._mapping) for row in found]
 
 
-async def share(conn: AsyncConnection, user: Principal, worker_id: int, slug: str) -> WorkerShares:
+async def share(engine: AsyncEngine, user: Principal, worker_id: int, slug: str) -> WorkerShares:
     """Narrow the worker to the live unit ``slug``, sharing it when it was not; 409 when its doctor report says no."""
-    row = await locked_worker(conn, user, worker_id)
-    unit_id = await live_unit(conn, slug)
-    refusal = share_refusal(row.doctor_at, row.doctor_high, row.doctor_fresh)
-    if refusal is not None:
-        raise Conflict(f"worker {row.name} of {row.login} is not shared with unit {slug}: {refusal}")
-    added = await store.add_unit(conn, worker_id, unit_id, user.user_id)
-    if added or not row.shared:
-        flip = ""
-        if not row.shared:
-            await store.set_shared(conn, worker_id, True)
-            flip = " shared=false->true"
-        await record(conn, user, audit.WORKER_SHARE, worker_id, row, slug, flip)
-        log.info("worker narrowed to a unit", extra={"worker_id": worker_id, "unit": slug})
-    return await one(conn, worker_id)
+    async with UnitOfWork(engine) as conn:
+        row = await locked_worker(conn, user, worker_id)
+        unit_id = await live_unit(conn, slug)
+        refusal = share_refusal(row.doctor_at, row.doctor_high, row.doctor_fresh)
+        if refusal is not None:
+            raise Conflict(f"worker {row.name} of {row.login} is not shared with unit {slug}: {refusal}")
+        added = await store.add_unit(conn, worker_id, unit_id, user.user_id)
+        if added or not row.shared:
+            flip = ""
+            if not row.shared:
+                await store.set_shared(conn, worker_id, True)
+                flip = " shared=false->true"
+            await record(conn, user, audit.WORKER_SHARE, worker_id, row, slug, flip)
+            log.info("worker narrowed to a unit", extra={"worker_id": worker_id, "unit": slug})
+        return await one(conn, worker_id)
 
 
-async def unshare(conn: AsyncConnection, user: Principal, worker_id: int, slug: str) -> WorkerShares:
+async def unshare(engine: AsyncEngine, user: Principal, worker_id: int, slug: str) -> WorkerShares:
     """Take unit ``slug`` back from the worker; with its last unit, sharing ends too. 404 when it is not narrowed to
     it."""
-    row = await locked_worker(conn, user, worker_id)
-    if not await store.drop_unit(conn, worker_id, slug):
-        raise NotFound(f"worker {row.name} of {row.login} is not narrowed to unit {slug}")
-    flip = ""
-    if not await store.unit_count(conn, worker_id) and row.shared:
-        await store.set_shared(conn, worker_id, False)
-        flip = " shared=true->false"
-    await record(conn, user, audit.WORKER_UNSHARE, worker_id, row, slug, flip)
-    log.info("worker unit taken back", extra={"worker_id": worker_id, "unit": slug})
-    return await one(conn, worker_id)
+    async with UnitOfWork(engine) as conn:
+        row = await locked_worker(conn, user, worker_id)
+        if not await store.drop_unit(conn, worker_id, slug):
+            raise NotFound(f"worker {row.name} of {row.login} is not narrowed to unit {slug}")
+        flip = ""
+        if not await store.unit_count(conn, worker_id) and row.shared:
+            await store.set_shared(conn, worker_id, False)
+            flip = " shared=true->false"
+        await record(conn, user, audit.WORKER_UNSHARE, worker_id, row, slug, flip)
+        log.info("worker unit taken back", extra={"worker_id": worker_id, "unit": slug})
+        return await one(conn, worker_id)

@@ -32,8 +32,7 @@ async def list_browser_identities(
 ) -> list[BrowserIdentity]:
     """The project's identities and your own in it, never another member's, and its agents' for an admin; metadata
     only."""
-    async with request.app.state.engine.connect() as conn:
-        found = await service.list_identities(conn, user, project)
+    found = await service.list_identities(request.app.state.engine, user, project)
     response.headers.update(NO_STORE)
     return found
 
@@ -45,8 +44,7 @@ async def create_browser_identity(
     """Create an identity with no profile yet (version 0): your own with the writer role, or the project's or an
     agent's as an admin. It is logged in later, on its worker."""
     service.check_create(body)
-    async with request.app.state.engine.begin() as conn:
-        created = await service.create_identity(conn, user, project, body)
+    created = await service.create_identity(request.app.state.engine, user, project, body)
     response.headers.update(NO_STORE)
     return created
 
@@ -59,8 +57,7 @@ async def delete_browser_identity(
 ) -> Response:
     """Delete an identity: its member, or an admin for the project's. Its keys go from the hub and its profiles from
     the blob store; 409 while a run holds it."""
-    async with request.app.state.engine.begin() as conn:
-        await service.delete_identity(conn, user, project, identity_id)
+    await service.delete_identity(request.app.state.engine, user, project, identity_id)
     return Response(status_code=204)
 
 
@@ -70,7 +67,6 @@ async def default_browser_identity(
 ) -> BrowserIdentity:
     """Make an agent's identity the one its profile hands to every run under it, in place of the one that was: an admin
     of the project. 409 for an identity no agent owns."""
-    async with request.app.state.engine.begin() as conn:
-        found = await service.make_default(conn, user, project, identity_id)
+    found = await service.make_default(request.app.state.engine, user, project, identity_id)
     response.headers.update(NO_STORE)
     return found

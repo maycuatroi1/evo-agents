@@ -18,6 +18,7 @@ from evo_agents.hub import browser_archive, browser_login, runs
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.browser.models.leases import (
     NO_KEY,
@@ -190,9 +191,10 @@ async def save(
 
 
 async def needs_login(
-    conn: AsyncConnection, user: Principal, run_id: int, identity_id: int, cause: str
+    engine: AsyncEngine, user: Principal, run_id: int, identity_id: int, cause: str
 ) -> BrowserIdentityState:
     """The run's Chromium could not use the identity's profile: it waits for a new login."""
-    found = await usable_identity(conn, user, run_id, identity_id)
-    status = await set_needs_login(conn, user, found, cause)
-    return BrowserIdentityState(identity_id=identity_id, status=status)
+    async with UnitOfWork(engine) as conn:
+        found = await usable_identity(conn, user, run_id, identity_id)
+        status = await set_needs_login(conn, user, found, cause)
+        return BrowserIdentityState(identity_id=identity_id, status=status)

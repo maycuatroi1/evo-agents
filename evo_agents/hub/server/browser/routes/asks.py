@@ -35,5 +35,4 @@ async def ask_login(request: Request, run_id: RunId, body: BrowserLoginBody, use
     """Ask the dispatcher of a run with a browser to sign in on one of its identities, or, for a run that cannot wait,
     set the identity needs_login and fail the run."""
     service.check_url(body)
-    async with request.app.state.engine.begin() as conn:
-        return await service.ask_login(conn, user, run_id, body)
+    return await service.ask_login(request.app.state.engine, user, run_id, body)

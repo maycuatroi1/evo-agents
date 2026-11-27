@@ -14,7 +14,8 @@
 - GET .../systems/{slug}/traces/stream: server-sent ``trace`` events (a ``TraceSummary``) each time a trace of the
   system moves, built on the process's one LISTEN (``system_traces.CHANNEL``); a ``: ping`` keeps it open.
 
-Each route opens the transaction and hands the request to ``service.views``, which says who reads which trace.
+Each route hands the app's engine and the request's parts to ``service.views``, which opens the transaction and says
+who reads which trace.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from collections.abc import AsyncIterable
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from evo_agents.hub.server import work_observe
@@ -85,8 +86,7 @@ async def list_traces(
     before: Annotated[int | None, Query(ge=1, le=MAX_ID, description="only traces older than this id")] = None,
 ) -> list[TraceSummary]:
     """The traces of the system the caller may read, the newest first."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.listed(conn, user, project, slug, limit, before)
+    return await service.listed(request.app.state.engine, user, project, slug, limit, before)
 
 
 @router.get("/{project}/systems/{slug}/metrics", response_model=Metrics, responses=READ_REFUSALS)
@@ -99,8 +99,7 @@ async def system_metrics(
 ) -> Metrics:
     """The numbers of each node and edge of the system over its last traces: count, errors, off-design crossings,
     median and last seconds, tokens and cost."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.metrics(conn, user, project, slug, limit)
+    return await service.metrics(request.app.state.engine, user, project, slug, limit)
 
 
 @router.get("/{project}/systems/{slug}/metrics/traces", response_model=TraceDistribution, responses=READ_REFUSALS)
@@ -114,16 +113,14 @@ async def trace_distribution(
     """The numbers of each trace of the system that started in the last ``days`` days and the caller may read, and
     their spread: p50 and p95 of the cost and the runs, the traces past limits.trace_usd, the budget refusals, the
     loop, idle and rounds threads, and the off-design ratio per edge. It reads only."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.distribution(conn, user, project, slug, days)
+    return await service.distribution(request.app.state.engine, user, project, slug, days)
 
 
 @router.get("/{project}/systems/{slug}/traces/{trace_id}", response_model=TraceOut, responses=READ_REFUSALS)
 async def show_trace(request: Request, project: ProjectName, slug: Slug, trace_id: TraceId, user: CurrentUser):
     """One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its
     timeline by agent."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.shown(conn, user, project, slug, trace_id)
+    return await service.shown(request.app.state.engine, user, project, slug, trace_id)
 
 
 @router.get("/{project}/systems/{slug}/work/summary", response_model=work_observe.WorkSummary, responses=READ_REFUSALS)
@@ -137,8 +134,7 @@ async def work_summary(
     """The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run
     still active: open, needing a person, failed and done, the median time from start to close of the work done in
     the window, and the cost. It reads only."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.work_summary(conn, user, project, slug, hours)
+    return await service.work_summary(request.app.state.engine, user, project, slug, hours)
 
 
 # The live stream
@@ -159,21 +155,14 @@ async def stream_traces(
     """The traces of the system as they move: a ``trace`` event (``TraceSummary``) for each trace the caller may read
     whose last_at passed, at once for those after ``after`` (none by default), then each time a span is written. An
     ``end`` event once the caller may no longer read the system's project."""
-    async with request.app.state.engine.begin() as conn:
-        _, system_id = await service.system(conn, user, project, slug)
+    system_id = await service.system_id(request.app.state.engine, user, project, slug)
     streams: TraceStreams = request.app.state.trace_streams
     streams.start()
-    async with request.app.state.engine.begin() as conn:
-        now = await service.now(conn)
+    now = await service.now(request.app.state.engine)
     seen = after or now
     with streams.subscribe(system_id or 0) as wakeup:
         while True:
-            refusal, moved = None, []
-            async with request.app.state.engine.begin() as conn:
-                try:
-                    moved = await service.moved(conn, user, project, slug, seen)
-                except HTTPException as refused:
-                    refusal = refused.detail
+            refusal, moved = await service.poll(request.app.state.engine, user, project, slug, seen)
             if refusal is not None:
                 yield ServerSentEvent(event="end", data={"reason": refusal})
                 return

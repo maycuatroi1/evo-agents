@@ -26,13 +26,14 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.blobs import BLOB_PREFIX, MAX_GET_TTL, BlobStoreUnavailable
 from evo_agents.hub.plugin_calls import core_registry, enabled_in, enabled_plugins
 from evo_agents.hub.server.agents.models.packs import IMAGE_KEY, NOTHING, POINT, AgentPack, AgentPackPin
 from evo_agents.hub.server.agents.repository import packs as repository
 from evo_agents.hub.server.base.errors import Forbidden, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import RunPack
 from evo_agents.hub.server.security import Principal
@@ -107,29 +108,30 @@ async def pinned(
     return found
 
 
-async def list_packs(conn: AsyncConnection, user: Principal, project: str, hub_version: str) -> list[AgentPack]:
+async def list_packs(engine: AsyncEngine, user: Principal, project: str, hub_version: str) -> list[AgentPack]:
     """The agent packs a profile of the project may attach, by plugin, then in its manifest's order."""
-    access = await project_access(conn, user, project)
-    if access.role is None:
-        raise Forbidden(f"reading the agent packs of project {project} needs a grant on it")
-    found = []
-    for plugin in await enabled_plugins(conn, access.project_id):
-        items = (plugin.manifest.get("contributes") or {}).get(POINT, ())
-        held = await repository.versions(conn, plugin.id) if items else []
-        for item in items:
-            usable = [row.version for row in held if _unfit(row, item["name"], hub_version) is None]
-            found.append(
-                AgentPack(
-                    pack=pack_name(plugin.name, item["name"]),
-                    plugin=plugin.name,
-                    name=item["name"],
-                    title=item.get("title"),
-                    description=item.get("description"),
-                    installed_version=plugin.installed_version,
-                    versions=sorted(usable, key=compat.plugin_version_key, reverse=True),
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        if access.role is None:
+            raise Forbidden(f"reading the agent packs of project {project} needs a grant on it")
+        found = []
+        for plugin in await enabled_plugins(conn, access.project_id):
+            items = (plugin.manifest.get("contributes") or {}).get(POINT, ())
+            held = await repository.versions(conn, plugin.id) if items else []
+            for item in items:
+                usable = [row.version for row in held if _unfit(row, item["name"], hub_version) is None]
+                found.append(
+                    AgentPack(
+                        pack=pack_name(plugin.name, item["name"]),
+                        plugin=plugin.name,
+                        name=item["name"],
+                        title=item.get("title"),
+                        description=item.get("description"),
+                        installed_version=plugin.installed_version,
+                        versions=sorted(usable, key=compat.plugin_version_key, reverse=True),
+                    )
                 )
-            )
-    return found
+        return found
 
 
 # Claiming

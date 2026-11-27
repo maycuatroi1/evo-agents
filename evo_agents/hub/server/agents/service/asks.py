@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, kg_labels, runs, system_context
@@ -63,6 +63,7 @@ from evo_agents.hub.server.agents.repository.tasking import project_role
 from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply
@@ -411,20 +412,22 @@ async def forward(conn: AsyncConnection, run: AgentRun, child_id: int) -> tuple[
     return message_id, refusal
 
 
-async def ask(conn: AsyncConnection, sealer, user, run_id: int, body: AgentAskIn) -> AgentAsked:
+async def ask(engine: AsyncEngine, sealer, user, run_id: int, body: AgentAskIn) -> AgentAsked:
     """Ask agent ``body.handle`` of another project, in chat run ``run_id`` the worker of ``user`` holds; 422 for a
     run of another kind."""
-    run = await agent_run(conn, user, run_id)
-    if run.kind != "chat":
-        raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
-    _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
-    return await ask_agent(conn, sealer, run, body, row)
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        if run.kind != "chat":
+            raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
+        return await ask_agent(conn, sealer, run, body, row)
 
 
-async def forward_of(conn: AsyncConnection, user, run_id: int, child_id: int) -> tuple[int | None, str | None]:
+async def forward_of(engine: AsyncEngine, user, run_id: int, child_id: int) -> tuple[int | None, str | None]:
     """``forward`` of the answer of run ``child_id`` into chat run ``run_id`` the worker of ``user`` holds; 422 for a
     run of another kind."""
-    run = await agent_run(conn, user, run_id)
-    if run.kind != "chat":
-        raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent forwards an answer")
-    return await forward(conn, run, child_id)
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        if run.kind != "chat":
+            raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent forwards an answer")
+        return await forward(conn, run, child_id)

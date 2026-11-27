@@ -29,18 +29,21 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, runs, system_context, triage_rules
 from evo_agents.hub.server import audit, run_waits, wait_cycles
 from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
 from evo_agents.hub.server.base.auditor import Auditor
-from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
-from evo_agents.hub.server.chats.service.agents import AgentRun
+from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.decisions.models import DecisionAsk
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.orchestrator.models import (
+    Escalated,
+    EscalateIn,
     OrchestratorActed,
     OrchestratorAnswerIn,
     OrchestratorAskOwnerIn,
@@ -49,6 +52,8 @@ from evo_agents.hub.server.orchestrator.models import (
 from evo_agents.hub.server.orchestrator.repository import actions as rows
 from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.profile_store import by_handle
+from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
+from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 
@@ -256,3 +261,43 @@ async def ask_owner(conn: AsyncConnection, run: AgentRun, body: OrchestratorAskO
     await _close(conn, frame, "ask_owner")
     log.info("orchestrator asked the owner", extra={"thread_id": frame.thread.id, "decision_id": view.id})
     return OrchestratorActed(message_id=message_id, run_id=None, decision_id=view.id)
+
+
+async def answer_in_run(
+    engine: AsyncEngine, sealer, user: Principal, run_id: int, body: OrchestratorAnswerIn
+) -> OrchestratorActed:
+    """``answer`` as the chat run ``run_id`` the caller's worker holds, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        return await answer(conn, sealer, run, body)
+
+
+async def reassign_in_run(
+    engine: AsyncEngine, sealer, user: Principal, run_id: int, body: OrchestratorReassignIn
+) -> OrchestratorActed:
+    """``reassign`` as the chat run ``run_id`` the caller's worker holds, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        return await reassign(conn, sealer, run, body)
+
+
+async def ask_owner_in_run(
+    engine: AsyncEngine, user: Principal, run_id: int, body: OrchestratorAskOwnerIn
+) -> OrchestratorActed:
+    """``ask_owner`` as the chat run ``run_id`` the caller's worker holds, its row locked, in a transaction of its
+    own."""
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
+        return await ask_owner(conn, run, body, row)
+
+
+async def escalate_in_run(engine: AsyncEngine, sealer, user: Principal, run_id: int, body: EscalateIn) -> Escalated:
+    """``threads.escalate`` as the chat run ``run_id`` the caller's worker holds, its row locked, in a transaction of
+    its own; 422 for a run of another kind."""
+    async with UnitOfWork(engine) as conn:
+        run = await agent_run(conn, user, run_id)
+        if run.kind != "chat":
+            raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent escalates")
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
+        return await orchestrator.escalate(conn, sealer, run, body, row)

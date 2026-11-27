@@ -8,12 +8,13 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import cron, cron_store
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.cron import repository as store
 from evo_agents.hub.server.cron.models import CronFireOut, CronJobOut, CronJobPut, CronJobWritten
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -263,39 +264,40 @@ async def fires(conn: AsyncConnection, user: Principal, project: str, name: str,
 # Changing
 
 
-async def put(conn: AsyncConnection, user: Principal, project: str, name: str, body: CronJobPut) -> CronJobWritten:
+async def put(engine: AsyncEngine, user: Principal, project: str, name: str, body: CronJobPut) -> CronJobWritten:
     """Create the job, owned by ``user``, or store what it starts as its next revision; RevisionConflict when
     ``body.if_revision`` is not its revision."""
-    access = await project_access(conn, user, project)
-    _writer(access, "changing")
-    held = await cron_store.one(conn, access.project_id, name, lock=True)
-    if held is None and body.if_revision:
-        raise NotFound(f"project {access.name} has no cron job {name} to replace")
-    if held is not None and not can_change(access, user, held):
-        raise Forbidden(
-            f"cron job {name} is {held.owner}'s: what it starts runs as them, so only they change it; an admin "
-            "may pause, resume, fire or delete it"
-        )
-    if held is not None and body.if_revision != held.revision:
-        if not body.if_revision:
-            message = f"cron job {name} exists at revision {held.revision}: pass if_revision {held.revision}"
-        else:
-            message = (
-                f"cron job {name} is at revision {held.revision} on the hub, not {body.if_revision}: someone "
-                "changed it since you read it. Read it again and retry; nothing was written"
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        _writer(access, "changing")
+        held = await cron_store.one(conn, access.project_id, name, lock=True)
+        if held is None and body.if_revision:
+            raise NotFound(f"project {access.name} has no cron job {name} to replace")
+        if held is not None and not can_change(access, user, held):
+            raise Forbidden(
+                f"cron job {name} is {held.owner}'s: what it starts runs as them, so only they change it; an admin "
+                "may pause, resume, fire or delete it"
             )
-        raise RevisionConflict(message, await _shown(conn, access, user, held))
-    fields = await checked(conn, access, user, body)
-    if held is not None and _same(held, fields):
-        out = await _shown(conn, access, user, held)
-        return CronJobWritten(**out.model_dump(), created=False, changed=False)
-    revision = await cron_store.write(conn, access.project_id, name, fields, user.user_id, held)
-    action = audit.CRON_CREATE if held is None else audit.CRON_UPDATE
-    await _record(conn, user, access, action, name, revision)
-    written = await cron_store.one(conn, access.project_id, name)
-    assert written is not None  # written in this transaction
-    out = await _shown(conn, access, user, written)
-    return CronJobWritten(**out.model_dump(), created=held is None, changed=True)
+        if held is not None and body.if_revision != held.revision:
+            if not body.if_revision:
+                message = f"cron job {name} exists at revision {held.revision}: pass if_revision {held.revision}"
+            else:
+                message = (
+                    f"cron job {name} is at revision {held.revision} on the hub, not {body.if_revision}: someone "
+                    "changed it since you read it. Read it again and retry; nothing was written"
+                )
+            raise RevisionConflict(message, await _shown(conn, access, user, held))
+        fields = await checked(conn, access, user, body)
+        if held is not None and _same(held, fields):
+            out = await _shown(conn, access, user, held)
+            return CronJobWritten(**out.model_dump(), created=False, changed=False)
+        revision = await cron_store.write(conn, access.project_id, name, fields, user.user_id, held)
+        action = audit.CRON_CREATE if held is None else audit.CRON_UPDATE
+        await _record(conn, user, access, action, name, revision)
+        written = await cron_store.one(conn, access.project_id, name)
+        assert written is not None  # written in this transaction
+        out = await _shown(conn, access, user, written)
+        return CronJobWritten(**out.model_dump(), created=held is None, changed=True)
 
 
 async def _managed(conn: AsyncConnection, user: Principal, project: str, name: str, doing: str):
@@ -310,45 +312,47 @@ async def _managed(conn: AsyncConnection, user: Principal, project: str, name: s
 
 
 async def _change(
-    conn: AsyncConnection,
+    engine: AsyncEngine,
     user: Principal,
     project: str,
     name: str,
     doing: str,
-    change: Callable[[cron_store.Job], Awaitable[str]],
+    change: Callable[[AsyncConnection, cron_store.Job], Awaitable[str]],
 ) -> CronJobOut:
-    access, job = await _managed(conn, user, project, name, doing)
-    action = await change(job)
-    await _record(conn, user, access, action, name, job.revision)
-    held = await cron_store.one(conn, access.project_id, name)
-    assert held is not None
-    return await _shown(conn, access, user, held)
+    async with UnitOfWork(engine) as conn:
+        access, job = await _managed(conn, user, project, name, doing)
+        action = await change(conn, job)
+        await _record(conn, user, access, action, name, job.revision)
+        held = await cron_store.one(conn, access.project_id, name)
+        assert held is not None
+        return await _shown(conn, access, user, held)
 
 
-async def pause(conn: AsyncConnection, user: Principal, project: str, name: str, reason: str | None) -> CronJobOut:
-    async def change(job):
+async def pause(engine: AsyncEngine, user: Principal, project: str, name: str, reason: str | None) -> CronJobOut:
+    async def change(conn, job):
         await cron_store.pause(conn, job.id, user.user_id, _blank(reason))
         return audit.CRON_PAUSE
 
-    return await _change(conn, user, project, name, "pausing", change)
+    return await _change(engine, user, project, name, "pausing", change)
 
 
-async def resume(conn: AsyncConnection, user: Principal, project: str, name: str) -> CronJobOut:
-    async def change(job):
+async def resume(engine: AsyncEngine, user: Principal, project: str, name: str) -> CronJobOut:
+    async def change(conn, job):
         await cron_store.resume(conn, job.id)
         return audit.CRON_RESUME
 
-    return await _change(conn, user, project, name, "resuming", change)
+    return await _change(engine, user, project, name, "resuming", change)
 
 
-async def fire_now(conn: AsyncConnection, user: Principal, project: str, name: str) -> dict:
+async def fire_now(engine: AsyncEngine, user: Principal, project: str, name: str) -> dict:
     """Add a fire due at this moment; the fire's row."""
-    access, job = await _managed(conn, user, project, name, "firing")
-    fire = await cron_store.add_fire(conn, job.id, datetime.now(UTC), manual=True, actor_id=user.user_id)
-    if fire is None:  # the same microsecond as a fire before: a double press
-        raise Conflict(f"cron job {name} was fired at this moment already")
-    await _record(conn, user, access, audit.CRON_RUN, name, job.revision)
-    return fire
+    async with UnitOfWork(engine) as conn:
+        access, job = await _managed(conn, user, project, name, "firing")
+        fire = await cron_store.add_fire(conn, job.id, datetime.now(UTC), manual=True, actor_id=user.user_id)
+        if fire is None:  # the same microsecond as a fire before: a double press
+            raise Conflict(f"cron job {name} was fired at this moment already")
+        await _record(conn, user, access, audit.CRON_RUN, name, job.revision)
+        return fire
 
 
 def fired(project: str, name: str, fire: dict) -> CronFireOut:
@@ -364,8 +368,9 @@ def stored(project: str, name: str, written: CronJobWritten) -> None:
         log.info("cron job stored", extra={"project": project, "cron_job": name, "revision": written.revision})
 
 
-async def delete(conn: AsyncConnection, user: Principal, project: str, name: str) -> None:
+async def delete(engine: AsyncEngine, user: Principal, project: str, name: str) -> None:
     """Delete the job with its fires; its runs stay."""
-    access, job = await _managed(conn, user, project, name, "deleting")
-    await cron_store.remove(conn, job.id)
-    await _record(conn, user, access, audit.CRON_DELETE, name, job.revision)
+    async with UnitOfWork(engine) as conn:
+        access, job = await _managed(conn, user, project, name, "deleting")
+        await cron_store.remove(conn, job.id)
+        await _record(conn, user, access, audit.CRON_DELETE, name, job.revision)

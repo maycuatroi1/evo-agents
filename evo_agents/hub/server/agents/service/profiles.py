@@ -33,7 +33,7 @@ import base64
 import hashlib
 
 from fastapi import HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import blob_gc, profiles
 from evo_agents.hub.blobs import BlobStoreUnavailable
@@ -58,6 +58,7 @@ from evo_agents.hub.server.agents.repository import profiles as repository
 from evo_agents.hub.server.agents.service.packs import pinned
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.browser.service.identities import retire_profile_identities
 from evo_agents.hub.server.profile_store import Profile, create_pool, icon_url, write_version
@@ -120,22 +121,25 @@ async def _readable(conn: AsyncConnection, user: Principal, project: str, handle
     return await _profile(conn, access, handle)
 
 
-async def list_agents(conn: AsyncConnection, user: Principal, project: str, deleted: bool) -> list[Agent]:
+async def list_agents(engine: AsyncEngine, user: Principal, project: str, deleted: bool) -> list[Agent]:
     """The agent profiles of the project, the default first, then by handle."""
-    access = await project_access(conn, user, project)
-    _reader(access)
-    return [agent_view(found) for found in await repository.project_profiles(conn, access.project_id, deleted)]
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        _reader(access)
+        return [agent_view(found) for found in await repository.project_profiles(conn, access.project_id, deleted)]
 
 
-async def show(conn: AsyncConnection, user: Principal, project: str, handle: str) -> Agent:
+async def show(engine: AsyncEngine, user: Principal, project: str, handle: str) -> Agent:
     """One agent profile of the project, deleted or not."""
-    return agent_view(await _readable(conn, user, project, handle))
+    async with UnitOfWork(engine) as conn:
+        return agent_view(await _readable(conn, user, project, handle))
 
 
-async def versions(conn: AsyncConnection, user: Principal, project: str, handle: str) -> list[AgentVersion]:
+async def versions(engine: AsyncEngine, user: Principal, project: str, handle: str) -> list[AgentVersion]:
     """Every version of the profile, the latest first: the rules a run of that version had."""
-    found = await _readable(conn, user, project, handle)
-    return [AgentVersion(**row._mapping) for row in await repository.versions(conn, found.id)]
+    async with UnitOfWork(engine) as conn:
+        found = await _readable(conn, user, project, handle)
+        return [AgentVersion(**row._mapping) for row in await repository.versions(conn, found.id)]
 
 
 # Changing
@@ -184,11 +188,12 @@ async def create_profile(
     return created
 
 
-async def create(conn: AsyncConnection, user: Principal, project: str, body: AgentCreate, hub_version: str) -> Agent:
+async def create(engine: AsyncEngine, user: Principal, project: str, body: AgentCreate, hub_version: str) -> Agent:
     """Create an agent profile of the project, at version 1."""
-    access = await project_access(conn, user, project)
-    _admin(access, "creating")
-    return agent_view(await create_profile(conn, user, access, body, hub_version))
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        _admin(access, "creating")
+        return agent_view(await create_profile(conn, user, access, body, hub_version))
 
 
 def profile_changes(profile: Profile, body: AgentEdit, packs: list[dict] | None) -> dict:
@@ -224,58 +229,63 @@ async def new_version(conn: AsyncConnection, profile: Profile, changes: dict, us
 
 
 async def edit(
-    conn: AsyncConnection, user: Principal, project: str, handle: str, body: AgentEdit, hub_version: str
+    engine: AsyncEngine, user: Principal, project: str, handle: str, body: AgentEdit, hub_version: str
 ) -> tuple[Agent, dict]:
     """Change an agent profile: the fields given, as its next version; the profile, and the columns that changed."""
-    access = await project_access(conn, user, project)
-    _admin(access, "editing")
-    profile = await _profile(conn, access, handle, lock=True)
-    _deleted(profile, handle)
-    if body.if_version is not None and body.if_version != profile.version:
-        raise Conflict(
-            f"@{handle} is at version {profile.version}, not {body.if_version}: read it again; nothing changed"
-        )
-    packs = await pinned(conn, access.project_id, project, body.packs, hub_version)
-    changes = profile_changes(profile, body, packs)
-    if changes:
-        version = await new_version(conn, profile, changes, user.user_id)
-        fields = ",".join(sorted(changes))
-        await Auditor.of(conn, user, access).record(audit.AGENT_UPDATE, f"{_target(profile, version)} fields={fields}")
-        profile = await _profile(conn, access, handle)
-    return agent_view(profile), changes
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        _admin(access, "editing")
+        profile = await _profile(conn, access, handle, lock=True)
+        _deleted(profile, handle)
+        if body.if_version is not None and body.if_version != profile.version:
+            raise Conflict(
+                f"@{handle} is at version {profile.version}, not {body.if_version}: read it again; nothing changed"
+            )
+        packs = await pinned(conn, access.project_id, project, body.packs, hub_version)
+        changes = profile_changes(profile, body, packs)
+        if changes:
+            version = await new_version(conn, profile, changes, user.user_id)
+            fields = ",".join(sorted(changes))
+            await Auditor.of(conn, user, access).record(
+                audit.AGENT_UPDATE, f"{_target(profile, version)} fields={fields}"
+            )
+            profile = await _profile(conn, access, handle)
+        return agent_view(profile), changes
 
 
 async def set_account_pool(
-    conn: AsyncConnection, user: Principal, project: str, handle: str, body: AccountPoolChoice
+    engine: AsyncEngine, user: Principal, project: str, handle: str, body: AccountPoolChoice
 ) -> Agent:
     """Attach an account pool of the project to the agent, or detach it (an admin of the project or of the hub)."""
-    access = await project_access(conn, user, project)
-    if not user.admin:
-        _admin(access, "attaching an account pool to")
-    profile = await _profile(conn, access, handle, lock=True)
-    _deleted(profile, handle)
-    if profile.account_pool != body.account_pool:
-        await account_pools.attach(conn, user, access, profile.id, handle, body.account_pool)
-        profile = await _profile(conn, access, handle)
-    return agent_view(profile)
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        if not user.admin:
+            _admin(access, "attaching an account pool to")
+        profile = await _profile(conn, access, handle, lock=True)
+        _deleted(profile, handle)
+        if profile.account_pool != body.account_pool:
+            await account_pools.attach(conn, user, access, profile.id, handle, body.account_pool)
+            profile = await _profile(conn, access, handle)
+        return agent_view(profile)
 
 
-async def delete(conn: AsyncConnection, user: Principal, project: str, handle: str) -> tuple[Agent, int]:
+async def delete(engine: AsyncEngine, user: Principal, project: str, handle: str) -> tuple[Agent, int]:
     """Soft-delete an agent profile, its accounts and browser identities with it; the profile, and how many accounts
     were deleted."""
-    retired = 0
-    access = await project_access(conn, user, project)
-    _admin(access, "deleting")
-    profile = await _profile(conn, access, handle, lock=True)
-    if profile.is_default:
-        raise Conflict(f"@{handle} is the default agent of project {project}, which is never deleted")
-    if profile.deleted_at is None:
-        await repository.mark_deleted(conn, profile.id)
-        retired = await retire_profile_accounts(conn, profile.id)
-        await retire_profile_identities(conn, profile.id)
-        await Auditor.of(conn, user, access).record(audit.AGENT_DELETE, _target(profile))
-        profile = await _profile(conn, access, handle)
-    return agent_view(profile), retired
+    async with UnitOfWork(engine) as conn:
+        retired = 0
+        access = await project_access(conn, user, project)
+        _admin(access, "deleting")
+        profile = await _profile(conn, access, handle, lock=True)
+        if profile.is_default:
+            raise Conflict(f"@{handle} is the default agent of project {project}, which is never deleted")
+        if profile.deleted_at is None:
+            await repository.mark_deleted(conn, profile.id)
+            retired = await retire_profile_accounts(conn, profile.id)
+            await retire_profile_identities(conn, profile.id)
+            await Auditor.of(conn, user, access).record(audit.AGENT_DELETE, _target(profile))
+            profile = await _profile(conn, access, handle)
+        return agent_view(profile), retired
 
 
 # The avatar
@@ -302,9 +312,10 @@ def image(body: AvatarUpload) -> tuple[bytes, str]:
     return data, hashlib.sha256(data).hexdigest()
 
 
-async def may_change_avatar(conn: AsyncConnection, user: Principal, project: str) -> None:
+async def may_change_avatar(engine: AsyncEngine, user: Principal, project: str) -> None:
     """403 unless ``user`` may change the avatars of the project's agents (the admin role on it)."""
-    _admin(await project_access(conn, user, project), "changing the avatar of")
+    async with UnitOfWork(engine) as conn:
+        _admin(await project_access(conn, user, project), "changing the avatar of")
 
 
 async def _hold_avatar(conn: AsyncConnection, store, access: ProjectAccess, user_id: int, sha256: str, data: bytes):

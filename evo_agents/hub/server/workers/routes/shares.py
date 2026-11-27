@@ -23,21 +23,18 @@ router = APIRouter(prefix="/v1/org/workers", tags=["org"], responses={401: {"mod
 @router.get("", response_model=list[WorkerShares])
 async def list_worker_shares(request: Request, user: CurrentUser) -> list[WorkerShares]:
     """The caller's live workers, every live worker for a hub admin, with whom each is shared."""
-    async with request.app.state.engine.begin() as conn:
-        return await shares.listed(conn, user)
+    return await shares.listed(request.app.state.engine, user)
 
 
 @router.put("/{worker_id}/units/{slug}", response_model=WorkerShares, responses=REFUSALS)
 async def share_worker(request: Request, worker_id: WorkerId, slug: UnitSlug, user: CurrentUser) -> WorkerShares:
     """Narrow the worker to a live unit of the org chart, sharing it when it was not."""
     shares.writer(user)
-    async with request.app.state.engine.begin() as conn:
-        return await shares.share(conn, user, worker_id, slug)
+    return await shares.share(request.app.state.engine, user, worker_id, slug)
 
 
 @router.delete("/{worker_id}/units/{slug}", response_model=WorkerShares, responses=REFUSALS)
 async def unshare_worker(request: Request, worker_id: WorkerId, slug: UnitSlug, user: CurrentUser) -> WorkerShares:
     """Take a unit back from the worker; with its last unit, sharing ends too."""
     shares.writer(user)
-    async with request.app.state.engine.begin() as conn:
-        return await shares.unshare(conn, user, worker_id, slug)
+    return await shares.unshare(request.app.state.engine, user, worker_id, slug)

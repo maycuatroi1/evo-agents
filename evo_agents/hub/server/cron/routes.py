@@ -100,8 +100,7 @@ async def cron_job_fires(
 async def put_cron_job(request: Request, project: ProjectName, name: Name, body: CronJobPut, user: CurrentUser):
     """Create the cron job, owned by the caller, or store what it starts as its next revision."""
     try:
-        async with request.app.state.engine.begin() as conn:
-            written = await service.put(conn, user, project, name, body)
+        written = await service.put(request.app.state.engine, user, project, name, body)
     except service.RevisionConflict as exc:
         return _conflict(request, exc)
     service.stored(project, name, written)
@@ -113,28 +112,24 @@ async def pause_cron_job(
     request: Request, project: ProjectName, name: Name, body: CronJobPause, user: CurrentUser
 ) -> CronJobOut:
     """Pause a cron job: it does not fire until resumed."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.pause(conn, user, project, name, body.reason)
+    return await service.pause(request.app.state.engine, user, project, name, body.reason)
 
 
 @router.post("/{project}/cron-jobs/{name}/resume", response_model=CronJobOut, responses=REFUSALS)
 async def resume_cron_job(request: Request, project: ProjectName, name: Name, user: CurrentUser) -> CronJobOut:
     """Resume a paused cron job: it fires from its next minute on."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.resume(conn, user, project, name)
+    return await service.resume(request.app.state.engine, user, project, name)
 
 
 @router.post("/{project}/cron-jobs/{name}/run", response_model=CronFireOut, responses=REFUSALS)
 async def run_cron_job(request: Request, project: ProjectName, name: Name, user: CurrentUser) -> CronFireOut:
     """Fire a cron job now: a fire due at this moment, which the hub handles as any fire."""
-    async with request.app.state.engine.begin() as conn:
-        fire = await service.fire_now(conn, user, project, name)
+    fire = await service.fire_now(request.app.state.engine, user, project, name)
     return service.fired(project, name, fire)
 
 
 @router.delete("/{project}/cron-jobs/{name}", response_model=CronJobDeleted, responses=REFUSALS)
 async def delete_cron_job(request: Request, project: ProjectName, name: Name, user: CurrentUser) -> CronJobDeleted:
     """Delete a cron job with its fires; its runs stay."""
-    async with request.app.state.engine.begin() as conn:
-        await service.delete(conn, user, project, name)
+    await service.delete(request.app.state.engine, user, project, name)
     return CronJobDeleted(project=project, deleted=name)

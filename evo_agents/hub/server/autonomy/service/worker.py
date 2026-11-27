@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import approval_heads
 from evo_agents.hub.autonomy_card import CLASS_CATEGORIES
@@ -18,6 +18,8 @@ from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
+from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.security import Principal
 
@@ -74,3 +76,20 @@ async def act(conn: AsyncConnection, run_id: int, act: AutonomyActIn) -> Autonom
         title = f"{act.klass}: the agent of run {run_id} ran {act.what}"
         await autonomy_gates.tell_after(conn, run_id, act.klass, key=f"hook {act.what[:200]}", title=title)
     return AutonomyActOut(mode=mode, told=mode == NOTIFY, answered=answered, stale=stale)  # pyright: ignore[reportArgumentType]
+
+
+# The routes, each in a transaction of its own that first checks the caller's worker claimed the run
+
+
+async def write_backup(engine: AsyncEngine, user: Principal, run_id: int, backup: BackupIn, made_at: datetime) -> int:
+    """``record_backup`` of the run the caller's worker claimed, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        await claimed_run(conn, user, run_id)
+        return await record_backup(conn, user, run_id, backup, made_at)
+
+
+async def claimed_act(engine: AsyncEngine, user: Principal, run_id: int, act_in: AutonomyActIn) -> AutonomyActOut:
+    """``act`` of the run the caller's worker claimed, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        await claimed_run(conn, user, run_id)
+        return await act(conn, run_id, act_in)

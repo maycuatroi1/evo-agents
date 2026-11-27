@@ -7,11 +7,12 @@ Every member of the project reads; changing needs the admin role on it, and is a
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import system_spec
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.ops.models import views as ops_views
 from evo_agents.hub.server.ops.repository import threads as ops_threads
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -70,16 +71,17 @@ async def default_shown(conn: AsyncConnection, user: Principal, project: str) ->
     return _default_out(access, await system_store.default_of(conn, access.project_id))
 
 
-async def set_default(conn: AsyncConnection, user: Principal, project: str, slug: str) -> DefaultSystem:
+async def set_default(engine: AsyncEngine, user: Principal, project: str, slug: str) -> DefaultSystem:
     """Make system ``slug`` the project's default system, and no other."""
-    access = await project_access(conn, user, project)
-    admin_only(access, "setting the default of")
-    await system_store.default_of(conn, access.project_id, lock=True)
-    held = await held_system(conn, access, slug, lock=True)
-    if not held.is_default:
-        await system_store.set_default(conn, access.project_id, held.id)
-        await _record(conn, user, access, audit.SYSTEM_DEFAULT, held)
-    return _default_out(access, await system_store.default_of(conn, access.project_id))
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        admin_only(access, "setting the default of")
+        await system_store.default_of(conn, access.project_id, lock=True)
+        held = await held_system(conn, access, slug, lock=True)
+        if not held.is_default:
+            await system_store.set_default(conn, access.project_id, held.id)
+            await _record(conn, user, access, audit.SYSTEM_DEFAULT, held)
+        return _default_out(access, await system_store.default_of(conn, access.project_id))
 
 
 # The ops of a system
@@ -91,16 +93,17 @@ async def ops_shown(conn: AsyncConnection, user: Principal, project: str, slug: 
     return await _ops_out(conn, access, await held_system(conn, access, slug))
 
 
-async def pause(conn: AsyncConnection, user: Principal, project: str, slug: str, reason: str | None) -> SystemOps:
+async def pause(engine: AsyncEngine, user: Principal, project: str, slug: str, reason: str | None) -> SystemOps:
     """Pause the ops of a system for ``reason``, or resume them when it is None."""
-    access = await project_access(conn, user, project)
-    admin_only(access, "pausing or resuming the ops of")
-    held = await held_system(conn, access, slug, lock=True)
-    if (held.ops_paused_at is None) != (reason is None):
-        await system_store.set_paused(conn, held.id, reason)
-        action = audit.SYSTEM_OPS_RESUME if reason is None else audit.SYSTEM_OPS_PAUSE
-        await _record(conn, user, access, action, held)
-    return await _ops_out(conn, access, await held_system(conn, access, slug))
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        admin_only(access, "pausing or resuming the ops of")
+        held = await held_system(conn, access, slug, lock=True)
+        if (held.ops_paused_at is None) != (reason is None):
+            await system_store.set_paused(conn, held.id, reason)
+            action = audit.SYSTEM_OPS_RESUME if reason is None else audit.SYSTEM_OPS_PAUSE
+            await _record(conn, user, access, action, held)
+        return await _ops_out(conn, access, await held_system(conn, access, slug))
 
 
 async def batches(

@@ -16,5 +16,4 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 async def report_doctor(request: Request, report: DoctorReport, user: CurrentUser) -> DoctorAnswer:
     """Keep the newest doctor report of the worker whose token made the request; notify its owner when a report with a
     high finding stops it taking the runs of the units it is shared with."""
-    async with request.app.state.engine.begin() as conn:
-        return await doctor.keep(conn, user, report)
+    return await doctor.keep(request.app.state.engine, user, report)

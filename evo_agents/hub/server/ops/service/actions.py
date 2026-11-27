@@ -31,13 +31,15 @@ the chat run; the hub runtime's tools call the same code (``hub_tools``):
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, runs, triage_rules
 from evo_agents.hub.server import audit, run_waits
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.ops.models.actions import (
     CURATOR_RESUME,
@@ -217,3 +219,11 @@ async def held(conn: AsyncConnection, user, run_id: int) -> AgentRun:
     run = await agent_run(conn, user, run_id)
     await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
     return run
+
+
+async def act(
+    engine: AsyncEngine, user, run_id: int, action: Callable[..., Awaitable[OpsActed]], body, **options
+) -> OpsActed:
+    """``action`` of the chat run ``run_id`` ``held`` locks, with ``body``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await action(conn, await held(conn, user, run_id), body, **options)

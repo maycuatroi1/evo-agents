@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import browser_login, runs
 from evo_agents.hub.server.base.errors import Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.browser.models.asks import BrowserLoginAsked, BrowserLoginBody, LoginAsk
 from evo_agents.hub.server.browser.repository import asks as repository
 from evo_agents.hub.server.browser.service.leases import set_needs_login, usable_identity
@@ -51,33 +52,34 @@ def check_url(body: BrowserLoginBody) -> None:
         raise Unprocessable("the login page is an http or https address with a host")
 
 
-async def ask_login(conn: AsyncConnection, user: Principal, run_id: int, body: BrowserLoginBody) -> BrowserLoginAsked:
+async def ask_login(engine: AsyncEngine, user: Principal, run_id: int, body: BrowserLoginBody) -> BrowserLoginAsked:
     """Ask the dispatcher of the run to sign in on one of its identities, or, for a run that cannot wait, set the
     identity needs_login and fail the run."""
-    _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
-    if row.kind == browser_login.KIND:
-        raise Unprocessable(f"run {run_id} is a login session: a person is logging in already")
-    found = await usable_identity(conn, user, run_id, await _identity_id(conn, run_id, body.identity))
-    name = found.identity.name
-    if row.kind not in runs.RESUME_KINDS:
-        await set_needs_login(conn, user, found, "asked_by_run")
-        message = browser_login.STEP_REFUSAL.format(run=run_id, kind=row.kind, name=name, project=row.name)
-        await move_run(conn, run_id, row.state, "failed", "worker", reason="browser login needed", error=message)
-        log.info("run failed for a login", extra={"run_id": run_id, "browser_identity": found.identity.id})
-        return BrowserLoginAsked(outcome="failed", decision_id=None, identity_id=found.identity.id, message=message)
-    existing = await repository.open_decision(conn, run_id, browser_login.CATEGORY)
-    if existing is not None:
+    async with UnitOfWork(engine) as conn:
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
+        if row.kind == browser_login.KIND:
+            raise Unprocessable(f"run {run_id} is a login session: a person is logging in already")
+        found = await usable_identity(conn, user, run_id, await _identity_id(conn, run_id, body.identity))
+        name = found.identity.name
+        if row.kind not in runs.RESUME_KINDS:
+            await set_needs_login(conn, user, found, "asked_by_run")
+            message = browser_login.STEP_REFUSAL.format(run=run_id, kind=row.kind, name=name, project=row.name)
+            await move_run(conn, run_id, row.state, "failed", "worker", reason="browser login needed", error=message)
+            log.info("run failed for a login", extra={"run_id": run_id, "browser_identity": found.identity.id})
+            return BrowserLoginAsked(outcome="failed", decision_id=None, identity_id=found.identity.id, message=message)
+        existing = await repository.open_decision(conn, run_id, browser_login.CATEGORY)
+        if existing is not None:
+            return BrowserLoginAsked(
+                outcome="asked",
+                decision_id=existing,
+                identity_id=found.identity.id,
+                message=f"login decision #{existing} is open already",
+            )
+        view = await store_decision(conn, run_id, row, _ask(name, run_id, row.name, body))
+        log.info("login asked", extra={"run_id": run_id, "decision_id": view.id})
         return BrowserLoginAsked(
             outcome="asked",
-            decision_id=existing,
+            decision_id=view.id,
             identity_id=found.identity.id,
-            message=f"login decision #{existing} is open already",
+            message=f"login decision #{view.id} is open",
         )
-    view = await store_decision(conn, run_id, row, _ask(name, run_id, row.name, body))
-    log.info("login asked", extra={"run_id": run_id, "decision_id": view.id})
-    return BrowserLoginAsked(
-        outcome="asked",
-        decision_id=view.id,
-        identity_id=found.identity.id,
-        message=f"login decision #{view.id} is open",
-    )

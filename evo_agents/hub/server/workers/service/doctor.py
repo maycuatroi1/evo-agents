@@ -24,11 +24,12 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import runs
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server.base.errors import Forbidden
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.workers.models.doctor import NOT_LIVE, NOTICE, DoctorAnswer, DoctorFinding, DoctorReport
@@ -75,17 +76,18 @@ async def notify_owner(conn: AsyncConnection, row, findings: list[DoctorFinding]
     )
 
 
-async def keep(conn: AsyncConnection, user: Principal, report: DoctorReport) -> DoctorAnswer:
+async def keep(engine: AsyncEngine, user: Principal, report: DoctorReport) -> DoctorAnswer:
     """Keep ``report`` as the newest of the worker whose token ``user`` holds, each detail redacted; 403 for a token
     of no live worker. Notify its owner when a high finding stops it taking the runs of the units it is shared with."""
-    findings = [{**f.model_dump(), "detail": redact(f.detail)} for f in report.findings]
-    high = sum(1 for f in report.findings if f.severity == "high")
-    medium = sum(1 for f in report.findings if f.severity == "medium")
-    row = await store.worker_of_token(conn, user.token_id)
-    if row is None or row.revoked_at is not None:
-        raise Forbidden(NOT_LIVE)
-    doctor_at = await store.keep_report(conn, row.id, high, medium, findings)
-    if high and not row.doctor_high and await store.narrowed_and_shared(conn, row.id):
-        await notify_owner(conn, row, report.findings)
-    log.info("doctor report", extra={"worker_id": row.id, "high": high, "medium": medium})
-    return DoctorAnswer(worker_id=row.id, doctor_at=doctor_at, doctor_high=high, doctor_medium=medium)
+    async with UnitOfWork(engine) as conn:
+        findings = [{**f.model_dump(), "detail": redact(f.detail)} for f in report.findings]
+        high = sum(1 for f in report.findings if f.severity == "high")
+        medium = sum(1 for f in report.findings if f.severity == "medium")
+        row = await store.worker_of_token(conn, user.token_id)
+        if row is None or row.revoked_at is not None:
+            raise Forbidden(NOT_LIVE)
+        doctor_at = await store.keep_report(conn, row.id, high, medium, findings)
+        if high and not row.doctor_high and await store.narrowed_and_shared(conn, row.id):
+            await notify_owner(conn, row, report.findings)
+        log.info("doctor report", extra={"worker_id": row.id, "high": high, "medium": medium})
+        return DoctorAnswer(worker_id=row.id, doctor_at=doctor_at, doctor_high=high, doctor_medium=medium)

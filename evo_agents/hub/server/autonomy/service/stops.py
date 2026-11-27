@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import org, runs
 from evo_agents.hub.server import audit, lease_ending, org_store
@@ -19,6 +19,7 @@ from evo_agents.hub.server.autonomy.repository import stops as store
 from evo_agents.hub.server.autonomy.service import levels as autonomy_store
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.security import Principal
@@ -176,3 +177,24 @@ async def preview(conn: AsyncConnection, user: Principal, body: StopSet) -> Stop
         people=None if covered is None else len(covered),
         holds=await _live(conn, body.scope, user_id, unit) is not None,
     )
+
+
+# The routes
+
+
+async def write_stop(engine: AsyncEngine, user: Principal, body: StopSet) -> StopView:
+    """``stop``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await stop(conn, user, body)
+
+
+async def lift_stop(engine: AsyncEngine, user: Principal, body: StopSet) -> StopView:
+    """``lift``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await lift(conn, user, body)
+
+
+async def read_preview(engine: AsyncEngine, user: Principal, body: StopSet) -> StopPreview:
+    """``preview``, on a connection of its own that writes nothing."""
+    async with engine.connect() as conn:
+        return await preview(conn, user, body)

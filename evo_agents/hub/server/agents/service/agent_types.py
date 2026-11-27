@@ -26,7 +26,7 @@ import re
 
 from fastapi import Request
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, profiles, task_runs
 from evo_agents.hub.plugin_calls import enabled_in, enabled_plugins
@@ -39,6 +39,7 @@ from evo_agents.hub.server.agents.repository.profiles import insert_profile
 from evo_agents.hub.server.agents.service.packs import pinned
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.profile_store import create_pool, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, holds
@@ -117,19 +118,20 @@ def _view(plugin: str, item: dict, row, spent: float) -> AgentType:
     )
 
 
-async def list_types(conn: AsyncConnection, user: Principal, project: str) -> list[AgentType]:
+async def list_types(engine: AsyncEngine, user: Principal, project: str) -> list[AgentType]:
     """The agent types of the plugins the project enabled, by plugin, then in its manifest's order."""
-    access = await project_access(conn, user, project)
-    if access.role is None:
-        raise Forbidden(f"reading the agent types of project {project} needs a grant on it")
-    rows = {(row.plugin_id, row.name): row for row in await repository.project_types(conn, access.project_id)}
-    found = []
-    for plugin in await enabled_plugins(conn, access.project_id):
-        for item in (plugin.manifest.get("contributes") or {}).get(POINT, ()):
-            row = rows.get((plugin.id, item["name"]))
-            spent = await type_spend(conn, row.id) if row is not None else 0.0
-            found.append(_view(plugin.name, item, row, spent))
-    return found
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        if access.role is None:
+            raise Forbidden(f"reading the agent types of project {project} needs a grant on it")
+        rows = {(row.plugin_id, row.name): row for row in await repository.project_types(conn, access.project_id)}
+        found = []
+        for plugin in await enabled_plugins(conn, access.project_id):
+            for item in (plugin.manifest.get("contributes") or {}).get(POINT, ()):
+                row = rows.get((plugin.id, item["name"]))
+                spent = await type_spend(conn, row.id) if row is not None else 0.0
+                found.append(_view(plugin.name, item, row, spent))
+        return found
 
 
 # Enabling
@@ -250,47 +252,51 @@ def _kept_profile(row, body: AgentTypeIn, plugin: str, name: str, project: str) 
 
 
 async def enable(
-    conn: AsyncConnection, request: Request, user: Principal, project: str, plugin: str, name: str, body: AgentTypeIn
+    engine: AsyncEngine, request: Request, user: Principal, project: str, plugin: str, name: str, body: AgentTypeIn
 ) -> AgentType:
     """Enable agent type ``name`` of ``plugin`` in the project, creating its profile the first time, or change how."""
-    access = await project_access(conn, user, project)
-    _admin(access, "enabling an agent type")
-    if body.min_run_usd is not None and body.min_run_usd > body.daily_usd:
-        raise Unprocessable(
-            f"min_run_usd {body.min_run_usd} is above daily_usd {body.daily_usd}: a run could never be handed"
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        _admin(access, "enabling an agent type")
+        if body.min_run_usd is not None and body.min_run_usd > body.daily_usd:
+            raise Unprocessable(
+                f"min_run_usd {body.min_run_usd} is above daily_usd {body.daily_usd}: a run could never be handed"
+            )
+        enabled, item = await _contribution(conn, access, plugin, name)
+        run_as = await _member(conn, access, body.run_as)
+        row = await repository.enabled_type(conn, access.project_id, enabled.id, name, lock=True)
+        _kept_profile(row, body, plugin, name, project)
+        hub = request.app.state.hub_version
+        profile_id = (
+            row.profile_id
+            if row is not None
+            else await _create_profile(conn, user, access, plugin, item, hub, body.handle)
         )
-    enabled, item = await _contribution(conn, access, plugin, name)
-    run_as = await _member(conn, access, body.run_as)
-    row = await repository.enabled_type(conn, access.project_id, enabled.id, name, lock=True)
-    _kept_profile(row, body, plugin, name, project)
-    hub = request.app.state.hub_version
-    profile_id = (
-        row.profile_id if row is not None else await _create_profile(conn, user, access, plugin, item, hub, body.handle)
-    )
-    values = {"profile_id": profile_id, "run_as": run_as, "daily_usd": body.daily_usd}
-    if body.min_run_usd is not None:  # none: keep the floor already set
-        values["min_run_usd"] = body.min_run_usd
-    values |= {"enabled_by": user.user_id, "disabled_at": None}
-    await repository.put_type(conn, access.project_id, enabled.id, name, values)
-    row = await repository.enabled_type(conn, access.project_id, enabled.id, name)
-    assert row is not None  # written just above, in this transaction
-    said = f" @{row.handle} run-as={row.run_as} daily-usd={body.daily_usd}"
-    if body.min_run_usd is not None:
-        said += f" min-run-usd={body.min_run_usd}"
-    await Auditor.of(conn, user, access).record(audit.AGENT_TYPE_ENABLE, _target(access, plugin, name) + said)
-    return _view(plugin, item, row, await type_spend(conn, row.id))
+        values = {"profile_id": profile_id, "run_as": run_as, "daily_usd": body.daily_usd}
+        if body.min_run_usd is not None:  # none: keep the floor already set
+            values["min_run_usd"] = body.min_run_usd
+        values |= {"enabled_by": user.user_id, "disabled_at": None}
+        await repository.put_type(conn, access.project_id, enabled.id, name, values)
+        row = await repository.enabled_type(conn, access.project_id, enabled.id, name)
+        assert row is not None  # written just above, in this transaction
+        said = f" @{row.handle} run-as={row.run_as} daily-usd={body.daily_usd}"
+        if body.min_run_usd is not None:
+            said += f" min-run-usd={body.min_run_usd}"
+        await Auditor.of(conn, user, access).record(audit.AGENT_TYPE_ENABLE, _target(access, plugin, name) + said)
+        return _view(plugin, item, row, await type_spend(conn, row.id))
 
 
-async def disable(conn: AsyncConnection, user: Principal, project: str, plugin: str, name: str) -> AgentType:
+async def disable(engine: AsyncEngine, user: Principal, project: str, plugin: str, name: str) -> AgentType:
     """Turn agent type ``name`` of ``plugin`` off in the project: the plugin's tasks are refused; its profile stays."""
-    access = await project_access(conn, user, project)
-    _admin(access, "turning off an agent type")
-    enabled, item = await _contribution(conn, access, plugin, name)
-    row = await repository.enabled_type(conn, access.project_id, enabled.id, name, lock=True)
-    if row is None or row.disabled_at is not None:
-        raise Conflict(f"agent type {name} of plugin {plugin} is not enabled in project {project}")
-    await repository.turn_off(conn, row.id)
-    await Auditor.of(conn, user, access).record(audit.AGENT_TYPE_DISABLE, _target(access, plugin, name))
-    row = await repository.enabled_type(conn, access.project_id, enabled.id, name)
-    assert row is not None  # locked above, in this transaction
-    return _view(plugin, item, row, await type_spend(conn, row.id))
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        _admin(access, "turning off an agent type")
+        enabled, item = await _contribution(conn, access, plugin, name)
+        row = await repository.enabled_type(conn, access.project_id, enabled.id, name, lock=True)
+        if row is None or row.disabled_at is not None:
+            raise Conflict(f"agent type {name} of plugin {plugin} is not enabled in project {project}")
+        await repository.turn_off(conn, row.id)
+        await Auditor.of(conn, user, access).record(audit.AGENT_TYPE_DISABLE, _target(access, plugin, name))
+        row = await repository.enabled_type(conn, access.project_id, enabled.id, name)
+        assert row is not None  # locked above, in this transaction
+        return _view(plugin, item, row, await type_spend(conn, row.id))

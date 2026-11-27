@@ -113,8 +113,7 @@ REFUSALS: dict[int | str, dict[str, Any]] = {
 async def create_pairing(request: Request, body: PairingRequest, user: CurrentUser, response: Response) -> Pairing:
     """A code a machine joins with as a worker of the caller; shown once."""
     secret = pairing_secret(request)
-    async with request.app.state.engine.begin() as conn:
-        pairing = await pairings.create(conn, user, body, secret)
+    pairing = await pairings.create(request.app.state.engine, user, body, secret)
     response.headers.update(NO_STORE)
     return pairing
 
@@ -122,8 +121,7 @@ async def create_pairing(request: Request, body: PairingRequest, user: CurrentUs
 @router.get("/pairings/{pairing_id}", response_model=PairingState, responses={404: {"model": ErrorBody}})
 async def pairing_state(request: Request, pairing_id: WorkerId, user: CurrentUser, response: Response) -> PairingState:
     """Whether a machine has joined with one of the caller's pairings yet."""
-    async with request.app.state.engine.begin() as conn:
-        state = await pairings.state(conn, user, pairing_id)
+    state = await pairings.state(request.app.state.engine, user, pairing_id)
     response.headers.update(NO_STORE)
     return state
 
@@ -143,8 +141,7 @@ async def register(
             "registering a worker directly takes the machine token of that machine (`evo-agents hub login` on it); "
             "on the web, create a pairing code instead",
         )
-    async with request.app.state.engine.begin() as conn:
-        credential = await workers.register(conn, user, body)
+    credential = await workers.register(request.app.state.engine, user, body)
     response.headers.update(NO_STORE)
     return credential
 
@@ -161,44 +158,38 @@ async def list_workers(
 ) -> list[Worker]:
     """The caller's workers and the live ones other members share with the caller in a project both write to, newest
     first; every worker for a hub admin."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.listed(conn, user, revoked, page)
+    return await workers.listed(request.app.state.engine, user, revoked, page)
 
 
 @router.get("/{worker_id}", response_model=Worker, responses={404: {"model": ErrorBody}})
 async def show_worker(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """One worker of the caller's, or one another member shares with them; any worker for a hub admin."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.shown_worker(conn, user, worker_id)
+    return await workers.shown_worker(request.app.state.engine, user, worker_id)
 
 
 @router.post("/{worker_id}/drain", response_model=Worker, responses=REFUSALS)
 async def drain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Stop new claims; the worker finishes the runs it holds."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_drain(conn, user, worker_id, True)
+    return await workers.set_drain(request.app.state.engine, user, worker_id, True)
 
 
 @router.post("/{worker_id}/undrain", response_model=Worker, responses=REFUSALS)
 async def undrain(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Let a drained worker claim runs again; its owner only."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_drain(conn, user, worker_id, False)
+    return await workers.set_drain(request.app.state.engine, user, worker_id, False)
 
 
 @router.post("/{worker_id}/update-now", response_model=Worker, responses=REFUSALS)
 async def ask_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates
     and claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_update_now(conn, user, worker_id, True)
+    return await workers.set_update_now(request.app.state.engine, user, worker_id, True)
 
 
 @router.post("/{worker_id}/update-now/cancel", response_model=Worker, responses=REFUSALS)
 async def cancel_update_now(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Withdraw the worker's open Update now; the daemon claims runs again."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_update_now(conn, user, worker_id, False)
+    return await workers.set_update_now(request.app.state.engine, user, worker_id, False)
 
 
 @router.post("/{worker_id}/browser-install", response_model=Worker, responses=REFUSALS)
@@ -206,15 +197,13 @@ async def ask_browser_install(request: Request, worker_id: WorkerId, user: Curre
     """Ask the worker's daemon to install Chromium for the runs dispatched with a browser, as `evo-agents worker
     browser install` does on the machine; its runs and claims go on meanwhile. 409 with why when its daemon is too old
     or has Chromium already."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_browser_install(conn, user, worker_id, True)
+    return await workers.set_browser_install(request.app.state.engine, user, worker_id, True)
 
 
 @router.post("/{worker_id}/browser-install/cancel", response_model=Worker, responses=REFUSALS)
 async def cancel_browser_install(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """Withdraw the worker's open Install browser; an install the daemon began goes on to its end."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_browser_install(conn, user, worker_id, False)
+    return await workers.set_browser_install(request.app.state.engine, user, worker_id, False)
 
 
 @router.post("/{worker_id}/dispatch-from", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
@@ -222,22 +211,19 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
     """Set who may hand the worker its runs: its owner, from a web session only."""
     if user.kind != WEB:
         raise HTTPException(403, DISPATCH_FROM_SESSION)
-    async with request.app.state.engine.begin() as conn:
-        return await workers.set_dispatch_from(conn, user, worker_id, body.value)
+    return await workers.set_dispatch_from(request.app.state.engine, user, worker_id, body.value)
 
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
     """Change the worker's slots, labels, taints, name, plugins, projects, version lock or whether it is shared: its
     owner only, from a web session or with their machine token."""
-    async with request.app.state.engine.begin() as conn:
-        return await workers.update(conn, user, worker_id, body)
+    return await workers.update(request.app.state.engine, user, worker_id, body)
 
 
 @router.post("/{worker_id}/revoke", response_model=Worker, responses=REFUSALS)
 async def revoke(request: Request, worker_id: WorkerId, user: CurrentUser) -> Worker:
     """End the worker and its token at once, and release the runs it holds."""
-    async with request.app.state.engine.begin() as conn:
-        worker = await workers.revoke(conn, user, worker_id)
+    worker = await workers.revoke(request.app.state.engine, user, worker_id)
     await workers.revoke_leased_tokens(request.app.state, worker_id)
     return worker

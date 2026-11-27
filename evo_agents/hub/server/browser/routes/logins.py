@@ -32,8 +32,7 @@ async def login_browser_identity(
     open in the live view in human mode and end with Save (the profile is sealed, its version raised) or by cancelling
     it (nothing is saved). With ``worker`` it is a Move: the session runs there and the identity moves after Save.
     409 while another run holds the identity or a session of it waits, and for a disabled one."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.queue_login(conn, user, project, identity_id, body)
+    return await service.queue_login(request.app.state.engine, user, project, identity_id, body)
 
 
 @router.post("/{project}/browser-identities/{identity_id}/disable", response_model=BrowserIdentity, responses=REFUSALS)
@@ -42,8 +41,7 @@ async def disable_browser_identity(
 ) -> BrowserIdentity:
     """Disable an identity: no run attaches it and its login session is refused until it is enabled; its profile is
     kept. Its member, or an admin for the project's; 409 while a run holds it."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.set_status(conn, user, project, identity_id, disable=True)
+    return await service.set_status(request.app.state.engine, user, project, identity_id, disable=True)
 
 
 @router.post("/{project}/browser-identities/{identity_id}/enable", response_model=BrowserIdentity, responses=REFUSALS)
@@ -51,5 +49,4 @@ async def enable_browser_identity(
     request: Request, project: ProjectName, identity_id: IdentityId, user: CurrentUser
 ) -> BrowserIdentity:
     """Enable a disabled identity: active when it has a saved profile, else needs_login."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.set_status(conn, user, project, identity_id, disable=False)
+    return await service.set_status(request.app.state.engine, user, project, identity_id, disable=False)

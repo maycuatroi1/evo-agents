@@ -39,8 +39,7 @@ router = APIRouter(prefix="/v1/autonomy/stops", tags=["autonomy"], responses={40
 @router.post("", response_model=StopView, status_code=201, responses=REFUSALS)
 async def stop_autonomy(request: Request, body: StopSet, user: CurrentUser) -> StopView:
     """Stop the runs of a person, a unit or the hub, and hold new ones until the stop is lifted."""
-    async with request.app.state.engine.begin() as conn:
-        view = await stops.stop(conn, user, body)
+    view = await stops.write_stop(request.app.state.engine, user, body)
     await stops.revoke(request.app.state, view.runs)
     log.info("autonomy stopped", extra={"stop": view.id, "target": view.target, "runs": len(view.runs)})
     return view
@@ -49,8 +48,7 @@ async def stop_autonomy(request: Request, body: StopSet, user: CurrentUser) -> S
 @router.post("/lift", response_model=StopView, responses=REFUSALS)
 async def lift_stop(request: Request, body: StopSet, user: CurrentUser) -> StopView:
     """Lift the stop that holds for a person, a unit or the hub."""
-    async with request.app.state.engine.begin() as conn:
-        view = await stops.lift(conn, user, body)
+    view = await stops.lift_stop(request.app.state.engine, user, body)
     log.info("autonomy stop lifted", extra={"stop": view.id, "target": view.target})
     return view
 
@@ -65,5 +63,4 @@ async def preview_stop(
 ) -> StopPreview:
     """How many runs and people a stop of that scope would cover now, and whether one holds already."""
     body = stops.stop_set(scope, login, unit)
-    async with request.app.state.engine.connect() as conn:
-        return await stops.preview(conn, user, body)
+    return await stops.read_preview(request.app.state.engine, user, body)
