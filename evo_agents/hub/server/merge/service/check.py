@@ -65,7 +65,7 @@ from evo_agents.hub.server import audit, run_events, run_waits
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.decisions.models import OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
-from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.forges import GITHUB, github_target
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.merge.models.check import (
     COMMAND,
@@ -419,7 +419,7 @@ async def claim(conn: AsyncConnection, view) -> dict | None:
         "role": "judge",
         "protected_paths": queue.protected_of(charter),
         "branch": row.source_branch,
-        "forge": "github",
+        "forge": GITHUB.name,
         "base_branch": row.base_branch,
         "head_sha": row.head_sha,
         "pr_url": row.web_url,
@@ -459,7 +459,7 @@ async def prompt(conn: AsyncConnection, view) -> str | None:
         second=queue.next_round(row.verdict, row.risk) == "second",
         risk=(row.risk or {}).get("reasons") or [],
         earlier=findings.ledger_of(row.verdict),
-        forge="github",
+        forge=GITHUB.name,
     )
 
 

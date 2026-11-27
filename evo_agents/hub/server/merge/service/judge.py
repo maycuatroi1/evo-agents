@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import findings, merge_gate
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.forge.models.forges import GITLAB
 from evo_agents.hub.server.merge.models.judge import MAX_DIMENSIONS, MergeJudgeInputs, MergeVerdict, MergeVerdictIn
 from evo_agents.hub.server.merge.repository import check as check_rows
 from evo_agents.hub.server.merge.repository import judge as repository
@@ -106,7 +107,7 @@ async def merge_claim(conn: AsyncConnection, view) -> dict | None:
         "role": "judge",
         "protected_paths": queue.protected_of(charter),
         "branch": row.source_branch,
-        "forge": "gitlab",
+        "forge": GITLAB.name,
         "base_branch": row.target_branch,
         "head_sha": row.head_sha,
         "pr_url": row.web_url,

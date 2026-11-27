@@ -52,6 +52,7 @@ from evo_agents.hub import approval_heads, autonomy, judge, merge_gate
 from evo_agents.hub.server.autonomy.repository.policies import project_repos
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.changes.service import tiers as change_tiers
+from evo_agents.hub.server.forge.models.forges import GITLAB
 from evo_agents.hub.server.forge.models.gitlab import GitLabUnavailable, MergeRequest, project_of
 from evo_agents.hub.server.forge.service.secrets import forge_token, has_forge
 from evo_agents.hub.server.merge.models.gate import Project
@@ -147,7 +148,7 @@ async def curator_judged(engine: AsyncEngine, change) -> tuple[str, str]:
     async with engine.begin() as conn:
         queue, target = await takes(conn, change.project_id, change.repo, change.origin)
         facts = judge.MergeFacts(
-            forge=change.forge or "gitlab",
+            forge=change.forge or GITLAB.name,
             tier=change.tier,
             auto_merge=(),
             repo_checked=False,
