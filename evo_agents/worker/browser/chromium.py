@@ -23,9 +23,10 @@ import json
 import os
 import signal
 import subprocess
-import sys
 from collections.abc import Mapping
 from pathlib import Path
+
+from evo_agents.worker import platform as platforms
 
 PORT_FILE = "DevToolsActivePort"
 PREFERENCES = "Default/Preferences"
@@ -40,8 +41,7 @@ FONTS_CONF = "fonts.conf"  # beside the libraries the install unpacked, on a mac
 
 def user_agent(version: str) -> str:
     """The user agent of Chrome ``version`` on this system."""
-    system = "darwin" if sys.platform == "darwin" else "linux"
-    return USER_AGENT.format(platform=PLATFORMS[system], major=version.split(".")[0])
+    return USER_AGENT.format(platform=PLATFORMS[platforms.of().browser_system], major=version.split(".")[0])
 
 
 def flags(profile: Path, version: str, *, sandbox: bool, port: int = 0, headed: bool = False) -> list[str]:

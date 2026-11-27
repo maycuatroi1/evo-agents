@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, replay
-from evo_agents.worker import gitops, untrusted
+from evo_agents.worker import gitops, run_kinds, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner import access, origin, verify
@@ -38,6 +38,7 @@ from evo_agents.worker.runner import replay_files as files
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.sessions import LARGEST, add_usage
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 from evo_agents.worker.runner.verify import verify_event
@@ -76,12 +77,15 @@ class ArmFigures:
             self.turns = (self.turns or 0) + body["numTurns"]
 
 
-class ReplayRun:
+class ReplayRun(RunKind):
     """A replay run: the task's base commit, the change's harness files, two arms each in a new repository at the base
     commit with its agent and the step's verify run on its work, each arm's result posted; nothing pushed."""
 
-    parks = False
+    traits = run_kinds.KINDS["replay"]
     chat = False
+    watches = False  # its repositories are its own: the watchdog compares no protected path, only the caps
+    uploads_diff = False  # it changes nothing of the project
+    leaves_branch = False  # it checks out no branch of a checkout
 
     def __init__(self, run: Run):
         self.run = run
@@ -348,18 +352,6 @@ class ReplayRun:
         await run.reports.report("verifying")
         run.check()
         await run.reports.end("done", summary=cut(summary, MAX_SUMMARY_CHARS), usage=usage)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return []  # its repositories are its own: the watchdog compares no protected path, only the caps
-
-    async def diff(self) -> bytes:
-        """A replay run changes nothing of the project: no diff is uploaded."""
-        return b""
-
-    async def release_branch(self) -> None:
-        return None  # it checks out no branch of a checkout
 
 
 def usage_cost(usage) -> float | None:

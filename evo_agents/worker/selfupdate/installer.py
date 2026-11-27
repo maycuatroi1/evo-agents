@@ -192,9 +192,9 @@ class Installer:
 
     def previous(self) -> str | None:
         """The requirement that puts the install back as it was."""
-        if self.install.kind == "git" and self.install.commit:
+        if self.install.from_git and self.install.commit:
             return self.requirement(self.install.commit)
-        if self.install.kind == "pypi" and self.install.version:
+        if self.install.from_pypi and self.install.version:
             return f"{PACKAGE}{self.install.requirement_extras}=={self.install.version}"
         return None
 

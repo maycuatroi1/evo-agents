@@ -34,6 +34,8 @@ import time
 from collections.abc import Callable
 from typing import Protocol
 
+from evo_agents.worker import platform as platforms
+
 log = logging.getLogger("evo_agents.worker")
 
 ASSERTION_TYPES = ("PreventUserIdleSystemSleep", "PreventSystemSleep")  # kIOPMAssertionType*
@@ -49,11 +51,7 @@ WAKE_HOLD_SECONDS = 120.0  # no claim for this long after a sleep, while the net
 
 
 def _through_sleep_id(platform: str) -> int | None:
-    if platform.startswith("linux"):
-        return getattr(time, "CLOCK_BOOTTIME", None)
-    if platform == "darwin":
-        return getattr(time, "CLOCK_MONOTONIC", None)
-    return None
+    return platforms.of(platform).clock_through_sleep()
 
 
 _THROUGH_SLEEP = _through_sleep_id(sys.platform)
@@ -139,10 +137,7 @@ class MacPower:
 
 def power_for(platform: str | None = None) -> Power:
     """The power assertions of ``platform`` (this one by default); PowerUnavailable where it has none."""
-    platform = platform or sys.platform
-    if platform == "darwin":
-        return MacPower()
-    raise PowerUnavailable(f"the daemon makes power assertions on macOS only, not on {platform}")
+    return platforms.of(platform or None).power()
 
 
 class KeepAwake:

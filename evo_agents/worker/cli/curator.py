@@ -29,6 +29,7 @@ from __future__ import annotations
 import sys
 
 from evo_agents.clikit import Arg, Group, Result, Text
+from evo_agents.worker import run_kinds
 from evo_agents.worker.cli.base import EXIT_FAILED, AgentCommand, AgentRunContext, ChatCommand, failure
 from evo_agents.worker.home import WorkerStateError
 
@@ -97,7 +98,7 @@ class CuratorDrop(AgentCommand):
 
     def run(self, ctx: AgentRunContext) -> Result:
         args = ctx.args
-        if ctx.kind != "plan":
+        if not run_kinds.of(ctx.kind).builds:
             raise WorkerStateError(
                 f"run {ctx.run_id} is a {ctx.kind} run: `evo-agents worker curator drop` is for the Builder of a "
                 "Curator's change, a plan run of the Curator's plan"

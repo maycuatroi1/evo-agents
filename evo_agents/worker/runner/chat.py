@@ -51,11 +51,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import replace
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import chat_runs, runs
-from evo_agents.worker import attachments, gitops
+from evo_agents.worker import attachments, gitops, run_kinds
 from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, clones, transitions, verify
 from evo_agents.worker.runner.branch_work import CHAT, BranchWork
@@ -63,19 +62,21 @@ from evo_agents.worker.runner.common import HARD_STOP_TRIES, Parked, RunFailed, 
 from evo_agents.worker.runner.conversation import Conversation, post_last_message
 from evo_agents.worker.runner.directory import RunDirectory
 from evo_agents.worker.runner.inbox import receive
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
 
 
-class ChatRun:
+class ChatRun(RunKind):
     """A chat run: a writable worktree of each repo of its project this worker has a checkout of, on the run's branch,
     the agent answering in the thread turn after turn while people write to it, and the branch of each repo it changed
     pushed at its end, with the hub told so for the draft pull request."""
 
-    parks = True
+    traits = run_kinds.KINDS["chat"]
     chat = False
+    leaves_branch = False  # its worktrees stay on the run's branch: the next run of the session goes on in them
 
     def __init__(self, run: Run):
         self.run = run
@@ -265,14 +266,3 @@ class ChatRun:
         except HubProblem as exc:
             return str(exc)
         return None
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        return await self.directory.diff()
-
-    async def release_branch(self) -> None:
-        """The worktrees stay on the run's branch: the next run of the session goes on in them."""

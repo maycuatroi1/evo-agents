@@ -423,10 +423,23 @@ class QueueAdapter(Adapter):
     ``_drive`` (follow the agent until it took its last input and ended, then set ``self.outcome``), ``_close``
     (release what ``_open`` took; called once, also after a failed ``_open``), ``_interrupt``, ``_stop_at_boundary``
     and ``send``. ``pid_file`` names the file the launcher wrote the runtime's pid to: the process group it leads is
-    killed after ``_close``, and when an interrupted agent has not ended within KILL_AFTER seconds."""
+    killed after ``_close``, and when an interrupted agent has not ended within KILL_AFTER seconds.
+
+    What every such adapter shares is here: its session (``session_id``, ``_session``), the directory it made for the
+    run (``_dir``, removed by ``_cleanup``), the refusal of a message once the agent takes no more input (``send``,
+    which hands the message on to ``_take``), the check of its program and packages (``detect``: ``binary`` at
+    ``min_version`` or newer and each of ``packages``), and the check of the run's model against its agent profile
+    (``profile_refusal``)."""
+
+    min_version: str | None = None  # the oldest version of ``binary`` this worker was checked with; None: any
+    packages: tuple[tuple[str, str], ...] = ()  # (distribution, oldest version) the adapter imports
+    finished_words = "has finished its last turn and takes no more messages"  # after the runtime's name
 
     def __init__(self, context: RunContext):
         super().__init__(context)
+        self._session: str | None = context.resume_session
+        self._dir: Path | None = None  # what the adapter wrote for the run, removed once its process group is gone
+        self._accepting = False  # the agent takes another message
         self._queue: asyncio.Queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
         self._watchdog: asyncio.Task | None = None
@@ -454,11 +467,20 @@ class QueueAdapter(Adapter):
     @abc.abstractmethod
     async def _interrupt(self) -> None: ...
 
+    async def _take(self, text: str) -> None:
+        """Hand the agent a message while it takes input; ``send`` holds the lock."""
+        raise NotImplementedError
+
+    def _takes_input(self) -> bool:
+        return self._accepting
+
     async def _stop_at_boundary(self) -> None:
         """Let the turn finish and take no more input; ``stopping`` is set already."""
 
     def _cleanup(self) -> None:
         """Remove what is left on disk, once the process group is gone."""
+        if self._dir is not None:
+            shutil.rmtree(self._dir, ignore_errors=True)
 
     async def _release(self) -> None:
         """Remove what is left of the containers of the run's environment, once the agent's process group is gone;
@@ -476,6 +498,28 @@ class QueueAdapter(Adapter):
         return read_pid(self.pid_file)
 
     # The interface
+
+    @classmethod
+    def detect(cls) -> Detection:
+        if cls.min_version is None:
+            return super().detect()
+        return detect_runtime(cls.runtime, cls.binary, cls.min_version, packages=cls.packages)
+
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        from evo_agents.worker.runtimes import profiles  # which imports this module
+
+        return profiles.model_refusal(profiles.Profile.of(run), run)
+
+    @property
+    def session_id(self) -> str | None:
+        return self._session
+
+    async def send(self, text: str) -> None:
+        async with self._lock:
+            if not self._takes_input():
+                raise AgentFinished(f"{self.runtime} {self.finished_words}")
+            await self._take(text)
 
     async def start(self) -> None:
         try:

@@ -36,7 +36,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
-from evo_agents.worker import broad_checks, broad_tests
+from evo_agents.worker import broad_checks, broad_tests, run_kinds
 from evo_agents.worker.command_classes import SHELLS, shell_script, simple_commands, without_heredocs
 
 SLEEP_LIMIT = 120  # seconds one sleep may last before it is a wait
@@ -218,6 +218,6 @@ def claude_wait_hook(guard: WaitGuard | None):
 
 def for_run(run) -> WaitGuard | None:
     """The hook of waits of a run of the daemon (``runner.context.Run``): a plan run's, None for any other kind."""
-    if run.spec.get("kind") != "plan":
+    if not run_kinds.of(run.spec.get("kind")).waits:
         return None
     return WaitGuard(record=lambda text, body: run.note(text, wait=body), run_id=run.id)

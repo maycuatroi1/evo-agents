@@ -31,7 +31,8 @@ COMMAND = "evo-agents"
 RECEIPT = "uv-receipt.toml"
 COMMIT = re.compile(r"^([0-9a-f]{40}|[0-9a-f]{64})$")  # OBJECT_NAME of the hub
 UV_PLACES = ("~/.local/bin", "~/.cargo/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
-UPDATABLE = ("git", "pypi")
+GIT, PYPI = "git", "pypi"  # the kinds of an install it can update
+UPDATABLE = (GIT, PYPI)
 DROPPED_KEYS = ("constraints", "overrides", "build-constraint-dependencies")
 WORKER_EXTRA = "worker"  # aiohttp and the runtimes' SDKs, without which `evo-agents worker run` does not start
 REINSTALL = f"uv tool install --force '{PACKAGE}[{WORKER_EXTRA}] @ git+{REPO_URL}@{TAG}'"
@@ -58,6 +59,16 @@ class Install:
     entrypoint: Path | None = None  # the evo-agents command uv put on the PATH
     python: str | None = None  # the interpreter the environment was made from, which an update keeps
     commands: tuple[Path, ...] = ()  # every command of the receipt, the entrypoint among them
+
+    @property
+    def from_git(self) -> bool:
+        """Whether uv installed it from the repo, at a commit."""
+        return self.kind == GIT
+
+    @property
+    def from_pypi(self) -> bool:
+        """Whether uv installed it from PyPI, at a version."""
+        return self.kind == PYPI
 
     @property
     def requirement_extras(self) -> str:
@@ -122,8 +133,8 @@ def _kind(requirement: dict) -> tuple[str, str | None]:
         repo = repo_of(str(requirement["git"]))
         if repo != REPO_URL:
             return "foreign", f"installed from {repo}, not {REPO_URL}"
-        return "git", None
-    return "pypi", None
+        return GIT, None
+    return PYPI, None
 
 
 def _parse_receipt(data) -> tuple[dict | None, str | None]:

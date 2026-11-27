@@ -48,7 +48,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.worker import gitops, health, stacks
+from evo_agents.worker import gitops, health, run_kinds, stacks
 from evo_agents.worker.home import WorkerHome, disk_headroom
 from evo_agents.worker.hubapi import HubProblem, Refused
 
@@ -68,22 +68,6 @@ LOCK_NAME = "cleanup.lock"  # in a worker's home: held by whatever removes workt
 LOCK_WAIT = 60.0  # seconds a daemon waits for its own home's lock, which a sibling's making of room may hold
 MAX_MERGED_ASKED = 200  # run ids in one POST /v1/worker/merged, as the hub takes them
 ENGINE_PRUNE_EVERY = 600.0  # seconds between two prunes of the engine's caches while the drive stays short
-# the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
-DIRECTORY_KINDS = (
-    "plan",
-    "review",
-    "judge",
-    "author",
-    "chat",
-    "task",
-    "replay",
-    "history",
-    "release",
-    "question",
-    "probe",
-    "command",
-    "evolve",
-)
 
 
 def _paths(record: dict) -> list[Path]:
@@ -610,7 +594,7 @@ class Cleanup:
         home the run is of, this daemon's when None."""
         home = home or self.daemon.home
         run_id = record["id"]
-        items = record.get("repos") if record.get("kind") in DIRECTORY_KINDS else [record]
+        items = record.get("repos") if run_kinds.of(record.get("kind")).directory else [record]
         for item in items or []:
             if not isinstance(item, dict) or not item.get("worktree") or not item.get("checkout"):
                 continue
@@ -651,7 +635,7 @@ class Cleanup:
             await self._remove_stacks(_paths(record))
         except Exception:  # the engine never keeps a worktree
             log.exception("removing the stacks of a worktree failed", extra={"run_id": record.get("id")})
-        if record.get("kind") in DIRECTORY_KINDS:
+        if run_kinds.of(record.get("kind")).directory:
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item, home)

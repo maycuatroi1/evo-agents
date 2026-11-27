@@ -1,6 +1,7 @@
 """``evo-agents worker browser login NAME`` (plan agent-browser, step 9): a window on this screen, no run."""
 
 import argparse
+import sys
 import types
 
 import pytest
@@ -52,7 +53,7 @@ def test_browser_cli_login_with_nothing_names_no_form():
 
 
 def test_browser_cli_local_login_needs_a_display_on_linux(monkeypatch):
-    monkeypatch.setattr(local_login.sys, "platform", "linux")
+    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     with pytest.raises(WorkerStateError, match="no display"):

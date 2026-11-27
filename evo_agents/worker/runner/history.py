@@ -21,15 +21,16 @@ ends done with the usage of every session added up, having pushed nothing.
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, history
+from evo_agents.worker import run_kinds
 from evo_agents.worker.hubapi import OUTAGE_TRIES, HubProblem, hub_retry
 from evo_agents.worker.runner import access
 from evo_agents.worker.runner.common import RunFailed, cut, wait_or
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.sender import transient
 from evo_agents.worker.runner.sessions import LARGEST, add_usage
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
@@ -53,12 +54,15 @@ def _cost(usage) -> float:
     return curator.run_cost(usage) if isinstance(usage, dict) else 0.0
 
 
-class HistoryRun:
+class HistoryRun(RunKind):
     """A history run: batches of excerpts read by the agent in sessions of their own, each batch's facets posted, then
     the new groups of facets named; nothing pushed."""
 
-    parks = False
+    traits = run_kinds.KINDS["history"]
     chat = False
+    watches = False  # its directory holds no repo: the watchdog compares no protected path, only the caps
+    uploads_diff = False  # it changes nothing of the project
+    leaves_branch = False  # it checks out no branch of a checkout
 
     def __init__(self, run: Run):
         self.run = run
@@ -252,15 +256,3 @@ class HistoryRun:
         await run.reports.report("verifying")
         run.check()
         await run.reports.end("done", summary=cut(summary, MAX_SUMMARY_CHARS), usage=usage)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return []  # its directory holds no repo: the watchdog compares no protected path, only the caps
-
-    async def diff(self) -> bytes:
-        """A history run changes nothing of the project: no diff is uploaded."""
-        return b""
-
-    async def release_branch(self) -> None:
-        return None  # it checks out no branch of a checkout

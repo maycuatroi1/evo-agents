@@ -131,6 +131,8 @@ MODELS_TIMEOUT = 30.0  # seconds for a runtime's command that lists its models
 # The models of one runtime as JSON: the three stay well within the hub's bound on a heartbeat's runtimes and
 # checkouts (64 KiB), which refuses the whole heartbeat when it is over.
 MAX_MODELS_BYTES = 8 * 1024
+OUTPUT = "output"  # a runtime event no adapter knows, raw
+ADAPTER_EVENT_KINDS = runs.ACP_EVENT_KINDS + (OUTPUT,)  # the daemon alone writes system
 CAPS = ("cost", "turns", "time")  # the caps of a run's budget that stop an agent (Outcome.cap)
 
 
@@ -215,8 +217,14 @@ class AgentEvent:
     at: datetime = field(default_factory=_now)
     files: tuple[ToolImage, ...] = ()
 
+    @property
+    def raw(self) -> dict | None:
+        """What the runtime wrote, as it wrote it, of an ``output`` event; None for any other event."""
+        found = self.body.get("raw") if self.kind == OUTPUT and isinstance(self.body, dict) else None
+        return found if isinstance(found, dict) else None
+
     def __post_init__(self):
-        if self.kind not in runs.WORKER_EVENT_KINDS or self.kind == "system":
+        if self.kind not in ADAPTER_EVENT_KINDS:
             raise ValueError(f"an adapter emits one of {', '.join(runs.ACP_EVENT_KINDS)} or output, not {self.kind!r}")
         if not isinstance(self.body, dict):
             raise ValueError("an event's body is a JSON object")
@@ -285,6 +293,9 @@ class Adapter(abc.ABC):
     # The variables of a model account the runtime authenticates with when a lease sets them, and whose refusal it
     # reports as ``Outcome.auth``; none: the worker's health keeps the machine's login of the runtime (``health``).
     lease_auth_vars: ClassVar[tuple[str, ...]] = ()
+    compacts_window: ClassVar[bool] = False  # its agent gets the worker's auto-compact window (``compact_window``)
+    subscription_curator: ClassVar[bool] = False  # a run of the Curator on it uses the subscription login alone
+    serves_over_port: ClassVar[bool] = False  # the daemon reaches its server over a port: no container of network none
     # The model the runtime says the agent runs on, once it said so; None: the worker records the model it asked for.
     model_used: str | None = None
 
@@ -457,6 +468,25 @@ def adapter_specs(env: Mapping[str, str] | None = None) -> dict[str, str]:
         if runtime and spec:
             specs[runtime.strip()] = spec.strip()
     return {runtime: spec for runtime, spec in specs.items() if runtime in runs.RUNTIMES}
+
+
+def builtin_class(runtime: str | None) -> type[Adapter] | None:
+    """The adapter class this package ships for ``runtime`` (``BUILTIN``), for what it can do; None for another
+    runtime, or one whose module does not load."""
+    spec = BUILTIN.get(runtime or "")
+    if spec is None:
+        return None
+    module, name = _parse_spec(spec)
+    try:
+        return getattr(importlib.import_module(module), name)
+    except (ImportError, AttributeError):
+        return None
+
+
+def runtime_can(runtime: str | None, capability: str) -> bool:
+    """Whether the adapter this package ships for ``runtime`` has ``capability``, one of its boolean class attributes;
+    False for a runtime it ships none for."""
+    return bool(getattr(builtin_class(runtime), capability, False))
 
 
 def load_adapters(env: Mapping[str, str] | None = None) -> dict[str, type[Adapter]]:

@@ -29,30 +29,32 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import author, runs, skill_sync, skills
 from evo_agents.hub.client import HubError
+from evo_agents.worker import run_kinds
 from evo_agents.worker.runner import access, transitions, verify
 from evo_agents.worker.runner.common import Parked, ReportRefused, RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation, post_last_message
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
 
 
-class AuthorRun:
+class AuthorRun(RunKind):
     """An author run: the skills its claim names downloaded and checked, a worktree of each of its repos this worker
     has a checkout of, detached at origin's default branch, the skills written for the agent in the run's directory,
     the agent writing a plan from its owner's request and talking with the owner in the run's chat, waiting for the
     owner's reply after each turn (parked when it waits too long, and resumed in the same session and directory), and
     nothing committed or pushed at its end, once the owner ended the chat."""
 
-    parks = True
+    traits = run_kinds.KINDS["author"]
     chat = True
+    uploads_diff = False  # it changes nothing
 
     def __init__(self, run: Run):
         self.run = run
@@ -267,15 +269,3 @@ class AuthorRun:
             extra += ["", "Worktree folders that are not named as their repo:", *moved]
         extra += access.left_out_lines(self.left_out, self.no_origin)
         return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        """An author run changes nothing: no diff is uploaded."""
-        return b""
-
-    async def release_branch(self) -> None:
-        await self.directory.release()

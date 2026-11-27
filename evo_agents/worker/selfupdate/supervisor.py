@@ -13,11 +13,9 @@ exit that puts the new install to work would end it for good.
 
 from __future__ import annotations
 
-import os
 import plistlib
 import shlex
 import subprocess
-import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,12 +45,9 @@ def detect(
 ) -> Supervision:
     """The service manager of this process; ``platform``, ``ppid``, ``cgroup`` (the text of /proc/self/cgroup),
     ``agents`` (~/Library/LaunchAgents) and ``run`` (subprocess.run) are for tests."""
-    platform = sys.platform if platform is None else platform
-    if platform == "darwin":
-        return launchd(env, os.getppid() if ppid is None else ppid, agents)
-    if platform.startswith("linux"):
-        return systemd(env, read_cgroup() if cgroup is None else cgroup, run or subprocess.run)
-    return Supervision(None, reason=f"no service manager this daemon knows on {platform}")
+    from evo_agents.worker import platform as platforms
+
+    return platforms.of(platform).supervision(env, ppid, cgroup, agents, run)
 
 
 def launchd(env: Mapping[str, str], ppid: int, agents: Path | None = None) -> Supervision:

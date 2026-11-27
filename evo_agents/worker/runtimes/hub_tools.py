@@ -5,8 +5,9 @@ anything. A task run of a plugin's agent type is the same (plan loop-engine, the
 task names the plugin's tools (``canvas__*``, ``srs__*``), which a run on Codex had no way to call.
 
 A run whose claim names a Curator role in ROLES (``context.run["curator"]["role"]``: the Reviewer, the Builder, the
-Judge; a replay run and a history run call none of the hub's tools, ``mcp_tools.RUN_TOOLS``), or a task run (kind
-TASK_KIND, always of an agent type) or a question run (QUESTION_KIND, whose prompt names the hub's tools), and whose
+Judge; a replay run and a history run call none of the hub's tools, ``mcp_tools.RUN_TOOLS``), or a run of a kind
+whose agent calls the hub's tools (``run_kinds.Kind.hub_server``: a task run, always of an agent type, and a question
+run, whose prompt names the hub's tools), and whose
 agent runs on this machine (not in a container of a plugin's environment) gets SERVER, the stdio proxy ``evo-agents hub
 mcp`` of this install (``COMMAND``: this interpreter, isolated, so a checkout of evo_agents in the worktree is never imported). Inside
 a run the proxy speaks with the worker's token and X-Evo-Run (``evo_agents.hub.mcp_proxy``), so the machine needs no
@@ -30,6 +31,7 @@ from pathlib import Path
 
 from evo_agents.hub import claude_plugins
 from evo_agents.hub.mcp_tools import SERVER_NAME
+from evo_agents.worker import run_kinds
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.environments import Container
 from evo_agents.worker.runtimes import claude_home, profiles
@@ -37,8 +39,6 @@ from evo_agents.worker.runtimes import claude_home, profiles
 SERVER = SERVER_NAME  # evo-hub, as the plugin names its server
 PLUGIN = "evo-hub"
 ROLES = ("reviewer", "builder", "judge")  # the Curator's runs whose agent calls the hub's tools
-TASK_KIND = "task"  # runs.RUN_KINDS: a task run of an agent type, whose agent calls its plugin's tools
-QUESTION_KIND = "question"  # and a question run of one, whose agent reads the hub as a reader
 PASSED = ("EVO_RUN_ID", "EVO_WORKER_HOME", "EVO_RUN_PROJECT")  # what the proxy reads inside a run
 COMMAND = (sys.executable or "python3", "-I", "-m", "evo_agents", "hub", "mcp")
 
@@ -48,7 +48,7 @@ def wanted(context: RunContext, profile=None) -> bool:
     runtime's own configuration holds is looked at."""
     curator = context.run.get("curator")
     role = curator.get("role") if isinstance(curator, Mapping) else None
-    typed = context.run.get("kind") in (TASK_KIND, QUESTION_KIND)
+    typed = run_kinds.of(context.run.get("kind")).hub_server
     if (role not in ROLES and not typed) or isinstance(context.environment, Container):
         return False
     return profile is None or profile.allows_server(SERVER)

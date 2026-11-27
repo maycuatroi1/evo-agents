@@ -15,14 +15,15 @@ is opened, no diff is uploaded, and what the agent left in the worktrees goes wi
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import question_runs, runs
+from evo_agents.worker import run_kinds
 from evo_agents.worker.runner import access
 from evo_agents.worker.runner.common import RunFailed
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.transitions import summary_of
 from evo_agents.worker.runner.verify import RESULT_MAX_BYTES
 
@@ -35,13 +36,14 @@ async def _no_more_turns() -> list[dict]:
     return []
 
 
-class QuestionRun:
+class QuestionRun(RunKind):
     """A question run: a worktree of each repo of its project this worker has a checkout of, detached at origin's
     default branch, one headless turn of the agent on the question, and its answer sent with the report of done;
     nothing committed or pushed."""
 
-    parks = False
+    traits = run_kinds.KINDS["question"]
     chat = False
+    uploads_diff = False  # it changes nothing
 
     def __init__(self, run: Run):
         self.run = run
@@ -125,15 +127,3 @@ class QuestionRun:
         extra = ["", "Worktree folders that are not named as their repo:", *moved] if moved else []
         extra += access.left_out_lines(self.left_out, self.no_origin)
         return runs.clip(prompt + "\n".join(extra) + ("\n" if extra else ""), runs.MAX_PROMPT_BYTES)
-
-    # What the parts every kind shares ask of it
-
-    def watched(self) -> list[tuple[str, Path, str]]:
-        return self.directory.watched()
-
-    async def diff(self) -> bytes:
-        """A question run changes nothing: no diff is uploaded."""
-        return b""
-
-    async def release_branch(self) -> None:
-        await self.directory.release()

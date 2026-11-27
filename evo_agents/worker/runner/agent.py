@@ -74,7 +74,7 @@ from evo_agents.worker import (
     venvs,
     wait_guard,
 )
-from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
+from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext, runtime_can
 from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
 from evo_agents.worker.credentials import config_env, credential_asks
@@ -301,7 +301,7 @@ class Agent:
             env[browser_session.VARIABLE] = self.browser.cdp
         if self.subscription_only:  # plan decision 14: the Claude subscription login alone
             env.pop(API_KEY, None)
-        if run.runtime == "claude-code":  # its auto-compact window, headless and in the terminal UI
+        if runtime_can(run.runtime, "compacts_window"):  # its auto-compact window, headless and in the terminal UI
             env.update(compact_window(env))
         env.update(authorship.author_env(run.spec, authorship.hub_url(run)))  # its own commits name the agent
         env.update(self.trailer_config(env))  # and carry the run's trailers, and its git checks no private name
@@ -336,7 +336,7 @@ class Agent:
     def subscription_only(self) -> bool:
         """Whether this run's agent is a run of the Curator on Claude Code, which uses the Claude subscription login
         alone, never ANTHROPIC_API_KEY (plan decision 14)."""
-        return self.run.curator is not None and self.run.runtime == "claude-code"
+        return self.run.curator is not None and runtime_can(self.run.runtime, "subscription_curator")
 
     async def check_login(self, cls, context: RunContext) -> None:
         """Fail the run before its agent starts when the runtime may not start it with this machine's login: a run of

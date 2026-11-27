@@ -52,13 +52,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import diff_signs, judge, knowledge_diff, merge_gate, runs, security_pass
-from evo_agents.worker import gitops, untrusted, venvs
+from evo_agents.worker import gitops, run_kinds, untrusted, venvs
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem, Unreachable, hub_retry
 from evo_agents.worker.runner import access, judge_knowledge, origin, verify
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.kind import RunKind
 from evo_agents.worker.runner.sessions import LARGEST, add_usage
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 from evo_agents.worker.runner.verify import verify_event
@@ -103,13 +104,14 @@ async def merge_in_worktree(checkout: Path, target: str, head: str, env: dict[st
             await gitops.RunGit(checkout).arun("worktree", "remove", "--force", str(path), check=False, env=env)
 
 
-class JudgeRun:
+class JudgeRun(RunKind):
     """A judge run: the change at the commit it judges, its diff read for signs of score hacking, the project's hidden
     checks and the plan's verify commands run in its worktree as code the worker does not trust, the Judge's agent on
     what they found, and the verdict, which ends the agent's last message, posted; nothing committed or pushed."""
 
-    parks = False
+    traits = run_kinds.KINDS["judge"]
     chat = False
+    uploads_diff = False  # it changes nothing
 
     def __init__(self, run: Run):
         self.run = run
@@ -622,10 +624,3 @@ class JudgeRun:
         if self.moving:
             return []
         return [(repo, path, self.at or base) for repo, path, base in self.directory.watched()]
-
-    async def diff(self) -> bytes:
-        """A judge run changes nothing: no diff is uploaded."""
-        return b""
-
-    async def release_branch(self) -> None:
-        await self.directory.release()

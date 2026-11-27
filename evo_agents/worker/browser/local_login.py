@@ -15,11 +15,11 @@ import base64
 import binascii
 import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
 from evo_agents.hub import browser_archive
+from evo_agents.worker import platform as platforms
 from evo_agents.worker.browser import chromium, install, profiles
 from evo_agents.worker.home import WorkerHome, WorkerStateError
 
@@ -29,7 +29,7 @@ LOGIN_LOG = "login.log"
 
 def check_screen() -> None:
     """WorkerStateError on a Linux machine with no display for Chromium's window."""
-    if sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+    if platforms.of().needs_display and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         raise WorkerStateError("this machine has no display (DISPLAY is not set): sign in from a desktop session")
 
 

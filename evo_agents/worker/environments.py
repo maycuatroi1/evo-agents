@@ -48,10 +48,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from evo_agents.plugins.run_environments import HOST, ContainerEnvironment, Mount
+from evo_agents.worker import run_kinds
 
 ENGINE_VARIABLE = "EVO_WORKER_CONTAINER_ENGINE"  # docker, podman, or the path of either
 ENGINES = ("docker", "podman")
-CONTAINER_KINDS = ("step", "task")  # the kinds of run whose agent needs no `evo-agents worker` command of this daemon
+CONTAINER_KINDS = run_kinds.CONTAINER_KINDS  # the kinds of run whose agent needs no `evo-agents worker` command
 HOME_DIR = "container-home"  # under runs/<run>: the container's HOME
 PROBE_TIMEOUT = 30.0  # seconds for `<engine> info` and `<engine> image inspect`
 PULL_TIMEOUT = 900.0  # seconds to pull an image
@@ -393,7 +394,7 @@ class Container(Environment):
         d = self.declaration
         where = f"environment {d.environment} of plugin {d.plugin}"
         problems = []
-        if kind not in CONTAINER_KINDS:
+        if not run_kinds.of(kind).container:
             problems.append(
                 f"{where} runs the agent in a container, which takes {' and '.join(CONTAINER_KINDS)} runs: the agent of a "
                 f"{kind} run talks to this worker's daemon through `evo-agents worker`, which a container does not "
@@ -403,7 +404,9 @@ class Container(Environment):
             problems.append(
                 f"{where} runs the agent in a container, and a person drives a run in a terminal of the host"
             )
-        if d.network == "none" and runtime == "opencode":
+        from evo_agents.worker.adapter import runtime_can  # the adapter imports this module
+
+        if d.network == "none" and runtime_can(runtime, "serves_over_port"):
             problems.append(f"{where} has network none, and the daemon reaches opencode's server over a port")
         problems += self._clear_of(core_paths)
         if problems:
