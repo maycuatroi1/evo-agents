@@ -1,4 +1,4 @@
-"""Tier 0 of the queue of operations events (plan hub-steward, criterion a6; ``evo_agents.hub.server.ops_rules``): a
+"""Tier 0 of the queue of operations events (plan hub-steward, criterion a6; ``evo_agents.hub.server.ops.service.rules``): a
 chat or task run that failed because of its machine is handed again once its worker is healthy, and only once; a run
 an Orchestrator took, or that failed of its work, is not; notices whose work is done are marked read. No model.
 """
@@ -17,7 +17,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import hub_events, runs, tables, triage_rules
-from evo_agents.hub.server.ops.service.rules import ORCHESTRATOR, REDELIVER, healthy
+from evo_agents.hub.server.ops.models.rules import ORCHESTRATOR, REDELIVER, healthy
 from tests.hub.account_pool_setup import TOKEN_VAR
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)

@@ -4,7 +4,8 @@ frame; ``docs/workers.md``, Failure triage, is the protocol).
 
 The package has four layers, which import-linter keeps in order (contract ``hub-triage-layers``): ``routes`` (the
 triage routes of the worker protocol under /v1/worker), then ``service`` (``threads``, the threads of failed and
-stale runs and the hub's threads of a project; ``actions``, what the agent of a thread does), ``repository`` (every
-SQL statement, on ``evo_agents.hub.tables``) and ``models`` (the Pydantic bodies, the values the layers pass and the
-texts of a thread's first message).
+stale runs and the hub's threads of a project; ``chats``, the triage chats they open in; ``facts``, what a thread
+tells of its run; ``actions``, what the agent of a thread does), ``repository`` (every SQL statement, on
+``evo_agents.hub.tables``) and ``models`` (the Pydantic bodies, the values the layers pass and the texts of a
+thread's first message).
 """

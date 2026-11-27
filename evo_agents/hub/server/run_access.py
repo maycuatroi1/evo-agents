@@ -25,7 +25,7 @@ same kind instead, which reaches its project's KG routes alone.
 What the token never reaches is ``run_access_rules``'s, and on the routes open to it every rule of the agent of a run
 holds (``Principal.acts_for_run``): it answers no decision (``decisions.answer_decision``), starts no run and hands no
 agent work unless the owner's run reach holds ``runs`` (``run_access_rules.refuse_new_run``), approves nothing and lets no run run as its owner
-(``refuse_onward``). The rerun the agent of a triage makes never runs as its owner (``triage_actions``), and a stream
+(``refuse_onward``). The rerun the agent of a triage makes never runs as its owner (``triage.service.actions``), and a stream
 the token opened stops at its next look once the token ended (``security.still_live``). Each grant and each stop is an
 audit row run_access.grant or run_access.revoke, each token a lease names is in the credential.lease row
 (``run-access=token:<id>``), and no log line, event, audit row or error holds the token.

@@ -32,7 +32,7 @@ from evo_agents.hub.server.notifications.models import (
     ReadResult,
 )
 from evo_agents.hub.server.notifications.service import admin_channels, notices, reads
-from evo_agents.hub.server.ops.repository import views as ops_views
+from evo_agents.hub.server.ops.models import views as ops_views
 from evo_agents.hub.server.runs.models import MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.security import AdminUser, CurrentUser, admin
 

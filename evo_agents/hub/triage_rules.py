@@ -1,7 +1,7 @@
 """The frame of what the agent of a triage thread does on its own, in code and not in the agent's instructions.
 
 When a run fails, its triage thread (``evo_agents.hub.server.triage``) has an agent that reads the run. It may act with
-no one's say-so only inside this frame, which the hub enforces on each call (``evo_agents.hub.server.triage_actions``)
+no one's say-so only inside this frame, which the hub enforces on each call (``evo_agents.hub.server.triage.service.actions``)
 whatever the agent was told:
 
 - run the failed step again for its owner (``RERUN_CAUSES``: the causes the policy table of the design report gives
@@ -172,7 +172,7 @@ def edit_problems(old: dict, new: dict, repos: set[str]) -> list[str]:
 
 FAILED, STALE, ESCALATE = "failed", "stale", "escalate"  # what an agent's run or turn did
 LOOP, IDLE, ROUNDS, BUDGET = "loop", "idle", "rounds", "budget"  # the rules of progress on a trace
-OPS = "ops"  # a batch of the ops queue closed with items left (``evo_agents.hub.server.ops_threads``)
+OPS = "ops"  # a batch of the ops queue closed with items left (``evo_agents.hub.server.ops.service.threads``)
 DRAFT = (
     "draft"  # a draft pull request of a run's branch the hub could not settle (``evo_agents.hub.server.draft_pulls``)
 )

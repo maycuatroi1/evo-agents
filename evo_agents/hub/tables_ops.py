@@ -8,7 +8,7 @@ to its metadata and exposes as its own attributes (``tables.ops_cursors``, ``tab
   while it gathers (at most one per key, ``ops_batches_open_key``), then ``ready`` when it closed with items left, or
   ``empty`` when every item left before; ``running`` once the hub opened its ops thread (``thread_id``, 0241) to the
   Orchestrator of the default system, whose run it keeps, and ``done`` when that run ended; ``recurring`` when its
-  cause key came back often (``server.ops_threads``).
+  cause key came back often (``server.ops.service.threads``).
 - ops_items: each operations event the queue took into a batch, with the ids it names, ``pending`` until tier 0
   handled it, ``handled`` then (by what, when); one per event (``ops_items_event_key``).
 """

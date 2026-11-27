@@ -263,7 +263,7 @@ async def reap_pool_nodes(engine: AsyncEngine, sealer, github_app) -> dict:
 
 async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> None:
     """The part of the reaper's pass that opens threads: the triage thread of a run that says nothing while its worker
-    heartbeats (``triage.open_stale``), the thread of a trace of an agent system that wrote no span for its idle limit
+    heartbeats (``triage.service.threads.open_stale``), the thread of a trace of an agent system that wrote no span for its idle limit
     (``orchestrator.open_idle``), the close of a failed or stale thread whose agent's later run in the trace ended done
     (``orchestrator.close_recovered``), and the draft pull requests of run branches whose work went in elsewhere or that an
     ended trace left (``draft_pulls.settle_pass``, with ``github_app``), the Orchestrator asked of those it cannot
@@ -295,7 +295,7 @@ async def recover_runs(
     (``wait_cycles.break_cycles``), and one parked for
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
-    ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), a trace of an
+    ``triage.models.threads.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.service.threads.open_stale``), a trace of an
     agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), a failed or stale
     thread whose agent's later run in the trace ended done closes (``orchestrator.close_recovered``), the draft pull
     requests of chat and task runs are settled (``draft_pulls.settle_pass``, with ``github_app``), a queued run
