@@ -19,8 +19,6 @@ that the build holds is visible to them (``subjects``, blocking, called from a W
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import yaml
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -28,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.kg.graph_model import edge_id
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.kg.visibility import Visibility
 from evo_agents.schema.policy import TOP_AUDIENCE
 
 SOURCE = "plugin.hub_decisions"
@@ -57,7 +56,7 @@ def subject(kind: str, src: str, rel: str | None, dst: str | None) -> tuple[list
     return nodes, edge
 
 
-def subjects(store: SnapshotView, visible: Callable[[tuple], bool], nodes, edges) -> dict:
+def subjects(store: SnapshotView, visibility: Visibility, nodes, edges) -> dict:
     """Whether build b holds each node id of ``nodes`` (directly or as an alias) and each (src, rel, dst) of
     ``edges``, and whether the reader sees it: VISIBLE, HIDDEN or ABSENT, by id and by triple. The store reads every
     audience for the while, so a hidden node is told from a missing one; the reader's audience comes back after."""
@@ -72,11 +71,11 @@ def subjects(store: SnapshotView, visible: Callable[[tuple], bool], nodes, edges
                 alias = store.alias_of(nid)
                 n = store.node(alias) if alias else None
             canon[nid] = n["id"] if n is not None else nid
-            found[nid] = ABSENT if n is None else VISIBLE if visible(n["label"]) else HIDDEN
+            found[nid] = ABSENT if n is None else VISIBLE if visibility.label(n["label"]) else HIDDEN
         for src, rel, dst in edges:
             a, z = canon.get(src, src), canon.get(dst, dst)
             label = store.edge_label(edge_id(a, rel, z))
-            found[(src, rel, dst)] = ABSENT if label is None else VISIBLE if visible(label) else HIDDEN
+            found[(src, rel, dst)] = ABSENT if label is None else VISIBLE if visibility.label(label) else HIDDEN
         return found
     finally:
         store.reader = held

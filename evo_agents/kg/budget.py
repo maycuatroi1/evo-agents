@@ -1,15 +1,41 @@
-"""The budget of kg_context: its whole text, nodes and edges, stays within ``budget_tokens`` estimated as UTF-8 bytes
-divided by 3. ``Room`` counts the bytes of the lines it takes and what it reached that did not fit.
+"""Budgets in tokens, estimated as UTF-8 bytes divided by BYTES_PER_TOKEN (``Budget``): the text of kg_context, the
+hub's handoff of a plan step (``evo_agents.hub.handoff``), its facets (``evo_agents.hub.facets``) and the answers the
+evaluation compares (``evo_agents.kg.evaluate``). kg_context's whole text, nodes and edges, stays within
+``budget_tokens``; ``Room`` counts the bytes of the lines it takes and what it reached that did not fit.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+
+BYTES_PER_TOKEN = 3  # three bytes a token: about a token of English, under one of Vietnamese
 
 CONTEXT_QUERY_SHOWN = 100  # characters of the query kg_context's first line repeats
 CONTEXT_NOTE_BYTES = 200  # kept for the line that says what kg_context left out
 CONTEXT_LABEL_BYTES = 120  # kept for the line that prints the label most nodes share
 CONTEXT_MIN_LINE = 40  # below this much room no edge line fits: kg_context stops reading
+
+
+@dataclass(frozen=True)
+class Budget:
+    """A budget of ``tokens`` and the UTF-8 bytes it holds, BYTES_PER_TOKEN to a token."""
+
+    tokens: int
+
+    @property
+    def bytes(self) -> int:
+        return self.tokens * BYTES_PER_TOKEN
+
+    @staticmethod
+    def tokens_in(size: int) -> int:
+        """The tokens ``size`` UTF-8 bytes take, rounded up."""
+        return math.ceil(size / BYTES_PER_TOKEN)
+
+    @classmethod
+    def tokens_of(cls, text: str) -> int:
+        """The tokens ``text`` takes: its UTF-8 bytes over BYTES_PER_TOKEN, rounded up."""
+        return cls.tokens_in(len(text.encode()))
 
 
 def line_size(line: str) -> int:

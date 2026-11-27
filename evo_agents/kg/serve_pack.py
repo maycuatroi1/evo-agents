@@ -12,7 +12,7 @@ from collections import Counter
 from evo_agents.kg import context_pack, locate, ppr
 from evo_agents.kg.asked import terms
 from evo_agents.kg.budget import CONTEXT_MIN_LINE, Room, line_size
-from evo_agents.kg.serve_text import SessionText
+from evo_agents.kg.serve_tool import Tool
 from evo_agents.kg.snapshot import SnapshotView
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
@@ -34,13 +34,13 @@ class Reach:
         self.nodes: dict[str, dict] = {}
 
 
-class PackTools(SessionText):
-    """The part of kg_context that fills the budget past the seeds."""
+class ContextPack(Tool):
+    """The part of kg_context that fills the budget past the seeds (``evo_agents.kg.serve_walk.KgContext``)."""
 
     def _adjacent(self, store: SnapshotView, cache: dict, nid: str, limit: int) -> list[tuple[str, dict]]:
         """(other end, edge) of the visible edges of ``nid``, read once per call."""
         if nid not in cache:
-            found = [e for e in store.edges_of(nid, limit=limit) if self.seen(e)]
+            found = [e for e in store.edges_of(nid, limit=limit) if self.visibility.seen(e)]
             cache[nid] = [(e["dst"] if e["src"] == nid else e["src"], e) for e in found]
         return cache[nid]
 
@@ -64,7 +64,7 @@ class PackTools(SessionText):
             known = store.nodes({o for o, _ in links if o not in reach.nodes})
             for other, e in links:
                 node = reach.nodes.get(other) or known.get(other)
-                if node is None or not self.seen(node):
+                if node is None or not self.visibility.seen(node):
                     continue
                 share = STATUS_RANK.get(e["status"], 1) / 5 * (0.3 if e["rel"] in SOFT_RELS else 1.0)
                 score = reach.relevance[nid] * share / damp
@@ -76,17 +76,19 @@ class PackTools(SessionText):
 
     def _walked(self, store: SnapshotView, query, room: Room, walk, reach: Reach) -> None:
         """Add the nodes the walk settles on (``evo_agents.kg.ppr``) to the reach, scored by its probability."""
-        scored = store.search_scored(str(query), limit=walk.seeds, deprecated=self.deprecated) if query else []
+        scored = (
+            store.search_scored(str(query), limit=walk.seeds, deprecated=self.visibility.deprecated) if query else []
+        )
         base = {sid: 1.0 for sid in room.nodes}
         for nid, rel in locate._rels(scored).items():
             base[nid] = max(base.get(nid, 0.0), rel)
-        found = ppr.run(store, base, walk, self.seen)
+        found = ppr.run(store, base, walk, self.visibility)
         order = sorted((i for i in found if i not in room.nodes), key=lambda i: (-found[i], i))[: walk.keep * 4]
         top = max((found[i] for i in order), default=0.0) or 1.0
         nodes = store.nodes([i for i in order if i not in reach.nodes])
         for nid in order:
             node = reach.nodes.get(nid) or nodes.get(nid)
-            if node is not None and self.seen(node):
+            if node is not None and self.visibility.seen(node):
                 reach.nodes[nid] = node
                 reach.relevance[nid] = max(reach.relevance.get(nid, 0.0), 0.9 * found[nid] / top)
 
@@ -98,11 +100,11 @@ class PackTools(SessionText):
         for nid, node in reach.nodes.items():
             if nid in room.nodes:
                 continue
-            text = self._line(node).lower()
+            text = self.text.line(node).lower()
             facets = {f"seed:{s}" for s in reach.origin.get(nid, ())} | {f"word:{w}" for w in words if w in text}
-            cost = line_size(self._line(node))
+            cost = line_size(self.text.line(node))
             if nid in reach.parent:
-                cost += line_size(self._edge_line(reach.parent[nid]))
+                cost += line_size(self.text.edge_line(reach.parent[nid]))
             items.append(context_pack.Item(nid, cost, reach.relevance.get(nid, 0.0), frozenset(facets)))
         return items, weights
 
@@ -126,9 +128,9 @@ class PackTools(SessionText):
         found = store.nodes([n for n in nodes if n not in reach.nodes])
         for nid in nodes:
             node = reach.nodes.get(nid) or found.get(nid)
-            if node is None or not self.seen(node):
+            if node is None or not self.visibility.seen(node):
                 continue
-            if not room.take_node(nid, node, line_size(self._line(node))):
+            if not room.take_node(nid, node, line_size(self.text.line(node))):
                 room.left_nodes.add(nid)
         by_id = {e["id"]: e for links in cache.values() for _, e in links}
         return {eid: by_id[eid] for eid in edge_ids if eid in by_id}
@@ -151,7 +153,9 @@ class PackTools(SessionText):
         )
         for nid in chosen:
             node = reach.nodes[nid]
-            if room.size - room.used < CONTEXT_MIN_LINE or not room.take_node(nid, node, line_size(self._line(node))):
+            if room.size - room.used < CONTEXT_MIN_LINE or not room.take_node(
+                nid, node, line_size(self.text.line(node))
+            ):
                 room.left_nodes.add(nid)
             elif nid in reach.parent:
                 core[reach.parent[nid]["id"]] = reach.parent[nid]
@@ -170,7 +174,7 @@ class PackTools(SessionText):
         for e in inside:
             if e["id"] in room.edges:
                 continue
-            if room.take(line_size(self._edge_line(e))):
+            if room.take(line_size(self.text.edge_line(e))):
                 room.edges[e["id"]] = e
             else:
                 room.left_edges.add(e["id"])
@@ -178,13 +182,13 @@ class PackTools(SessionText):
     def _given_before(self, key: tuple) -> Counter:
         """The nodes given before the kg_context ``key`` asks: those of the calls before it, so the same call again
         (a retry) reads what it read the first time."""
-        if self.last_context is not None and self.last_context[0] == key:
-            return self.last_context[1]
-        return self.given
+        if self.session.last_context is not None and self.session.last_context[0] == key:
+            return self.session.last_context[1]
+        return self.session.given
 
     def _remember(self, room: Room, key: tuple, before: Counter) -> None:
         """The nodes this kg_context gave count against later ones of the session (``context_pack.repeat_discount``)."""
-        self.last_context = (key, before)
+        self.session.last_context = (key, before)
         after = Counter(before)
         after.update(list(room.nodes))
-        self.given = Counter(dict(after.most_common(GIVEN_KEPT))) if len(after) > GIVEN_KEPT else after
+        self.session.given = Counter(dict(after.most_common(GIVEN_KEPT))) if len(after) > GIVEN_KEPT else after

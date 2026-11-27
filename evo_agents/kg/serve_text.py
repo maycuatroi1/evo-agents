@@ -15,10 +15,14 @@ KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kin
 SPAN = re.compile(r"lines? (\d+)(?:-(\d+))?")
 
 
-class SessionText(SessionView):
-    """The lines and JSON of the nodes and edges a session's answers show."""
+class NodeText:
+    """The lines and JSON of the nodes and edges the answers of ``session`` show: labels as its policy names them, and
+    every node a structured result holds joined to what the call revealed (``SessionView.saw``)."""
 
-    def _line(self, n: dict, shared: str | None = None, passage: str | None = None, status: str | None = None) -> str:
+    def __init__(self, session: SessionView):
+        self.session = session
+
+    def line(self, n: dict, shared: str | None = None, passage: str | None = None, status: str | None = None) -> str:
         """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
         it, the status and number of a plan step, the chat and thread of a chat message (KIND_PROPS), and where in
@@ -45,7 +49,7 @@ class SessionText(SessionView):
             where = f"{passage} of {where.split(' ', 1)[1]}" if where.startswith("lines ") else passage
         if where:
             extra.append(where)
-        label = self.describe(n["label"])
+        label = self.session.describe(n["label"])
         if brief:
             told = [part for part, same in ((n["status"], n["status"] == status), (label, label == shared)) if not same]
             state = f" ({', '.join(told)})" if told else ""
@@ -53,20 +57,22 @@ class SessionText(SessionView):
             state = f" ({n['status']})" if label == shared else f" ({n['status']}, {label})"
         return f"{head}{state}" + (f" {' '.join(extra)}" if extra else "")
 
-    def _labels(self, nodes) -> tuple[str | None, list[str]]:
+    def labels(self, nodes) -> tuple[str | None, list[str]]:
         """The label a result prints once, under its first line: the label of most of ``nodes`` (the first seen of
         those as common). A line names its node's label only when it is another. None and no line without nodes."""
-        counts = Counter(self.describe(n["label"]) for n in nodes)
+        counts = Counter(self.session.describe(n["label"]) for n in nodes)
         if not counts:
             return None, []
         shared = counts.most_common(1)[0][0]
         unless = "" if len(counts) == 1 else " unless its line names another"
         return shared, [f"label of every node{unless}: {shared}"]
 
-    def _node_json(self, n: dict) -> dict:
-        self._saw(n["label"])  # every node in a structured result is revealed
-        assert self.policy is not None, ANSWERS_NOTHING
-        label = self.policy.describe(Label.of(n["label"]))  # level, location, integrity; audience when it has one
+    def node_json(self, n: dict) -> dict:
+        self.session.saw(n["label"])  # every node in a structured result is revealed
+        assert self.session.policy is not None, ANSWERS_NOTHING
+        label = self.session.policy.describe(
+            Label.of(n["label"])
+        )  # level, location, integrity; audience when it has one
         return {
             "id": n["id"],
             "kind": n["kind"],
@@ -78,11 +84,12 @@ class SessionText(SessionView):
             "aliases": n["aliases"],
         }
 
-    def _edge_line(self, e: dict) -> str:
+    @staticmethod
+    def edge_line(e: dict) -> str:
         return f"  [{readable(e['src'])}] -{e['rel']}-> [{readable(e['dst'])}] ({e['status']})"
 
     @staticmethod
-    def _step(parent: str, e: dict) -> str:
+    def step(parent: str, e: dict) -> str:
         arrow = f"-{e['rel']}->" if e["src"] == parent else f"<-{e['rel']}-"
         return f"{arrow} ({e['status']})"
 

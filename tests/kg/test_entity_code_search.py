@@ -11,6 +11,7 @@ import pytest
 from evo_agents.cli import main
 from evo_agents.kg import ppr, search
 from evo_agents.kg import settings as kg_settings
+from evo_agents.kg.visibility import Visibility
 from tests.kg import built
 from tests.kg.test_walk import ALPHA, BETA, QUASAR, ask, entity_project, walk_on
 
@@ -147,8 +148,11 @@ def test_code_of_an_entity_follows_its_documents_up_to_entity_code():
             return {i: {"id": i, "kind": "File"} for i in ids}
 
     hits = [{"id": entity}]
-    assert search.through_entities(Graph(), hits, lambda _: True)[0] == [{"id": "doc:a", "kind": "File"}, *hits]
-    out, why = search.through_entities(Graph(), hits, lambda _: True, code=True)
+    assert search.through_entities(Graph(), hits, Visibility.everything())[0] == [
+        {"id": "doc:a", "kind": "File"},
+        *hits,
+    ]
+    out, why = search.through_entities(Graph(), hits, Visibility.everything(), code=True)
     want = ["doc:a", *reversed(code)][: 1 + search.ENTITY_CODE]  # by confidence, the highest first
     assert [n["id"] for n in out] == [*want, entity]
     assert all(why[i] == [entity] for i in want)

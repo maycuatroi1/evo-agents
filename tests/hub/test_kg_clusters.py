@@ -33,6 +33,7 @@ from evo_agents.hub.cli import base as cli_base
 from evo_agents.hub.cli.kg import clusters as kg_clusters_cli
 from evo_agents.hub.server.app import create_app
 from evo_agents.kg import clusters as kg_clusters
+from evo_agents.kg.visibility import Visibility
 from tests.hub.s3 import fake_s3
 from tests.hub.test_kg import InProcessHub, make_config, run_jobs
 
@@ -205,7 +206,7 @@ def test_a_build_without_clusters_says_why():
         def build_row(self):
             return {"coverage": {"clusters": {"computed": False, "reason": "graspologic-native is not installed"}}}
 
-    found = kg_map.cluster_map(kg_map.view(NoClusters(), lambda label: True), True)
+    found = kg_map.cluster_map(kg_map.view(NoClusters(), Visibility.everything()), True)
     assert found == {
         "computed": False,
         "reason": "graspologic-native is not installed",

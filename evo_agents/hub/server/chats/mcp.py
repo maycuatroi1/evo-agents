@@ -7,21 +7,18 @@ from evo_agents.hub.server.chats.service.read import read, readers_of, session_l
 from evo_agents.hub.server.run_audience import note
 from evo_agents.hub.server.security import Principal
 from evo_agents.kg.serve import Session
+from evo_agents.kg.serve_tool import Answered
 from evo_agents.kg.sessions import READ_META
 
 
 class _Answer(Session):
-    """A reading through the envelope of ``kg serve``: over CAP_CHARS it is cut, and the rest waits for kg_more, which
-    gives it while the reader's audience holds ``held``."""
+    """A reading through the envelope of ``kg serve``, as the tool ``name`` (``Answered``): over CAP_CHARS it is cut,
+    and the rest waits for kg_more, which gives it while the reader's audience holds ``held``."""
 
-    def __init__(self, sink: str, text: str, data: dict, held: frozenset[str]):
+    def __init__(self, sink: str, name: str, text: str, data: dict, held: frozenset[str]):
         super().__init__(None, sink)
         self.answered, self.held = (text, data), held
-
-    def call(self, name: str, args: dict) -> dict:
-        result = self._envelope(*self.answered)
-        self.handles = {key: (made, chunks, self.held) for key, (made, chunks, *_) in self.handles.items()}
-        return result
+        self.tools = Session.tools.with_(**{name: Answered})
 
 
 async def answer(state, user: Principal, sink: str, owner: tuple, name: str, arguments: dict) -> dict:
@@ -37,7 +34,7 @@ async def answer(state, user: Principal, sink: str, owner: tuple, name: str, arg
     data = reading.model_dump(mode="json", exclude={"text"})
     data["summary"] = f"{len(reading.messages)} message(s) of chat {reading.chat_id}"
     data["label"] = label  # what the reading reveals, as a kg_* result says it
-    result = state.kg_handles.call(_Answer(sink, reading.text, data, kept), owner, name, {})
+    result = state.kg_handles.call(_Answer(sink, name, reading.text, data, kept), owner, name, {})
     read_meta = {"project": owner[1], "label": label, "results_read": len(reading.messages)}
     for block in result.get("content") or []:
         block.setdefault("_meta", {})[READ_META] = read_meta  # the text block: what ``kg.sessions`` reads

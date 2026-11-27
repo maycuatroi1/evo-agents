@@ -316,10 +316,10 @@ def review(
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
         if session.error:
             return {"why": session.error}
-        found = session._store()
+        found = session.store()
         if found.clusters() is None and not found.review_items():
             return {"why": kg_review.NO_REVIEW, "build_id": graph.build_id}
-        counts = kg_review.open_counts(found, session.visible, dismissed)
+        counts = kg_review.open_counts(found, session.visibility, dismissed)
         return {"build_id": graph.build_id, "open": counts}
 
 

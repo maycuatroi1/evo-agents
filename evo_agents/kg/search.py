@@ -66,8 +66,10 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import PurePosixPath
+
+from evo_agents.kg.visibility import Visibility
 
 MAX_TEXT_CHARS = 100_000  # a node's body past this is cut and counted in the build's coverage
 # Words of a query read; the rest are dropped. A question often names its subject late ("does the weekly review
@@ -448,7 +450,7 @@ MENTIONS_PER_HIT = 3
 
 
 def with_mentions(
-    store, hits: list[dict], limit: int, visible: Callable[[dict], bool], kinds: list[str] | None = None
+    store, hits: list[dict], limit: int, visibility: Visibility, kinds: list[str] | None = None
 ) -> tuple[list[dict], dict[str, dict]]:
     """``hits`` (visible nodes, best first) cut at ``limit``, each step, section or document followed by up to
     MENTIONS_PER_HIT files, symbols, documents and sections it mentions through visible edges, not listed yet and of
@@ -466,21 +468,25 @@ def with_mentions(
         out.append(hit)
         listed.add(hit["id"])
         if hit["kind"] in MENTIONING:
-            for node, label in _mentioned(store, hit, listed, visible, kinds)[: max(0, limit - len(out))]:
+            for node, label in _mentioned(store, hit, listed, visibility, kinds)[: max(0, limit - len(out))]:
                 out.append(node)
                 listed.add(node["id"])
                 via[node["id"]] = {"from": hit["id"], "label": label}
     return out, via
 
 
-def _mentioned(store, hit: dict, listed: set[str], visible, kinds) -> list[tuple[dict, tuple]]:
+def _mentioned(store, hit: dict, listed: set[str], visibility, kinds) -> list[tuple[dict, tuple]]:
     """Up to MENTIONS_PER_HIT (node, edge label) that ``hit`` mentions: visible nodes of MENTIONED not in ``listed``."""
-    edges = [e for e in store.edges_of(hit["id"], direction="out", limit=400) if e["rel"] == "mentions" and visible(e)]
+    edges = [
+        e
+        for e in store.edges_of(hit["id"], direction="out", limit=400)
+        if e["rel"] == "mentions" and visibility.seen(e)
+    ]
     targets = store.nodes([e["dst"] for e in edges if e["dst"] not in listed])
     found: list[tuple[dict, tuple]] = []
     for e in edges:
         node = targets.get(e["dst"])
-        if node is None or node["kind"] not in MENTIONED or not visible(node):
+        if node is None or node["kind"] not in MENTIONED or not visibility.seen(node):
             continue
         if (kinds and node["kind"] not in kinds) or any(n["id"] == node["id"] for n, _ in found):
             continue
@@ -502,7 +508,7 @@ ENTITY_RANKED_ONLY = ("Commit", "PullRequest")  # kinds an entity brings as a so
 def through_entities(
     store,
     hits: list[dict],
-    visible: Callable[[dict], bool],
+    visibility: Visibility,
     code: bool = False,
     query: str | None = None,
     words: bool = False,
@@ -531,9 +537,9 @@ def through_entities(
                 listed.add(hit["id"])
             continue
         entities.append(hit)
-        reached = _sources(store, hit, rank, visible, query if words else None)
+        reached = _sources(store, hit, rank, visibility, query if words else None)
         if code:
-            reached += _code_of(store, hit, rank, visible)
+            reached += _code_of(store, hit, rank, visibility)
         for source in reached:
             why.setdefault(source["id"], []).append(hit["id"])
             if source["id"] not in listed:
@@ -543,14 +549,16 @@ def through_entities(
     return out, why
 
 
-def _sources(store, entity: dict, rank: dict[str, int], visible, query: str | None = None) -> list[dict]:
+def _sources(store, entity: dict, rank: dict[str, int], visibility, query: str | None = None) -> list[dict]:
     """Up to ENTITY_DOCS visible non-entity nodes that mention ``entity`` through visible edges: those the search ranked,
     best first, then, unless more than ENTITY_SPREAD mention it, the others by the edge's confidence. An unranked node of
     a kind in ENTITY_RANKED_ONLY never comes: a commit naming the entity would take the slot of a file the query hit."""
     from evo_agents.kg.ppr import is_entity
 
     edges = [
-        e for e in store.edges_of(entity["id"], direction="in", limit=500) if e["rel"] == "mentions" and visible(e)
+        e
+        for e in store.edges_of(entity["id"], direction="in", limit=500)
+        if e["rel"] == "mentions" and visibility.seen(e)
     ]
     conf = {}
     for e in edges:
@@ -567,13 +575,13 @@ def _sources(store, entity: dict, rank: dict[str, int], visible, query: str | No
         nodes[i]
         for i in ranked
         if i in nodes
-        and visible(nodes[i])
+        and visibility.seen(nodes[i])
         and (i in rank or nodes[i].get("kind") not in ENTITY_RANKED_ONLY)
         and (held is None or i in rank or (held.get(i) or {}).get("words"))
     ][:ENTITY_DOCS]
 
 
-def _code_of(store, entity: dict, rank: dict[str, int], visible) -> list[dict]:
+def _code_of(store, entity: dict, rank: dict[str, int], visibility) -> list[dict]:
     """Up to ENTITY_CODE visible non-entity nodes ``entity`` points to through visible ENTITY_CODE_RELS edges: those the
     search ranked, best first, then the others by the edge's confidence."""
     from evo_agents.kg.ppr import is_entity
@@ -581,9 +589,9 @@ def _code_of(store, entity: dict, rank: dict[str, int], visible) -> list[dict]:
     edges = store.edges_of(entity["id"], direction="out", limit=500)
     conf: dict[str, float] = {}
     for e in edges:
-        if e["rel"] in ENTITY_CODE_RELS and visible(e) and not is_entity(e["dst"]):
+        if e["rel"] in ENTITY_CODE_RELS and visibility.seen(e) and not is_entity(e["dst"]):
             conf[e["dst"]] = max(conf.get(e["dst"], 0.0), e["conf"] or 0.0)
     ranked = sorted((i for i in conf if i in rank), key=rank.__getitem__)
     ranked += sorted((i for i in conf if i not in rank), key=lambda i: (-conf[i], i))
     nodes = store.nodes(ranked)
-    return [nodes[i] for i in ranked if i in nodes and visible(nodes[i])][:ENTITY_CODE]
+    return [nodes[i] for i in ranked if i in nodes and visibility.seen(nodes[i])][:ENTITY_CODE]

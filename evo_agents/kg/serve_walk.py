@@ -8,12 +8,14 @@ from evo_agents.kg.budget import (
     CONTEXT_LABEL_BYTES,
     CONTEXT_NOTE_BYTES,
     CONTEXT_QUERY_SHOWN,
+    Budget,
     Room,
     line_size,
 )
 from evo_agents.kg.refs import readable
 from evo_agents.kg.search import through_entities
-from evo_agents.kg.serve_pack import SEED_EDGES, STATUS_RANK, PackTools
+from evo_agents.kg.serve_pack import SEED_EDGES, STATUS_RANK, ContextPack
+from evo_agents.kg.serve_tool import Tool
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.snapshot import SnapshotView
 
@@ -22,14 +24,16 @@ CHAIN_RELS = ("implements", "schedules", "verifies", "has_step", "touches")
 PATH_SKIP = ("in_source",)  # every item hangs off its source: a path through one says nothing
 
 
-class WalkTools(PackTools):
-    """kg_context and kg_path."""
+class KgContext(ContextPack):
+    """kg_context."""
 
-    def tool_kg_context(
+    name = "kg_context"
+
+    def run(
         self, query: str | None = None, ids: list | None = None, budget_tokens: int = 3000, hops: int = 2
     ) -> tuple[str, dict]:
-        store = self._store()
-        size = max(500, min(int(budget_tokens), 8000)) * 3
+        store = self.store()
+        size = Budget(max(500, min(int(budget_tokens), 8000))).bytes
         hops = max(1, min(int(hops), 3))
         seeds, stood = self._context_seeds(store, query, ids)
         if query:
@@ -47,7 +51,7 @@ class WalkTools(PackTools):
         reserved = line_size(header(99_999, 99_999)) + CONTEXT_LABEL_BYTES + line_size("edges:") + CONTEXT_NOTE_BYTES
         room = Room(size - reserved)
         for sid in seeds:
-            if not room.take_node(sid, seeds[sid], line_size(self._line(seeds[sid]))):
+            if not room.take_node(sid, seeds[sid], line_size(self.text.line(seeds[sid]))):
                 room.left_nodes.add(sid)
         if not room.nodes:
             raise ToolError("budget_tokens holds none of the seeds: raise it, or pass fewer ids")
@@ -56,21 +60,21 @@ class WalkTools(PackTools):
         before = self._given_before(key)
         self._context_pack(store, query, room, hops, walk, before)
         self._remember(room, key, before)
-        shared, label_line = self._labels(room.nodes.values())
+        shared, label_line = self.text.labels(room.nodes.values())
         lines = [header(len(room.nodes), len(room.edges)), *label_line]
-        lines += [self._line(n, shared) for n in room.nodes.values()]
+        lines += [self.text.line(n, shared) for n in room.nodes.values()]
         stood = {sid: why for sid, why in stood.items() if sid in room.nodes}
         lines += [f"seed [{readable(sid)}] for entity {', '.join(map(readable, why))}" for sid, why in stood.items()]
         lines.append("edges:")
         for e in room.edges.values():
-            self._saw(e["label"])
-            lines.append(self._edge_line(e))
+            self.session.saw(e["label"])
+            lines.append(self.text.edge_line(e))
         lines += room.note()
         data = {
             "build": store.build,
             "seeds": list(seeds),
             "entities": stood,
-            "nodes": [self._node_json(n) for n in room.nodes.values()],
+            "nodes": [self.text.node_json(n) for n in room.nodes.values()],
             "edges": [
                 {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]} for e in room.edges.values()
             ],
@@ -85,19 +89,19 @@ class WalkTools(PackTools):
         so reached, the entities it stands for."""
         stood: dict[str, list[str]] = {}
         if ids:
-            found = [self._lookup(store, i) for i in ids if isinstance(i, str)]
+            found = [self.session.lookup(store, i) for i in ids if isinstance(i, str)]
             seeds = {n["id"]: n for n in found if n is not None}
         elif query:
             walk = ppr.of(store.tuning.walk, store.tuning.entity_code)
             if walk is not None:  # the first five of the walk's order (evo_agents.kg.ppr), as kg_search lists them
-                scored = store.search_scored(query, limit=max(walk.seeds, 30), deprecated=self.deprecated)
-                hits = ppr.order(store, scored, walk, self.seen)[:40]
+                scored = store.search_scored(query, limit=max(walk.seeds, 30), deprecated=self.visibility.deprecated)
+                hits = ppr.order(store, scored, walk, self.visibility)[:40]
             else:
-                hits = store.search(query, limit=5, deprecated=self.deprecated)[:5]
+                hits = store.search(query, limit=5, deprecated=self.visibility.deprecated)[:5]
             nodes = store.nodes(hits)
-            found = [nodes[h] for h in hits if h in nodes and self.seen(nodes[h])]
+            found = [nodes[h] for h in hits if h in nodes and self.visibility.seen(nodes[h])]
             found, stood = through_entities(
-                store, found, self.seen, store.tuning.entity_code, query, store.tuning.entity_words
+                store, found, self.visibility, store.tuning.entity_code, query, store.tuning.entity_words
             )
             seeds = {n["id"]: n for n in found[:5]}
             stood = {sid: why for sid, why in stood.items() if sid in seeds}
@@ -106,6 +110,12 @@ class WalkTools(PackTools):
         if not seeds:
             raise ToolError("nothing visible matches; try kg_search")
         return seeds, stood
+
+
+class KgPath(Tool):
+    """kg_path."""
+
+    name = "kg_path"
 
     def _walk(
         self, store: SnapshotView, start: dict, max_hops: int, rels: tuple | None, goal: str | None
@@ -127,7 +137,7 @@ class WalkTools(PackTools):
                     tree[nid]["hub"] = True
                     continue
                 for e in edges:
-                    if e["rel"] in PATH_SKIP or (rels and e["rel"] not in rels) or not self.seen(e):
+                    if e["rel"] in PATH_SKIP or (rels and e["rel"] not in rels) or not self.visibility.seen(e):
                         continue
                     other = e["dst"] if e["src"] == nid else e["src"]
                     if other in tree:
@@ -139,23 +149,23 @@ class WalkTools(PackTools):
             layer = []
             for other in sorted(best):
                 node = found.get(other)
-                if node is None or not self.seen(node):
+                if node is None or not self.visibility.seen(node):
                     continue
                 key, parent, e = best[other]
                 tree[other] = {"hop": hop, "score": -key[0], "parent": parent, "edge": e, "node": node, "hub": False}
                 layer.append(other)
         return tree
 
-    def tool_kg_path(self, to: str | None = None, max_hops: int = 6, **kwargs) -> tuple[str, dict]:
+    def run(self, to: str | None = None, max_hops: int = 6, **kwargs) -> tuple[str, dict]:
         start_id = kwargs.pop("from", None)  # a Python keyword, so it cannot be a parameter name
         if kwargs:
             raise TypeError(f"unexpected argument(s) {', '.join(sorted(kwargs))}")
         if not isinstance(start_id, str) or not start_id:
             raise ToolError("give from (a node id), and to for a path between two nodes")
-        store = self._store()
+        store = self.store()
         max_hops = max(1, min(int(max_hops), 6))
-        start = self._lookup(store, start_id)
-        goal = self._lookup(store, to) if isinstance(to, str) and to else None
+        start = self.session.lookup(store, start_id)
+        goal = self.session.lookup(store, to) if isinstance(to, str) and to else None
         if start is None or (to and goal is None):
             raise ToolError("no visible node has that id; search with kg_search")
         tree = self._walk(store, start, max_hops, None if goal else CHAIN_RELS, goal["id"] if goal else None)
@@ -165,12 +175,12 @@ class WalkTools(PackTools):
         for nid, t in tree.items():
             if t["parent"] is not None:
                 children.setdefault(t["parent"], []).append(nid)
-        shared, label_line = self._labels(t["node"] for t in tree.values())
+        shared, label_line = self.text.labels(t["node"] for t in tree.values())
         lines = [
             f"chains from {readable(start['id'])} along {', '.join(CHAIN_RELS)} (build {store.build}): {len(tree) - 1} node(s)"
             f" within {max_hops} hop(s)",
             *label_line,
-            self._line(start, shared),
+            self.text.line(start, shared),
         ]
         stack = sorted(children.get(start["id"], []), reverse=True)
         while stack:
@@ -178,7 +188,7 @@ class WalkTools(PackTools):
             t = tree[nid]
             lines.append(
                 "  " * t["hop"]
-                + f"{self._step(t['parent'], t['edge'])} {self._line(t['node'], shared)}"
+                + f"{self.text.step(t['parent'], t['edge'])} {self.text.line(t['node'], shared)}"
                 + (" (hub, not expanded)" if t["hub"] else "")
             )
             stack.extend(sorted(children.get(nid, []), reverse=True))
@@ -186,7 +196,7 @@ class WalkTools(PackTools):
             "build": store.build,
             "from": start["id"],
             "to": None,
-            "nodes": [{**self._node_json(t["node"]), "hop": t["hop"], "hub": t["hub"]} for t in tree.values()],
+            "nodes": [{**self.text.node_json(t["node"]), "hop": t["hop"], "hub": t["hub"]} for t in tree.values()],
             "edges": [_edge_json(t) for t in tree.values() if t["parent"] is not None],
             "summary": f"{len(tree) - 1} nodes",
         }
@@ -207,20 +217,22 @@ class WalkTools(PackTools):
                 f"no path within {max_hops} hop(s) from {ends} through visible nodes (build {store.build}; hubs are not expanded)"
             ]
         else:
-            shared, label_line = self._labels(t["node"] for t in chain)
+            shared, label_line = self.text.labels(t["node"] for t in chain)
             lines = [
                 f"path from {ends} (build {store.build}): {len(chain) - 1} hop(s)",
                 *label_line,
-                self._line(start, shared),
+                self.text.line(start, shared),
             ]
-            lines += [f"  {self._step(t['parent'], t['edge'])} {self._line(t['node'], shared)}" for t in chain[1:]]
+            lines += [
+                f"  {self.text.step(t['parent'], t['edge'])} {self.text.line(t['node'], shared)}" for t in chain[1:]
+            ]
         data = {
             "build": store.build,
             "from": start["id"],
             "to": goal["id"],
             "found": bool(chain),
             "hops": len(chain) - 1 if chain else None,
-            "nodes": [self._node_json(t["node"]) for t in chain],
+            "nodes": [self.text.node_json(t["node"]) for t in chain],
             "edges": [_edge_json(t) for t in chain[1:]],
             "summary": f"{len(chain) - 1} hops" if chain else "no path",
         }

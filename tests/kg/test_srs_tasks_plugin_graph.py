@@ -320,9 +320,9 @@ def test_srs_plugin_data_carries_its_rows_label_and_a_sink_below_it_sees_nothing
     hidden = [(AGENT, "usecase:UC PAY-1"), (NARROW, "usecase:UC ORD-2"), (NARROW, TICKET), (NARROW, f"{doc}#k08")]
     for sink, node_id in hidden:
         with pytest.raises(ToolError):
-            hub_session(project, sink).tool_kg_node(node_id)
+            hub_session(project, sink).answer("kg_node", id=node_id)
     # A public document names UC ORD-1: the use case is public with its code alone, its section and task are not.
-    _, shown = hub_session(project, NARROW).tool_kg_node(USE_CASE)
+    _, shown = hub_session(project, NARROW).answer("kg_node", id=USE_CASE)
     assert shown["node"]["label"]["level"] == "public" and shown["node"]["props"] == {"code": "UC ORD-1"}
 
 

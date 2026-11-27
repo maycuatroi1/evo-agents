@@ -236,8 +236,8 @@ def test_a_reader_not_in_the_chat_sees_no_node_edge_or_count_of_it(chats):
         assert impact["documents"] == [] and impact["impacted"] == []
         context = data(session, "kg_context", ids=[PLAN, "source:chat"])
         assert ids(context, "nodes") == {PLAN, "source:chat"} and len(context["edges"]) == 1
-        store = session._store()
-        assert not session.sees_all  # the build's labels are within the clearance, its audiences are not
+        store = session.store()
+        assert not session.visibility.sees_all  # the build's labels are within the clearance, its audiences are not
         assert {kind for kind, *_ in store.kind_counts()} == {"Document", "Source"}
 
 
@@ -316,8 +316,8 @@ def test_what_needs_several_items_shows_only_to_who_sees_them_all_and_what_eithe
     assert data(six, "kg_node", id=CODE)["node"]["label"]["audience"] == [C6]
     assert data(both, "kg_path", **{"from": M3, "to": PLAN})["found"]
     assert not data(six, "kg_path", **{"from": M3, "to": PLAN})["found"]
-    store = both._store()
-    assert both.sees_all and ("Code", 1, 0, "U", 2) in store.kind_counts()
+    store = both.store()
+    assert both.visibility.sees_all and ("Code", 1, 0, "U", 2) in store.kind_counts()
 
 
 def test_the_session_label_joins_the_audience_of_what_it_read(chats, tmp_path):

@@ -5,6 +5,7 @@ without the entities step ranks as before."""
 import json
 
 from evo_agents.kg import search
+from evo_agents.kg.visibility import Visibility
 from tests.kg import built
 from tests.kg.projects import commit, make_project, write
 from tests.kg.test_walk import ALPHA, BETA, QUASAR, ZEPHYR, ask, entity_project, hide
@@ -63,7 +64,10 @@ def test_entities_never_lower_the_documents_of_the_first_k(tmp_path, kg_env):
 def test_a_graph_without_entities_ranks_as_before(tmp_path, kg_env):
     project = plain_project(tmp_path, kg_env)
     hits = [{"id": ALPHA}, {"id": BETA}]
-    assert search.through_entities(None, hits, lambda _: True) == (hits, {})  # no entity: the graph is not read
+    assert search.through_entities(None, hits, Visibility.everything()) == (
+        hits,
+        {},
+    )  # no entity: the graph is not read
     for query in QUERIES:
         found = search_of(project, query)["structuredContent"]
         assert found["entities"] == {}
@@ -102,11 +106,11 @@ def test_an_entity_many_documents_mention_brings_only_those_the_search_ranked(mo
             return {i: {"id": i, "kind": "Document"} for i in ids}
 
     hits = [{"id": "entity:Place:paris"}, {"id": "doc:7"}, {"id": "other"}]
-    out, why = search.through_entities(Graph(), hits, lambda _: True)
+    out, why = search.through_entities(Graph(), hits, Visibility.everything())
     assert [n["id"] for n in out] == ["doc:7", "other", "entity:Place:paris"]
     assert why == {"doc:7": ["entity:Place:paris"]}
     sources[:] = sources[:4]  # a few: the unranked ones come too, by confidence then id, up to ENTITY_DOCS
-    out, why = search.through_entities(Graph(), [{"id": "entity:Place:paris"}], lambda _: True)
+    out, why = search.through_entities(Graph(), [{"id": "entity:Place:paris"}], Visibility.everything())
     assert [n["id"] for n in out] == ["doc:0", "doc:1", "doc:2", "entity:Place:paris"]
 
 
@@ -120,10 +124,12 @@ def test_an_entity_brings_a_commit_or_pull_request_only_when_the_search_ranked_i
         def nodes(self, ids):
             return {i: {"id": i, "kind": kinds[i]} for i in ids}
 
-    out, why = search.through_entities(Graph(), [{"id": "entity:Place:paris"}], lambda _: True)
+    out, why = search.through_entities(Graph(), [{"id": "entity:Place:paris"}], Visibility.everything())
     assert [n["id"] for n in out] == ["doc:3", "entity:Place:paris"]  # the unranked commit and pull request stay out
     assert why == {"doc:3": ["entity:Place:paris"]}
-    out, why = search.through_entities(Graph(), [{"id": "entity:Place:paris"}, {"id": "commit:1"}], lambda _: True)
+    out, why = search.through_entities(
+        Graph(), [{"id": "entity:Place:paris"}, {"id": "commit:1"}], Visibility.everything()
+    )
     assert [n["id"] for n in out] == ["commit:1", "doc:3", "entity:Place:paris"]  # a ranked commit is still a source
     assert why == {"commit:1": ["entity:Place:paris"], "doc:3": ["entity:Place:paris"]}
 
@@ -143,11 +149,11 @@ def test_entity_words_keeps_an_unranked_source_only_when_it_holds_a_query_word()
             return {i: held[i] for i in ids if i in held}
 
     hits = [{"id": "entity:Place:paris"}]
-    off, _ = search.through_entities(Graph(), hits, lambda _: True, False, "quasar", False)
+    off, _ = search.through_entities(Graph(), hits, Visibility.everything(), False, "quasar", False)
     assert [n["id"] for n in off] == ["doc:with", "doc:without", "entity:Place:paris"]  # off: as before
-    on, why = search.through_entities(Graph(), hits, lambda _: True, False, "quasar", True)
+    on, why = search.through_entities(Graph(), hits, Visibility.everything(), False, "quasar", True)
     assert [n["id"] for n in on] == ["doc:with", "entity:Place:paris"]
     assert why == {"doc:with": ["entity:Place:paris"]}
     ranked = [{"id": "entity:Place:paris"}, {"id": "doc:without"}]  # a ranked source stays whatever it holds
-    on, _ = search.through_entities(Graph(), ranked, lambda _: True, False, "quasar", True)
+    on, _ = search.through_entities(Graph(), ranked, Visibility.everything(), False, "quasar", True)
     assert [n["id"] for n in on] == ["doc:without", "doc:with", "entity:Place:paris"]

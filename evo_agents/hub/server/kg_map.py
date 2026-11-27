@@ -9,7 +9,7 @@
   every visible edge between two of them, compact, for the map's view of the whole graph.
 
 Access and visibility are those of the graph's other web reads (``evo_agents.hub.server.kg_web``): a grant on the
-project, the grant's ceiling with the member's audience, and every node through ``Session.visible``; sizes, links and
+project, the grant's ceiling with the member's audience, and every node through the session's ``Visibility``; sizes, links and
 labels are counted again over what the member can see (``evo_agents.hub.kg_map``).
 """
 

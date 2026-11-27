@@ -9,6 +9,7 @@ import pytest
 from evo_agents.cli import main
 from evo_agents.hub.kg_eval import changed_files, plan_questions
 from evo_agents.kg import evaluate as ev
+from evo_agents.kg.budget import Budget
 from evo_agents.kg.sync import sync_project
 from tests.kg import built
 from tests.kg.projects import commit, git, make_project, write
@@ -319,7 +320,7 @@ def test_eval_grep_cuts_its_output_at_the_budget_and_reads_a_ref(checkout):
     assert sorted(ev.grep_checkout("r", checkout, ["beta"], None)) == ["src/beta.py"]
     long = [ev.GrepFile("r", f"f{i}.py", {"t"}, 1, [("1", "x" * 100)]) for i in range(20)]
     text, shown = ev.grep_output(long, ev.MIN_BUDGET_TOKENS)
-    assert len(text.encode()) <= ev.MIN_BUDGET_TOKENS * ev.BYTES_PER_TOKEN
+    assert len(text.encode()) <= Budget(ev.MIN_BUDGET_TOKENS).bytes
     assert len(shown) == text.count("\n") + 1 < 20
     with pytest.raises(RuntimeError, match="git grep"):
         ev.grep_checkout("r", checkout, ["beta"], "no-such-ref")

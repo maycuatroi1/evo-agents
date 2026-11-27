@@ -15,6 +15,7 @@ from evo_agents.kg.impact import diff_lines
 from evo_agents.kg.refs import readable, stored
 from evo_agents.kg.serve import handle
 from evo_agents.kg.serve_search import FULL_LINES, in_repo
+from evo_agents.kg.serve_text import NodeText
 from evo_agents.kg.serve_walk import CHAIN_RELS
 from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT
@@ -603,13 +604,15 @@ def test_a_chat_message_line_names_its_chat_and_thread_and_never_its_text(tmp_pa
         "props": {"chat": 5, "thread": 40, "seq": 7, "author_kind": "person", "author": "alice", "run": None},
     }
     # its id, its author and time (its name), its chat and its thread; its text is in no prop, and the others stay out
-    assert session._line(said) == (
+    assert NodeText(session).line(said) == (
         "[plugin.chats:message:41] ChatMessage '#7 alice 2026-10-19T08:00:00Z' (parsed, internal,U audience chat:5) "
         "chat=5 thread=40"
     )
     # a node of any other kind that has such props prints them not: an item without an audience reads as before
     other = {**said, "id": "docs:doc:minutes", "kind": "Document", "name": "minutes", "label": (1, 0, "U")}
-    assert session._line(other) == "[docs:doc:minutes] Document (parsed, internal,U)"  # the id ends with its name
+    assert (
+        NodeText(session).line(other) == "[docs:doc:minutes] Document (parsed, internal,U)"
+    )  # the id ends with its name
 
 
 def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg_env):
@@ -657,11 +660,17 @@ def test_search_lines_say_once_what_every_result_shares_and_when_none_holds_the_
         "label": (1, 0, "U"),
         "props": {"status": "done", "number": 3},
     }
-    assert session._line(step, "public,U", status="parsed") == (
+    assert NodeText(session).line(step, "public,U", status="parsed") == (
         "[plan:demo/step:3] PlanStep 'Wire' (resolved, internal,U) status=done"
     )
-    assert session._line(step, "internal,U", status="resolved") == "[plan:demo/step:3] PlanStep 'Wire' status=done"
-    assert session._line(step, "internal,U") == "[plan:demo/step:3] PlanStep 'Wire' (resolved) status=done number=3"
+    assert (
+        NodeText(session).line(step, "internal,U", status="resolved")
+        == "[plan:demo/step:3] PlanStep 'Wire' status=done"
+    )
+    assert (
+        NodeText(session).line(step, "internal,U")
+        == "[plan:demo/step:3] PlanStep 'Wire' (resolved) status=done number=3"
+    )
     section = {
         **step,
         "id": "app:file:docs/a.md#set-up",
@@ -669,7 +678,7 @@ def test_search_lines_say_once_what_every_result_shares_and_when_none_holds_the_
         "name": "Set up",
         "props": {"anchor": "set-up"},
     }
-    assert session._line(section, "internal,U", status="resolved") == "[app:docs/a.md#set-up] Section"
+    assert NodeText(session).line(section, "internal,U", status="resolved") == "[app:docs/a.md#set-up] Section"
 
 
 def test_search_says_how_many_words_each_result_holds(tmp_path, kg_env):

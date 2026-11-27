@@ -25,13 +25,13 @@ library only, besides ``evo_agents.hub.plans``: the server, the client and the w
 from __future__ import annotations
 
 import json
-import math
 import re
 from dataclasses import dataclass, field
 
 from evo_agents.hub.plans import step_index, step_key
+from evo_agents.kg.budget import BYTES_PER_TOKEN as BYTES_PER_TOKEN  # the runner reads it here
+from evo_agents.kg.budget import Budget
 
-BYTES_PER_TOKEN = 3
 DEFAULT_BUDGET_TOKENS = 4000  # 12,000 bytes: within a step prompt's MAX_PROMPT_BYTES with the step itself
 MIN_BUDGET_TOKENS = 1000  # 3,000 bytes: the header and the longest note fit with room to spare
 MAX_BUDGET_TOKENS = 8000  # 24,000 bytes: under kg serve's CAP_CHARS, so the MCP answer is never cut by kg_more
@@ -104,7 +104,7 @@ def routing_line(handoff: dict | None) -> str:
 
 def estimate_tokens(text: str) -> int:
     """The tokens ``text`` takes as the handoff counts them: its UTF-8 bytes / BYTES_PER_TOKEN, rounded up."""
-    return math.ceil(len(text.encode()) / BYTES_PER_TOKEN)
+    return Budget.tokens_of(text)
 
 
 def check_budget(budget_tokens: int) -> None:
@@ -374,7 +374,7 @@ def build_handoff(
     MAX_BUDGET_TOKENS."""
     check_budget(budget_tokens)
     plan_id, project = _one_line(plan.get("id"), 100, "without an id"), _one_line(project, 100, "?")
-    budget = budget_tokens * BYTES_PER_TOKEN
+    budget = Budget(budget_tokens).bytes
     builder = _Builder(plan, budget)
     key, skip = None, []
     if step is not None:

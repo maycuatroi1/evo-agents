@@ -120,6 +120,7 @@ from evo_agents.hub.server.security import (
     Principal,
 )
 from evo_agents.kg.serve import Session, error_result, for_model, wants_data
+from evo_agents.kg.serve_tool import Answered
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -164,17 +165,13 @@ class Caller:
 
 
 class _Answered(Session):
-    """A result the hub computed, through the envelope of ``kg serve``: over CAP_CHARS it is cut, and the rest is
-    kept for kg_more."""
+    """A result the hub computed, through the envelope of ``kg serve`` as the tool ``name`` (``Answered``): over
+    CAP_CHARS it is cut, and the rest is kept for kg_more."""
 
     def __init__(self, sink: str, name: str, text: str, data: dict):
         super().__init__(None, sink)
-        self.answered = name, text, data
-
-    def call(self, name: str, args: dict) -> dict:
-        if name == self.answered[0]:
-            return self._envelope(self.answered[1], self.answered[2])
-        return super().call(name, args)
+        self.answered = text, data
+        self.tools = Session.tools.with_(**{name: Answered})
 
 
 def _problems(exc: ValidationError) -> str:

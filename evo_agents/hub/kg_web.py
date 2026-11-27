@@ -5,9 +5,9 @@ cluster and the compact whole graph (``evo_agents.hub.kg_map``), and the review 
 
 Each read opens the project's latest successful build the way the kg_* tools do (``evo_agents.hub.kg_graph``: the
 snapshot of the hub's tables) and answers with the
-code of those tools: ``tool_kg_search`` and ``tool_kg_node`` of ``evo_agents.kg.serve.Session`` as they are, and a
-neighbourhood that walks like ``tool_kg_context``. Every node and edge goes through ``Session.visible``, the one
-filter the tools use too; only the ceiling differs. The tools read with the meet of the member's grant and a sink's
+code of those tools: kg_search and kg_node of ``evo_agents.kg.serve.Session`` as they are (``Session.answer``), and a
+neighbourhood that walks like kg_context. Every node and edge goes through the session's ``Visibility``
+(``evo_agents.kg.visibility``), the one filter the tools use too; only the ceiling differs. The tools read with the meet of the member's grant and a sink's
 clearance, the web with the grant alone (``ProjectRules.grant_label`` of ``evo_agents.hub.access``, the label
 ``visible_by_grant`` holds a memory's label below); both hold the member's audience. When that audience does not hold
 every audience of the build, the build's nodes and edges are those it holds, and the sources with items that have an
@@ -36,6 +36,7 @@ from evo_agents.hub import kg_decisions, kg_entity_graph, kg_map, kg_review
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession, Snapshotted, reading
 from evo_agents.kg import freshness
 from evo_agents.kg.graph_scope import GraphScope
+from evo_agents.kg.serve_text import NodeText
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
 from evo_agents.kg.snapshot import SnapshotView
@@ -61,19 +62,19 @@ class GraphProblem(Exception):
 class WebSession(HubSession):
     """The tools' Session over a built graph, read with the grant's ceiling, answering with structured data."""
 
-    def _data(self, handler: Callable[..., tuple[str, dict]], **arguments) -> dict:
+    def _data(self, name: str, **arguments) -> dict:
         if self.error:
             raise NotVisible(self.error)
         self.read = None
         try:
-            _text, data = handler(**arguments)
+            _text, data = self.answer(name, **arguments)
         except ToolError as exc:
             raise GraphProblem(str(exc)) from None
         return data
 
     def _visible_store(self) -> SnapshotView:
         try:
-            return self._store()
+            return self.store()
         except ToolError as exc:
             raise GraphProblem(str(exc)) from None
 
@@ -84,20 +85,17 @@ class WebSession(HubSession):
         when given (``evo_agents.kg.graph_scope``)."""
         if self.error:
             return {"results": []}
-        self.scope = scope
-        try:
-            return self._data(self.tool_kg_search, query=query, kinds=kinds or None, limit=limit)
-        finally:
-            self.scope = None
+        self.visibility = self.visibility.asking(scope=scope)
+        return self._data("kg_search", query=query, kinds=kinds or None, limit=limit)
 
     def node(self, node_id: str) -> dict:
         """kg_node: the node (by id or alias), its evidence and its visible edges. Raises NotVisible."""
         if self.error:
             raise NotVisible(node_id)
         store = self._visible_store()
-        if self._lookup(store, node_id) is None:
+        if self.lookup(store, node_id) is None:
             raise NotVisible(node_id)
-        return self._data(self.tool_kg_node, id=node_id)
+        return self._data("kg_node", id=node_id)
 
     def kinds(self) -> list[dict]:
         """How many visible nodes of each kind the graph holds, most first."""
@@ -106,7 +104,7 @@ class WebSession(HubSession):
         store = self._visible_store()
         counts: dict[str, int] = {}
         for kind, level, location, integrity, count in store.kind_counts():
-            if self.visible((level, location, integrity)):
+            if self.visibility.label((level, location, integrity)):
                 counts[kind] = counts.get(kind, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"kind": kind, "count": count} for kind, count in ordered]
@@ -124,7 +122,7 @@ class WebSession(HubSession):
         found = []
         for read in freshness.reads(coverage):
             node = store.node(f"source:{read['source']}")
-            if node is not None and self.visible(node["label"]):
+            if node is not None and self.visibility.label(node["label"]):
                 found.append(read)
         return found
 
@@ -140,7 +138,7 @@ class WebSession(HubSession):
         store = self._visible_store()
         counts: dict[tuple[str, str, str], int] = {}
         for src_kind, rel, dst_kind, edge, src, dst, count in store.shape_counts():
-            if self.visible(edge) and self.visible(src) and self.visible(dst):
+            if self.visibility.label(edge) and self.visibility.label(src) and self.visibility.label(dst):
                 key = (src_kind, rel, dst_kind)
                 counts[key] = counts.get(key, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -149,8 +147,15 @@ class WebSession(HubSession):
     def _map_view(self, store: SnapshotView) -> kg_map.View:
         """The clusters of build b as this reader sees them, kept by the build's content and by everything ``visible``
         compares with (``evo_agents.hub.kg_map.ViewCache``); call after ``_visible_store``, which sets ``sees_all``."""
-        key = (self.project.name, self.graph.content_hash, store.build, self.sees_all, self.clearance, self.audience)
-        return kg_map.VIEWS.get(key, lambda: kg_map.view(store, self.visible))
+        key = (
+            self.project.name,
+            self.graph.content_hash,
+            store.build,
+            self.visibility.sees_all,
+            self.clearance,
+            self.audience,
+        )
+        return kg_map.VIEWS.get(key, lambda: kg_map.view(store, self.visibility))
 
     def cluster_map(self, with_nodes: bool = True) -> dict:
         """The visible level-1 clusters, the links between them and (``with_nodes``) their visible members
@@ -175,7 +180,7 @@ class WebSession(HubSession):
         if self.error:
             return {"nodes": [], "rels": [], "edges": [], "truncated": False}
         store = self._visible_store()
-        return kg_map.whole(store, self.visible, limit, self._map_view(store))
+        return kg_map.whole(store, self.visibility, limit, self._map_view(store))
 
     def review(self) -> dict:
         """The review queue as the member sees it (``evo_agents.hub.kg_review``): only items about nodes they can
@@ -183,7 +188,7 @@ class WebSession(HubSession):
         if self.error:
             return {"computed": False, "reason": kg_map.NO_VISIBLE, "items": []}
         store = self._visible_store()
-        return kg_review.queue(store, self.visible, self._degrees)
+        return kg_review.queue(store, self.visibility, self._degrees)
 
     def decision_subjects(self, nodes, edges) -> dict:
         """Whether the build holds each node id and (src, rel, dst) edge decisions name, and whether the member sees
@@ -191,16 +196,23 @@ class WebSession(HubSession):
         if self.error:
             return {key: kg_decisions.HIDDEN for key in [*nodes, *edges]}
         store = self._visible_store()
-        return kg_decisions.subjects(store, self.visible, nodes, edges)
+        return kg_decisions.subjects(store, self.visibility, nodes, edges)
 
     def _entity_view(self, store: SnapshotView) -> kg_entity_graph.EntityView:
         """The entities, relations and mentions of build b this reader sees (``evo_agents.hub.kg_entity_graph``), kept
         as ``_map_view`` keeps the clusters; call after ``_visible_store``."""
-        key = (self.project.name, self.graph.content_hash, store.build, self.sees_all, self.clearance, self.audience)
-        return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, self.seen))
+        key = (
+            self.project.name,
+            self.graph.content_hash,
+            store.build,
+            self.visibility.sees_all,
+            self.clearance,
+            self.audience,
+        )
+        return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, self.visibility))
 
     def _describe(self, label: tuple) -> dict:
-        self._saw(label)
+        self.saw(label)
         assert self.policy is not None
         return self.policy.describe(Label.of(label))
 
@@ -229,7 +241,7 @@ class WebSession(HubSession):
         return self._entity_graph(found, kg_entity_graph.top(found, limit), code)
 
     def _entity(self, store: SnapshotView, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
-        n = self._lookup(store, entity_id)
+        n = self.lookup(store, entity_id)
         if n is None or n["id"] not in found.nodes:
             raise NotVisible(entity_id)
         return n
@@ -258,7 +270,7 @@ class WebSession(HubSession):
         found = self._entity_view(store)
         n = self._entity(store, found, entity_id)
         citations, total = kg_entity_graph.entity_citations(store, found, n["id"])
-        code, code_total = kg_entity_graph.code_links(store, found, n["id"], self.seen, self._describe)
+        code, code_total = kg_entity_graph.code_links(store, found, n["id"], self.visibility, self._describe)
         relations = sorted(
             (found.relations[eid] for eid in found.adjacent.get(n["id"], ())),
             key=lambda e: (-kg_entity_graph.weight(e), e["id"]),
@@ -285,7 +297,7 @@ class WebSession(HubSession):
         e = found.relations.get(edge_id)
         if e is None:
             raise NotVisible(edge_id)
-        citations, total = kg_entity_graph.relation_citations(store, e, self.seen)
+        citations, total = kg_entity_graph.relation_citations(store, e, self.visibility)
         return {
             "edge": kg_entity_graph.edge_json(e, self._describe),
             "src": kg_entity_graph.node_json(found, found.nodes[e["src"]], self._describe),
@@ -315,7 +327,7 @@ class WebSession(HubSession):
         hops = max(1, min(int(hops), MAX_HOPS))
         limit = max(1, min(int(limit), MAX_NODES))
         store = self._visible_store()
-        focus = self._lookup(store, node_id)
+        focus = self.lookup(store, node_id)
         if focus is None:
             raise NotVisible(node_id)
         self.read = None
@@ -347,7 +359,7 @@ class WebSession(HubSession):
             current, depth = frontier.popleft()
             if depth >= hops:
                 continue
-            found = [e for e in store.edges_of(current, limit=SEED_EDGES) if self.visible(e["label"])]
+            found = [e for e in store.edges_of(current, limit=SEED_EDGES) if self.visibility.label(e["label"])]
             if depth > 0 and len(found) > HUB_DEGREE:
                 walk.hubs.add(current)  # not expanded: open it to see its neighbours
                 continue
@@ -408,7 +420,7 @@ class WebSession(HubSession):
         """The nodes the walk took, as kg_node shows them, with their hop, whether they are hubs and their degree."""
         nodes = []
         for nid, n in walk.included.items():
-            entry = self._node_json(n)
+            entry = NodeText(self).node_json(n)
             entry["hop"] = walk.hop[nid]
             entry["hub"] = nid in walk.hubs
             entry["degree"] = walk.degree.get(nid, 0)
@@ -420,7 +432,7 @@ class WebSession(HubSession):
         shown = []
         for e in walk.edges.values():
             if e["src"] in walk.included and e["dst"] in walk.included:
-                self._saw(e["label"])
+                self.saw(e["label"])
                 shown.append({"id": e["id"], "src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]})
         return shown
 
@@ -460,7 +472,7 @@ def _other(edge: dict, current: str) -> str:
 
 def _visible_node(session: WebSession, nodes: dict[str, dict], node_id: str) -> bool:
     node = nodes.get(node_id)
-    return node is not None and session.visible(node["label"])
+    return node is not None and session.visibility.label(node["label"])
 
 
 def group_key(direction: str, rel: str, kind: str) -> str:

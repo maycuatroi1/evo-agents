@@ -362,10 +362,10 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                     task = group[0].task
                     graphs.warm(lay.project_dir(task))
                     with graphs.bench_home(lay.home):
-                        store = run.session_of(graphs.project_of(lay, task), "graph")._store()
+                        store = run.session_of(graphs.project_of(lay, task), "graph").store()
                 else:
                     project = resolve_project(name)  # a build in memory of the corpus on this machine
-                    store = run.session_of(project, "graph", snap=rows_file.local_snapshot(project))._store()
+                    store = run.session_of(project, "graph", snap=rows_file.local_snapshot(project)).store()
             except Exception as exc:  # noqa: BLE001 - one graph that cannot be read leaves its labels out
                 stats["graph_error"] += len(group)
                 if progress:
