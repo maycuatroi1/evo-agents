@@ -52,7 +52,7 @@ def test_features_are_numbers_one_row_per_file_in_order():
     pool = _pool(ROWS, {"s:pkg/a.py::load_config": [("s:pkg/b.py::parse", "calls", 1.0)]})
     pool.cands["s:pkg/a.py::load_config"].anchor = 1.0
     ranked = locate.files(pool)
-    rows = rank.features(None, 1, "load_config fails to parse pkg/a.py", pool, ranked)
+    rows = rank.features(None, "load_config fails to parse pkg/a.py", pool, ranked)
     assert len(rows) == len(ranked) and all(len(r) == len(rank.FILE_FEATURES) for r in rows)
     assert all(isinstance(v, float) for r in rows for v in r)
     col = {name: i for i, name in enumerate(rank.FEATURES)}
@@ -70,7 +70,7 @@ def test_features_are_numbers_one_row_per_file_in_order():
 def test_node_rows_describe_each_node_with_its_files_features_then_its_own():
     pool = _pool(ROWS)
     ranked = locate.files(pool)
-    ids, rows = rank.node_rows(None, 1, "load_config fails in pkg/a.py", pool, ranked, limit=5)
+    ids, rows = rank.node_rows(None, "load_config fails in pkg/a.py", pool, ranked, limit=5)
     assert sorted(ids) == sorted(i for _, _, nodes in ranked for i in nodes)
     assert all(len(r) == len(rank.FEATURES) and all(isinstance(v, float) for v in r) for r in rows)
     col = {name: i for i, name in enumerate(rank.FEATURES)}
@@ -91,7 +91,7 @@ def test_a_ranker_fills_the_first_slots_and_keeps_locates_order_after():
     ranked = locate.files(pool)
     placed = locate.place(ranked)
     model = Reverse()
-    again = rank.Ranker(model).order(None, 1, "parse config", pool, ranked)
+    again = rank.Ranker(model).order(None, "parse config", pool, ranked)
     assert len(model.seen) == 1
     head = list(reversed(placed))[: rank.SLOTS]
     assert again == head + [i for i in placed if i not in head]
@@ -138,7 +138,7 @@ def test_the_shipped_model_loads_when_lightgbm_is_installed():
     assert model is not None and model.digest
     pool = _pool(ROWS)
     ranked = locate.files(pool)
-    again = model.order(None, 1, "parse config", pool, ranked)
+    again = model.order(None, "parse config", pool, ranked)
     assert sorted(again) == sorted(locate.place(ranked))
 
 

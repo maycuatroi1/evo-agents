@@ -75,7 +75,7 @@ def kg_search(session, query: str) -> list[str]:
 
 
 def found(view, query: str, **kw) -> list[str]:
-    return view.search(query, view.latest_ready(), **kw)
+    return view.search(query, **kw)
 
 
 def cli(project, on: bool | None = None):
@@ -153,7 +153,7 @@ def test_exact_hits_stay_first_and_deprecated_kinds_filters_apply(tmp_path, kg_e
     vector = semantic.query_vector(view, "automobile parked", None)
     sections = found(view, "automobile parked", kinds=["Section"], vector=vector)
     assert sections[0] == CAR
-    assert {view.node(i, view.latest_ready())["kind"] for i in sections} == {"Section"}
+    assert {view.node(i)["kind"] for i in sections} == {"Section"}
 
 
 def test_a_build_embeds_only_the_rows_whose_text_changed(tmp_path, kg_env, words):

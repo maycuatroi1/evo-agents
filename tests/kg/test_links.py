@@ -143,7 +143,7 @@ def test_read_and_propose_on_a_built_project_write_nothing(tmp_path, kg_env, cap
     project = make_project(tmp_path, kg_env)
     sync_build(project)
     view = view_of(project)
-    g = links.read(view, view.latest_ready())
+    g = links.read(view)
     assert g.parsed and all(len(e) == 3 for e in g.parsed)
     assert set(g.kinds) >= {"File", "Symbol"}
 
