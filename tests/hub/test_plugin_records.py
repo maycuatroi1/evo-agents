@@ -1,4 +1,4 @@
-"""The records an isolated plugin keeps on the hub (``evo_agents.hub.plugin_records``, ``plugin_records_api``,
+"""The records an isolated plugin keeps on the hub (``evo_agents.hub.plugin_records``, ``plugin_api.routes.records``,
 ``plugin_delegation``; schema 0169), on the hub with Postgres.
 
 Criterion a1: a plugin writes, reads, updates, lists and deletes records through the plugin API with revisions, and they

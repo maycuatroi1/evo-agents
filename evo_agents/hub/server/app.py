@@ -623,16 +623,10 @@ def _include_member_routes(app: FastAPI) -> None:
         merge_view,
         model_catalog,
         opportunity_evidence,
-        plugin_chats_api,
         plugin_command_list,
-        plugin_docs_api,
         plugin_host,
         plugin_notify,
         plugin_publishers,
-        plugin_records_api,
-        plugin_runs_api,
-        plugin_srs_api,
-        plugin_tasks_api,
         plugin_ui,
         plugins,
         problem_evidence,
@@ -685,6 +679,12 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
+    from evo_agents.hub.server.plugin_api.routes import chats as plugin_chats_api
+    from evo_agents.hub.server.plugin_api.routes import docs as plugin_docs_api
+    from evo_agents.hub.server.plugin_api.routes import records as plugin_records_api
+    from evo_agents.hub.server.plugin_api.routes import runs as plugin_runs_api
+    from evo_agents.hub.server.plugin_api.routes import srs as plugin_srs_api
+    from evo_agents.hub.server.plugin_api.routes import tasks as plugin_tasks_api
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.signals import routes as signals
     from evo_agents.hub.server.systems.routes import ops as system_ops

@@ -977,6 +977,25 @@ models. Other modules import the service, the repository's placement and queries
 A new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-plugin-api-layers"
+name = "The plugin API goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.plugin_api"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.plugin_api a route handler keeps the special auth of its route (the plugin's token, read with \
+task_dispatch.plugin_of_request, or a member's credential for the records of a plugin), opens the transaction and \
+passes the request's parts to the service (access, who a call acts as; tasks, docs, runs, srs, chats and records), \
+which checks the grant, the feature and the acting admin and decides; the repository holds the SQL of the enabled \
+plugin and its granter, the plugin's tasks by external key, its task runs and their outputs, the use cases of a \
+version and a page of a thread; the models (the API's shapes, the permissions, features and refusal texts) import \
+none of them. Move the code that reaches up into the layer that needs it: a check or a message into the service, a \
+query into the repository, a shape or a constant into the models. Other modules import the routes only to include \
+them (app.py) or to name a handler (plugin_bridge). A new module of the package goes into one of the four layers. See \
+docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"
