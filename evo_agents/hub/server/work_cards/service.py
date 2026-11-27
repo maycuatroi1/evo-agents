@@ -32,7 +32,7 @@ from evo_agents.hub.server.work_cards.repository import STORE
 from evo_agents.hub.server.work_chats import service as work_chats
 from evo_agents.hub.server.work_status_models import WorkCard
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("evo_agents.hub.server.work_cards")  # the name the module had before it was a package
 
 
 # The card's message

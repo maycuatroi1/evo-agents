@@ -25,7 +25,7 @@ from evo_agents.hub.server.runs.service.profiles import Asked, Chosen, choose
 from evo_agents.hub.server.runs.service.views import readable_run, run_view
 from evo_agents.hub.server.security import Principal
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("evo_agents.hub.server.member_tasks")  # the name the module had before it was a package
 
 
 def _title(body: MemberTaskIn) -> str:
