@@ -1,7 +1,7 @@
 """Credential shares: the rules both ends of ``evo-agents hub account share`` and ``hub secret share`` read, and the
 words of the terms warning the web, the command line and the audit show the same way. Standard library only, so the
 command line reads them without the server; ``docs/credentials.md`` describes the design, the routes are
-``evo_agents.hub.server.credential_shares``.
+``evo_agents.hub.server.credentials.service.shares``.
 
 The owner of a secret or an account shares it with one member (grantee kind ``user``), a unit of the org chart and
 every unit below it (``unit``), or everyone on the hub (``all``), for some of the projects the secret is bound to. A

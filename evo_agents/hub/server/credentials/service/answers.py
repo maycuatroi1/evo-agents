@@ -2,7 +2,7 @@
 hands here in its transaction: the value the owner pasted becomes their secret of kind env for the run's project, and
 "let the run use my hub account" lets the run run as them (``run_access``), as PUT /v1/secrets and PUT .../access do;
 "lease my secret" (FOUND, which the hub offers when it found the owner's secret for the variable) binds that secret to
-the run's project on the run's worker (``credential_resolver.bind_chosen``).
+the run's project on the run's worker (``resolver.bind_chosen``).
 
 ``checked`` reads the answer before anything changes: the value (``AnswerIn.secret``) goes only with an option that
 gives it (value or both, which a value with no option stands for), only to a decision that asks for a variable, and
@@ -30,38 +30,27 @@ worker. Every value written is one audit row secret.put (``secret:<id> decision:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import credential_requests, runs, tables
-from evo_agents.hub.credential_shares import USER, credential_class, needs_terms_ack, terms_refusal
+from evo_agents.hub import credential_requests, runs
+from evo_agents.hub.credential_shares import credential_class, needs_terms_ack, terms_refusal
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV, MAX_SECRET_BYTES, MAX_SECRETS_PER_OWNER
-from evo_agents.hub.server import audit, credential_resolver
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.accounts.repository.oauth import drop_tokens
+from evo_agents.hub.server.credentials.models.answers import KIND, Asked, Kept
+from evo_agents.hub.server.credentials.models.sealing import Sealer, secret_aad
+from evo_agents.hub.server.credentials.models.secrets import NO_KEY
+from evo_agents.hub.server.credentials.repository import answers as repository
+from evo_agents.hub.server.credentials.repository.secrets import bind_secret, live_secrets, lock_owner, upsert
+from evo_agents.hub.server.credentials.service import resolver
+from evo_agents.hub.server.credentials.service.secrets import audit_target
 from evo_agents.hub.server.decisions.models import AnswerIn
 from evo_agents.hub.server.runs.service.admin_acts import OnBehalf
-from evo_agents.hub.server.sealing import Sealer, secret_aad
-from evo_agents.hub.server.secrets import NO_KEY, audit_target, bind_secret, live_secrets, upsert_secret
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
-
-KIND = "env"
-
-
-@dataclass(frozen=True)
-class Asked:
-    """An answer to a decision as ``checked`` read it: the option (the one a value stands for when it names none) and
-    the value pasted."""
-
-    option: str | None
-    value: str | None
-
-    def __repr__(self) -> str:  # the value stays out of tracebacks and logs
-        return f"Asked(option={self.option!r}, value={'***' if self.value is not None else None})"
 
 
 def checked(decision_id: int, request: dict | None, body: AnswerIn) -> Asked:
@@ -122,9 +111,7 @@ def with_sentence(words: str | None, sentence: str) -> str:
 
 async def _owner(conn: AsyncConnection, user: Principal, run_id: int, decision_id: int) -> None:
     """403 unless ``user`` dispatched run ``run_id``: a credential is the owner's to give, and so is their account."""
-    r, u = tables.runs, tables.users
-    found = select(r.c.dispatched_by, u.c.login).join_from(r, u, u.c.id == r.c.dispatched_by).where(r.c.id == run_id)
-    owner_id, login = (await conn.execute(found)).one()
+    owner_id, login = await repository.run_owner(conn, run_id)
     if owner_id != user.user_id:
         raise HTTPException(
             403,
@@ -135,19 +122,7 @@ async def _owner(conn: AsyncConnection, user: Principal, run_id: int, decision_i
 
 async def _own_worker(conn: AsyncConnection, user: Principal, run_id: int) -> int | None:
     """The worker run ``run_id`` is on (or was parked on), when it is one of ``user``'s that is not revoked."""
-    r, w = tables.runs, tables.workers
-    found = (
-        select(w.c.id)
-        .join_from(r, w, w.c.id == r.c.worker_id)
-        .where(r.c.id == run_id, w.c.owner_id == user.user_id, w.c.revoked_at.is_(None))
-    )
-    return (await conn.execute(found)).scalar_one_or_none()
-
-
-@dataclass(frozen=True)
-class Kept:
-    name: str
-    created: bool
+    return await repository.own_worker(conn, user.user_id, run_id)
 
 
 async def keep_value(
@@ -164,18 +139,9 @@ async def keep_value(
     module's docstring for which one); one audit row secret.put."""
     env_var = request["env_var"]
     proposed = request.get("secret_name") or credential_requests.default_secret_name(env_var)
-    users, s, b = tables.users, tables.secrets, tables.secret_bindings
     # One write of a member's secrets at a time, as PUT /v1/secrets takes them.
-    await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
-    live = (s.c.owner_id == user.user_id, s.c.deleted_at.is_(None))
-    bound_here = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id)
-    same = (
-        select(s.c.name, s.c.environment)
-        .where(*live, s.c.kind == KIND, s.c.env_var == env_var, bound_here)
-        .order_by(s.c.name != proposed, s.c.name)
-        .limit(1)
-    )
-    found = (await conn.execute(same)).one_or_none()
+    await lock_owner(conn, user.user_id)
+    found = await repository.same_secret(conn, user.user_id, project_id, env_var, proposed)
     bind = False
     if found is not None:
         name, environment = found.name, found.environment
@@ -188,19 +154,14 @@ async def keep_value(
         if created:
             await bind_secret(conn, secret_id, [project_id], [worker_id] if worker_id is not None else [])
         else:  # the owner's secret for this variable, bound elsewhere: this project too, its other bindings kept
-            row = {"secret_id": secret_id, "project_id": project_id, "worker_id": worker_id, "pool_id": None}
-            await conn.execute(insert(b).values(row))
+            await repository.add_binding(conn, secret_id, project_id, worker_id)
     return Kept(name, created)
 
 
 async def _named(conn: AsyncConnection, user: Principal, name: str, env_var: str, decision_id: int):
     """``user``'s live secret ``name`` (its kind, variable and environment), None for none; 409 when it is for
     something else than ``env_var``, or when there is none and they keep MAX_SECRETS_PER_OWNER already."""
-    s = tables.secrets
-    named = select(s.c.kind, s.c.env_var, s.c.environment).where(
-        s.c.owner_id == user.user_id, s.c.deleted_at.is_(None), s.c.name == name
-    )
-    held = (await conn.execute(named)).one_or_none()
+    held = await repository.named_secret(conn, user.user_id, name)
     if held is not None and (held.kind != KIND or held.env_var != env_var):
         raise HTTPException(
             409,
@@ -225,7 +186,8 @@ async def _write_value(
     """Seal ``value`` into ``user``'s secret ``name`` of kind env for ``env_var``, made or replaced whole; (its id,
     whether it was made). One audit row secret.put, which names the decision."""
     sealed = sealer.seal(value, secret_aad(user.user_id, name, KIND))
-    statement = upsert_secret(
+    secret_id, created = await upsert(
+        conn,
         user.user_id,
         name,
         kind=KIND,
@@ -238,7 +200,6 @@ async def _write_value(
         key_id=sealed.key_id,
         expires_at=None,
     )
-    secret_id, created = (await conn.execute(statement)).one()
     await drop_tokens(conn, secret_id)  # written whole: no OAuth tokens of the value it replaced
     target = f"{audit_target(secret_id)} decision:{decision_id}"
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
@@ -277,7 +238,7 @@ async def give(
             f"project {project} ({how}), and leases it to the run."
         )
     if credential_requests.binds_found(asked.option) and request.get("env_var") is not None:
-        name = await credential_resolver.bind_chosen(conn, user, access.project_id, run_id, decision_id, request)
+        name = await resolver.bind_chosen(conn, user, access.project_id, run_id, decision_id, request)
         said.append(
             f"{user.login} leases the run their secret {name} of kind env, which sets {request['env_var']}: the hub "
             f"binds it to project {project} on the run's worker, its other bindings kept."
@@ -334,9 +295,8 @@ async def give_for_run(
     if sealer is None:
         raise HTTPException(503, NO_KEY.format(missing="EVO_HUB_SECRETS_KEY"))
     name = request.get("secret_name") or credential_requests.default_secret_name(env_var)
-    users = tables.users
     # One write of a member's secrets at a time, as PUT /v1/secrets takes them.
-    await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
+    await lock_owner(conn, user.user_id)
     await _refuse_held(conn, user, access, name, decision_id, run_id)
     await _named(conn, user, name, env_var, decision_id)  # none of that name: the room for one more
     secret_id, _ = await _write_value(conn, sealer, user, name, env_var, None, asked.value, decision_id)
@@ -355,9 +315,7 @@ async def _refuse_held(
     """409, with nothing written, when ``user`` keeps a live secret ``name`` already, whatever it is for: an admin's
     answer to another member's run never replaces a secret of theirs, whose value the runs that lease it use and which
     would be lost."""
-    s = tables.secrets
-    held = select(s.c.id).where(s.c.owner_id == user.user_id, s.c.name == name, s.c.deleted_at.is_(None))
-    if (await conn.execute(held)).first() is None:
+    if not await repository.holds_secret(conn, user.user_id, name):
         return
     project = access.name
     raise HTTPException(
@@ -373,19 +331,13 @@ async def _refuse_held(
 async def _lend_for_run(conn: AsyncConnection, user: Principal, access, run_id: int, secret_id: int) -> int:
     """The share of ``user``'s secret ``secret_id`` for run ``run_id`` alone, to the run's principal for its project:
     the live one there is, else a new one with no limits, audited share.create; its id."""
-    r, u, cs, csp = tables.runs, tables.users, tables.credential_shares, tables.credential_share_projects
-    principal = func.coalesce(r.c.principal_id, r.c.dispatched_by)
-    grantee_id, grantee = (
-        await conn.execute(select(u.c.id, u.c.login).join_from(r, u, u.c.id == principal).where(r.c.id == run_id))
-    ).one()
-    live = select(cs.c.id).where(cs.c.secret_id == secret_id, cs.c.run_id == run_id, cs.c.revoked_at.is_(None))
-    found = (await conn.execute(live)).scalar_one_or_none()
+    grantee_id, grantee = await repository.run_principal(conn, run_id)
+    found = await repository.live_run_share(conn, secret_id, run_id)
     if found is not None:
         return found
-    values = {"secret_id": secret_id, "grantee_kind": USER, "grantee_user_id": grantee_id, "run_id": run_id}
-    made = insert(cs).values(**values, created_by=user.user_id).returning(cs.c.id)
-    share_id = (await conn.execute(made)).scalar_one()
-    await conn.execute(insert(csp).values(share_id=share_id, project_id=access.project_id))
+    share_id = await repository.insert_run_share(
+        conn, secret_id, grantee_id, run_id, access.project_id, created_by=user.user_id
+    )
     target = (
         f"share:{share_id} {audit_target(secret_id)} credential=env grantee=user:{grantee} projects={access.name} "
         f"run={run_id}"

@@ -1,6 +1,6 @@
 """How the hub shows a credential share (``evo_agents.hub.credential_shares``): the model of one, and the shares of
 some secrets read in one query, which GET /v1/secrets, GET /v1/accounts and the share routes
-(``evo_agents.hub.server.credential_shares``) give their owner. A share names its secret, grantee, projects and the
+(``evo_agents.hub.server.credentials.service.shares``) give their owner. A share names its secret, grantee, projects and the
 logins of who created and revoked it; never a value.
 """
 

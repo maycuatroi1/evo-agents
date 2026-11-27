@@ -43,9 +43,9 @@ from evo_agents.hub.server.agent_accounts.service.accounts import admin_agent, a
 from evo_agents.hub.server.agent_accounts.service.shapes import AgentProviderAccountChange, AgentProviderAccountWrite
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.credentials.models.sealing import Sealed, agent_provider_aad
+from evo_agents.hub.server.credentials.service.secrets import sealer_of, unique_names
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.sealing import Sealed, agent_provider_aad
-from evo_agents.hub.server.secrets import sealer_of, unique_names
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.share_views import shares_of
 

@@ -386,9 +386,9 @@ async def grant(request: Request, body: GrantRequest, project: ProjectName, logi
 async def _take_back_leases(conn: AsyncConnection, user, project_id: int, member_id: int, by: str) -> list[int]:
     """The leases still out of the runs ``member_id`` dispatched in the project, given back now that the member no
     longer holds writer on it; the runs, for ``_revoke_taken`` once the transaction commits."""
-    from evo_agents.hub.server import credentials  # it reads ProjectName of this module
+    from evo_agents.hub.server import lease_ending  # it reads ProjectName of this module
 
-    return await credentials.end_member_leases(
+    return await lease_ending.end_member_leases(
         conn, user_id=member_id, project_id=project_id, actor_id=user.user_id, token_id=user.token_id, by=by
     )
 
@@ -396,11 +396,11 @@ async def _take_back_leases(conn: AsyncConnection, user, project_id: int, member
 async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
     """Revoke at GitHub the tokens of the leases ``_take_back_leases`` gave back; GitHub failing leaves them to the
     reaper."""
-    from evo_agents.hub.server import credentials
+    from evo_agents.hub.server import lease_ending
 
     state = request.app.state
     for run_id in run_ids:
-        await credentials.revoke_tokens(state.engine, state.sealer, credentials.revoker(state), run_id=run_id)
+        await lease_ending.revoke_tokens(state.engine, state.sealer, lease_ending.revoker(state), run_id=run_id)
 
 
 async def take_grant(conn: AsyncConnection, user, project: str, login: str) -> list[int]:

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import PROVIDER_KIND
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, secret_aad
 
 ENV_KIND = "env"
 

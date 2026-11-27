@@ -31,7 +31,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.server.accounts.models.choice import RELOGIN_REASON
 from evo_agents.hub.server.accounts.repository.oauth import open_tokens
 from evo_agents.hub.server.accounts.service import refresh as account_refresh
-from evo_agents.hub.server.sealing import Sealed, Sealer, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, secret_aad
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (fixtures of this module)
     PLAN,

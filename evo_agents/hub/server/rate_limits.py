@@ -41,7 +41,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.accounts.models.choice import Failover
 from evo_agents.hub.server.accounts.service.choice import fail_over
-from evo_agents.hub.server.credentials import survey_run
+from evo_agents.hub.server.credentials.service.survey import survey_run
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import RunId

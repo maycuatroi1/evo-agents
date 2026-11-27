@@ -36,8 +36,8 @@ from evo_agents.hub.server.run_retry import next_attempt
 from evo_agents.hub.server.run_state import move_run, notify_queued, past_timeout
 
 if TYPE_CHECKING:
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
     from evo_agents.hub.server.github_app import GitHubApp
-    from evo_agents.hub.server.sealing import Sealer
 
 log = logging.getLogger("evo_agents.hub.server.run_state")  # the logger of the module it was split from
 
@@ -387,11 +387,11 @@ async def recover_runs(
     report = {state: ended.get(state, 0) for state in ("lost", "failed", "cancelled", "parked")}
     if expired or ended:
         log.warning("runs recovered", extra=report)
-    from evo_agents.hub.server import credentials, share_leases
+    from evo_agents.hub.server import lease_ending, share_leases
 
     async with engine.begin() as conn:  # the leases still out under a share that was revoked or ended
         await share_leases.end_lapsed(conn)
-    await credentials.revoke_tokens(engine, sealer, github_app)
+    await lease_ending.revoke_tokens(engine, sealer, github_app)
     return report
 
 
@@ -402,7 +402,7 @@ async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
     from ``store`` now when it is given), and the files of the messages to those runs (``attachment_prune``); and drop
     the sealed values of the GitHub tokens leased to runs that are past their end (``credentials.drop_expired``)."""
     from evo_agents.hub import attachment_prune, output_prune
-    from evo_agents.hub.server import credentials, tool_stats
+    from evo_agents.hub.server import lease_ending, tool_stats
 
     r, e = tables.runs, tables.run_events
     old = [r.c.finished_at.is_not(None), r.c.finished_at < func.now() - timedelta(days=days)]
@@ -413,7 +413,7 @@ async def prune_run_events(engine: AsyncEngine, days: int, store=None) -> dict:
         for run_id in counted:
             await tool_stats.record(conn, run_id)
         deleted = (await conn.execute(prune)).rowcount
-        dropped = await credentials.drop_expired(conn)
+        dropped = await lease_ending.drop_expired(conn)
     log.info(
         "run events pruned",
         extra={"deleted": deleted, "runs": len(counted), "days": days, "tokens_dropped": dropped},

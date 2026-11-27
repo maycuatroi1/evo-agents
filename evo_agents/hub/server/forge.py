@@ -2,7 +2,7 @@
 project's repos, and that no run ever holds (``docs/credentials.md``, section Forge secrets).
 
 A member who holds the admin role on a project writes one with PUT /v1/secrets/{name}, kind ``forge``
-(``evo_agents.hub.server.secrets``): a url_prefix as a git secret has, an end, no username and no worker. The lease
+(``evo_agents.hub.server.credentials.service.secrets``): a url_prefix as a git secret has, an end, no username and no worker. The lease
 route reads kinds env and git alone (``credentials.LEASED_KINDS``), so a worker never gets one; GET /v1/secrets shows
 its owner its name and target, never its value; no route of the worker protocol, /mcp or the API reads it.
 
@@ -30,8 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import FORGE_KIND, matches, normalize_origin
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, secret_aad
 from evo_agents.hub.server.gitlab import GitLab, GitLabProject, project_of
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, secret_aad
 
 log = logging.getLogger(__name__)
 

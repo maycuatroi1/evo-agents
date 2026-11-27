@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.sealing import Sealed
+from evo_agents.hub.server.credentials.models.sealing import Sealed
 
 
 async def lock_secret(conn: AsyncConnection, owner_id: int, secret_id: int):

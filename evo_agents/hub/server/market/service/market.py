@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.market_refresh import place_builtin, refresh
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.credentials.models.sealing import market_source_aad
 from evo_agents.hub.server.market.models.market import (
     NO_KEY,
     MarketBrief,
@@ -47,7 +48,6 @@ from evo_agents.hub.server.market.models.market import (
 from evo_agents.hub.server.market.repository import market as repository
 from evo_agents.hub.server.market.repository.market import installed_plugins, source_rows
 from evo_agents.hub.server.plugins.service.store import trusted_publishers
-from evo_agents.hub.server.sealing import market_source_aad
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.compat import plugin_version_key
 from evo_agents.plugins.manifest import PERMISSION_TEXT

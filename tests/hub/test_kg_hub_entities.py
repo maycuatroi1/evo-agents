@@ -194,7 +194,7 @@ def hub_rows(db):
 
 
 def put_secret(db, sealer, owner, name, value, *, kind="env", env_var=ENV, base_url=None, bind=None, **extra):
-    from evo_agents.hub.server.sealing import secret_aad
+    from evo_agents.hub.server.credentials.models.sealing import secret_aad
 
     s = tables.secrets
     sealed = sealer.seal(value, secret_aad(owner, name, kind))
@@ -236,7 +236,7 @@ needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
 @needs_pg
 def test_the_build_opens_the_creators_key_and_prefers_one_bound_to_the_project(hub_db):
-    from evo_agents.hub.server.sealing import Sealer
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
 
     sealer = Sealer(random.token_bytes(32))
     creator, other, project = hub_rows(hub_db)
@@ -265,7 +265,7 @@ def test_the_build_opens_the_creators_key_and_prefers_one_bound_to_the_project(h
 @needs_pg
 def test_a_key_goes_only_to_the_host_it_belongs_to(hub_db):
     """A writer of the settings names the url and key_env: neither another host nor another variable opens a key."""
-    from evo_agents.hub.server.sealing import Sealer
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
 
     sealer = Sealer(random.token_bytes(32))
     creator, _, project = hub_rows(hub_db)
@@ -294,7 +294,7 @@ def test_a_project_made_by_upload_runs_its_entities_in_the_hub_build_with_its_cr
     """No worker run: the upload, the settings of multi-hop-api, a secret of the creator, and the hub's own jobs."""
     from sqlalchemy import select
 
-    from evo_agents.hub.server.sealing import Sealer
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
     from tests.hub import live, test_kg
     from tests.hub.test_kg_upload_extract import extract, open_hub
     from tests.hub.test_kg_upload_project import NEW, notes, project_row, send

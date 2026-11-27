@@ -46,12 +46,12 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.core_plugin_api.service import acts as plugin_acts
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from evo_agents.hub.server.notifications.service import channels as notice_channels
 from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugins.routes import extension as plugin_routes
 from evo_agents.hub.server.plugins.service.extension import route_paths
-from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP, core_plugins

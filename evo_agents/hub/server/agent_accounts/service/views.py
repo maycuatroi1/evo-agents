@@ -25,8 +25,8 @@ from evo_agents.hub.server.agent_accounts.repository import accounts as reposito
 from evo_agents.hub.server.agent_accounts.service.accounts import view_of
 from evo_agents.hub.server.agent_accounts.service.shapes import AgentAccount, ListedAgentAccount
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
+from evo_agents.hub.server.credentials.repository.secrets import bound_names
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.secrets import bound_names
 from evo_agents.hub.server.security import Principal
 
 

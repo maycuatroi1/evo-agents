@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from evo_agents.hub.blobs import KIND_LIMITS
-from evo_agents.hub.server.sealing import NONCE_BYTES, TAG_BYTES, Sealed
+from evo_agents.hub.server.credentials.models.sealing import NONCE_BYTES, TAG_BYTES, Sealed
 
 KIND = "browser-profile"
 FORMAT = b"\x01"  # the first byte of a sealed profile: this layout, AES-256-GCM under the version's data key

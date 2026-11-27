@@ -1,7 +1,7 @@
 """What an admin of a project does with another member's run of it, which only the member who dispatched the run did
 before: cancel it, approve it, run it again (``controls``), list the candidates to run it again (``candidates``), and
 answer its decisions, a credential request among them (``evo_agents.hub.server.decisions``,
-``evo_agents.hub.server.credential_answers``).
+``evo_agents.hub.server.credentials.service.answers``).
 
 An admin here is a member signed in as themself (never a run's token: ``Principal.acts_for_run``) who holds the admin
 role on the run's project, or a hub admin (EVO_HUB_ADMINS) who holds any grant on it: one without a grant sees none of

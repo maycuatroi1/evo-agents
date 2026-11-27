@@ -29,13 +29,13 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import asked_for
+from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable
 from evo_agents.hub.server.plugins.models.configs import Place
 from evo_agents.hub.server.plugins.models.tokens import PLUGIN_PREFIX, TOKEN_BYTES
 from evo_agents.hub.server.plugins.repository import configs as config_rows
 from evo_agents.hub.server.plugins.repository import grants as grant_rows
 from evo_agents.hub.server.plugins.repository import tokens as repository
 from evo_agents.hub.server.plugins.service.configs import stored_stacks, unseal
-from evo_agents.hub.server.sealing import Sealer, Unsealable
 from evo_agents.hub.server.security import b64, hash_token
 from evo_agents.plugins import config as plugin_config
 

@@ -28,7 +28,7 @@ from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR, OAuthToke
 from evo_agents.hub.server.accounts.repository import refresh as repository
 from evo_agents.hub.server.accounts.repository.oauth import open_tokens, seal_tokens, store_tokens
 from evo_agents.hub.server.accounts.service.choice import mark_relogin
-from evo_agents.hub.server.sealing import Sealer, Unsealable, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable, secret_aad
 
 log = logging.getLogger("evo_agents.hub.accounts")
 

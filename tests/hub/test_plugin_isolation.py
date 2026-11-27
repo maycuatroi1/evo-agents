@@ -199,7 +199,7 @@ from sqlalchemy import func, select, update  # noqa: E402
 import tests.hub.test_plugin_projects as projects  # noqa: E402
 from evo_agents.hub import tables  # noqa: E402
 from evo_agents.hub.server.app import create_app  # noqa: E402
-from evo_agents.hub.server.sealing import KEY_BYTES  # noqa: E402
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES  # noqa: E402
 from tests.hub.test_plugin_projects import ASKED, PROJECT, install, prepare  # noqa: E402
 
 HOST_TOKEN = "plugin-host-shared-" + secrets.token_hex(16)

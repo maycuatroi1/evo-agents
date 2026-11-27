@@ -85,8 +85,8 @@ if pg.DSN:
     from evo_agents.hub import tables
     from evo_agents.hub.server.accounts.models.quota import ZAI_REASON
     from evo_agents.hub.server.app import create_app
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
     from evo_agents.hub.server.gateway.service.sync import GatewaySync
-    from evo_agents.hub.server.sealing import Sealer
     from tests.hub import live
     from tests.hub.live import sql
     from tests.hub.test_provider_accounts import KEY, PUBLIC, hub, resolve, sample, stored, written  # noqa: F401

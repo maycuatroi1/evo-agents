@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.accounts.models.oauth import OAuthTokens
-from evo_agents.hub.server.sealing import Sealed, Sealer
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer
 
 
 def oauth_aad(secret_id: int) -> bytes:

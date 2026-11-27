@@ -6,7 +6,7 @@ The agent asks it with ``evo-agents worker ask --category credential --env-var N
 gives it the options of ``options``, never the agent's own. The owner answers with an option, and for the variable with
 its value, which the command line reads from stdin or asks for without echo (``evo-agents hub decision answer ID
 --secret``) and the web takes in a password field: the hub keeps it as the owner's secret of kind env for the run's
-project (``evo_agents.hub.server.credential_answers``), and the decision, its answer, the run's inbox, events, logs and
+project (``evo_agents.hub.server.credentials.service.answers``), and the decision, its answer, the run's inbox, events, logs and
 audit never hold it. The worker takes the run's leases again once the answer reaches the run, so its agent reads the
 value with ``evo-agents worker env --run N``; a parked run is leased it when it resumes.
 
@@ -28,7 +28,7 @@ BOTH = "both"
 REFUSE = "refuse"
 KEYS = (BOTH, VALUE, AS_ME, REFUSE)
 # The option the hub adds when the owner holds a secret of kind env for the variable already (plan
-# hub-attention-runtime, a2; ``evo_agents.hub.server.credential_resolver``): the hub chose it when it answered the
+# hub-attention-runtime, a2; ``evo_agents.hub.server.credentials.service.resolver``): the hub chose it when it answered the
 # request itself, and the owner chooses it to bind that secret to the run's project and lease it, nothing pasted.
 FOUND = "found"
 NOTED = "credential"  # the key `worker ask` sets in the run's file of decisions for a request, for the daemon

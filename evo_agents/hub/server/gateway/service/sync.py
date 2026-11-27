@@ -34,6 +34,7 @@ from evo_agents.hub import model_catalog
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.log import register_secret
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, agent_provider_aad, secret_aad
 from evo_agents.hub.server.gateway.client.omniroute import (
     Connection,
     GatewayClient,
@@ -44,7 +45,6 @@ from evo_agents.hub.server.gateway.client.omniroute import (
 )
 from evo_agents.hub.server.gateway.models.sync import DEBOUNCE, INTERVAL, NAME, QUOTA_INTERVAL, Wanted
 from evo_agents.hub.server.gateway.repository import sync as repo
-from evo_agents.hub.server.sealing import Sealed, Sealer, agent_provider_aad, secret_aad
 
 log = logging.getLogger(__name__)
 

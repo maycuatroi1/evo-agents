@@ -33,8 +33,8 @@ from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.credentials import GITHUB_TOKEN_REFRESH_SECONDS, Lease
 from evo_agents.hub.server import run_reaper
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.credentials import GITHUB_GIT_USERNAME
-from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
+from evo_agents.hub.server.credentials.models.leases import GITHUB_GIT_USERNAME
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES, Sealed, Sealer, lease_aad
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql, table_dump

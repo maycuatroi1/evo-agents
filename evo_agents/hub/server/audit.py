@@ -188,7 +188,7 @@ SECRET_BIND = "secret.bind"
 # /v1/secrets/{name}): "secret:<id> workers=<names>", "secret:<id> pools=<names>" or "secret:<id> anywhere".
 SECRET_REBIND = "secret.rebind"
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
-# A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
+# A share of a secret or an account (evo_agents.hub.server.credentials.service.shares), in no project; the target names the share
 # and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
 # slug>] projects=<names> level=<level> budget_usd=<n> usage_ceiling_pct=<n> max_running=<n> expires=<when>", each limit
 # that is set. share.terms_ack follows share.create for a subscription token: "share:<id> secret:<id> warning=<the

@@ -38,7 +38,7 @@ from evo_agents.hub.cli.extensions import (
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import core_plugin_api as hub
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub.conftest import github, hub_db, hub_template, pg_server  # noqa: F401 (fixtures)

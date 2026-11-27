@@ -65,16 +65,9 @@ from evo_agents.hub.server.accounts.service.providers import (
 from evo_agents.hub.server.accounts.service.quota import refresh_for
 from evo_agents.hub.server.accounts.service.shapes import ProviderAccountChange, ProviderAccountWrite
 from evo_agents.hub.server.base.errors import Conflict, NotFound, Unprocessable
-from evo_agents.hub.server.sealing import Sealed, Sealer, secret_aad
-from evo_agents.hub.server.secrets import (
-    bind_secret,
-    live_secrets,
-    own_workers,
-    retire_secret,
-    sealer_of,
-    unique_names,
-    writable_projects,
-)
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, secret_aad
+from evo_agents.hub.server.credentials.repository.secrets import bind_secret, live_secrets, retire_secret
+from evo_agents.hub.server.credentials.service.secrets import own_workers, sealer_of, unique_names, writable_projects
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.share_views import shares_of
 

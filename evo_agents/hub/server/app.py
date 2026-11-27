@@ -12,7 +12,7 @@ for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
 (``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser.service.view``),
 which check their own credential. ``app.state.sealer`` seals the members' secrets
-(``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
+(``evo_agents.hub.server.credentials.models.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
 503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin
 that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugins.service.store``). The routes of
 plugins are included when the app is made (``evo_agents.hub.server.plugins.service.extension``): the core plugins' own, Telegram's
@@ -184,7 +184,7 @@ def create_app(config: HubConfig) -> FastAPI:
 
     _include_websockets(app)
     _include_member_routes(app)
-    from evo_agents.hub.server.sealing import Sealer
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
 
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
     # The release plugins are checked against (a test starts a hub of another one), the checker of the Sigstore
@@ -605,12 +605,9 @@ def _include_curator_routes(app: FastAPI) -> None:
 def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
         claude_sign_in,
-        credential_shares,
-        credentials,
         rate_limits,
         run_leases,
         run_waits,
-        secrets,
         task_dispatch,
         work_cards,
     )
@@ -642,6 +639,9 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import members as chat_members
     from evo_agents.hub.server.chats.routes import people as chat_people
     from evo_agents.hub.server.chats.routes import read as chat_read
+    from evo_agents.hub.server.credentials.routes import leases as credential_leases
+    from evo_agents.hub.server.credentials.routes import secrets as secret_routes
+    from evo_agents.hub.server.credentials.routes import shares as credential_shares
     from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
     from evo_agents.hub.server.ops import routes as ops_routes
@@ -660,10 +660,10 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.triage import routes as triage_routes
 
     for routes in (
-        secrets.router,
+        secret_routes.router,
         credential_shares.router,  # the shares of secrets and accounts
         run_leases.router,
-        credentials.worker_router,
+        credential_leases.worker_router,
         claude_sign_in.router,  # before accounts.router: /v1/accounts/claude-sign-in is no account's name
         accounts.router,
         account_views.router,

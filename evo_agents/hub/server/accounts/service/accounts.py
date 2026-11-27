@@ -1,7 +1,7 @@
 """A member's accounts and their policies: GET and PATCH under /v1/accounts, GET, PUT and DELETE under
 /v1/account-policies (``docs/credentials.md``, section "Accounts"; ``evo_agents.hub.accounts`` holds the rules).
 
-An account is one of the caller's env secrets (``evo_agents.hub.server.secrets``) seen as one a run may take among
+An account is one of the caller's env secrets (``evo_agents.hub.server.credentials.service.secrets``) seen as one a run may take among
 several for the same variable. GET /v1/accounts lists the caller's own, live: name, variable, bindings, weight,
 priority, when it was paused, until when it cools down and why, when a run last took it, its end, its state
 (``accounts.ACCOUNT_STATES``) and its figures (``views``: its last usage, its runs and their cost over 24
@@ -59,8 +59,8 @@ from evo_agents.hub.server.accounts.repository import accounts as repository
 from evo_agents.hub.server.accounts.repository.choice import end_cooldown
 from evo_agents.hub.server.accounts.service.views import account_figures, figured
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
+from evo_agents.hub.server.credentials.service.secrets import audit_target
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.secrets import audit_target
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.share_leases import grantee_clause, live_share
 from evo_agents.hub.server.share_views import CredentialShare, shares_of

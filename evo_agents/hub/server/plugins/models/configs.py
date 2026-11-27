@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from evo_agents.hub.server.sealing import plugin_config_aad
+from evo_agents.hub.server.credentials.models.sealing import plugin_config_aad
 from evo_agents.plugins import config as plugin_config
 
 MAX_FIELDS = 200  # fields one write sets or unsets

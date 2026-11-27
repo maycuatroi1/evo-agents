@@ -7,6 +7,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.blobs import BlobStore
+from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.plugins.models.host import (
     BACKEND_STATES,
     ISOLATIONS,
@@ -19,7 +20,6 @@ from evo_agents.hub.server.plugins.repository import host as repository
 from evo_agents.hub.server.plugins.repository import store as store_rows
 from evo_agents.hub.server.plugins.service.store import fetch_bundle, not_found
 from evo_agents.hub.server.plugins.service.tokens import backend_payload, issue_token
-from evo_agents.hub.server.sealing import Sealer
 from evo_agents.plugins.manifest import read_manifest
 
 

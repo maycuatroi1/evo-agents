@@ -41,11 +41,11 @@ from evo_agents.hub.server.core_plugin_api.service.handles import (
     own_session,
     session_principal,
 )
+from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.notifications.repository.channels import rules_of
 from evo_agents.hub.server.notifications.service.member_channels import kept_from
 from evo_agents.hub.server.plugins.service.extension import not_enabled
 from evo_agents.hub.server.plugins.service.tokens import layer_config
-from evo_agents.hub.server.sealing import Sealer
 
 NOT_INSTALLED = "plugin {plugin} is not installed on this hub, or a hub admin turned it off"
 AUDIT_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}")  # what follows the family of a plugin's audit action
