@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs, runs, spend_store, tables
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import system_traces
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import ActiveRun, PlanTrace, ReadySteps, Run, SteadyWait, StepReadiness
 from evo_agents.hub.server.runs.models.spend import run_spend_view
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 STEADY = timedelta(seconds=runs.STEADY_SECONDS)
 STEADY_GAP = timedelta(seconds=runs.STEADY_GAP_SECONDS)

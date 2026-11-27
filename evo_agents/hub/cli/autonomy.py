@@ -36,7 +36,7 @@ from evo_agents.hub.cli.base import HubCommand, HubContext, HubRoutes, call_obje
 from evo_agents.hub.contract import returns_object
 from evo_agents.hub.credentials import RUN_REACH_GROUPS
 
-# The keys of the hub's answers these commands print with --json (``evo_agents.hub.server.autonomy_models`` and
+# The keys of the hub's answers these commands print with --json (``evo_agents.hub.server.autonomy.models.levels`` and
 # ``.org_models``).
 SHOW_KEYS = ("principal", "project", "agent", "level", "classes", "environments", "workers")
 PREF_KEYS = ("login", "revision", "level", "previous", "classes")

@@ -22,15 +22,14 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import (
-    agent_placement,
     audit,
-    autonomy_hold,
     project_archive,
     run_access,
     run_access_rules,
-    run_autonomy,
-    worker_placement,
 )
+from evo_agents.hub.server.agents.service import placement as agent_placement
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.plugin_configs import check_run_layer
@@ -56,6 +55,7 @@ from evo_agents.hub.server.runs.service.views import (
 )
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 from evo_agents.plugins.runtimes import is_plugin_runtime
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split

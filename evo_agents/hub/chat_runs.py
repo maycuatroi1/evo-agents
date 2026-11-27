@@ -271,7 +271,7 @@ def hop_problem(hop: int, own: bool) -> str | None:
 
 def delegation_rule(login: str, hop: int) -> str:
     """The rule of a chat run's prompt on asking an agent of another project (``ASK_COMMAND``): when to, its limits,
-    and that the run parks until the answer comes (``server.agent_asks``)."""
+    and that the run parks until the answer comes (``server.agents.service.asks``)."""
     return (
         f"- Another project's agents: `{ASK_COMMAND} HANDLE TEXT` asks agent @HANDLE, of another project, for work or "
         "knowledge of its project that this run cannot reach: its code, its repos, its knowledge graph. Its run works "
@@ -285,7 +285,7 @@ def delegation_rule(login: str, hop: int) -> str:
 
 
 def reading_rule(login: str) -> str:
-    """The rule of a chat run's prompt on reading another project (``READ_COMMAND``, ``server.agent_reads``): how,
+    """The rule of a chat run's prompt on reading another project (``READ_COMMAND``, ``server.agents.service.reads``): how,
     within what, and when it beats asking that project's agent."""
     return (
         f"- Another project's knowledge: `{READ_COMMAND} PROJECT kg-search TEXT` (also kg-context TEXT or --id ID, "

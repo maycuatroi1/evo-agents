@@ -24,8 +24,9 @@ from evo_agents.clikit import UsageError
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import tables
 from evo_agents.hub.cli.autonomy import reach_groups
-from evo_agents.hub.server import autonomy_store, run_access, run_access_rules
-from evo_agents.hub.server.autonomy_models import RunReachSet
+from evo_agents.hub.server import run_access, run_access_rules
+from evo_agents.hub.server.autonomy.models.levels import RunReachSet
+from evo_agents.hub.server.autonomy.service import levels as autonomy_store
 from evo_agents.hub.server.run_access_rules import REACH_GROUPS, refusal
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.contract_keys import assert_json_keys

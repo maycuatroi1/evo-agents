@@ -1007,7 +1007,7 @@ thread says when the first is ready again). A run running or verifying with no e
 still heartbeats, and one the reaper failed on its last attempt (`lease_lost`), open a thread too, with the diagnosis:
 the last event, the worker, the lease and the attempt (`docs/hub.md`, "Runs that stop moving"). The agent reads
 the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
-`evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
+`evo_agents.hub.server.triage.service.actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
 
 A run a worker fails at its preflight for a program it does not have opens no thread while another worker can take it:

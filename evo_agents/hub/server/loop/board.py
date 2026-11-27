@@ -16,7 +16,7 @@ from collections import Counter
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.loop import board_chain, board_gates
 from evo_agents.hub.server.loop.board_items import GROUPS, DecisionBoard, Reading, ordered, people, sink_of
 from evo_agents.hub.server.loop.view import loop_zone

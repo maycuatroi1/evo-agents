@@ -1,4 +1,4 @@
-"""Browser identities on the hub (``evo_agents.hub.server.browser_identities`` and ``browser_profiles``), criterion a2
+"""Browser identities on the hub (``evo_agents.hub.server.browser.service.identities`` and ``browser_profiles``), criterion a2
 of the plan agent-browser. A member creates, lists and deletes their own identity with the writer role, and no other
 member sees it; the project's identity is an admin's to create and delete, and every member sees it; its worker is the
 caller's own or a shared one that serves the project; names are unique per owner; a delete is refused while a run
@@ -24,9 +24,10 @@ from sqlalchemy import delete, func, select, update
 
 from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import KIND_LIMITS, blob_key
-from evo_agents.hub.server import browser_profiles as profiles
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.browser_identities import BrowserIdentity
+from evo_agents.hub.server.browser.models import profiles as profile_models
+from evo_agents.hub.server.browser.models.identities import BrowserIdentity
+from evo_agents.hub.server.browser.service import profiles as profiles
 from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, Unsealable, browser_identity_aad
 from tests.hub import test_secrets_cli as secrets_cli
 from tests.hub.contract_keys import assert_json_keys
@@ -43,7 +44,7 @@ KEY = secrets.token_bytes(KEY_BYTES)
 PATH = f"/v1/projects/{PROJECT}/browser-identities"
 CHROMIUM = "Chromium 139.0.7258.5"
 # What no answer may carry: the blobs' hashes and the sealed data keys.
-HIDDEN = {f"{prefix}{name}" for prefix in ("", "previous_") for name in profiles.VERSION_COLUMNS} - {"size"}
+HIDDEN = {f"{prefix}{name}" for prefix in ("", "previous_") for name in profile_models.VERSION_COLUMNS} - {"size"}
 
 if pg.DSN:
     app_key, cli_hub = secrets_cli.app_key, secrets_cli.hub
@@ -149,7 +150,7 @@ def versions(db, identity_id: int) -> tuple:
 def pending(db) -> set[str]:
     """The browser profiles recorded for deletion and not deleted yet."""
     d = tables.blob_deletions
-    query = select(d.c.sha256).where(d.c.kind == profiles.KIND, d.c.deleted_at.is_(None))
+    query = select(d.c.sha256).where(d.c.kind == profile_models.KIND, d.c.deleted_at.is_(None))
     return {row[0] for row in sql(db, query)}
 
 
@@ -378,7 +379,7 @@ def test_browser_profile_opens_only_as_the_identity_and_version_it_was_sealed_fo
     archive = marker().encode()
     save(stored, first["id"], 0, archive)
     b = tables.browser_identities
-    version_columns = [b.c[name] for name in profiles.VERSION_COLUMNS]
+    version_columns = [b.c[name] for name in profile_models.VERSION_COLUMNS]
     sha256, _, sealed_key, key_nonce, key_id = sql(stored.db, select(*version_columns).where(b.c.id == first["id"]))[0]
     key = Sealed(bytes(sealed_key), bytes(key_nonce), key_id)
     blob = stored.s3.get(blob_key(sha256))
@@ -398,7 +399,7 @@ def test_browser_profile_opens_only_as_the_identity_and_version_it_was_sealed_fo
         profiles.open_profile_blob(Sealer(secrets.token_bytes(KEY_BYTES)), first["id"], 1, blob, key)
 
     # the version of one identity copied onto another does not open there
-    copied = dict(zip(profiles.VERSION_COLUMNS, (sha256, len(blob), sealed_key, key_nonce, key_id), strict=True))
+    copied = dict(zip(profile_models.VERSION_COLUMNS, (sha256, len(blob), sealed_key, key_nonce, key_id), strict=True))
     sql(stored.db, update(b).values(version=1, **copied).where(b.c.id == second["id"]))
     with pytest.raises(Unsealable):
         opened(stored, second["id"])
@@ -410,14 +411,14 @@ def test_browser_profile_save_that_loses_keeps_the_version_there_and_records_its
     assert save(stored, identity["id"], 0, b"first") == 1
     current = versions(stored.db, identity["id"])
 
-    with pytest.raises(profiles.ProfileConflict, match="at version 1 now, not 0"):
+    with pytest.raises(profile_models.ProfileConflict, match="at version 1 now, not 0"):
         save(stored, identity["id"], 0, b"late")
     assert versions(stored.db, identity["id"]) == current
     (lost,) = pending(stored.db)
     assert lost != current[1] and stored.s3.get(blob_key(lost)) is not None
 
     run_id = held(stored.db, identity["id"], stored.box["id"])
-    with pytest.raises(profiles.ProfileConflict, match=f"run {run_id + 1} does not hold"):
+    with pytest.raises(profile_models.ProfileConflict, match=f"run {run_id + 1} does not hold"):
         save(stored, identity["id"], 1, b"elsewhere", run_id=run_id + 1)
     assert save(stored, identity["id"], 1, b"second", run_id=run_id) == 2
     assert opened(stored, identity["id"]) == (2, b"second")
@@ -428,11 +429,11 @@ def test_browser_profile_save_that_loses_keeps_the_version_there_and_records_its
 
 def test_browser_profile_has_a_limit_so_its_sealed_blob_stays_within_its_kind():
     sealer = Sealer(KEY)
-    assert profiles.MAX_ARCHIVE_BYTES == KIND_LIMITS["browser-profile"] - profiles.OVERHEAD
-    largest = profiles.seal_profile(sealer, 7, 1, bytes(profiles.MAX_ARCHIVE_BYTES))
+    assert profile_models.MAX_ARCHIVE_BYTES == KIND_LIMITS["browser-profile"] - profile_models.OVERHEAD
+    largest = profiles.seal_profile(sealer, 7, 1, bytes(profile_models.MAX_ARCHIVE_BYTES))
     assert largest.size == len(largest.blob) == KIND_LIMITS["browser-profile"]
-    with pytest.raises(profiles.ProfileTooLarge):
-        profiles.seal_profile(sealer, 7, 1, bytes(profiles.MAX_ARCHIVE_BYTES + 1))
+    with pytest.raises(profile_models.ProfileTooLarge):
+        profiles.seal_profile(sealer, 7, 1, bytes(profile_models.MAX_ARCHIVE_BYTES + 1))
     one, other = (profiles.seal_profile(sealer, 7, 1, b"same archive") for _ in range(2))
     assert one.sha256 != other.sha256 and one.key.ciphertext != other.key.ciphertext  # a fresh data key each time
 
@@ -445,14 +446,14 @@ def test_browser_identity_delete_drops_its_keys_and_records_both_profiles_for_de
     assert remove(stored.client, stored.headers["owner"], identity["id"]).status_code == 204
 
     b = tables.browser_identities
-    columns = [b.c[f"{prefix}{name}"] for prefix in ("", "previous_") for name in profiles.VERSION_COLUMNS]
+    columns = [b.c[f"{prefix}{name}"] for prefix in ("", "previous_") for name in profile_models.VERSION_COLUMNS]
     (row,) = sql(stored.db, select(*columns, b.c.deleted_at).where(b.c.id == identity["id"]))
     assert set(row[:-1]) == {None} and row[-1] is not None
     assert pending(stored.db) == {sha256, previous}
     assert collect(stored).objects == 2
     assert stored.s3.get(blob_key(sha256)) is None and stored.s3.get(blob_key(previous)) is None
     assert opened(stored, identity["id"]) is None
-    with pytest.raises(profiles.ProfileConflict, match="is deleted"):
+    with pytest.raises(profile_models.ProfileConflict, match="is deleted"):
         save(stored, identity["id"], 2, b"third")
 
 

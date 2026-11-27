@@ -1,6 +1,6 @@
 """A run whose worker lacks a program (``evo_agents.hub.server.runs.service.reroute``): it goes to the next worker with
 no failure and no thread, and when none is left its triage agent stands on a worker it was tried on, installs the
-program there and runs it again (``triage._install_worker``, ``triage_actions``), on its agent's pool: nobody picks
+program there and runs it again (``triage.service.facts.install_worker``, ``triage.service.actions``), on its agent's pool: nobody picks
 the machine of the rerun (plan agent-dedicated-pools)."""
 
 from __future__ import annotations

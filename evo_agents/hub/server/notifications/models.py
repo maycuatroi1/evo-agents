@@ -15,7 +15,7 @@ from fastapi import Path
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import review, runs
-from evo_agents.hub.server.ops_views import OpsHolding
+from evo_agents.hub.server.ops.models.views import OpsHolding
 from evo_agents.hub.server.outputs.models import RunOutput
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME
 from evo_agents.plugins.manifest import CHANNEL_KIND

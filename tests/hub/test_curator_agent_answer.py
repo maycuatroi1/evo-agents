@@ -33,7 +33,7 @@ if not pg.DSN:
 from sqlalchemy import func, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import autonomy_gates
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.collect import reopen_deferred
 from evo_agents.hub.server.curator.models.threads import SKILL
 from evo_agents.worker.cli.base import AgentRunContext

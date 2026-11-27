@@ -5,7 +5,7 @@ doctor`` (``doctor.examine``, the same as ``worker doctor --json``) on its machi
 to ``POST /v1/worker/doctor``: for each, the code, the severity and the detail the doctor prints, the detail redacted
 (``evo_agents.hub.redact``, the worker's token among the values) so a credential never leaves the machine. Neither the
 subject, the fix, the admins nor the PATH goes. The hub keeps the newest report; a worker narrowed to units of the org
-chart takes their members' runs only while it has no high finding (``evo_agents.hub.server.worker_doctor``).
+chart takes their members' runs only while it has no high finding (``evo_agents.hub.server.workers.service.doctor``).
 
 A hub of an older release answers 404: the daemon logs it once at info and tries again at the next turn. Any other
 failure is a warning, and the loop goes on.

@@ -595,7 +595,7 @@ run_events = Table(
 )
 
 decisions, run_inbox = tables_decisions.decision_tables(metadata)  # decisions and the inbox of runs (0010, 0014)
-# A chat run another agent's run asked for (0214, ``server.agent_asks``): that run, and the wait it parks on, which
+# A chat run another agent's run asked for (0214, ``server.agents.service.asks``): that run, and the wait it parks on, which
 # the end of this run answers. decisions.run_id points at runs, so the second key is made apart from the tables.
 runs.append_column(Column("spawned_by_run_id", BigInteger))
 runs.append_column(Column("spawned_wait_id", BigInteger))

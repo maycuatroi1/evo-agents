@@ -14,7 +14,7 @@ approves or rejects it, applied as the setting's next version, failed with why, 
 
 autonomy_policies holds every revision of each project's autonomy policy (``evo_agents.hub.autonomy``), never
 changed: the project, the revision (1 and up), the keys it sets (an object), the writer's note, who wrote it and
-when. A project's policy is its highest revision (``evo_agents.hub.server.autonomy_policies``).
+when. A project's policy is its highest revision (``evo_agents.hub.server.autonomy.service.policies``).
 """
 
 from __future__ import annotations

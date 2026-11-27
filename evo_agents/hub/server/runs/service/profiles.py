@@ -40,7 +40,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import gateway_accounts, pool_accounts, run_autonomy
+from evo_agents.hub.server import gateway_accounts, pool_accounts
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available

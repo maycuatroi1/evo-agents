@@ -22,14 +22,14 @@ autonomy_prefs (0112) holds every revision of a person's own autonomy preference
 revision (1 and up), the level and the class overrides. A person without a row prefers A5.
 
 Revision 0113 gives runs ``principal_id``, the person a run acts for, and ``autonomy``, the snapshot of their effective
-autonomy taken when the run was queued (``evo_agents.hub.server.run_autonomy``); ``org_tables`` adds both to the runs
+autonomy taken when the run was queued (``evo_agents.hub.server.autonomy.service.runs``); ``org_tables`` adds both to the runs
 table it is given, so that ``evo_agents.hub.tables`` describes runs whole.
 
 autonomy_stops (0116) holds every stop of autonomy S4, never deleted: the scope (login, unit or all), the person or the
 unit it names, the reason, who stopped and when, who lifted it and when (NULL while it holds).
 
 worker_shares (0107, ``tables.worker_shares``) holds the units a shared worker is narrowed to: the worker, the unit, who
-added the row and when (``evo_agents.hub.server.worker_shares``).
+added the row and when (``evo_agents.hub.server.workers.service.shares``).
 """
 
 from __future__ import annotations

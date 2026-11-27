@@ -195,7 +195,7 @@ pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https
 
 ## Which leases a run gets
 
-K7 of the run's principal narrows what follows (`docs/autonomy.md`, `server/lease_autonomy.py`): under
+K7 of the run's principal narrows what follows (`docs/autonomy.md`, `server/autonomy/service/lease.py`): under
 `auto:run_branch`, `auto:test_secrets` or deny a run gets a GitHub token that writes only for a repo whose ruleset keeps
 the App off its default branch, a token that reads for that repo alone elsewhere, a git secret only for an origin whose
 default branch on GitLab no one may push to, and no env secret but its runtime's (and those labelled test under
@@ -1095,7 +1095,7 @@ change holds from the next request of every run of the member, running or not. W
 accounts and provider accounts stay in the group secrets, the terminal, the live view, takeover and handback of a run
 and the worker protocol stay refused, and so do secrets, tokens, run access, grants, the rest of the owner's autonomy
 and decisions. The routes inside a group still check their own rules: the K12 class of the run's autonomy holds a
-write of an agent profile (`route_autonomy`), and the routes of workers and pools keep their own checks of who may
+write of an agent profile (`autonomy.service.guards`), and the routes of workers and pools keep their own checks of who may
 call them.
 
 Behind the groups, every rule of the form "the agent of a run never does X" takes the run's token as it takes the agent
@@ -1103,7 +1103,7 @@ of a run on `/mcp` (`Principal.acts_for_run`): it writes no goal, opportunity or
 or returns no SRS version, decides no item of a canvas baseline, claims no post of a marketing channel's browser
 session, whose answer carries the session's cookies (`session_run` of the core plugin API), reads no probe's verify,
 uses no invite's right to register a project, and the K8 and K12 classes of its run's autonomy hold its writes
-(`route_autonomy`). And no run starts while a request of its token is answered (`run_access_rules.ACTING_RUN`), whatever
+(`autonomy.service.guards`). And no run starts while a request of its token is answered (`run_access_rules.ACTING_RUN`), whatever
 route it took, unless the owner's run reach holds `runs`: a message it posts in a chat stays, and its mention of an agent is refused in the thread, with no run
 and nothing in a run's inbox; a core plugin's task is not handed. The rerun the agent of a triage thread makes never
 runs as the owner, whatever the failed run did. A stream of a run's log or of a chat the token opened looks at each

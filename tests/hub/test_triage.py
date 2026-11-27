@@ -29,8 +29,9 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import triage
 from evo_agents.hub.server.run_state import run_step, write_event
+from evo_agents.hub.server.triage.models.threads import STALE_CAUSE, STALE_MINUTES
+from evo_agents.hub.server.triage.service import threads as triage
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker, thread
 from tests.hub.test_runs import (  # noqa: F401
@@ -291,7 +292,7 @@ def test_the_candidates_of_a_run_whose_cause_the_hub_guessed_say_so(client, hub,
 
 
 # A run that stops moving (plan hub-attention-runtime, a5): one running or verifying with no event for
-# triage.STALE_MINUTES while its worker heartbeats, and one the reaper fails on its last attempt, open a thread with
+# STALE_MINUTES while its worker heartbeats, and one the reaper fails on its last attempt, open a thread with
 # the diagnosis, once a run.
 
 
@@ -327,15 +328,15 @@ def reaper_pass(client) -> dict:
 def test_a_stale_run_whose_worker_heartbeats_opens_one_thread_with_the_diagnosis(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
-    quiet_for(hub_db, run_id, triage.STALE_MINUTES - 5)
+    quiet_for(hub_db, run_id, STALE_MINUTES - 5)
     assert stale_pass(client) == 0 and row_of(hub_db, run_id) == []  # not quiet long enough yet
-    quiet_for(hub_db, run_id, triage.STALE_MINUTES + 5)
+    quiet_for(hub_db, run_id, STALE_MINUTES + 5)
     reaper_pass(client)  # the reaper's pass opens it
     ((chat_id, root_id, cause, inferred, agent_run),) = row_of(hub_db, run_id)
-    assert (cause, inferred) == (triage.STALE_CAUSE, False) and agent_run is not None
+    assert (cause, inferred) == (STALE_CAUSE, False) and agent_run is not None
     body = root_of(client, hub, chat_id, root_id)["body"]
     for line in (
-        f"Run #{run_id} of step 2 of {PLAN} has written no event for {triage.STALE_MINUTES} minutes while its "
+        f"Run #{run_id} of step 2 of {PLAN} has written no event for {STALE_MINUTES} minutes while its "
         "worker still sends heartbeats.",
         "Cause: stale (seen by the hub; the run still holds its worker).",
         "Last event: #",
@@ -358,7 +359,7 @@ def test_a_stale_run_whose_worker_heartbeats_opens_one_thread_with_the_diagnosis
 def test_a_stale_run_on_a_worker_that_sends_no_heartbeat_or_waiting_opens_no_thread(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
-    quiet_for(hub_db, run_id, triage.STALE_MINUTES + 5)
+    quiet_for(hub_db, run_id, STALE_MINUTES + 5)
     w, r = tables.workers, tables.runs
     gone = func.now() - timedelta(seconds=600)
     sql(hub_db, update(w).where(w.c.id == worker["id"]).values(last_heartbeat_at=gone))
@@ -371,7 +372,7 @@ def test_a_stale_run_on_a_worker_that_sends_no_heartbeat_or_waiting_opens_no_thr
 def test_a_stale_run_of_a_project_with_triage_off_opens_no_thread(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     run_id = running_step(client, hub, worker)
-    quiet_for(hub_db, run_id, triage.STALE_MINUTES + 5)
+    quiet_for(hub_db, run_id, STALE_MINUTES + 5)
     p = tables.projects
     sql(hub_db, update(p).where(p.c.name == PROJECT).values(triage_enabled=False))
     assert stale_pass(client) == 0 and count(hub_db, tables.run_triage) == 0

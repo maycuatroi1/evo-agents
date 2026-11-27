@@ -11,7 +11,7 @@ any.
 version counts the profiles saved, 0 before the first. The current one is the sealed blob sha256 (size bytes, kind
 browser-profile) with its data key sealed under EVO_HUB_SECRETS_KEY (sealed_key, key_nonce, key_id), and the
 Chromium that wrote it; the one before it, version - 1, is the previous_* columns, and older ones leave the bucket
-(``evo_agents.hub.server.browser_profiles``). An identity deleted keeps its row, without its keys or blobs.
+(``evo_agents.hub.server.browser.service.profiles``). An identity deleted keeps its row, without its keys or blobs.
 """
 
 from __future__ import annotations

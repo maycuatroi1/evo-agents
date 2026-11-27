@@ -22,7 +22,8 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import org
-from evo_agents.hub.server import org_expiry, org_writes, overview, route_autonomy
+from evo_agents.hub.server import org_expiry, org_writes, overview
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.credentials import revoker
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.org_models import (

@@ -1,5 +1,5 @@
 """Agent systems of a project (``docs/hub.md``, Agent systems; plan multi-agent-systems, criterion a3):
-``evo_agents.hub.system_spec``, the routes of ``evo_agents.hub.server.agent_systems``, ``evo-agents hub system`` and a
+``evo_agents.hub.system_spec``, the routes of ``evo_agents.hub.server.systems``, ``evo-agents hub system`` and a
 profile's ``runs_on``.
 
 Checked here without a database: the spec takes the five node kinds and five edge kinds, refuses an edge whose ends do
@@ -415,8 +415,9 @@ def test_the_api_shows_the_latest_version_next_to_the_pinned_one(client, hub):
 
 @needs_pg
 def test_a_profile_is_the_entry_agent_of_one_system_and_its_chat_runs_take_the_pinned_version(client, hub):
-    from evo_agents.hub.server import profile_store, system_store
+    from evo_agents.hub.server import profile_store
     from evo_agents.hub.server.chats.service import runs as chat_runs
+    from evo_agents.hub.server.systems.repository import store as system_store
 
     assert client.put(systems_path(hub, "support"), json={"spec": SPEC}, headers=hub["owner"]).status_code == 200
     other = client.put(systems_path(hub, "second"), json={"spec": SPEC}, headers=hub["owner"])

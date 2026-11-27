@@ -101,7 +101,7 @@ A run at A5, or one without a snapshot, is claimed as before. `GET /v1/projects/
 The hub holds five classes where it acts for a run, each read for the run's principal as the stricter of the snapshot
 and the value now. A run without a snapshot, and a principal at A5, act as before.
 
-**K7 at the lease** (`evo_agents/hub/server/lease_autonomy.py`). The credentials a run is leased follow K7; the
+**K7 at the lease** (`evo_agents/hub/server/autonomy/service/lease.py`). The credentials a run is leased follow K7; the
 runtime's own sign-in (an env secret of a model provider) is no part of it, so every run that runs gets it.
 
 | K7 | GitHub token | git secret | env secrets |
@@ -117,7 +117,7 @@ audit row: the hub cannot give a token that writes to a run branch alone there. 
 `autonomy.refused` naming the class, the mode, the source and what it kept back. `hub secret set --environment test`
 labels an env secret (schema 0114 adds `secrets.environment`).
 
-**K5 at the merge** (`evo_agents/hub/server/autonomy_gates.py`): the GitLab merge queue (`merge_gate.ready`), the
+**K5 at the merge** (`evo_agents/hub/server/autonomy/service/gates.py`): the GitLab merge queue (`merge_gate.ready`), the
 Curator's tier merge (`changes`, the principal of the Builder's run) and the merge the agent of a proposal's thread
 makes of a change the hub left open (`curator.service.threads`, the principal of its chat run). A repo on github.com whose project policy has `merge_check: on` adds a step
 before a run merges its own pull request: the hub's Judges check it at its head, on the head merged with the base, and
@@ -137,7 +137,7 @@ A K5 cell `notify:ask_on_risk_paths` asks when the merge request touches a risk 
 (a repo in mode off, `prod_release` manual: source `policy:...`) is left to the flows that already hold that policy, so
 the gate acts as before. Only the run's principal answers a decision of category `autonomy`.
 
-**K8 and K12 at the routes** (`evo_agents/hub/server/route_autonomy.py`). A write with the credential of a run (the
+**K8 and K12 at the routes** (`evo_agents/hub/server/autonomy/service/guards.py`). A write with the credential of a run (the
 agent of a run on `/mcp`) to the routes of secrets and accounts (K8) or of grants, project and autonomy policies,
 agent profiles, the org and its ceilings (K12) reads the principal's mode: deny is 403 naming the class, the mode and
 the source; ask is 403 telling the agent to ask its principal; notify and auto leave the route's own rules to decide.
@@ -275,7 +275,7 @@ The floors hold for every principal, at A5 too, and no mode lifts them.
 
 | Floor | What holds |
 |---|---|
-| S1, the ledger | every decision of a gate of the hub writes the audit row `autonomy.decided` with the run, its principal, its agent, the class, the mode and the result (`server/autonomy_ledger.py`); the hook writes its own as run events with the same fields. A run's commits carry the trailers `Evo-Principal: <login>` and `Evo-Agent: <handle>`, and a pull or merge request a run or the hub opens names both, never a runtime or a model |
+| S1, the ledger | every decision of a gate of the hub writes the audit row `autonomy.decided` with the run, its principal, its agent, the class, the mode and the result (`server/autonomy/service/ledger.py`); the hook writes its own as run events with the same fields. A run's commits carry the trailers `Evo-Principal: <login>` and `Evo-Agent: <handle>`, and a pull or merge request a run or the hub opens names both, never a runtime or a model |
 | S2, the backup | a command of K9 runs only after a backup made within 24 hours (`evo-agents worker backup`, above) |
 | S3, no leaked lease | the worker refuses a push whose new commits hold a lease's value, and the hub masks the values of the run's leases in the events, transcripts, outputs and chat messages it stores (`server/run_events.py`, `server/agent_account_mask.py`) |
 | S4, the stop | below |
@@ -288,7 +288,7 @@ a unit or a unit below it, or the whole hub. A person stops their own runs, a le
 below, a hub admin anyone and the hub; the agent of a run never does. The stop cancels every run of those principals
 that has not ended, as `hub run cancel` does (a held run stops at its worker's next heartbeat), takes back their leases,
 and holds every new run of theirs until it is lifted: a dispatch, the Loop, the Curator's night shift and a release get
-403 naming the stop (`server/autonomy_hold.py`). `hub stop ... --lift` lifts it, for the same people. Each writes the
+403 naming the stop (`server/autonomy/service/hold.py`). `hub stop ... --lift` lifts it, for the same people. Each writes the
 audit row `autonomy.stop` or `autonomy.stop.lift` and sends the people stopped the notice `autonomy`. A second stop of
 the same scope while one holds is 409. A local run is only recorded by the hub, which neither cancels nor holds it.
 The web's `/org` page has Stop and Lift buttons, with a confirmation that counts the runs a stop would cancel.

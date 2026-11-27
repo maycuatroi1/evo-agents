@@ -1,4 +1,4 @@
-"""The agent profiles of a project (``evo_agents.hub.server.agent_profiles``), as criterion a2 of the plan
+"""The agent profiles of a project (``evo_agents.hub.server.agents.service.profiles``), as criterion a2 of the plan
 agent-profiles-group-chat names them: an admin of the project creates, edits and soft-deletes a profile (a handle unique
 on the hub and never a project's name, a name, an avatar in the blob store or none, a colour, a description,
 instructions, seven axes each all or an allowlist, all by default, the version raised by every edit); every project

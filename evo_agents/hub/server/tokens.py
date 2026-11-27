@@ -19,9 +19,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import audit, run_access, workers
+from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, CurrentUser, delete_session_cookie, revoke_token
+from evo_agents.hub.server.workers.repository.workers import lock_worker_of_token
+from evo_agents.hub.server.workers.service import workers
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +84,7 @@ async def list_tokens(
 async def revoke(request: Request, user: CurrentUser, token_id: Annotated[int, Path(ge=1, le=MAX_ID)]) -> Response:
     """Revoke one of the caller's tokens; a worker token's worker is revoked with it."""
     async with request.app.state.engine.begin() as conn:
-        worker = await workers.lock_worker_of_token(conn, token_id, user.user_id)  # before the token's row
+        worker = await lock_worker_of_token(conn, token_id, user.user_id)  # before the token's row
         if not await revoke_token(conn, token_id, user.user_id):
             raise HTTPException(404, f"you have no unrevoked token {token_id}: see `evo-agents hub token list`")
         target = audit.token_target(token_id)

@@ -1,5 +1,5 @@
 """Where a run goes, step 2 of the worker-pools plan (criteria a2 and a3, and a9 for what stays as it was), in the
-pools of the agents (plan agent-dedicated-pools): ``evo_agents.hub.server.worker_placement`` and the claim, the rerun
+pools of the agents (plan agent-dedicated-pools): ``evo_agents.hub.server.workers.repository.placement`` and the claim, the rerun
 candidates and the worker views that read it.
 
 a2: a node of a pool is ready only while its newest doctor report is at most 48 hours old and has no high finding its

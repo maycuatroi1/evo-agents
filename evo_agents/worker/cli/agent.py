@@ -1,5 +1,5 @@
 """``evo-agents worker agent ask|forward|read``: the agent of a chat run works with the agents and the knowledge of
-other projects (``evo_agents.hub.server.agent_asks``, ``evo_agents.hub.server.agent_reads``).
+other projects (``evo_agents.hub.server.agents.service.asks``, ``evo_agents.hub.server.agents.service.reads``).
 
 - ``agent ask HANDLE TEXT`` asks agent HANDLE, of another project, for work or knowledge of its project
   (``chat_runs.ASK_COMMAND``; POST /v1/worker/runs/{id}/agent/asks). The hub queues the run of HANDLE for the person at

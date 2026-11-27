@@ -30,7 +30,7 @@ from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import and_, case, func, literal, select, tuple_, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import audit, run_access, workers
+from evo_agents.hub.server import audit, run_access
 from evo_agents.hub.server.admin import (
     LOGIN_NAME,
     PROJECT_NAME,
@@ -42,6 +42,8 @@ from evo_agents.hub.server.admin import (
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import WEB, AdminUser, admin, delete_session_cookie
+from evo_agents.hub.server.workers.repository.workers import lock_worker_of_token
+from evo_agents.hub.server.workers.service import workers
 
 log = logging.getLogger(__name__)
 
@@ -289,7 +291,7 @@ async def revoke_any_token(
 ) -> Response:
     """Revoke a token or web session of any user; a worker token's worker is revoked with it."""
     async with request.app.state.engine.begin() as conn:
-        worker = await workers.lock_worker_of_token(conn, token_id)  # before the token's row
+        worker = await lock_worker_of_token(conn, token_id)  # before the token's row
         tokens, users = tables.tokens, tables.users
         revoked = await conn.execute(
             update(tokens)

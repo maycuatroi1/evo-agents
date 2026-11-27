@@ -65,11 +65,12 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.credentials import PROVIDER_KIND, SECRET_NAME
 from evo_agents.hub.gateway_runs import PICK_PREFIX
-from evo_agents.hub.server import audit, org_store, route_autonomy
+from evo_agents.hub.server import audit, org_store
 from evo_agents.hub.server.account_choice import RELOGIN_REASON, end_cooldown
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures, figured
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.secrets import audit_target, bound_names

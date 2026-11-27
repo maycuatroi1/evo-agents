@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 
 from evo_agents.hub import cache, tables
-from evo_agents.hub.server import audit, ops_views
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.notifications.models import (
     COUNT_TTL,
     NotificationCount,
@@ -21,6 +21,7 @@ from evo_agents.hub.server.notifications.models import (
     ReadResult,
 )
 from evo_agents.hub.server.notifications.repository import listing
+from evo_agents.hub.server.ops.repository import views as ops_views
 from evo_agents.hub.server.outputs.service import views as output_views
 from evo_agents.hub.server.security import Principal
 

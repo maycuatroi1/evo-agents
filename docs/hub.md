@@ -953,7 +953,7 @@ through the latest trace of its chat; a profile in several systems takes the sys
 ### Traces
 
 A person's message that wakes a system's entry agent opens a trace, in any chat, a Home direct chat included
-(`evo_agents/hub/server/system_traces.py`, tables `system_traces`, `system_spans` and `agent_ask_briefs` of migration
+(`evo_agents/hub/server/systems/service/traces.py`, tables `system_traces`, `system_spans` and `agent_ask_briefs` of migration
 0218, `evo_agents/hub/tables_traces.py`). Every run the entry agent's run hands work to, by an ask or a mention, and
 every run those hand on, joins it: the hub follows `runs.spawned_by_run_id` and the run of the message that woke each
 run. A run that goes on in its session (a parked run resumed, an inbox untaken) gets a span of its own marked
@@ -1017,7 +1017,7 @@ window), `usd` (as the budget counts it, spawned runs included) and `withheld`. 
 `GET .../systems/{slug}/metrics/traces?days=N` (1 to 365, 30 by default) reads the traces of the system that started
 in the last N days and the caller may read, at most 2000, the newest first (`truncated` says the window held more,
 `withheld` how many the caller may not read). It changes nothing: the budget, the hops, the loop rule and off_design
-work as before. The code is `evo_agents/hub/server/system_trace_stats.py`, with `system_context.trace_row` and
+work as before. The code is `evo_agents/hub/server/systems/repository/stats.py`, with `system_context.trace_row` and
 `distribution`. Each trace has:
 
 | Field | What |
@@ -1358,7 +1358,7 @@ and follows it to its end; it never merges one.
 ### The Orchestrator
 
 An agent with an `orchestrates` edge from the system's Orchestrator has the Orchestrator for its triage, in place of
-the project's triage chat (`evo_agents/hub/server/orchestrator.py`). The hub opens a thread to the Orchestrator in the
+the project's triage chat (`evo_agents/hub/server/orchestrator/service/threads.py`). The hub opens a thread to the Orchestrator in the
 work chat of the run's trace (Work chats), which it opens when the trace has none, and puts the Orchestrator and the
 person at the origin of the work in it. For a run of no trace, or when the work chat cannot take the Orchestrator, the
 thread is in the system's ops chat, "Ops: SLUG" (`agent_systems.ops_chat_id`, migration 0221), which the hub makes the
@@ -1388,7 +1388,7 @@ runs in a savepoint: a thread that cannot open is logged and undoes nothing.
 
 A thread for a run of kind step, plan or author is a triage thread too (`run_triage`), so the Orchestrator has the
 frame of What a triage agent may do on its own there, whether or not the project has `triage_enabled`. In any thread
-it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure triage):
+it has three more actions (`orchestrator/service/actions.py`; `docs/workers.md`, Failure triage):
 
 - answer: an escalation's wait wakes with the answer; a thread with no wait hands it to the agent it is about.
 - reassign: the work goes to another agent node of the system at the hop of the work, with the escalation's wait.
@@ -1464,7 +1464,7 @@ in a sheet (`?job=<name>`).
 ### Firing
 
 The job `hub.cron_jobs` of the hub's worker runs every minute, one pass at a time, on queue `default`
-(`evo_agents.hub.server.cron_fire`). It takes each job that is not paused, in a project that is not archived, with the
+(`evo_agents.hub.server.cron.service.fire`). It takes each job that is not paused, in a project that is not archived, with the
 job's row locked, so two workers never handle the same job at once:
 
 - It reads the minutes the job was due at since its last scheduled fire, its creation or its last resume, whichever is
@@ -1689,7 +1689,7 @@ reply hands no work and shows no note, as in a group chat.
 
 A mention there of an agent the chat does not have that is in an agent system (the one it is the entry agent of, else
 the first system of its project with it) goes to that system's entry agent instead, and the agent mentioned is not
-woken (`evo_agents/hub/server/direct_systems.py`): the person's message goes to the entry agent in the person's direct
+woken (`evo_agents/hub/server/systems/service/direct.py`): the person's message goes to the entry agent in the person's direct
 chat with it (the message itself when this direct chat is the entry agent's), whose run opens a trace and its work
 chat, and a copy of the message goes on the work chat's main line (Work chats). The mention keeps the entry agent's
 run, and the hub answers in the thread with the work chat's link. A message that names agents in and out of a system

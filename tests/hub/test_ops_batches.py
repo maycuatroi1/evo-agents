@@ -16,7 +16,7 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import hub_events, ops_queue, tables
-from evo_agents.hub.server.ops_queue import ops_pass
+from evo_agents.hub.server.ops.service.queue import ops_pass
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import sql
 from tests.hub.test_runs import OWNER, PROJECT, add_worker, client, hub  # noqa: F401 (fixtures)

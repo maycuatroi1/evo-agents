@@ -3,7 +3,7 @@ runs, what the daemon found of updating itself and what it last did for the grap
 the leases of the runs it holds and answers what to do with each, the worker's settings (its version lock among them),
 where the tag nightly pointed when the hub last read it, the owner's open Update now
 (``evo_agents.hub.server.update_now``, which the heartbeat may end), the owner's open Install browser
-(``evo_agents.hub.server.browser_install``, which the heartbeat may end too), the Chromium a daemon of feature
+(``evo_agents.hub.server.browser.service.install``, which the heartbeat may end too), the Chromium a daemon of feature
 browser starts for a run (``_browser``), for a daemon that runs them the runtimes of the plugins its owner accepted
 (``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph it keeps fresh
 (``kg_duties``); and the move of a run it holds (POST /v1/worker/runs/{id}/state), checked against the transition table
@@ -19,7 +19,8 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import guard, ops_events, proofs, runs, spend_store, tables
-from evo_agents.hub.server import browser_install, token_strategy, update_now, worker_placement
+from evo_agents.hub.server import token_strategy, update_now
+from evo_agents.hub.server.browser.service import install as browser_install
 from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -38,6 +39,7 @@ from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 

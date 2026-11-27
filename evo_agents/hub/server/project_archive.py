@@ -36,8 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, autonomy_hold
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import Project, project_access, project_view
 from evo_agents.hub.server.security import CurrentUser, Principal

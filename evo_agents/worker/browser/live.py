@@ -1,5 +1,5 @@
 """The live view of a run's browser on the worker (plan agent-browser, criterion a5): the broker between the run's
-Chromium and the hub's relay (``evo_agents.hub.server.browser_view``), in the frames ``evo_agents.hub.browser_view``
+Chromium and the hub's relay (``evo_agents.hub.server.browser.service.view``), in the frames ``evo_agents.hub.browser_view``
 describes.
 
 ``BrowserSession.watch`` starts it as soon as the run's Chromium listens, and ``BrowserSession.close`` (or ``save``,

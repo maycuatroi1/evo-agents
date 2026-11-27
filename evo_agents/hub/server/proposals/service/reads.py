@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import review
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, system_curation
+from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.changes.repository.views import change_view
@@ -39,6 +39,7 @@ from evo_agents.hub.server.proposals.service.record import (
 from evo_agents.hub.server.proposals.service.shapes import Proposal
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import curation as system_curation
 
 PROPOSAL = "curator.proposal"  # the owner answered: "<project> proposal:<id> run:<id> answer=<accept|reject|defer>"
 MAX_OFFSET = 100_000

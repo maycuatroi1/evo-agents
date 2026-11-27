@@ -50,7 +50,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, judge, review, runs
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import autonomy_gates, merge_gate, triage
+from evo_agents.hub.server import merge_gate
+from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.changes.models.views import Change
 from evo_agents.hub.server.changes.repository.job import night_paused
@@ -69,6 +70,8 @@ from evo_agents.hub.server.proposals.service.record import planned_tiers_of
 from evo_agents.hub.server.proposals.service.shapes import Proposal
 from evo_agents.hub.server.protection import github_target
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.triage.models.threads import Thread
+from evo_agents.hub.server.triage.service import threads as triage
 
 log = logging.getLogger(__name__)
 
@@ -95,12 +98,12 @@ async def answer_by(conn: AsyncConnection, project_id: int) -> str:
     return "agent" if body.get("answer_by") == "agent" else "owner"
 
 
-async def thread_of(conn: AsyncConnection, proposal_id: int) -> triage.Thread | None:
+async def thread_of(conn: AsyncConnection, proposal_id: int) -> Thread | None:
     """The thread the hub opened for proposal ``proposal_id``, or None."""
     row = await store.thread_row(conn, proposal_id)
     if row is None:
         return None
-    return triage.Thread(row.chat_id, row.root_message_id, chats.chat_link(row.chat_id, row.root_message_id))
+    return Thread(row.chat_id, row.root_message_id, chats.chat_link(row.chat_id, row.root_message_id))
 
 
 def _line(text) -> str:
@@ -161,7 +164,7 @@ def _facts(row, planned: tuple[int, ...], owner: str, *, again: bool) -> list[st
     return lines
 
 
-async def _post(conn: AsyncConnection, row, existing: triage.Thread | None, body: str, *, ask: bool):
+async def _post(conn: AsyncConnection, row, existing: Thread | None, body: str, *, ask: bool):
     """(the thread, the chat run its mention reached) once the hub wrote ``body`` in the proposal's thread, a new one
     when it has none or its thread is no longer in the project's triage chat; the agent mentioned with ``ask``. None
     while the project's triage, or the hub's chats, are off."""
@@ -176,12 +179,12 @@ async def _post(conn: AsyncConnection, row, existing: triage.Thread | None, body
     return asked or await triage.asking_thread(*args, body)
 
 
-async def _keep(conn: AsyncConnection, proposal_id: int, thread: triage.Thread, agent_run: int | None) -> None:
+async def _keep(conn: AsyncConnection, proposal_id: int, thread: Thread, agent_run: int | None) -> None:
     """Keep ``thread`` as the proposal's, with the chat run its latest mention made."""
     await store.keep_thread(conn, proposal_id, thread.chat_id, thread.root_id, agent_run)
 
 
-async def _ask(conn: AsyncConnection, proposal_id: int, *, again: bool) -> triage.Thread | None:
+async def _ask(conn: AsyncConnection, proposal_id: int, *, again: bool) -> Thread | None:
     row = await store.proposal_row(conn, proposal_id)
     if row.state != "open" or await answer_by(conn, row.project_id) != "agent":
         return None
@@ -206,7 +209,7 @@ async def _ask(conn: AsyncConnection, proposal_id: int, *, again: bool) -> triag
     return thread
 
 
-async def on_open(conn: AsyncConnection, proposal_id: int, *, again: bool = False) -> triage.Thread | None:
+async def on_open(conn: AsyncConnection, proposal_id: int, *, again: bool = False) -> Thread | None:
     """The thread of proposal ``proposal_id``, just recorded open or open ``again`` after a defer, with the project's
     agent asked to answer it, when the charter has the agent answer; None otherwise or when it cannot be opened, in a
     savepoint: nothing inside it undoes the proposal."""
@@ -246,7 +249,7 @@ def _left_lines(change, row, *, ask: bool, role: str | None) -> list[str]:
     return lines
 
 
-async def _left(conn: AsyncConnection, change_id: int) -> triage.Thread | None:
+async def _left(conn: AsyncConnection, change_id: int) -> Thread | None:
     change = await store.change_row(conn, change_id)
     if change.state != "open" or change.pr_url is None or change.review_run is None:
         return None
@@ -269,7 +272,7 @@ async def _left(conn: AsyncConnection, change_id: int) -> triage.Thread | None:
     return thread
 
 
-async def on_left_open(conn: AsyncConnection, change_id: int) -> triage.Thread | None:
+async def on_left_open(conn: AsyncConnection, change_id: int) -> Thread | None:
     """The thread of the proposal of change ``change_id``, which the hub just left open for its owner with a pull
     request, told so with the reason and the pull request, and the agent asked to merge it when its Judge passed it;
     None when the charter has its admins answer or nothing is written, in a savepoint: nothing inside it undoes the

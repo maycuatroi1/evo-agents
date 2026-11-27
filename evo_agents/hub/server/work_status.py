@@ -41,7 +41,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, system_context, tables
-from evo_agents.hub.server import system_store, system_trace_stats, system_traces
+from evo_agents.hub.server.systems.repository import stats as system_trace_stats
+from evo_agents.hub.server.systems.repository import store as system_store
+from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_status_models import (
     WorkAsk,
     WorkBrief,

@@ -1,4 +1,4 @@
-"""The autonomy levels (``evo_agents.hub.autonomy_levels``, ``evo_agents.hub.org``, ``evo_agents.hub.server.autonomy_store``
+"""The autonomy levels (``evo_agents.hub.autonomy_levels``, ``evo_agents.hub.org``, ``evo_agents.hub.server.autonomy.service.levels``
 and ``.org_writes``), as criteria a1, a2 and a3 of plan autonomy-levels name them: the catalog of classes, modes and
 levels with every cell of the preset table; schema 0112, a person's preference in revisions and the class overrides,
 environments and workers of a ceiling, without escalation by class, each write audited as an ``autonomy.`` action; the

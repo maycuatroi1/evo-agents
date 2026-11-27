@@ -19,7 +19,8 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import kg_build, loop_jobs, plugin_jobs, tables
 from evo_agents.hub.cli.project import archive_lines
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.server import autonomy_hold, project_archive
+from evo_agents.hub.server import project_archive
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
 from evo_agents.hub.server.curator.repository.shift import due_schedules
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import ADMIN, sql

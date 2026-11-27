@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, runs
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, system_store
+from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.chats.models.messages import ChatMessageIn
@@ -22,6 +22,7 @@ from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher, check_seat, no_plan_run, refuse_curator_plan
 from evo_agents.hub.server.runs.service.views import busy, lock_plan, plan_activity
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.repository import store as system_store
 
 MAX_TITLE_CHARS = 200  # of a step's title in the message
 STEPS_ROOM = chats.MAX_MESSAGE_BYTES - 2048  # the bytes the list of pending steps may take, the rest of the text kept

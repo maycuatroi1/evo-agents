@@ -3,7 +3,7 @@
 
 workers holds each machine a member registered to run plan steps for them: its owner, its token, its name (unique
 among the owner's workers not revoked), what its host and daemon reported, its settings (slots, labels, plugins,
-dispatch_from, version_locked) and when it was drained or revoked (``evo_agents.hub.server.workers``). The columns of
+dispatch_from, version_locked) and when it was drained or revoked (``evo_agents.hub.server.workers.routes.workers``). The columns of
 0048 keep the daemon's own updating: version_locked, its owner's lock on the version its daemon runs (false by
 default); agent_commit, the commit of evo-agents its last heartbeat said it runs; self_update, what that heartbeat said
 of updating itself to the tag nightly; self_update_since, when the hub first got the state self_update holds, in an
@@ -11,14 +11,14 @@ unbroken line of heartbeats that said it. kg_sync (0053) is what its last heartb
 the projects whose night shift it is on duty for (``evo_agents.worker.kg_sync``). The columns of 0065 keep its owner's
 Update now: update_requested_at, when the last one was asked for; update_ended_at, when it ended (NULL while it is
 open, or when none was asked for), update_outcome how (``runs.UPDATE_NOW_OUTCOMES``) and update_reason why, when the
-daemon said. The columns of 0108 keep the newest report of its daemon's doctor (``evo_agents.hub.server.worker_doctor``):
+daemon said. The columns of 0108 keep the newest report of its daemon's doctor (``evo_agents.hub.server.workers.service.doctor``):
 doctor_at, when the hub took it; doctor_high and doctor_medium, its findings of each severity; doctor_findings, the
 findings (code, severity, detail). hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
 that was (``evo_agents.hub.nightly``), absent until the hub first read it. browser (0119) is what its last heartbeat
 said of the Chromium its daemon starts for a run (``evo_agents.worker.browser``), NULL when it said nothing of one.
 The columns of 0146 keep its owner's Install browser as those of 0065 keep Update now: browser_install_requested_at,
 browser_install_ended_at, browser_install_outcome (``runs.BROWSER_INSTALL_OUTCOMES``) and browser_install_reason
-(``evo_agents.hub.server.browser_install``).
+(``evo_agents.hub.server.browser.service.install``).
 worker_projects lists the projects a worker takes runs of; worker_pairings holds the pairing codes a member creates
 for a machine to join with.
 """

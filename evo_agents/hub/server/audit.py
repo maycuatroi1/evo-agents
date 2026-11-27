@@ -97,7 +97,7 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 # The owner changed the worker's settings; the target names each field that changed, "<field>=<was>-><is>", after
 # "worker:<id> name=<n> owner=<login>": "slots=1->4 labels=[]->[gpu,mac] name=old->new", never a token.
 WORKER_UPDATE = "worker.update"
-# Worker pools (evo_agents.hub.server.worker_pools), "pool:<id> name=<n>" first: a member created one, changed its
+# Worker pools (evo_agents.hub.server.workers.service.pools), "pool:<id> name=<n>" first: a member created one, changed its
 # settings ("<field>=<was>-><is>" as WORKER_UPDATE), created a join token of it ("join_token:<id> hours=<h>
 # max_uses=<n>") or revoked one ("join_token:<id>"), or deleted the pool; never the token.
 WORKER_POOL_CREATE = "worker_pool.create"
@@ -113,11 +113,11 @@ WORKER_POOL_KG_SHARED = "worker_pool.kg_shared"
 WORKER_UPDATE_NOW = "worker.update_now"
 WORKER_UPDATE_NOW_CANCEL = "worker.update_now_cancel"
 # The owner or a hub admin asked the worker's daemon to install Chromium, or cancelled that request:
-# "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.browser_install)
+# "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.browser.service.install)
 WORKER_BROWSER_INSTALL = "worker.browser_install"
 WORKER_BROWSER_INSTALL_CANCEL = "worker.browser_install_cancel"
 # The owner or a hub admin narrowed a shared worker to a unit of the org chart, or took the unit back
-# (evo_agents.hub.server.worker_shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
+# (evo_agents.hub.server.workers.service.shares): "worker:<id> name=<n> owner=<login> unit=<slug> by=<owner|admin>", then
 # " shared=false->true" when sharing turned the worker shared, " shared=true->false" when its last unit went.
 WORKER_SHARE = "worker.share"
 WORKER_UNSHARE = "worker.unshare"
@@ -211,13 +211,13 @@ PROVIDER_ACCOUNT_DELETE = "provider-account.delete"  # deleted: its sealed key a
 # A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
 # run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
 ACCOUNT_FAILOVER = "account.failover"
-# A project's agent profiles (evo_agents.hub.server.agent_profiles), in the project; the target is
+# A project's agent profiles (evo_agents.hub.server.agents.service.profiles), in the project; the target is
 # "<project>/@<handle> v<version>", with " fields=<names>" for an edit, never a description, instructions or an image.
 AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
 AGENT_PLACEMENT = "agent.placement"  # no longer written: an admin once moved an agent between legacy and its own pool
-# A project's agent systems (evo_agents.hub.server.agent_systems), in the project; the target is
+# A project's agent systems (evo_agents.hub.server.systems), in the project; the target is
 # "<project> system=<slug> revision=<n>", never a description or a purpose.
 SYSTEM_CREATE = "system.create"  # an admin of the project created an agent system, at revision 1
 SYSTEM_UPDATE = "system.update"  # an admin stored a new revision of it
@@ -225,7 +225,7 @@ SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
 SYSTEM_DEFAULT = "system.default"  # an admin made it the project's default system (plan hub-steward)
 SYSTEM_OPS_PAUSE = "system.ops-pause"  # an admin paused its ops: closed batches open no thread
 SYSTEM_OPS_RESUME = "system.ops-resume"  # an admin resumed them
-# A project's cron jobs (evo_agents.hub.server.cron_jobs), in the project; the target is
+# A project's cron jobs (evo_agents.hub.server.cron.service.jobs), in the project; the target is
 # "<project> cron=<name> revision=<n>", never a prompt or a command line.
 CRON_CREATE = "cron.create"  # a writer of the project made a cron job, at revision 1
 CRON_UPDATE = "cron.update"  # its owner stored a new revision of it
@@ -253,7 +253,7 @@ GUARD_TARGET_REMOVE = "guard-target.remove"  # an admin removed one
 AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
 AGENT_ACCOUNT_SET = "agent-account.set"  # an admin renewed it or changed its weight, priority, workers, end or pause
 AGENT_ACCOUNT_DELETE = "agent-account.delete"  # an admin deleted it: value and bindings went, its leases were revoked
-# Browser identities (evo_agents.hub.server.browser_identities, browser_profiles, browser_leases), in the project; the
+# Browser identities (evo_agents.hub.server.browser.service.identities, browser_profiles, browser_leases), in the project; the
 # target is "<project> browser-identity:<id>", with " version=<n>" for a profile saved or handed out and " run:<id>"
 # for a run's, never a domain, a cookie or a key. A run's are in the name of its dispatcher, with its worker's token.
 BROWSER_IDENTITY_CREATE = "browser_identity.create"  # a member made one of their own, or an admin one of the project
@@ -267,7 +267,7 @@ BROWSER_IDENTITY_DISABLE = "browser_identity.disable"  # its member or an admin 
 BROWSER_IDENTITY_ENABLE = "browser_identity.enable"  # it was enabled again
 BROWSER_IDENTITY_DEFAULT = "browser_identity.default"  # an admin made it the identity its agent hands its runs
 BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did not open: it waits for a new login
-# The live view of a run's browser (evo_agents.hub.server.browser_view), in the run's project and the name of who
+# The live view of a run's browser (evo_agents.hub.server.browser.service.view), in the run's project and the name of who
 # dispatched it; the target names the run as above, then "start", or "end=<how>" with the screen frames and events
 # relayed, never a key, a text, a URL or a frame.
 BROWSER_VIEW = "browser.view"  # the dispatcher opened the run's browser in the live view, or the view ended
@@ -337,7 +337,7 @@ MARKET_LICENSE_LAPSE = "market.license.lapse"
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it
 PLUGIN_GRANT = "plugin.grant"  # an admin granted the permissions the installed version asks for, enabling it or after
 PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for the project: its grants went
-# Agent types of plugins in a project (evo_agents.hub.server.agent_types), in that project; the target is
+# Agent types of plugins in a project (evo_agents.hub.server.agents.service.agent_types), in that project; the target is
 # "<project>/plugin:<name> agent-type:<type>", then " @<handle> run-as=<login> workers=<names> daily-usd=<cap>" for an
 # enable, or " run:<id>" for a task, whose actor is the member it runs as, with no token: the plugin's token handed it.
 AGENT_TYPE_ENABLE = "agent-type.enable"  # an admin of the project enabled it, or changed how; its profile on the first
@@ -358,7 +358,7 @@ SETTINGS_FEATURES = "settings.features"
 # An admin of a project switched the images taken out of tools' results on or off (evo_agents.hub.server.outputs):
 # "<project>/outputs tool_images=on|off".
 SETTINGS_OUTPUTS = "settings.outputs"
-# A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy_policies), in the project:
+# A new revision of a project's autonomy policy (evo_agents.hub.server.autonomy.service.policies), in the project:
 # "<project>/policy revision=<n> keys=<the dotted keys whose value changed>", then " proposal=<id>" when an admin
 # approved or rolled back a proposal of @builder, and " copy-of=<n>" for a rollback; never a value.
 POLICY_SET = "policy.set"
@@ -399,28 +399,28 @@ ORG_UNIT_ARCHIVE = "org.unit_archive"
 ORG_SEAT_ADD = "org.seat_add"
 ORG_SEAT_EDIT = "org.seat_edit"
 ORG_SEAT_END = "org.seat_end"
-# Autonomy levels belong to no project (evo_agents.hub.server.autonomy_store, .org_writes; plan autonomy-levels): a
+# Autonomy levels belong to no project (evo_agents.hub.server.autonomy.service.levels, .org_writes; plan autonomy-levels): a
 # ceiling revision of a unit or seat, "ceiling unit:<slug> level=A5->A1[ K5=ask ...][ environments=<e,...>]
 # [ workers=<w,...>] revision=<n>", and a revision of a person's own preference, "pref <login> level=A5->A2
 # [ K6=deny ...][ reset] revision=<n>"; never a ceiling's note.
 AUTONOMY_CEILING_SET = "autonomy.ceiling_set"
 AUTONOMY_PREF_SET = "autonomy.pref_set"
-# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy_gates,
-# .lease_autonomy, .route_autonomy): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
+# A gate of autonomy, in the run's project, with the run's principal as actor (evo_agents.hub.server.autonomy.service.gates,
+# .lease, .guards): "run:<id> <class> <act> mode=<mode>" when it left an act undone (once for each
 # act), "run:<id> <class> <act> decision:<id>" when it asked the principal, "run:<id> <class> <act>" when it acted and
 # told the principal; a route refused to a run's credential is "<class> <route> mode=<mode> source=<source> run:<id>".
 AUTONOMY_REFUSED = "autonomy.refused"
 AUTONOMY_ASKED = "autonomy.asked"
 AUTONOMY_NOTIFIED = "autonomy.notified"
-# A backup the agent of a run made before deleting data (evo_agents.hub.server.worker_autonomy, the floor S2), in the
+# A backup the agent of a run made before deleting data (evo_agents.hub.server.autonomy.routes.worker, the floor S2), in the
 # run's project, with the worker's owner as actor: "run:<id> <target> at=<location> made=<ISO time>".
 AUTONOMY_BACKUP = "autonomy.backup"
-# The ledger S1 of autonomy (evo_agents.hub.server.autonomy_ledger): every decision a gate of the hub made for a run,
+# The ledger S1 of autonomy (evo_agents.hub.server.autonomy.service.ledger): every decision a gate of the hub made for a run,
 # in the run's project, with the run's principal as actor, once for each distinct decision: "run:<id> principal=<login>
 # agent=<handle> <class> mode=<mode> result=<acted|asked|refused|allowed|granted|withheld> <act>", "-" for a principal
 # or an agent the run has none of.
 AUTONOMY_DECIDED = "autonomy.decided"
-# The stop S4 and its lift (evo_agents.hub.server.autonomy_stops), in no project, with who stopped or lifted as actor:
+# The stop S4 and its lift (evo_agents.hub.server.autonomy.service.stops), in no project, with who stopped or lifted as actor:
 # "stop:<id> <login:<login>|unit:<slug>|all> runs=<n cancelled or asked to stop> leases=<n ended>" and "stop:<id>
 # <login:<login>|unit:<slug>|all>"; never the reason.
 AUTONOMY_STOP = "autonomy.stop"

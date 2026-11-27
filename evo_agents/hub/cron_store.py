@@ -1,6 +1,6 @@
 """The rows of a project's cron jobs and their fires (``evo_agents.hub.tables_cron``; ``docs/hub.md``, Cron jobs): one
 job as the hub holds it now, a project's jobs, writing a job by revision, its pause, its fires and the last fire of
-each job. The routes of ``evo_agents.hub.server.cron_jobs`` check who may; these only read and write, SQLAlchemy Core
+each job. The routes of ``evo_agents.hub.server.cron.service.jobs`` check who may; these only read and write, SQLAlchemy Core
 on ``evo_agents.hub.tables``.
 
 Outside ``evo_agents.hub.server``: the hub's job worker, which fires the jobs, imports it.

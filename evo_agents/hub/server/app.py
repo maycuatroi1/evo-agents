@@ -10,7 +10,7 @@ ticket of their own (``security.PUBLIC_PREFIXES``), and the routes of a feature 
 answer 404 (``FeatureGate``, ``evo_agents.hub.server.hub_settings``). The OpenAPI document is served at /v1/openapi.json
 for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
-(``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser_view``),
+(``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser.service.view``),
 which check their own credential. ``app.state.sealer`` seals the members' secrets
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
 503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin
@@ -56,12 +56,13 @@ from evo_agents.hub.server import (
     invites,
     projects,
     security,
-    system_trace_views,
     tokens,
     user_emails,
     web_auth,
 )
-from evo_agents.hub.server.cron_fire import cron_pass as cron_pass  # handed down to the hub worker, as those below
+from evo_agents.hub.server.cron.service.fire import (
+    cron_pass as cron_pass,  # handed down to the hub worker, as those below
+)
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
@@ -80,6 +81,7 @@ from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
+from evo_agents.hub.server.systems.routes import traces as system_trace_views
 from evo_agents.kg import pacing
 from evo_agents.plugins.signing import default_sigstore
 
@@ -446,7 +448,10 @@ def _include_kg_routes(app: FastAPI) -> None:
 
 
 def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
-    from evo_agents.hub.server import worker_join, worker_pools, workers
+    from evo_agents.hub.server.workers.routes import join as worker_join
+    from evo_agents.hub.server.workers.routes import pools as worker_pools
+    from evo_agents.hub.server.workers.routes import workers
+    from evo_agents.hub.server.workers.service.codes import RefusalLimit
 
     app.include_router(workers.router)
     app.include_router(worker_pools.router)
@@ -477,7 +482,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.state.kg_snapshots = kg_snapshots.SnapshotCoordinator(listener=app.state.listener)
     # the cache, on Redis with EVO_HUB_REDIS_URL, else this process's; dropped by the listener's wake-ups
     app.state.cache = cache.Cache(config.redis_url, listener=app.state.listener)
-    app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
+    app.state.join_refusals = RefusalLimit()  # refused pairing codes per client address, this process only
     app.state.join_limit = cache.Window(app.state.cache, "join", app.state.join_refusals)  # ...or shared on Redis
 
     from evo_agents.hub.server import (
@@ -537,9 +542,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
 
 def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
-        autonomy_page,
-        autonomy_routes,
-        autonomy_stops,
         build_now,
         earlier,
         kg_health,
@@ -548,9 +550,10 @@ def _include_curator_routes(app: FastAPI) -> None:
         org,
         protection,
         transcripts,
-        worker_doctor,
-        worker_shares,
     )
+    from evo_agents.hub.server.autonomy.routes import levels as autonomy_routes
+    from evo_agents.hub.server.autonomy.routes import page as autonomy_page
+    from evo_agents.hub.server.autonomy.routes import stops as autonomy_stops
     from evo_agents.hub.server.changes import routes as change_routes
     from evo_agents.hub.server.digests import routes as digests
     from evo_agents.hub.server.evolve import routes as evolve
@@ -561,6 +564,8 @@ def _include_curator_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.probes.routes import runs as probe_runs
     from evo_agents.hub.server.proposal_plans import routes as proposal_plans
     from evo_agents.hub.server.replays import routes as replay_routes
+    from evo_agents.hub.server.workers.routes import doctor as worker_doctor
+    from evo_agents.hub.server.workers.routes import shares as worker_shares
 
     for routes in (
         change_routes.router,
@@ -602,27 +607,11 @@ def _include_member_routes(app: FastAPI) -> None:
         account_pools,
         account_views,
         accounts,
-        agent_account_views,
-        agent_accounts,
-        agent_asks,
-        agent_packs,
-        agent_profiles,
-        agent_provider_accounts,
-        agent_reads,
-        agent_systems,
-        agent_types,
-        autonomy_policies,
         branding,
-        browser_asks,
-        browser_identities,
-        browser_leases,
-        browser_local,
-        browser_logins,
         claude_sign_in,
         context_answer_reuse,
         credential_shares,
         credentials,
-        cron_jobs,
         features,
         gateway_proxy,
         kg_shared_pool_api,
@@ -634,8 +623,6 @@ def _include_member_routes(app: FastAPI) -> None:
         merge_view,
         model_catalog,
         opportunity_evidence,
-        ops_actions,
-        orchestrator_actions,
         plugin_chats_api,
         plugin_command_list,
         plugin_docs_api,
@@ -660,12 +647,24 @@ def _include_member_routes(app: FastAPI) -> None:
         secrets,
         seller,
         seller_api,
-        system_ops,
         task_dispatch,
-        triage_actions,
         work_cards,
-        worker_autonomy,
     )
+    from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
+    from evo_agents.hub.server.agent_accounts.routes import provider_accounts as agent_provider_accounts
+    from evo_agents.hub.server.agent_accounts.routes import views as agent_account_views
+    from evo_agents.hub.server.agents.routes import agent_types
+    from evo_agents.hub.server.agents.routes import asks as agent_asks
+    from evo_agents.hub.server.agents.routes import packs as agent_packs
+    from evo_agents.hub.server.agents.routes import profiles as agent_profiles
+    from evo_agents.hub.server.agents.routes import reads as agent_reads
+    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
+    from evo_agents.hub.server.autonomy.routes import worker as worker_autonomy
+    from evo_agents.hub.server.browser.routes import asks as browser_asks
+    from evo_agents.hub.server.browser.routes import identities as browser_identities
+    from evo_agents.hub.server.browser.routes import leases as browser_leases
+    from evo_agents.hub.server.browser.routes import local as browser_local
+    from evo_agents.hub.server.browser.routes import logins as browser_logins
     from evo_agents.hub.server.chats.routes import agents as chat_agents
     from evo_agents.hub.server.chats.routes import bridges as chat_bridges
     from evo_agents.hub.server.chats.routes import chats
@@ -677,14 +676,20 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import members as chat_members
     from evo_agents.hub.server.chats.routes import people as chat_people
     from evo_agents.hub.server.chats.routes import read as chat_read
+    from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake
     from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.ops import routes as ops_routes
+    from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
     from evo_agents.hub.server.problems import routes as problems
     from evo_agents.hub.server.signals import routes as signals
+    from evo_agents.hub.server.systems.routes import ops as system_ops
+    from evo_agents.hub.server.systems.routes import systems as agent_systems
+    from evo_agents.hub.server.triage import routes as triage_routes
 
     for routes in (
         secrets.router,
@@ -743,9 +748,9 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_asks.worker_router,  # a chat run's agent asks an agent of another project
         agent_reads.worker_router,  # and reads another project's knowledge graph and memories
         chat_read.worker_router,
-        triage_actions.worker_router,
-        orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
-        ops_actions.worker_router,  # and the Orchestrator of a default system in its ops threads
+        triage_routes.worker_router,
+        orchestrator_routes.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
+        ops_routes.worker_router,  # and the Orchestrator of a default system in its ops threads
         work_cards.worker_router,  # the entry agent of a system sets the work of its trace
         curator_thread_routes.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
@@ -794,14 +799,16 @@ def _include_member_routes(app: FastAPI) -> None:
 
 def _include_websockets(app: FastAPI) -> None:
     """The websockets of the hub, each with its two ends and the registry of what it has open in this process."""
-    from evo_agents.hub.server import browser_view, terminal
+    from evo_agents.hub.server import terminal
+    from evo_agents.hub.server.browser.routes import view as browser_view
+    from evo_agents.hub.server.browser.service.view import BrowserViews
 
     app.include_router(terminal.router)
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
     app.include_router(browser_view.router)
     app.include_router(browser_view.worker_router)
-    app.state.browser_views = browser_view.BrowserViews()  # the live views of runs' browsers, one channel per run
+    app.state.browser_views = BrowserViews()  # the live views of runs' browsers, one channel per run
 
 
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:

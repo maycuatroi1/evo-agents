@@ -9,7 +9,7 @@ references (the retention of built graphs, ``evo_agents.hub.kg_prune``; the dele
 ``evo_agents.hub.server.transcripts``; a chat's image replaced or taken off,
 ``evo_agents.hub.server.chats.service.images``; an output deleted, or dropped with its run's events,
 ``evo_agents.hub.output_prune``; an attachment deleted, gone stale or dropped with its run's events,
-``evo_agents.hub.attachment_prune``; a profile saved over or deleted, ``evo_agents.hub.server.browser_profiles``) does
+``evo_agents.hub.attachment_prune``; a profile saved over or deleted, ``evo_agents.hub.server.browser.service.profiles``) does
 it in a transaction holding the blob lock exclusively, and in that same transaction ``forget`` records in
 ``blob_deletions`` each blob it left without any reference. ``delete_pending`` then deletes their objects in a second
 transaction holding the lock exclusively, and marks the rows deleted. A deletion that fails rolls back: the rows stay

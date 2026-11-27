@@ -75,7 +75,8 @@ from evo_agents.hub import bus, jobs, ops_events, plugin_events, review, runs, t
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
-from evo_agents.hub.server import browser_holds, reaped_usage
+from evo_agents.hub.server import reaped_usage
+from evo_agents.hub.server.browser.service import holds as browser_holds
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access

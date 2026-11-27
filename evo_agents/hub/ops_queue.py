@@ -254,7 +254,7 @@ def _live(s):
 
 def _reaches(b, worker_id: int):
     """A row of secret_bindings ``b`` reaches worker ``worker_id``: bound to any worker of its owner, to this one, or
-    to its pool (``server.worker_placement.bound_on``, which this module does not import)."""
+    to its pool (``server.workers.repository.placement.bound_on``, which this module does not import)."""
     w = tables.workers
     of_worker = select(w.c.pool_id).where(w.c.id == worker_id).scalar_subquery()
     return or_(

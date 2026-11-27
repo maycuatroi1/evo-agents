@@ -52,7 +52,7 @@ def test_the_agent_is_told_how_many_items_were_left_out_and_why():
 
 def test_elements_reads_ids_and_labels_and_skips_properties():
     pytest.importorskip("fastapi")  # agent_reads holds routes: macOS and Windows install no hub-server extra
-    from evo_agents.hub.server.agent_reads import elements
+    from evo_agents.hub.server.agents.service.reads import elements
 
     data = {
         "nodes": [

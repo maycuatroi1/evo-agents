@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import gateway_runs, tables
 from evo_agents.hub.credentials import PROVIDER_KIND
-from evo_agents.hub.server import route_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.gateway_accounts import Asker, usable_accounts
 from evo_agents.hub.server.projects import project_access

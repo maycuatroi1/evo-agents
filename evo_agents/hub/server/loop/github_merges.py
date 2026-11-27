@@ -48,7 +48,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.autonomy import AUTO
 from evo_agents.hub.plans import PlanProblem
 from evo_agents.hub.server import pulls
-from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.forge import forge_token
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp

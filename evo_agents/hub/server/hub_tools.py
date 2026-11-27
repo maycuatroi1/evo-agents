@@ -46,15 +46,9 @@ from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
-from evo_agents.hub.server import (
-    agent_asks,
-    kg,
-    ops_actions,
-    orchestrator,
-    orchestrator_actions,
-    work_cards,
-    work_status_models,
-)
+from evo_agents.hub.server import kg, work_cards, work_status_models
+from evo_agents.hub.server.agents.models.asks import AgentAskIn
+from evo_agents.hub.server.agents.service import asks as agent_asks
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.chats.models.agents import AgentMessageIn
 from evo_agents.hub.server.chats.service import agents as chat_agents
@@ -62,6 +56,11 @@ from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.models import Written
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
+from evo_agents.hub.server.ops.models import actions as ops_models
+from evo_agents.hub.server.ops.service import actions as ops_actions
+from evo_agents.hub.server.orchestrator import models as orchestrator_models
+from evo_agents.hub.server.orchestrator.service import actions as orchestrator_actions
+from evo_agents.hub.server.orchestrator.service import threads as orchestrator
 from evo_agents.hub.server.outputs.models import OutputIn
 from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.runs.service.plan_runs import held_row
@@ -95,14 +94,14 @@ _BRIEF = {
     "refs": {"type": "array", "items": _TEXT, "description": "refs it starts from: repo:path, a run, a URL"},
 }
 OPS_ACTIONS = {  # ops_action's actions: (the body, the action of ops_actions)
-    "rerun": (ops_actions.OpsRunIn, ops_actions.rerun),
-    "redeliver": (ops_actions.OpsRunIn, partial(ops_actions.rerun, redeliver=True)),
-    "answer_wait": (ops_actions.OpsWaitIn, ops_actions.answer_wait),
-    "curator_resume": (ops_actions.OpsReasonIn, ops_actions.curator_resume),
-    "read": (ops_actions.OpsReadIn, ops_actions.read),
-    "finding": (ops_actions.OpsFindingIn, ops_actions.finding),
-    "priority": (ops_actions.OpsPriorityIn, ops_actions.priority),
-    "plan_dispatch": (ops_actions.OpsPlanIn, ops_actions.plan_dispatch),
+    "rerun": (ops_models.OpsRunIn, ops_actions.rerun),
+    "redeliver": (ops_models.OpsRunIn, partial(ops_actions.rerun, redeliver=True)),
+    "answer_wait": (ops_models.OpsWaitIn, ops_actions.answer_wait),
+    "curator_resume": (ops_models.OpsReasonIn, ops_actions.curator_resume),
+    "read": (ops_models.OpsReadIn, ops_actions.read),
+    "finding": (ops_models.OpsFindingIn, ops_actions.finding),
+    "priority": (ops_models.OpsPriorityIn, ops_actions.priority),
+    "plan_dispatch": (ops_models.OpsPlanIn, ops_actions.plan_dispatch),
 }
 TOOLS = [
     _function(
@@ -308,12 +307,12 @@ async def interactive_answer(turn: Turn, arguments: dict) -> str:
     return f"sent the interactive answer as output #{output_id} in message #{message_id}"
 
 
-def _ask_body(arguments: dict, handle: str) -> agent_asks.AgentAskIn:
+def _ask_body(arguments: dict, handle: str) -> AgentAskIn:
     fields = ("body", *system_context.BRIEF_FIELDS, "refs", "reason")
-    return agent_asks.AgentAskIn(handle=handle, **{key: arguments[key] for key in fields if arguments.get(key)})
+    return AgentAskIn(handle=handle, **{key: arguments[key] for key in fields if arguments.get(key)})
 
 
-async def _ask(turn: Turn, body: agent_asks.AgentAskIn, tool: str) -> str:
+async def _ask(turn: Turn, body: AgentAskIn, tool: str) -> str:
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
@@ -336,7 +335,7 @@ async def agent_ask(turn: Turn, arguments: dict) -> str:
 
 async def escalate(turn: Turn, arguments: dict) -> str:
     fields = ("question", *system_context.BRIEF_FIELDS, "refs")
-    body = orchestrator.EscalateIn(**{key: arguments[key] for key in fields if arguments.get(key)})
+    body = orchestrator_models.EscalateIn(**{key: arguments[key] for key in fields if arguments.get(key)})
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
@@ -352,14 +351,14 @@ async def escalate(turn: Turn, arguments: dict) -> str:
 
 
 async def orchestrator_answer(turn: Turn, arguments: dict) -> str:
-    body = orchestrator_actions.OrchestratorAnswerIn(**arguments)
+    body = orchestrator_models.OrchestratorAnswerIn(**arguments)
     async with turn.engine.begin() as conn:
         acted = await orchestrator_actions.answer(conn, turn.sealer, await _agent_run(conn, turn), body)
     return f"answered (run #{acted.run_id}); Decision line #{acted.message_id}"
 
 
 async def orchestrator_reassign(turn: Turn, arguments: dict) -> str:
-    body = orchestrator_actions.OrchestratorReassignIn(
+    body = orchestrator_models.OrchestratorReassignIn(
         **{**arguments, "handle": str(arguments.get("handle") or "").lstrip("@")}
     )
     async with turn.engine.begin() as conn:
@@ -368,7 +367,7 @@ async def orchestrator_reassign(turn: Turn, arguments: dict) -> str:
 
 
 async def orchestrator_ask_owner(turn: Turn, arguments: dict) -> str:
-    body = orchestrator_actions.OrchestratorAskOwnerIn(**arguments)
+    body = orchestrator_models.OrchestratorAskOwnerIn(**arguments)
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))

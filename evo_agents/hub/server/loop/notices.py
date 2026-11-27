@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, goals, tables
 from evo_agents.hub.server import hub_settings
-from evo_agents.hub.server.autonomy_policies import effective_policy
+from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.loop import adopt
 from evo_agents.hub.server.loop.board_items import board_path, line
 from evo_agents.hub.server.loop.model import DISPATCHED, DONE_EVENT, WAITING_HUMAN

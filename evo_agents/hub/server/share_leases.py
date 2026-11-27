@@ -64,13 +64,9 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credential_shares import ALL, UNIT, USER
 from evo_agents.hub.credentials import LEASED_KINDS
-from evo_agents.hub.server import (
-    account_views,
-    kg_shared_pool,
-    org_store,
-    worker_placement,  # a module: importing it may reach this one before it is whole
-)
+from evo_agents.hub.server import account_views, kg_shared_pool, org_store
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
+from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 ESTIMATE_USD = Decimal("1.00")  # what a run under a share is taken to cost before any of its runs reported a cost
 MIN_ESTIMATE_USD = Decimal("0.01")

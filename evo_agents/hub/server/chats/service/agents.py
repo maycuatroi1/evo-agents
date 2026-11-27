@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import chats, runs
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
+from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.agents import (
     AgentChatIn,

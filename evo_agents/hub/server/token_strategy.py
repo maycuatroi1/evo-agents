@@ -39,9 +39,10 @@ from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.accounts import FIVE_HOUR, SEVEN_DAY, used_now, window_of
 from evo_agents.hub.model_router import NATIVE_RUNTIME, Choice, Quota, Rating
 from evo_agents.hub.plans import CLOSED_STEP_STATUSES, PlanProblem, step_index, step_key
-from evo_agents.hub.server import gateway_accounts, system_traces
+from evo_agents.hub.server import gateway_accounts
 from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
 from evo_agents.hub.server.runs.service.views import current_plan
+from evo_agents.hub.server.systems.service import traces as system_traces
 
 MAX_RATED_CHARS = 20_000  # of a request or a chat message the rules read
 USED_UP = Quota(weekly_left=0.0, five_hour_used=1.0, known=True)  # every account of the subscription paused or cooling
@@ -287,7 +288,9 @@ async def _routing_of(conn: AsyncConnection, row) -> dict | None:
         return None
     if model_router.pinned_by_profile(profiles.allowed(_permissions(row), "model")):
         return None
-    from evo_agents.hub.server.autonomy_policies import effective_policy  # it imports the Loop, which reads runs
+    from evo_agents.hub.server.autonomy.service.policies import (
+        effective_policy,  # it imports the Loop, which reads runs
+    )
 
     return model_router.routing_section(await effective_policy(conn, row.project_id))
 
@@ -410,7 +413,7 @@ async def recommend(conn: AsyncConnection, project_id: int, owner_id: int, plan:
         return {"difficulty": None, "recommended_model": None, "routing_reason": None}
     rating = model_router.rate_step(step, plan)
     level = rating.difficulty or model_router.FALLBACK  # the rules rate every step
-    from evo_agents.hub.server.autonomy_policies import effective_policy
+    from evo_agents.hub.server.autonomy.service.policies import effective_policy
 
     policy = await effective_policy(conn, project_id)
     routing = model_router.routing_section({"routing": {**policy.get("routing", {}), "enabled": True}})

@@ -13,9 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, review, tables
-from evo_agents.hub.server import facet_figures, system_curation
+from evo_agents.hub.server import facet_figures
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.runs.service.views import visible_plans
+from evo_agents.hub.server.systems.service import curation as system_curation
 
 
 async def _last_review(conn: AsyncConnection, project_id: int) -> datetime | None:

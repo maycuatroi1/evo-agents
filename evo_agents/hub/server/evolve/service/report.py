@@ -17,7 +17,6 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import replay
-from evo_agents.hub.server import system_curation
 from evo_agents.hub.server.base.errors import Unprocessable
 from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.evolve.models import ReportIn, reason_text
@@ -25,6 +24,7 @@ from evo_agents.hub.server.evolve.repository import candidates, evolutions, task
 from evo_agents.hub.server.evolve.repository.evolutions import set_row
 from evo_agents.hub.server.projects import access_of
 from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.systems.service import curation as system_curation
 
 HOLDOUT = replay.SPLITS[1]
 

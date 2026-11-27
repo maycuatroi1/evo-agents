@@ -141,7 +141,9 @@ async def _ledger(conn: AsyncConnection, item_id: int, kind: str, state: str, re
 
 async def _triage(conn: AsyncConnection, project_id: int, project: str, item: ItemView, view: View) -> bool:
     """The triage of work item ``item`` at its second failure (see the module)."""
-    from evo_agents.hub.server import triage  # it reads runs through the routes that import this
+    from evo_agents.hub.server.triage.service import (
+        threads as triage,  # it reads runs through the routes that import this
+    )
 
     run_id = await last_run(conn, item)
     lines = _facts(item, view, project, await _failures(conn, item.id))

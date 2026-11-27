@@ -62,7 +62,7 @@ it is unknown.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
 one of SELF_CHECKED_WEBSOCKETS, whose routes check their own credential (the two ends of the web terminal, see
-``evo_agents.hub.server.terminal``, and of the live view of a run's browser, ``evo_agents.hub.server.browser_view``);
+``evo_agents.hub.server.terminal``, and of the live view of a run's browser, ``evo_agents.hub.server.browser.service.view``);
 any other is closed during its handshake, which the client sees as a 403, so a websocket route added later is
 refused until it checks a credential and is listed there.
 """

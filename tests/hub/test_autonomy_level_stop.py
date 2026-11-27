@@ -1,4 +1,4 @@
-"""The stop of autonomy S4 (``evo_agents.hub.server.autonomy_stops`` and ``autonomy_hold``), as criterion a11 of plan
+"""The stop of autonomy S4 (``evo_agents.hub.server.autonomy.routes.stops`` and ``service.hold``), as criterion a11 of plan
 autonomy-levels names it: ``hub stop --login | --unit | --all`` and ``--lift`` of the same scope; a person stops their
 own runs, a lead their unit and those below it, an admin anyone and the hub; the stop cancels the runs of every
 principal it covers as ``hub run cancel`` does, ends their leases (test_autonomy_level_ledger for the leases), and holds
@@ -22,7 +22,9 @@ from sqlalchemy import select
 
 from evo_agents.hub import tables
 from evo_agents.hub.cli import stop as stop_command
-from evo_agents.hub.server import autonomy_hold, run_autonomy, security
+from evo_agents.hub.server import security
+from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import ADMIN, sql
 from tests.hub.test_autonomy_level_routing import COHORT, interns

@@ -26,10 +26,10 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from evo_agents.hub import claude_oauth
 from evo_agents.hub.credentials import MAX_SECRETS_PER_OWNER, SECRET_NAME
-from evo_agents.hub.server import route_autonomy
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models.placement import PoolName
 from evo_agents.hub.server.sealing import Sealer, Unsealable
@@ -51,7 +51,7 @@ from evo_agents.hub.server.secrets import (
     writable_projects,
 )
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.server.worker_models import WORKER_NAME
+from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 
 log = logging.getLogger(__name__)
 

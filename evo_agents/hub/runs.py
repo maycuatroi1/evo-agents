@@ -239,11 +239,11 @@ BROWSER = "browser"
 MAX_BROWSERS = 64  # the most browser runs a worker may say it holds at once
 # a daemon that installs Chromium when its owner asks from the hub (browser_install of the heartbeat answer), as
 # `evo-agents worker browser install` does, and reports in browser_install how a request it could not carry out ended;
-# the hub takes such a request for no other (evo_agents.hub.server.browser_install)
+# the hub takes such a request for no other (evo_agents.hub.server.browser.service.install)
 BROWSER_INSTALL = "browser_install"
 # a daemon that runs `evo-agents worker doctor` when it starts and every 24 hours and sends what it found (POST
 # /v1/worker/doctor; evo_agents.worker.doctor_report): only a worker whose newest report is fresh and has no high
-# finding may be narrowed to units of the org chart (evo_agents.hub.server.worker_doctor)
+# finding may be narrowed to units of the org chart (evo_agents.hub.server.workers.service.doctor)
 DOCTOR_REPORT = "doctor_report"
 DOCTOR_EVERY_SECONDS = 24 * 3600  # how often the daemon sends a doctor report, besides when it starts
 DOCTOR_FRESH_SECONDS = 48 * 3600  # a worker is narrowed to a unit only with a report this recent
@@ -456,8 +456,8 @@ NOTICE_KINDS = (
     "loop_brief",
     "plugin_notice",  # what an isolated plugin granted notifications:send sends (``server.plugin_notify``)
     AUTONOMY_DECISION_CATEGORY,
-    "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.worker_doctor``)
-    "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser_logins``)
+    "worker_doctor",  # the doctor of a worker narrowed to units found something high (``server.workers.service.doctor``)
+    "browser_needs_login",  # a browser identity of the member waits for a new login (``server.browser.service.logins``)
     PROBE_REPORT_NOTICE,
     "opportunity_window",  # the window of an open opportunity closes or closed (``server.opportunity_deadlines``)
     "market_install_request",  # a project admin asks the hub admins to install a plugin of a market (``server.market``)
@@ -471,10 +471,10 @@ NOTICE_KINDS = (
     "srs_review",  # a version of an SRS document waits for its reviewers, after @ba's review (``server.srs.service.notices``)
     "srs_reviewed",  # a reviewer asked for changes on a version, or approved it, told to its author (same)
     "srs_comment",  # a comment reached a thread of an SRS document the member is in (``server.srs.service.threads``)
-    "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops_threads``)
+    "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops.service.threads``)
     "ops_paused",  # two ops runs in a row failed of their agent, which paused the system's ops (same)
     "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
-    "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron_fire``)
+    "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron.service.fire``)
     "run_admin_action",  # an admin of the project acted on a run the member dispatched (``runs.service.admin_acts``)
     "kg_build_halted",  # a project's kg builds kept killing their worker, so none is queued again (``kg_build``)
 )

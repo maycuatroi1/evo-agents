@@ -1,5 +1,5 @@
 """The archive of a browser identity's profile (plan agent-browser, criterion a4), as the worker packs it and unpacks
-it, and as the hub checks it before it seals it (``evo_agents.hub.server.browser_profiles``).
+it, and as the hub checks it before it seals it (``evo_agents.hub.server.browser.service.profiles``).
 
 An archive is a gzipped tar of a Chromium profile directory, packed once Chromium has exited (``pack``): regular
 files and directories only, with neither the caches Chromium rebuilds (CACHES, at any depth) nor what names the
