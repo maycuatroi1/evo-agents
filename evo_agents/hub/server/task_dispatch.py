@@ -57,7 +57,7 @@ from evo_agents.hub.server.agents.service.agent_types import contributed, enable
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugins.service.tokens import plugin_of_token
 from evo_agents.hub.server.profile_store import by_id

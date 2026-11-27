@@ -34,8 +34,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.loop.view import RELEASED
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser

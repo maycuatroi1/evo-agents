@@ -28,8 +28,8 @@ from urllib.parse import quote, urlsplit
 from evo_agents.hub import release_ci, release_runs
 from evo_agents.hub.releases import CONTROL
 from evo_agents.hub.server import pulls
-from evo_agents.hub.server.github import API_HEADERS, GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp, not_installed
+from evo_agents.hub.server.forge.client.github_app import GitHubApp, not_installed
+from evo_agents.hub.server.forge.models.github import API_HEADERS, GitHubRefused, GitHubUnavailable
 
 log = logging.getLogger(__name__)
 

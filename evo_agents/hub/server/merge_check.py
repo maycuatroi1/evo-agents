@@ -71,8 +71,8 @@ from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.decisions.models import OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.protection import github_target
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import LINE, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run

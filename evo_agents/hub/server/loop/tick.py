@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, tables
 from evo_agents.hub.server.credentials.models.sealing import Sealer
-from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.loop import breaker, github_merges, srs_ledger, stall
 from evo_agents.hub.server.loop.admit import Dispatch, admit
 from evo_agents.hub.server.loop.dispatch import hand_out

@@ -8,10 +8,10 @@ from datetime import date
 from fastapi import Request
 
 from evo_agents.hub import curator
+from evo_agents.hub.server.forge.service.protection import need_reader
 from evo_agents.hub.server.probes.models.report import DEFAULT_WEEKS
 from evo_agents.hub.server.probes.service.report import answer_lines, build, unprobed_lines, week_lines
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.protection import need_reader
 from evo_agents.hub.server.security import Principal
 
 

@@ -29,10 +29,10 @@ from evo_agents.hub.credentials import GITHUB_READ_PERMISSIONS, TEST_ENVIRONMENT
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.autonomy.service import ledger as autonomy_ledger
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
-from evo_agents.hub.server.forge import forge_token
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pusher
-from evo_agents.hub.server.gitlab import GitLabRefused, GitLabUnavailable
+from evo_agents.hub.server.forge.client.github_app import GitHubApp, InstallationToken, Pusher
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, GitLabUnavailable
+from evo_agents.hub.server.forge.service.secrets import forge_token
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +158,9 @@ async def rulesets_now(engine: AsyncEngine, app: GitHubApp, survey) -> dict[str,
     """For a Builder of the Curator: check again, with the Curator's App, the ruleset of each of its repos on GitHub,
     and keep what each check found; repo -> why a repo whose ruleset does not keep the Curator off, or could not be
     checked now, gets no token."""
-    from evo_agents.hub.server.protection import store_check  # it reads runs through the routes that import this one
+    from evo_agents.hub.server.forge.service.protection import (
+        store_check,  # it reads runs through the routes that import this one
+    )
     from evo_agents.hub.server.pulls import check_ruleset
 
     refused: dict[str, str] = {}

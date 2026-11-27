@@ -43,7 +43,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
-from evo_agents.hub.server.gitlab import GitLabRefused, MergeRequest, RevertRefused
+from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, MergeRequest, RevertRefused
 
 log = logging.getLogger(__name__)
 

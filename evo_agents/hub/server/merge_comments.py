@@ -28,9 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from evo_agents.hub import findings, merge_gate, tables
 from evo_agents.hub.server import merge_check as checks
 from evo_agents.hub.server import pulls
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.protection import github_target
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 
 log = logging.getLogger(__name__)
 

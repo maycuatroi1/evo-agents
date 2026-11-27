@@ -12,7 +12,7 @@ ends; the hub revokes what it can. A machine set up this way keeps only its work
 `/v1/worker/*` alone.
 
 `evo_agents/hub/credentials.py` holds the model both ends share; `evo_agents/hub/server/credentials/models/sealing.py` seals values,
-`evo_agents/hub/server/credentials/routes/secrets.py` holds the owner's routes, `evo_agents/hub/server/github_app.py` the GitHub App
+`evo_agents/hub/server/credentials/routes/secrets.py` holds the owner's routes, `evo_agents/hub/server/forge/client/github_app.py` the GitHub App
 client, `evo_agents/hub/server/credentials/routes/leases.py` the worker's lease route, `evo_agents/worker/credentials.py` the
 daemon's side, and `evo_agents/worker/credential_commands.py` the commands a run calls on the daemon's socket (git's
 helper, `evo-agents worker env`).
@@ -169,7 +169,7 @@ as a row of `secret list`, or the hub's answer with `--json`.
 A secret of kind `forge` is a GitLab project or group access token (scope `api`, role Maintainer) with which the hub
 itself drives the merge requests of a project's repos under its `url_prefix`: it reads a merge request, its diff and
 the pipelines of a commit, rebases it, merges it with the sha it checked, plays a manual job, and opens a revert
-(`evo_agents/hub/server/gitlab.py`). No run ever gets it. `docs/merge-queue.md` says what the hub does with it.
+(`evo_agents/hub/server/forge/client/gitlab.py`). No run ever gets it. `docs/merge-queue.md` says what the hub does with it.
 
 - Writing one needs the admin role on each of its projects, where `env` and `git` need writer. It needs `expires_at`,
   takes no `username` (GitLab reads the token from the `PRIVATE-TOKEN` header) and no `workers`, holds one line, and
@@ -178,7 +178,7 @@ the pipelines of a commit, rebases it, merges it with the sha it checked, plays 
 - It is never leased: the lease query reads kinds `env` and `git` alone (`credentials.LEASED_KINDS`). No route of the
   worker protocol, `/mcp` or the API reads its value; `GET /v1/secrets` shows its owner its name and target, as for
   every secret, and a run's leases never name it.
-- Only the hub's job worker opens it, right before it calls GitLab (`evo_agents/hub/server/forge.py`,
+- Only the hub's job worker opens it, right before it calls GitLab (`evo_agents/hub/server/forge/service/secrets.py`,
   `forge_token`): of the forge secrets bound to the project, not deleted, not past their end, whose owner still holds
   the admin role on the project, the one whose `url_prefix` covers the repo's origin the longest, then the one written
   last. The value stays in the memory of those calls and travels in the `PRIVATE-TOKEN` header alone; no log line,

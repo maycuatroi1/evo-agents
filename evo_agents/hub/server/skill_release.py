@@ -41,8 +41,8 @@ from evo_agents.hub import blob_gc, judge, replay, skills, tables
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStoreUnavailable
 from evo_agents.hub.server import audit, pulls
 from evo_agents.hub.server import ledger as ledger_lines
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.protection import github_target
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 
 log = logging.getLogger(__name__)
 

@@ -56,8 +56,9 @@ from evo_agents.hub.server import audit, pull_trailers
 from evo_agents.hub.server.autonomy.repository.policies import project_repos
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
 from evo_agents.hub.server.changes.service import tiers as change_tiers
-from evo_agents.hub.server.forge import forge_token, has_forge
-from evo_agents.hub.server.gitlab import GitLab, GitLabRefused, GitLabUnavailable, MergeRequest, project_of
+from evo_agents.hub.server.forge.client.gitlab import GitLab
+from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, GitLabUnavailable, MergeRequest, project_of
+from evo_agents.hub.server.forge.service.secrets import forge_token, has_forge
 
 log = logging.getLogger(__name__)
 

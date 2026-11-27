@@ -62,13 +62,13 @@ from evo_agents.hub.server.chats.service.agents import AgentRun
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply, post_agent
 from evo_agents.hub.server.curator.models.threads import SHOWN, SKILL, SUMMARY_CHARS, CuratorAnswerIn
 from evo_agents.hub.server.curator.repository import threads as store
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.models.forges import forge_named, github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.proposals.models import ProposalAnswer
 from evo_agents.hub.server.proposals.service.reads import answer_proposal_as
 from evo_agents.hub.server.proposals.service.record import planned_tiers_of
 from evo_agents.hub.server.proposals.service.shapes import Proposal
-from evo_agents.hub.server.protection import github_target
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.triage.models.threads import Thread
 from evo_agents.hub.server.triage.service import threads as triage
@@ -363,7 +363,8 @@ def _not_left(change) -> str | None:
     """Why the agent may not merge ``change``, from the hub's own record of it; None when it may try."""
     if change.state != "open":
         return f"it is {change.state}: the agent merges only a change the hub left open for its owner"
-    if change.forge != "github" or change.pr_number is None or github_target(change.origin) is None:
+    forge = forge_named(change.forge)
+    if forge is None or not forge.advanced_by_app or change.pr_number is None or github_target(change.origin) is None:
         return "it has no pull request on GitHub, and the hub merges no other"
     if not change.passed:
         failures = "; ".join((change.verdict or {}).get("failures") or []) or "no verdict"

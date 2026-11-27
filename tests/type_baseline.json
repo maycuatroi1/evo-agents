@@ -5566,7 +5566,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/github.py": [
+        "./evo_agents/hub/server/forge/client/github.py": [
             {
                 "code": "reportCallIssue",
                 "range": {
@@ -5584,7 +5584,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/github_app.py": [
+        "./evo_agents/hub/server/forge/client/github_app.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -9660,56 +9660,6 @@
                 "range": {
                     "startColumn": 69,
                     "endColumn": 71,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/hub/server/protection.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 82,
-                    "endColumn": 90,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 29,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 44,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 44,
                     "lineCount": 1
                 }
             }

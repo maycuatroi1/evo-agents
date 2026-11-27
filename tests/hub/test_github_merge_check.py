@@ -28,7 +28,7 @@ from sqlalchemy import select
 from evo_agents.hub import judge, runs, tables
 from evo_agents.hub.server import merge_check
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.protection import github_target
+from evo_agents.hub.server.forge.models.forges import github_target
 from tests.hub.fake_github import FakePull
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (app_key is a fixture)

@@ -16,7 +16,7 @@ pull request a run opened before the run merges it ([The merge check on GitHub](
 | --- | --- |
 | the policy's keys, defaults and checks | `evo_agents/hub/autonomy.py` |
 | the policy's revisions and routes | `evo_agents/hub/server/autonomy/routes/policies.py`, `evo_agents/hub/cli/policy.py` |
-| the forge secret and the GitLab client | `evo_agents/hub/server/forge.py`, `evo_agents/hub/server/gitlab.py` |
+| the forge secret and the GitLab client | `evo_agents/hub/server/forge/service/secrets.py`, `evo_agents/hub/server/forge/client/gitlab.py` |
 | scope, gates, the Judges' questions, the risk | `evo_agents/hub/merge_gate.py`, `evo_agents/hub/server/merge_gate.py`, `evo_agents/hub/server/merge_judge.py` |
 | the turn: rebase, pipeline, merge | `evo_agents/hub/server/merge_turn.py` |
 | after the merge: checks, PROD, revert, rollback, samples, figures | `evo_agents/hub/post_merge.py`, `evo_agents/hub/server/post_merge.py` |

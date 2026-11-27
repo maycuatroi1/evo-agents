@@ -59,7 +59,7 @@ from evo_agents.hub.server import audit, ledger, merge_pass
 from evo_agents.hub.server import merge_gate as queue
 from evo_agents.hub.server import post_merge as after_merge
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
-from evo_agents.hub.server.gitlab import GitLabRefused, MergeRequest, NotMergeable, ShaMismatch
+from evo_agents.hub.server.forge.models.gitlab import GitLabRefused, MergeRequest, NotMergeable, ShaMismatch
 
 log = logging.getLogger(__name__)
 

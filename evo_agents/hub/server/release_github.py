@@ -24,8 +24,8 @@ from evo_agents import __version__
 from evo_agents.hub import release_runs, releases
 from evo_agents.hub.nightly import DELIM, FLUSH, pkt_line, pkt_lines
 from evo_agents.hub.server import pulls
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 
 TAGS = "refs/tags/"
 HEADERS = {

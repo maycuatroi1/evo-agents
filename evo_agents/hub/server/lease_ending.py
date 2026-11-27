@@ -23,8 +23,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.credentials import RUN_ACCESS
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, lease_aad
-from evo_agents.hub.server.github import GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.github import GitHubUnavailable
 from evo_agents.hub.server.runs.service.audits import run_target
 
 log = logging.getLogger(__name__)

@@ -47,8 +47,8 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pull_trailers, pulls
 from evo_agents.hub.server.autonomy.service import gates as autonomy_gates
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.release_cycles import cycle_of, notify_release, stop_cycle
 from evo_agents.hub.server.release_github import ReadFailed, read_refs

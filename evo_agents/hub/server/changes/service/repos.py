@@ -37,8 +37,10 @@ from evo_agents.hub.server.changes.repository.repos import repos_of
 from evo_agents.hub.server.changes.repository.views import change_of_plan, charter_of, plan_body, raise_tier
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.changes.service.moves import set_change
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.protection import github_target, reason_line, ruleset_wait
+from evo_agents.hub.server.forge.models.forges import github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
+from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.forge.service.protection import ruleset_wait
 
 log = logging.getLogger(__name__)
 

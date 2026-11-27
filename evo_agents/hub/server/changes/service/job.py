@@ -1,7 +1,7 @@
 """The Curator's changes on the hub: an accepted proposal's plan, its Builder, its pull request, its Judge and its
 merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the model,
 ``evo_agents.hub.server.proposal_plans`` how an accepted proposal becomes the Curator's plan and its change, and
-``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch. This module
+``evo_agents.hub.server.forge.service.protection`` the repos whose ruleset keeps the Curator off their default branch. This module
 holds the job, its pull requests and merges; in the package ``evo_agents.hub.server.changes``, ``models`` holds the
 models, ``repository`` the reading and writing of a change, ``service.policy`` the refusals and what a run of the
 Curator gets, ``service.shift`` the night shift's side, ``routes`` and ``service.judge`` the routes and
@@ -106,15 +106,11 @@ from evo_agents.hub.server.changes.repository.views import change_of_plan, chart
 from evo_agents.hub.server.changes.service import tiers as change_tiers
 from evo_agents.hub.server.changes.service.moves import set_change
 from evo_agents.hub.server.changes.service.watch import settle_by_branch, watch_pass
-from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
-from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.protection import (
-    Target,
-    check_rulesets,
-    github_target,
-    reason_line,
-    store_check,
-)
+from evo_agents.hub.server.forge.client.github_app import GitHubApp
+from evo_agents.hub.server.forge.models.forges import forge_named, github_target
+from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable, Target
+from evo_agents.hub.server.forge.models.protection import reason_line
+from evo_agents.hub.server.forge.service.protection import check_rulesets, store_check
 from evo_agents.hub.server.run_state import write_event
 
 log = logging.getLogger(__name__)
@@ -697,7 +693,8 @@ async def _move_on(
     outcomes: Counter,
 ) -> None:
     """Move one due change on, counting its outcome in ``outcomes``."""
-    if change.forge != "github":
+    forge = forge_named(change.forge)
+    if forge is None or not forge.advanced_by_app:
         if change.state == "judged":
             outcomes[await _judged_elsewhere(engine, change)] += 1
         return
