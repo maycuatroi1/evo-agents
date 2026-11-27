@@ -41,96 +41,41 @@ Waits that close a cycle, two runs each waiting on the other's end, are broken b
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, kg_labels, runs, system_context, tables
-from evo_agents.hub.server import (
-    agent_tasking,
-    audit,
-    cross_labels,
-    run_waits,
+from evo_agents.hub import chats, kg_labels, runs, system_context
+from evo_agents.hub.server import audit, cross_labels, run_waits
+from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
+from evo_agents.hub.server.agents.models.asks import (
+    ANSWER_IN_THREAD,
+    CHAIN_MOST,
+    LAST_REPLY_SCAN,
+    THREAD_CUT_MARK,
+    AgentAsked,
+    AgentAskIn,
+    Answer,
 )
-from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chats.models.agents import REFUSALS, Handle
+from evo_agents.hub.server.agents.repository import asks as repository
+from evo_agents.hub.server.agents.repository.tasking import project_role
+from evo_agents.hub.server.agents.service import tasking as agent_tasking
+from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.errors import Unprocessable
 from evo_agents.hub.server.chats.service.agents import AgentRun, agent_run
 from evo_agents.hub.server.chats.service.posting import insert_message
 from evo_agents.hub.server.chats.service.runs import agent_access, chat_run, hub_reply
 from evo_agents.hub.server.decisions.models import OptionIn
 from evo_agents.hub.server.decisions.service.asks import store_decision
-from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.outputs.service import store as output_store
 from evo_agents.hub.server.profile_store import Profile, by_handle
 from evo_agents.hub.server.projects import access_of
-from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
-from evo_agents.hub.server.security import CurrentUser
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.hub.server.work_chats import service as work_chats
 
 log = logging.getLogger(__name__)
-
-ANSWER_IN_THREAD = 2048  # bytes of the answer the asking run's thread shows; the agent gets it whole
-THREAD_CUT_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; message #{message} has the whole answer]"
-LAST_REPLY_SCAN = 200  # the last messages of a run last_reply reads to step over the lines of its pushes, one a repo
-CHAIN_MOST = 50  # the runs of a session last_reply goes back through
-
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-
-
-class AgentAskIn(BaseModel):
-    handle: Handle = Field(description="the agent asked, of another project, @ left out")
-    body: str = Field(min_length=1, description=f"what it is asked, at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
-    goal: str | None = Field(
-        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: what the agent asked should reach"
-    )
-    output: str | None = Field(
-        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: what its answer should hold"
-    )
-    bounds: str | None = Field(
-        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: what it should not do or touch"
-    )
-    done_when: str | None = Field(
-        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: when its work is finished"
-    )
-    refs: list[str] = Field(
-        default_factory=list,
-        max_length=system_context.MAX_REFS,
-        description="the brief: refs it starts from (repo:path, a run, an output, a URL)",
-    )
-    reason: str | None = Field(
-        None,
-        max_length=system_context.REASON_CHARS,
-        description="why an agent of a system asks an agent off its interacts edges; without it such an ask is refused",
-    )
-    priority: runs.Priority = Field(
-        runs.DEFAULT_PRIORITY,
-        description="the priority of the run it asks for: a worker claims its queued runs by it, urgent first",
-    )
-
-    def brief(self) -> dict:
-        return system_context.clean_brief(self.model_dump(include={*system_context.BRIEF_FIELDS, "refs"}))
-
-    @field_validator("body")
-    @classmethod
-    def _bounded(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("a question has some text")
-        if len(value.encode()) > chats.MAX_MESSAGE_BYTES:
-            raise ValueError(f"a question is at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
-        return value
-
-
-class AgentAsked(BaseModel):
-    run_id: int | None = Field(description="the run of the agent asked; null when the hub refused")
-    decision_id: int | None = Field(description="the wait of the asking run its answer wakes; null when refused")
-    refusal: str | None = Field(description="why the hub handed no work, as the thread says too")
 
 
 # Asking
@@ -140,7 +85,7 @@ async def _refusal(conn: AsyncConnection, run: AgentRun, target: Profile | None,
     """Why the agent of ``run`` may not ask agent ``target`` (named ``handle``) for the origin of its chain; None when
     it may."""
     origin = run.principal
-    if target is None or await agent_tasking.project_role(conn, origin.user_id, target.project_id) is None:
+    if target is None or await project_role(conn, origin.user_id, target.project_id) is None:
         return f"no agent @{handle} that {origin.login} can see"
     problem = rules.hop_problem(run.hop + 1, target.id == run.profile.id)
     if problem is not None:
@@ -218,30 +163,8 @@ async def open_wait(conn: AsyncConnection, row, run: AgentRun, target: Profile, 
         options=[OptionIn(key=key, label=label, description=text) for key, label, text in run_waits.OPTIONS],
     )
     view = await store_decision(conn, run.run_id, row, ask, wake={"wake_at": wake_at, "wake_on": None})
-    r, d = tables.runs, tables.decisions
-    held = exists().where(d.c.id == r.c.spawned_wait_id, d.c.state == "open")  # a wait it answers already stays
-    await conn.execute(
-        update(r).values(spawned_by_run_id=run.run_id, spawned_wait_id=view.id).where(r.c.id == child, ~held)
-    )
-    await conn.execute(update(d).values(awaits_run_id=child).where(d.c.id == view.id))
+    await repository.mark_asked(conn, child, run.run_id, view.id)
     return view.id
-
-
-@worker_router.post(
-    "/runs/{run_id}/agent/asks",
-    status_code=201,
-    response_model=AgentAsked,
-    responses={**REFUSALS, 422: {"model": ErrorBody}},
-)
-async def ask(request: Request, run_id: RunId, body: AgentAskIn, user: CurrentUser) -> AgentAsked:
-    """Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring)."""
-    async with request.app.state.engine.begin() as conn:
-        run = await agent_run(conn, user, run_id)
-        if run.kind != "chat":
-            raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
-        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
-        asked = await ask_agent(conn, request.app.state.sealer, run, body, row)
-    return asked
 
 
 async def ask_agent(
@@ -275,13 +198,8 @@ async def ask_agent(
         if off:
             await system_traces.mark_reason(conn, child, (body.reason or "").strip())
         shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
-        await audit.record(
-            conn,
-            actor_id=run.principal.user_id,
-            token_id=run.principal.token_id,
-            action=audit.CHAT_MESSAGE,
-            target=f"message:{message_id} run:{run_id} asked:{child}",
-        )
+        target_of = f"message:{message_id} run:{run_id} asked:{child}"
+        await Auditor(conn, None, run.principal).record(audit.CHAT_MESSAGE, target_of)
     else:
         shown = f"@{body.handle}: {refusal}"
     if found is not None:
@@ -318,20 +236,11 @@ async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | No
     as that run or a run it went on from (``_chain``): a later run of the same agent in the thread is another answer.
     It steps over the hub's lines of its pushes (``is_pull_text``), which come after its answer when the worker pushes
     at the end of the turn, one a repo."""
-    r, m = tables.runs, tables.chat_messages
-    row = (
-        await conn.execute(
-            select(r.c.profile_id, func.coalesce(m.c.thread_root_id, m.c.id).label("root"))
-            .join_from(r, m, m.c.id == r.c.chat_message_id)
-            .where(r.c.id == run_id)
-        )
-    ).one_or_none()
+    row = await repository.started_in(conn, run_id)
     if row is None:
         return None
-    in_thread = func.coalesce(m.c.thread_root_id, m.c.id) == row.root
-    mine = (m.c.author_profile_id == row.profile_id, m.c.run_id.in_(await _chain(conn, run_id)))
-    query = select(m.c.id, m.c.body).where(in_thread, *mine).order_by(m.c.id.desc())
-    for found in (await conn.execute(query.limit(LAST_REPLY_SCAN))).all():
+    chain = await _chain(conn, run_id)
+    for found in await repository.written_in(conn, row.root, row.profile_id, chain, LAST_REPLY_SCAN):
         if not rules.is_pull_text(found.body):
             return found.id, found.body
     return None
@@ -340,13 +249,11 @@ async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | No
 async def _chain(conn: AsyncConnection, run_id: int) -> list[int]:
     """Run ``run_id`` and the runs it went on from, in its session (``resume_of_run_id``) or after a loss
     (``parent_run_id``), newest first, at most CHAIN_MOST."""
-    r = tables.runs
     chain: list[int] = []
     at: int | None = run_id
     while at is not None and at not in chain and len(chain) < CHAIN_MOST:
         chain.append(at)
-        query = select(r.c.resume_of_run_id, r.c.parent_run_id).where(r.c.id == at)
-        row = (await conn.execute(query)).one_or_none()
+        row = await repository.went_on_from(conn, at)
         at = None if row is None else row.resume_of_run_id or row.parent_run_id
     return chain
 
@@ -354,11 +261,8 @@ async def _chain(conn: AsyncConnection, run_id: int) -> list[int]:
 async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
     """The refs of the work of the runs that answer wait ``wait_id``: their outputs, and the branch and repos of run
     ``run_id``, the last of them."""
-    r, o = tables.runs, tables.run_outputs
-    chain = select(r.c.id).where(r.c.spawned_wait_id == wait_id)
-    query = select(o.c.id, o.c.name).where(o.c.run_id.in_(chain)).order_by(o.c.id)
-    made = (await conn.execute(query)).all()
-    row = (await conn.execute(select(r.c.branch, r.c.repos, r.c.commit_sha).where(r.c.id == run_id))).one()
+    made = await repository.wait_outputs(conn, wait_id)
+    row = await repository.run_work(conn, run_id)
     refs = []
     if made:
         refs.append("Outputs: " + ", ".join(f"{item.name} (#{item.id})" for item in made))
@@ -369,32 +273,17 @@ async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
     return refs
 
 
-@dataclass(frozen=True)
-class Answer:
-    """What the asking run gets (``agent``), the message that wakes its agent, and what its thread shows
-    (``thread``), with the message of the agent asked that it repeats (``repeats``), its answer; None for none."""
-
-    agent: str
-    thread: str
-    repeats: int | None = None
-
-
 async def withheld_answer(conn: AsyncConnection, run_id: int, wait_id: int) -> str | None:
     """Why what run ``run_id`` says may not enter the run whose wait ``wait_id`` it answers; None when it may. The check
     of every read across projects (``cross_labels``): the hub sink of the asking run's project must let in the label of
     the run asked (its plan's, else its project's default label, ``kg_labels.run_label``). Within one project, nothing
     crosses."""
-    d = tables.decisions
-    project_id = (await conn.execute(select(d.c.project_id).where(d.c.id == wait_id))).scalar_one()
-    return await withheld_from(conn, run_id, project_id)
+    return await withheld_from(conn, run_id, await repository.wait_project(conn, wait_id))
 
 
 async def withheld_from(conn: AsyncConnection, run_id: int, project_id: int) -> str | None:
     """Why what run ``run_id`` says may not enter project ``project_id`` (``withheld_answer``); None when it may."""
-    r, p = tables.runs, tables.projects
-    asked = select(p.c.name).join_from(r, p, p.c.id == r.c.project_id).where(r.c.id == run_id)
-    asking = select(p.c.name).where(p.c.id == project_id)
-    source, target = (await conn.execute(asked)).scalar_one(), (await conn.execute(asking)).scalar_one()
+    source, target = await repository.project_names(conn, run_id, project_id)
     if source == target:
         return None
     target_access, source_access = await access_of(conn, None, target), await access_of(conn, None, source)
@@ -408,8 +297,7 @@ async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_
     ``state``: its answer and the refs of its work, or why it gave none. The one place where text crosses from the
     project asked to the asking run's, so the one that checks it (``withheld_answer``): an answer the asking run's
     project does not let in is left out whole, its refs and its failure too, and both say why."""
-    r = tables.runs
-    row = (await conn.execute(select(r.c.error, r.c.failure_cause).where(r.c.id == run_id))).one()
+    row = await repository.run_end(conn, run_id)
     why = await withheld_answer(conn, run_id, wait_id)
     if why is not None:
         said = f"run #{run_id} of @{handle}, which you asked, ended {state}, and the hub withheld what it said: {why}"
@@ -436,33 +324,15 @@ async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_
     return Answer(runs.clip(agent, runs.MAX_INBOX_BYTES), runs.clip(thread, ANSWER_IN_THREAD, mark), repeats)
 
 
-def _waits(run_id: int):
-    """The waits the end of run ``run_id`` answers: the one it carries (``spawned_wait_id``) and each open wait of an
-    ask that run, or a run it goes on from in its session or retries after a loss, took in its inbox
-    (``decisions.awaits_run_id``)."""
-    r, d = tables.runs, tables.decisions
-    columns = (r.c.id, r.c.resume_of_run_id, r.c.parent_run_id)
-    chain = select(*columns).where(r.c.id == run_id).cte("answering", recursive=True)
-    earlier = r.alias("earlier")
-    went_on = or_(earlier.c.id == chain.c.resume_of_run_id, earlier.c.id == chain.c.parent_run_id)
-    chain = chain.union(
-        select(earlier.c.id, earlier.c.resume_of_run_id, earlier.c.parent_run_id).join_from(earlier, chain, went_on)
-    )
-    carried = select(r.c.spawned_wait_id).where(r.c.id == run_id).scalar_subquery()
-    awaited = d.c.awaits_run_id.in_(select(chain.c.id))
-    query = select(d.c.id, d.c.project_id, d.c.plan_id).where(d.c.state == "open", (d.c.id == carried) | awaited)
-    return query.order_by(d.c.id)
-
-
 async def answer_asker(conn: AsyncConnection, run_id: int, state: str, handle: str) -> int | None:
     """When run ``run_id`` of agent ``handle``, asked by another agent's run, ended in ``state``: each wait it answers
-    (``_waits``) answered with ``delegated_answer``, in the caller's transaction, and the answer said where the hub's
+    (``repository.waits``) answered with ``delegated_answer``, in the caller's transaction, and the answer said where the hub's
     lines of the ask go (``work_chats.line_place``); the run that takes the first answer, None when nothing waits for
     it."""
     asked = await chat_run(conn, run_id)
     there = None if asked is None else (asked.chat_id, asked.root_id)
     woke: list[int] = []
-    for wait in (await conn.execute(_waits(run_id))).all():
+    for wait in await repository.open_waits(conn, run_id):
         answer = await delegated_answer(conn, run_id, state, wait.id, handle)
         asker = await run_waits.wake(conn, wait.id, wait.project_id, wait.plan_id, answer.agent)
         if asker is None:
@@ -480,15 +350,6 @@ async def answer_asker(conn: AsyncConnection, run_id: int, state: str, handle: s
 # Forwarding
 
 
-class AgentForwardIn(BaseModel):
-    run_id: int = Field(gt=0, description="the run whose last answer is forwarded: a run of the same trace")
-
-
-class AgentForwarded(BaseModel):
-    message_id: int | None = Field(description="the message forwarded into the run's thread; null when refused")
-    refusal: str | None = Field(description="why the hub forwarded nothing, as the thread says too")
-
-
 async def _forward_refusal(conn: AsyncConnection, found: system_traces.Membership | None, child_id: int) -> str | None:
     """Why the run of ``found`` may not forward the answer of run ``child_id``; None when it may: both runs are in
     one trace of an agent system, the child is another run, and it has ended."""
@@ -499,8 +360,7 @@ async def _forward_refusal(conn: AsyncConnection, found: system_traces.Membershi
     child = await system_traces.of_run(conn, child_id)
     if child is None or child.trace_id != found.trace_id:
         return f"run #{child_id} is not in the trace of this run (#{found.trace_id}): only its runs can be forwarded"
-    r = tables.runs
-    state = (await conn.execute(select(r.c.state).where(r.c.id == child_id))).scalar_one()
+    state = await repository.run_column(conn, child_id, "state")
     if state not in runs.TERMINAL_STATES:
         return f"run #{child_id} has not ended ({state}): forward its answer once it has"
     return None
@@ -515,13 +375,12 @@ async def forward(conn: AsyncConnection, run: AgentRun, child_id: int) -> tuple[
     found = await system_traces.of_run(conn, run.run_id)
     refusal = await _forward_refusal(conn, found, child_id)
     reply = None
-    r = tables.runs
     if refusal is None:
         reply = await last_reply(conn, child_id)
         if reply is None:
             refusal = f"run #{child_id} wrote no answer to forward"
     if refusal is None:
-        project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run.run_id))).scalar_one()
+        project_id = await repository.run_column(conn, run.run_id, "project_id")
         refusal = await withheld_from(conn, child_id, project_id)
     access = None
     if refusal is None:
@@ -532,13 +391,11 @@ async def forward(conn: AsyncConnection, run: AgentRun, child_id: int) -> tuple[
     child_profile = None
     if refusal is None:
         assert reply is not None and access is not None
-        child_profile = (await conn.execute(select(r.c.profile_id).where(r.c.id == child_id))).scalar_one()
+        child_profile = await repository.run_column(conn, child_id, "profile_id")
         message_id, _ = await insert_message(
             conn, access, reply[1], thread_root_id=chat.root_id, author_profile_id=child_profile, run_id=run.run_id
         )
-        k = tables.run_output_links
-        carried = select(k.c.output_id).where(k.c.chat_message_id == reply[0]).order_by(k.c.output_id)
-        await output_store.link_outputs(conn, message_id, list((await conn.execute(carried)).scalars()))
+        await output_store.link_outputs(conn, message_id, await repository.carried_outputs(conn, reply[0]))
     else:
         await hub_reply(conn, chat.chat_id, chat.root_id, f"Forward of run #{child_id}: {refusal}")
     if found is not None:
@@ -554,20 +411,20 @@ async def forward(conn: AsyncConnection, run: AgentRun, child_id: int) -> tuple[
     return message_id, refusal
 
 
-@worker_router.post(
-    "/runs/{run_id}/agent/forwards",
-    status_code=201,
-    response_model=AgentForwarded,
-    responses={**REFUSALS, 422: {"model": ErrorBody}},
-)
-async def forward_answer(request: Request, run_id: RunId, body: AgentForwardIn, user: CurrentUser) -> AgentForwarded:
-    """Forward the last answer of run ``body.run_id``, a run of the same trace of an agent system, verbatim into the
-    thread of a chat run this worker holds (``forward``). A refusal is answered (201, ``refusal``) and said in the
-    thread."""
-    async with request.app.state.engine.begin() as conn:
-        run = await agent_run(conn, user, run_id)
-        if run.kind != "chat":
-            raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent forwards an answer")
-        message_id, refusal = await forward(conn, run, body.run_id)
-    log.info("answer forwarded", extra={"run_id": run_id, "forwarded": body.run_id, "refused": bool(refusal)})
-    return AgentForwarded(message_id=message_id, refusal=refusal)
+async def ask(conn: AsyncConnection, sealer, user, run_id: int, body: AgentAskIn) -> AgentAsked:
+    """Ask agent ``body.handle`` of another project, in chat run ``run_id`` the worker of ``user`` holds; 422 for a
+    run of another kind."""
+    run = await agent_run(conn, user, run_id)
+    if run.kind != "chat":
+        raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
+    _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
+    return await ask_agent(conn, sealer, run, body, row)
+
+
+async def forward_of(conn: AsyncConnection, user, run_id: int, child_id: int) -> tuple[int | None, str | None]:
+    """``forward`` of the answer of run ``child_id`` into chat run ``run_id`` the worker of ``user`` holds; 422 for a
+    run of another kind."""
+    run = await agent_run(conn, user, run_id)
+    if run.kind != "chat":
+        raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent forwards an answer")
+    return await forward(conn, run, child_id)

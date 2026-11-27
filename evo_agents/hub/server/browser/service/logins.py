@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_login
 from evo_agents.hub.credentials import dispatch_credential
-from evo_agents.hub.server import agent_placement, audit
+from evo_agents.hub.server import audit
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.browser.models.identities import BrowserIdentity

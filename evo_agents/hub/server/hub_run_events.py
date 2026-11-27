@@ -23,7 +23,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server.agent_account_mask import masked, profile_values, run_values
+from evo_agents.hub.server.agent_accounts.service.mask import masked, profile_values, run_values
 from evo_agents.hub.server.run_state import notify_events
 from evo_agents.hub.server.sealing import Sealer
 

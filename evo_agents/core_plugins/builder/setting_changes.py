@@ -22,8 +22,10 @@ from evo_agents.core_plugins.builder.kinds import (
 from evo_agents.hub import autonomy, branding, features
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs
-from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
-from evo_agents.hub.server.agent_profiles import AgentEdit, new_version, profile_changes
+from evo_agents.hub.server.agents.models.packs import AgentPackPin
+from evo_agents.hub.server.agents.models.profiles import AgentEdit
+from evo_agents.hub.server.agents.service.packs import pinned
+from evo_agents.hub.server.agents.service.profiles import new_version, profile_changes
 from evo_agents.hub.server.plugin_grants import installed_row
 from evo_agents.hub.server.profile_store import Profile, by_handle, version_rules
 from evo_agents.hub.server.projects import ProjectAccess

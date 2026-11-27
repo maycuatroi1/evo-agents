@@ -30,7 +30,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import chat_runs, system_spec, tables
 from evo_agents.hub.jobs import HUB_TURN
-from evo_agents.hub.server import agent_tasking, hub_runtime, pool_accounts, run_retry
+from evo_agents.hub.server import hub_runtime, pool_accounts, run_retry
+from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.profile_store import by_handle
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql

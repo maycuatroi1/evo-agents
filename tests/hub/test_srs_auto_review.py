@@ -134,7 +134,7 @@ def test_srs_auto_review_not_handed_says_why_in_the_log_and_approval_waits_for_n
     async def type_hold(conn, agent_type_id, daily_usd):
         return spent["usd"], 0.0, 1.0
 
-    monkeypatch.setattr("evo_agents.hub.server.agent_types.type_hold", type_hold)
+    monkeypatch.setattr("evo_agents.hub.server.agents.service.agent_types.type_hold", type_hold)
     with caplog.at_level(logging.INFO, logger=LOGGER):
         submitted(client, hub["chi"], 1)
     (why,) = [record.why for record in caplog.records if record.getMessage() == "no review by @ba"]

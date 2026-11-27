@@ -50,7 +50,8 @@ from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.kg_decisions import MAX_REASON_CHARS, MAX_REF_CHARS
 from evo_agents.hub.runs import clip
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.agent_profiles import AgentAxis, new_version
+from evo_agents.hub.server.agents.models.profiles import AgentAxis
+from evo_agents.hub.server.agents.service.profiles import new_version
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Unprocessable
 from evo_agents.hub.server.profile_store import by_handle

@@ -34,7 +34,7 @@ from dataclasses import replace
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.agent_types import enabled_type
+from evo_agents.hub.server.agents.service.agent_types import enabled_type
 from evo_agents.hub.server.canvas.models.content import CanvasError
 from evo_agents.hub.server.canvas.models.judged import FEEDBACK_KEY, MAX_ITEMS, MAX_PASS_CHARS, Item, JudgingRow
 from evo_agents.hub.server.canvas.models.rows import CanvasRow, ClaimRow

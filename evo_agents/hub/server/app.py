@@ -602,14 +602,6 @@ def _include_member_routes(app: FastAPI) -> None:
         account_pools,
         account_views,
         accounts,
-        agent_account_views,
-        agent_accounts,
-        agent_asks,
-        agent_packs,
-        agent_profiles,
-        agent_provider_accounts,
-        agent_reads,
-        agent_types,
         autonomy_policies,
         branding,
         claude_sign_in,
@@ -658,6 +650,14 @@ def _include_member_routes(app: FastAPI) -> None:
         work_cards,
         worker_autonomy,
     )
+    from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
+    from evo_agents.hub.server.agent_accounts.routes import provider_accounts as agent_provider_accounts
+    from evo_agents.hub.server.agent_accounts.routes import views as agent_account_views
+    from evo_agents.hub.server.agents.routes import agent_types
+    from evo_agents.hub.server.agents.routes import asks as agent_asks
+    from evo_agents.hub.server.agents.routes import packs as agent_packs
+    from evo_agents.hub.server.agents.routes import profiles as agent_profiles
+    from evo_agents.hub.server.agents.routes import reads as agent_reads
     from evo_agents.hub.server.browser.routes import asks as browser_asks
     from evo_agents.hub.server.browser.routes import identities as browser_identities
     from evo_agents.hub.server.browser.routes import leases as browser_leases

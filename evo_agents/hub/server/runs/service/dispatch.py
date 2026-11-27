@@ -22,7 +22,6 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import (
-    agent_placement,
     audit,
     autonomy_hold,
     project_archive,
@@ -31,6 +30,7 @@ from evo_agents.hub.server import (
     run_autonomy,
     worker_placement,
 )
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.plugin_configs import check_run_layer

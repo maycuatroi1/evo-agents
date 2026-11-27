@@ -25,82 +25,20 @@ import tempfile
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import profiles, tables
 from evo_agents.hub.blobs import BLOB_PREFIX, MAX_GET_TTL, BlobStoreUnavailable
 from evo_agents.hub.plugin_calls import core_registry, enabled_in, enabled_plugins
-from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.agents.models.packs import IMAGE_KEY, NOTHING, POINT, AgentPack, AgentPackPin
+from evo_agents.hub.server.agents.repository import packs as repository
+from evo_agents.hub.server.base.errors import Forbidden, Unprocessable
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import RunPack
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import compat, core
 from evo_agents.plugins.agent_packs import pack_name
 from evo_agents.plugins.bundle import Bundle, BundleError
-from evo_agents.plugins.manifest import PLUGIN_ID
-from evo_agents.plugins.runtimes import CONTRIBUTION
-
-POINT = "agent_packs"
-NOTHING = "nothing changed"
-IMAGE_KEY = "image:"  # plugin_versions.r2_key of a core plugin of the hub's image: image:<entry point>
-
-router = APIRouter(prefix="/v1/projects", tags=["agents"], responses={401: {"model": ErrorBody}})
-
-
-class AgentPackPin(BaseModel):
-    """A pack a profile attaches: pack ``name`` of plugin ``plugin`` at version ``version`` of the plugin."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    plugin: str = Field(pattern=PLUGIN_ID, description="the plugin's id")
-    name: str = Field(pattern=f"^{CONTRIBUTION}$", description="the pack, as the plugin's manifest names it")
-    version: str | None = Field(
-        None,
-        pattern=f"^{compat.PLUGIN_VERSION.pattern}$",
-        description="a version of the plugin the hub holds; left out: the one installed now, which the profile pins",
-    )
-
-    @property
-    def pack(self) -> str:
-        return pack_name(self.plugin, self.name)
-
-
-Pins = Annotated[list[AgentPackPin], Field(max_length=profiles.MAX_PACKS)]
-
-
-class PinnedPack(BaseModel):
-    """A pack a profile attaches, at the version of its plugin it pins."""
-
-    pack: str = Field(description="<plugin>/<name>")
-    plugin: str
-    name: str
-    version: str
-
-
-def pinned_view(packs: list | None) -> list[PinnedPack]:
-    """The packs of a profile (as it stores them) as its view shows them."""
-    return [PinnedPack(pack=pack_name(item["plugin"], item["name"]), **item) for item in packs or ()]
-
-
-class AgentPack(BaseModel):
-    """A pack a profile of the project may attach: of a plugin the project enabled, at one of ``versions``."""
-
-    pack: str = Field(description="<plugin>/<name>")
-    plugin: str
-    name: str
-    title: str | None
-    description: str | None
-    installed_version: str = Field(description="the plugin's version installed now, which a pin without one takes")
-    versions: list[str] = Field(
-        description="the versions of the plugin the hub holds that declare the pack and run on this release, the "
-        "newest first"
-    )
 
 
 def _declared(manifest: dict, name: str) -> dict | None:
@@ -135,31 +73,20 @@ def image_plugin(row) -> core.CorePlugin | None:
     return next((plugin for plugin in found if plugin.manifest.version == row.version), None)
 
 
-def _versions(plugin_id: int):
-    v = tables.plugin_versions
-    return select(v.c.version, v.c.manifest, v.c.r2_key, v.c.sha256, v.c.size).where(v.c.plugin_id == plugin_id)
-
-
-async def _version(conn: AsyncConnection, plugin_id: int, version: str):
-    query = _versions(plugin_id).where(tables.plugin_versions.c.version == version)
-    return (await conn.execute(query)).one_or_none()
-
-
 async def _pin(conn: AsyncConnection, project_id: int, project: str, pin: AgentPackPin, hub_version: str) -> dict:
     enabled = await enabled_in(conn, pin.plugin, project_id)
     if enabled is None:
-        raise HTTPException(
-            422,
+        raise Unprocessable(
             f"agent pack {pin.pack}: plugin {pin.plugin} is not enabled in project {project}, or it is turned off; "
-            f"see GET /v1/projects/{project}/agent-packs; {NOTHING}",
+            f"see GET /v1/projects/{project}/agent-packs; {NOTHING}"
         )
     version = pin.version or enabled.installed_version
-    row = await _version(conn, enabled.id, version)
+    row = await repository.version(conn, enabled.id, version)
     why = f"the hub holds no version {version} of plugin {pin.plugin}" if row is None else None
     if row is not None and (unfit := _unfit(row, pin.name, hub_version)) is not None:
         why = f"version {version} of plugin {pin.plugin} {unfit}"
     if why is not None:
-        raise HTTPException(422, f"agent pack {pin.pack}: {why}; {NOTHING}")
+        raise Unprocessable(f"agent pack {pin.pack}: {why}; {NOTHING}")
     return {"plugin": pin.plugin, "name": pin.name, "version": version}
 
 
@@ -174,42 +101,35 @@ async def pinned(
     found, seen = [], set()
     for pin in pins:
         if pin.pack in seen:
-            raise HTTPException(422, f"agent pack {pin.pack} is attached twice: attach each pack once; {NOTHING}")
+            raise Unprocessable(f"agent pack {pin.pack} is attached twice: attach each pack once; {NOTHING}")
         seen.add(pin.pack)
         found.append(await _pin(conn, project_id, project, pin, hub_version))
     return found
 
 
-@router.get(
-    "/{project}/agent-packs",
-    response_model=list[AgentPack],
-    responses={code: {"model": ErrorBody} for code in (403, 404)},
-)
-async def list_agent_packs(request: Request, project: ProjectName, user: CurrentUser) -> list[AgentPack]:
+async def list_packs(conn: AsyncConnection, user: Principal, project: str, hub_version: str) -> list[AgentPack]:
     """The agent packs a profile of the project may attach, by plugin, then in its manifest's order."""
-    hub_version = request.app.state.hub_version
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        if access.role is None:
-            raise HTTPException(403, f"reading the agent packs of project {project} needs a grant on it")
-        found = []
-        for plugin in await enabled_plugins(conn, access.project_id):
-            items = (plugin.manifest.get("contributes") or {}).get(POINT, ())
-            held = list(await conn.execute(_versions(plugin.id))) if items else []
-            for item in items:
-                usable = [row.version for row in held if _unfit(row, item["name"], hub_version) is None]
-                found.append(
-                    AgentPack(
-                        pack=pack_name(plugin.name, item["name"]),
-                        plugin=plugin.name,
-                        name=item["name"],
-                        title=item.get("title"),
-                        description=item.get("description"),
-                        installed_version=plugin.installed_version,
-                        versions=sorted(usable, key=compat.plugin_version_key, reverse=True),
-                    )
+    access = await project_access(conn, user, project)
+    if access.role is None:
+        raise Forbidden(f"reading the agent packs of project {project} needs a grant on it")
+    found = []
+    for plugin in await enabled_plugins(conn, access.project_id):
+        items = (plugin.manifest.get("contributes") or {}).get(POINT, ())
+        held = await repository.versions(conn, plugin.id) if items else []
+        for item in items:
+            usable = [row.version for row in held if _unfit(row, item["name"], hub_version) is None]
+            found.append(
+                AgentPack(
+                    pack=pack_name(plugin.name, item["name"]),
+                    plugin=plugin.name,
+                    name=item["name"],
+                    title=item.get("title"),
+                    description=item.get("description"),
+                    installed_version=plugin.installed_version,
+                    versions=sorted(usable, key=compat.plugin_version_key, reverse=True),
                 )
-        return found
+            )
+    return found
 
 
 # Claiming
@@ -224,7 +144,7 @@ async def _held(conn: AsyncConnection, project_id: int, project: str, pack: dict
             f"plugin {plugin} of agent pack {pack_name(plugin, name)} is no longer enabled in project {project}: it was "
             "disabled there, turned off or removed since the run was dispatched; enable it and dispatch the run again"
         )
-    row = await _version(conn, enabled.id, version)
+    row = await repository.version(conn, enabled.id, version)
     usable = row is not None and (_bundled(row) or image_plugin(row) is not None)
     if not usable or _declared(row.manifest, name) is None:
         return None, (

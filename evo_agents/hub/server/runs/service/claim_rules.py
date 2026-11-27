@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_events, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement, gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
+from evo_agents.hub.server import gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
+from evo_agents.hub.server.agents.repository import placement as agent_placement
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.priority import claim_order

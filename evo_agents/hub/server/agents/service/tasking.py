@@ -1,9 +1,9 @@
 """Whether an agent takes work, and whether a person may give it some: the rules a mention in a chat
-(``chats.service.runs.hand_work``), an agent asking another agent (``agent_asks``, ``evo-agents worker agent ask``) and the list
+(``chats.service.runs.hand_work``), an agent asking another agent (``agents.service.asks``, ``evo-agents worker agent ask``) and the list
 of the agents a person may chat with share, so that they never disagree.
 
 ``work_home`` is the first: an agent takes work while it is not deleted and has a pool of its own
-(``agent_placement.home_of``), or runs on the hub (profile ``runs_on`` hub: a job of the hub takes its turns, no worker
+(``agents.service.placement.home_of``), or runs on the hub (profile ``runs_on`` hub: a job of the hub takes its turns, no worker
 does, ``hub_runtime``), and ``takes_work`` reads the same for many agents at once. ``task_refusal`` is the
 second: the person must hold writer on the agent's project, or any grant there for the agent of a settle chat they are
 in (``attends``), and admin for an agent type a version of its plugin says takes work from the admins alone
@@ -12,15 +12,14 @@ in (``attends``), and admin for an agent type a version of its plugin says takes
 
 from __future__ import annotations
 
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import agent_placement
+from evo_agents.hub.server.agents.models.placement import Home
+from evo_agents.hub.server.agents.models.tasking import HUB
+from evo_agents.hub.server.agents.repository import tasking as repository
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.profile_store import Profile
-
-HUB = "hub"  # profile runs_on of an agent whose turns the hub takes (profiles.RUNS_ON)
 
 
 def deleted_refusal(profile: Profile) -> str | None:
@@ -34,7 +33,7 @@ def no_pool_refusal(profile: Profile) -> str:
     return f"@{profile.handle} has no pool of its own: an admin adds one (`evo-agents worker pool`)"
 
 
-async def work_home(conn: AsyncConnection, profile: Profile) -> tuple[agent_placement.Home | None, str | None]:
+async def work_home(conn: AsyncConnection, profile: Profile) -> tuple[Home | None, str | None]:
     """(the pool agent ``profile`` works on, None), (None, None) for an agent that runs on the hub, or (None, why it
     takes no work): it was deleted, or it has no pool of its own."""
     refusal = deleted_refusal(profile)
@@ -53,22 +52,13 @@ async def takes_work(conn: AsyncConnection, profile_ids: list[int]) -> set[int]:
     running on the hub."""
     if not profile_ids:
         return set()
-    ap, wp = tables.agent_profiles, tables.worker_pools
-    query = (
-        select(ap.c.id)
-        .distinct()
-        .outerjoin_from(ap, wp, wp.c.agent_id == ap.c.id)
-        .where(ap.c.id.in_(profile_ids), ap.c.deleted_at.is_(None), or_(wp.c.id.is_not(None), ap.c.runs_on == HUB))
-    )
-    return set((await conn.execute(query)).scalars())
+    return await repository.takes_work(conn, profile_ids)
 
 
 async def admins_only(conn: AsyncConnection, profile_id: int) -> bool:
     """Whether the profile ``profile_id`` is that of an agent type a version of its plugin says takes work from the
     project's admins alone (``mentioned_by: admin``); any version the hub holds counts, so it never opens up."""
-    t, v = tables.project_agent_types, tables.plugin_versions
-    query = select(t.c.name, v.c.manifest).join_from(t, v, v.c.plugin_id == t.c.plugin_id)
-    for row in await conn.execute(query.where(t.c.profile_id == profile_id)):
+    for row in await repository.type_manifests(conn, profile_id):
         for item in (row.manifest.get("contributes") or {}).get("agent_types") or ():
             if item.get("name") == row.name and item.get("mentioned_by") == "admin":
                 return True
@@ -97,12 +87,6 @@ def role_refusal(profile: Profile, login: str, role: str | None, *, attends: boo
     return None
 
 
-async def project_role(conn: AsyncConnection, user_id: int, project_id: int) -> str | None:
-    g = tables.grants
-    query = select(g.c.role).where(g.c.user_id == user_id, g.c.project_id == project_id)
-    return (await conn.execute(query)).scalar_one_or_none()
-
-
 async def task_refusal(
     conn: AsyncConnection, profile: Profile, user_id: int, login: str, *, attends: bool = False
 ) -> str | None:
@@ -111,6 +95,6 @@ async def task_refusal(
     refusal = deleted_refusal(profile)
     if refusal is not None:
         return refusal
-    role = await project_role(conn, user_id, profile.project_id)
+    role = await repository.project_role(conn, user_id, profile.project_id)
     admins = not has_role(role, "admin") and await admins_only(conn, profile.id)
     return role_refusal(profile, login, role, attends=attends, admins=admins)

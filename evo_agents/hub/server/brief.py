@@ -53,7 +53,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs, tables
-from evo_agents.hub.server import agent_placement
+from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.curator.repository.shift import due_schedules
 from evo_agents.hub.server.curator.service.shift import owner_access
 from evo_agents.hub.server.curator.service.status import curator_state

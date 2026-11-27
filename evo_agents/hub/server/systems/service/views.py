@@ -17,7 +17,8 @@ from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context
-from evo_agents.hub.server import agent_tasking, work_observe, work_status
+from evo_agents.hub.server import work_observe, work_status
+from evo_agents.hub.server.agents.repository import tasking as agent_tasking
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.projects import ProjectAccess, project_access

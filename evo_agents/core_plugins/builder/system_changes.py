@@ -31,7 +31,8 @@ from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing, refuse, said_by_pydantic
 from evo_agents.hub import kg_named_graphs, system_spec, tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.agent_profiles import AgentCreate, create_profile
+from evo_agents.hub.server.agents.models.profiles import AgentCreate
+from evo_agents.hub.server.agents.service.profiles import create_profile
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.systems.repository import store as system_store
 from evo_agents.hub.server.systems.service import systems as agent_systems

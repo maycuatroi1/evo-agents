@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, runs, system_context, triage_rules
 from evo_agents.hub.server import audit, run_waits, wait_cycles
-from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
+from evo_agents.hub.server.agent_accounts.service.mask import mask_run, mask_values
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.chats.service.agents import AgentRun

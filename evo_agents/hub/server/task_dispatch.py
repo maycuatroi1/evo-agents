@@ -53,7 +53,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules, run_autonomy
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.agent_types import contributed, enabled_type, type_left, type_spend
+from evo_agents.hub.server.agents.service.agent_types import contributed, enabled_type, type_left, type_spend
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable

@@ -178,13 +178,14 @@ def test_sources_lose_repeats_and_refuse_what_cannot_be_a_source():
 
 
 def test_the_cross_project_read_passes_graph_on_to_the_kg_tool():
-    from evo_agents.hub.server.agent_reads import CrossReadIn, _arguments
+    from evo_agents.hub.server.agents.service.reads import arguments
+    from evo_agents.hub.server.agents.service.shapes import CrossReadIn
 
     read = CrossReadIn(project="lumen-ops", tool="kg_search", query="KB-01", graph="deals-only")
-    assert _arguments(read)["graph"] == "deals-only"
-    assert "graph" not in _arguments(CrossReadIn(project="lumen-ops", tool="kg_search", query="KB-01"))
+    assert arguments(read)["graph"] == "deals-only"
+    assert "graph" not in arguments(CrossReadIn(project="lumen-ops", tool="kg_search", query="KB-01"))
     context = CrossReadIn(project="lumen-ops", tool="kg_context", ids=[SHARED_NODE], graph="deals-only")
-    assert _arguments(context) == {"ids": [SHARED_NODE], "graph": "deals-only"}
+    assert arguments(context) == {"ids": [SHARED_NODE], "graph": "deals-only"}
 
 
 def test_agent_read_graph_goes_in_the_body_of_a_kg_read_only():

@@ -860,6 +860,40 @@ the routes. A new module of the package goes into one of the four layers. See do
 boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-agent-accounts-layers"
+name = "The accounts of agents go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.agent_accounts"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.agent_accounts a route handler opens a transaction at most and passes the request's parts \
+to a public function of the service (accounts, views, provider_accounts, mask), which checks the caller, the agent \
+and the workers, seals and decides; the repository holds the SQL of the accounts, their bindings and settings and \
+their masking; the models (the API's shapes) import none of them, nor a module of the hub that reaches the service. \
+Move the code that reaches up into the layer that needs it: a check or a message into the service, a query into the \
+repository, a shape into the models. Other modules import the service and the models, never the routes. A new \
+module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-agents-layers"
+name = "The agents go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.agents"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.agents a route handler opens a transaction at most and passes the request's parts to a \
+public function of the service (profiles, packs, agent_types, placement, tasking, asks, reads, and shapes, the \
+shapes that hold a name of a module reaching the service), which checks the caller, the agent and its project and \
+decides; the repository holds the SQL of the profiles, their versions, packs and types, where their runs go and the \
+asks; the models (the API's shapes and limits) import none of them, nor a module of the hub that reaches the \
+service. Move the code that reaches up into the layer that needs it: a check or a message into the service, a query \
+into the repository, a shape into the models. Other modules import the service, the repository and the models, \
+never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, section \
+Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

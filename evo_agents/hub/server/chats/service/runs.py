@@ -42,14 +42,15 @@ from evo_agents.hub import chat_bridge_events, chats, ops_events, ops_queue, pro
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import (
-    agent_placement,
-    agent_tasking,
     autonomy_hold,
     gateway_accounts,
     pool_accounts,
     run_access_rules,
     run_autonomy,
 )
+from evo_agents.hub.server.agents.models.placement import Home
+from evo_agents.hub.server.agents.service import placement as agent_placement
+from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.attachments import repository as attachment_store
 from evo_agents.hub.server.chats.models.access import ChatAccess
 from evo_agents.hub.server.chats.models.runs import ChatRun, Hand
@@ -93,7 +94,7 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
     return await _pool_worker(conn, hand, home)
 
 
-async def _pool_worker(conn: AsyncConnection, hand: Hand, home: agent_placement.Home):
+async def _pool_worker(conn: AsyncConnection, hand: Hand, home: Home):
     """The pick of ``pick_worker`` among the nodes of ``home``'s pool."""
     profile = hand.profile
     rows = await store.pool_workers(conn, hand.owner_id, profile.project_id, home.pool_id)
@@ -649,7 +650,7 @@ async def _moved(conn: AsyncConnection, run_id: int, new: str, old: str | None) 
         await on_turn_failed(conn, run_id)
     went_on = await _go_on_untaken(conn, run_id, found) if new == "done" else None
     if profile is not None and went_on is None and new != "lost":  # a lost run's next attempt, or itself, answers
-        from evo_agents.hub.server.agent_asks import answer_asker  # its route hands work through this module
+        from evo_agents.hub.server.agents.service.asks import answer_asker  # its route hands work through this module
 
         await answer_asker(conn, run_id, new, profile.handle)
     return went_on

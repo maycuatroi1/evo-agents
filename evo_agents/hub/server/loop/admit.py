@@ -220,7 +220,7 @@ async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[s
 async def loop_worker(conn: AsyncConnection, project_id: int, labels: Sequence[str] = ()) -> LoopWorker:
     """The pool of the Loop's author and plan runs: the pool of the project's default agent, narrowed by ``labels`` (a
     plan's worker_labels), as the workers its selector reaches (``_selected``)."""
-    from evo_agents.hub.server import agent_placement
+    from evo_agents.hub.server.agents.service import placement as agent_placement
 
     home = await agent_placement.default_home(conn, project_id)
     if home is None:

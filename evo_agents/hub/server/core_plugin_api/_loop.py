@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import goals as hub_goals
 from evo_agents.hub import signals, tables
 from evo_agents.hub.plugin_calls import enabled_query
-from evo_agents.hub.server import agent_types
 from evo_agents.hub.server import audit as audit_log
+from evo_agents.hub.server.agents.repository import agent_types
 from evo_agents.hub.server.core_plugin_api._base import AUDIT_WORD, HUB_FAMILIES, MAX_AUDIT_TARGET
 from evo_agents.hub.server.core_plugin_api._reads import MAX_ROWS, enabled_project
 from evo_agents.hub.server.core_plugin_api._types import (
@@ -351,7 +351,7 @@ async def read_agent_types(
         row.id: row.name
         for row in (await conn.execute(enabled_query().where(tables.projects.c.id == project_id))).all()
     }
-    query = agent_types._rows(project_id)
+    query = agent_types.rows(project_id)
     if profile_id is not None:
         query = query.where(tables.project_agent_types.c.profile_id == profile_id)
     found = [
