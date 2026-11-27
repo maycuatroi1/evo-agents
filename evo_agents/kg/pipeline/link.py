@@ -50,6 +50,7 @@ import re
 from urllib.parse import unquote
 
 from evo_agents.kg.health import is_test_path
+from evo_agents.kg.memo import Stage
 from evo_agents.kg.pipeline import hierarchy
 from evo_agents.kg.pipeline.link_forms import (
     BACKTICK,
@@ -77,9 +78,10 @@ from evo_agents.kg.pipeline.link_forms import (
 from evo_agents.kg.pipeline.link_reads import Reads
 from evo_agents.kg.pipeline.link_refs import RefResolver
 from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, normalize_url
-from evo_agents.kg.schema import node_kind_for_item
+from evo_agents.schema.ontology import node_kind_for_item
 
 LINK_VERSION = "19"
+LINK = Stage("link", LINK_VERSION)  # the references of an item resolved through the index, traced (``Memo.run_traced``)
 
 # The directories of a dated plan or document: what sits there wrote of the tree as it was then.
 DATED_DIR = re.compile(r"(^|/)(completed|done|archive|archived)/", re.IGNORECASE)

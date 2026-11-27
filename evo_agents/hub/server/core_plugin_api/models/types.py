@@ -48,7 +48,7 @@ class Plugin:
 @dataclass(frozen=True)
 class Clearance:
     """What a channel may carry, on each project's own ladder: a level, and a location (None: any location, as
-    ``evo_agents.kg.policy`` reads a clearance that names none). With ``below`` (API 1.1) it carries what sits under
+    ``evo_agents.schema.policy`` reads a clearance that names none). With ``below`` (API 1.1) it carries what sits under
     them on the ladder, not at them, and on a ladder without the level or location, its lowest rung alone: Telegram's
     is ``Clearance("customer", "domestic-only", below=True)``."""
 

@@ -51,7 +51,7 @@ from evo_agents.hub.server.memories.service.audience import Reader, label_audien
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import WEB, Principal, holds
-from evo_agents.kg.policy import audience_below
+from evo_agents.schema.policy import audience_below
 
 log = logging.getLogger(__name__)
 

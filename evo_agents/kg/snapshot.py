@@ -38,7 +38,6 @@ from evo_agents.kg.graph_model import (
     within,
 )
 from evo_agents.kg.pacing import let_go, paced, paced_sorted
-from evo_agents.kg.policy import audience_below, audience_join
 from evo_agents.kg.snapshot_rows import (  # noqa: F401  (read from here too)
     CLUSTER,
     LINK,
@@ -51,6 +50,7 @@ from evo_agents.kg.snapshot_rows import (  # noqa: F401  (read from here too)
     rows_clusters,
     rows_vectors,
 )
+from evo_agents.schema.policy import audience_below, audience_join
 
 
 def _node_dict(row) -> dict:

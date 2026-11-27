@@ -10,7 +10,7 @@ as GET /v1/admin/tokens?state=expiring and ?state=unused, which list them. GET /
 table, for diagnostics.
 
 A grant gives a login a role on a project (reader, writer or admin) and the highest level of that project's label
-ladder it may see. The ladder is the project's own, as ``evo_agents.kg.policy.Policy`` reads it from the levels
+ladder it may see. The ladder is the project's own, as ``evo_agents.schema.policy.Policy`` reads it from the levels
 registered with the project, so a max level outside it is refused. A login that has not signed in yet can be
 granted: its users row waits for the first sign-in, which claims it. Granting and revoking add an audit row
 naming the project, the login and the role, never anything the grant gives access to. Revoking a grant, or lowering it

@@ -28,10 +28,10 @@ from evo_agents.hub.kg_ingest import (
 )
 from evo_agents.hub.kg_push import Pusher, batches, commit_timeout, log_timeout, transient, unanswered
 from evo_agents.hub.kg_remote import RemoteSession, open_session
-from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.policy import Label, Policy
 from tests.hub import pg
 
 LEVELS = ["public", "internal", "customer", "secret"]

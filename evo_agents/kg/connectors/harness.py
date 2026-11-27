@@ -26,7 +26,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from evo_agents import __version__
 from evo_agents.harness import Harness, load_yaml
 from evo_agents.kg.connectors import git, gitcli, hub_plans
 from evo_agents.kg.connectors._files import (
@@ -38,9 +37,10 @@ from evo_agents.kg.connectors._files import (
     matches,
     selected,
 )
+from evo_agents.kg.connectors.base import ConfigError, SourceConnector
 from evo_agents.kg.extract.scip_index import Scip
 from evo_agents.kg.ids import epoch_to_iso
-from evo_agents.kg.protocol import finalize_item, hello
+from evo_agents.kg.protocol import finalize_item
 
 SKIP_DIRS = {
     ".git",
@@ -150,61 +150,74 @@ def prior_history(ctx) -> dict:
     return held if isinstance(held, dict) and held.get("commit") and held.get("input") == git.read_input(ctx) else {}
 
 
-def run(ctx):
-    sid = ctx.source_id
-    root = Path(ctx.source.get("path") or ctx.harness_root or ".").expanduser()
-    head = history_head(ctx, root)
-    yield hello("harness", __version__, list_complete=True, rev_exact=True, **({"history": True} if head else {}))
-    if not (root / "harness.yaml").is_file():
-        message = f"{root} is not a harness (no harness.yaml)"
-        yield {"type": "error", "failure": "config", "message": message}
-        yield {"type": "closed", "status": "error", "exception": message}
-        return
+class HarnessConnector(SourceConnector):
+    """The files of the harness directory, the plans the hub holds and, with ``history: true``, its commits."""
 
-    clean, times, origin = checkout_state(root)
-    entry = own_entry(ctx.harness, root, origin)
-    repo_name = entry.get("name") or root.name
-    branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
-    bindings = bindings_dir(ctx.harness)
-    include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
+    name = "harness"
 
-    assets = ctx.source.get("assets", True)
-    from_hub, cursor = yield from hub_plans.read(ctx, root)
-    scip = Scip(ctx.source, root)  # the SCIP index of the tree, when the source's code backend reads one
-    count = 0
-    for full, rel in walk(root):
-        kind = harness_kind(rel, bindings)
-        wanted = kind is not None and selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude)
-        if not wanted and not (assets and not matches(rel, DEFAULT_EXCLUDE + list(exclude or []))):
-            continue
-        if hub_plans.plan_copy(rel) in from_hub:
-            continue  # a copy of a plan the hub holds: the hub's revision stands for it below
-        data = full.read_bytes()
-        rev_time = times.get(rel) if rel in clean else None
-        rev_time = rev_time or epoch_to_iso(full.stat().st_mtime)
-        uri = gitcli.web_url(origin, branch, rel) if origin else None
-        text = decode(data) if wanted else None
-        if text is None:
-            item = asset_item(
-                f"{sid}:file:{rel}", rel, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, size=len(data)
-            )
-        else:
-            item = file_item(
-                f"{sid}:file:{rel}", rel, text, rev=git_blob_sha(data), rev_time=rev_time, uri=uri, kind=kind
-            )
-        item["props"]["repo"] = repo_name
-        yield finalize_item(scip.annotate(item))
-        count += 1
-    for plan_id, plan in sorted(from_hub.items()):
-        if selected(f"plans/{plan['area']}/{plan_id}.yaml", include or ["*.yaml"], exclude):
-            yield hub_plans.item(sid, plan, repo_name)
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.root = Path(ctx.source.get("path") or ctx.harness_root or ".").expanduser()
+        self.head = history_head(ctx, self.root)
+
+    def features(self) -> dict:
+        return {"history": True} if self.head else {}
+
+    def items(self):
+        ctx, root, sid = self.ctx, self.root, self.ctx.source_id
+        if not (root / "harness.yaml").is_file():
+            raise ConfigError(f"{root} is not a harness (no harness.yaml)")
+        clean, times, origin = checkout_state(root)
+        entry = own_entry(ctx.harness, root, origin)
+        repo_name = entry.get("name") or root.name
+        branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
+        include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
+        from_hub, cursor = yield from hub_plans.read(ctx, root)
+        count = yield from self._files(from_hub, clean, times, origin, branch, repo_name)
+        for plan_id, plan in sorted(from_hub.items()):
+            if selected(f"plans/{plan['area']}/{plan_id}.yaml", include or ["*.yaml"], exclude):
+                yield hub_plans.item(sid, plan, repo_name)
+                count += 1
+        if self.head is not None:
+            yield from git.history_items(ctx, root, self.head, repo_name, origin, prior_history(ctx))
+            held = ctx.cursor if isinstance(ctx.cursor, dict) else {}
+            plans = cursor if cursor is not None else {"plans": held["plans"]} if "plans" in held else {}
+            cursor = {**plans, "history": {"commit": self.head, "input": git.read_input(ctx)}}
+        if cursor is not None:
+            yield {"type": "state", "cursor": cursor}
+        yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
+
+    def _files(self, from_hub: dict, clean: set[str], times: dict[str, str], origin: str, branch: str, repo_name: str):
+        """The items of the files on disk, but for the copies of the plans the hub holds; returns how many."""
+        ctx, sid = self.ctx, self.ctx.source_id
+        bindings = bindings_dir(ctx.harness)
+        include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
+        assets = ctx.source.get("assets", True)
+        scip = Scip(ctx.source, self.root)  # the SCIP index of the tree, when the source's code backend reads one
+        count = 0
+        for full, rel in walk(self.root):
+            kind = harness_kind(rel, bindings)
+            wanted = kind is not None and selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude)
+            if not wanted and not (assets and not matches(rel, DEFAULT_EXCLUDE + list(exclude or []))):
+                continue
+            if hub_plans.plan_copy(rel) in from_hub:
+                continue  # a copy of a plan the hub holds: the hub's revision stands for it below
+            data = full.read_bytes()
+            rev_time = times.get(rel) if rel in clean else None
+            rev_time = rev_time or epoch_to_iso(full.stat().st_mtime)
+            uri = gitcli.web_url(origin, branch, rel) if origin else None
+            text = decode(data) if wanted else None
+            item_id, rev = f"{sid}:file:{rel}", git_blob_sha(data)
+            if text is None:
+                item = asset_item(item_id, rel, rev=rev, rev_time=rev_time, uri=uri, size=len(data))
+            else:
+                item = file_item(item_id, rel, text, rev=rev, rev_time=rev_time, uri=uri, kind=kind)
+            item["props"]["repo"] = repo_name
+            yield finalize_item(scip.annotate(item))
             count += 1
-    if head is not None:
-        yield from git.history_items(ctx, root, head, repo_name, origin, prior_history(ctx))
-        held = ctx.cursor if isinstance(ctx.cursor, dict) else {}
-        plans = cursor if cursor is not None else {"plans": held["plans"]} if "plans" in held else {}
-        cursor = {**plans, "history": {"commit": head, "input": git.read_input(ctx)}}
-    if cursor is not None:
-        yield {"type": "state", "cursor": cursor}
-    yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
-    yield {"type": "closed", "status": "ok"}
+        return count
+
+
+def run(ctx):
+    """The messages of a run of the harness connector over the source of ``ctx``."""
+    return iter(HarnessConnector(ctx))

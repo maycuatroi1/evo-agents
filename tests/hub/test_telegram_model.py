@@ -22,7 +22,7 @@ def test_a_link_code_is_32_characters_a_start_parameter_takes_and_the_hub_keeps_
     assert hub_telegram.LINK_SECONDS == 600
 
 
-LEVELS = ["public", "internal", "customer", "secret"]  # evo_agents.kg.policy.DEFAULT_LEVELS
+LEVELS = ["public", "internal", "customer", "secret"]  # evo_agents.schema.policy.DEFAULT_LEVELS
 ANY = ["any"]
 DOMESTIC = ["any", "domestic-only"]
 

@@ -3,7 +3,7 @@ against them. A relation entry may give ``domain`` and ``range`` (the kinds of i
 ``cardinality`` (one_to_one, many_to_one, one_to_many, many_to_many) and ``acyclic: true``; a node kind entry may
 give ``keys`` (properties, or lists of them, whose values no two nodes of the kind share) and ``required_props``. A
 plain list of names states no rule, and a hub kind or relation may be named only to add rules to it
-(``evo_agents.kg.schema.validate_ontology``).
+(``evo_agents.schema.ontology.validate_ontology``).
 
 ``check`` finds, over every live edge and node of a snapshot:
 
@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 
 from evo_agents.kg.review import ACTIONS as REVIEW_ACTIONS
 from evo_agents.kg.review import EVIDENCE, ONTOLOGY_RULES, fingerprint
-from evo_agents.kg.schema import entry_name
+from evo_agents.schema.ontology import entry_name
 
 ONE_SOURCE = ("one_to_one", "one_to_many")  # a target has at most one source
 ONE_TARGET = ("one_to_one", "many_to_one")  # a source has at most one target

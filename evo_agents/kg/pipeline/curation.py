@@ -23,10 +23,13 @@ from __future__ import annotations
 import yaml
 
 from evo_agents.kg.graph_model import Graph, edge_id
-from evo_agents.kg.pipeline.binding import binding_item, resolve
+from evo_agents.kg.memo import Stage
+from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item, resolve
 from evo_agents.kg.pipeline.stages import edge, item_unit
 
 CURATION_VERSION = "1"
+# The binding stage of a binding item, a curation item or a binding file (``bind``), keyed by the whole index.
+BINDING = Stage("binding", f"{BINDING_VERSION}.{CURATION_VERSION}")
 CURATION_FACTS = ("same", "deprecate")  # the facts assembly keeps until entity resolution
 
 
@@ -124,4 +127,4 @@ def apply(graph: Graph) -> dict:
     return {"deprecated": marked, "orphans": orphans}
 
 
-__all__ = ["CURATION_FACTS", "CURATION_VERSION", "apply", "bind", "curation_item", "is_curation", "split"]
+__all__ = ["BINDING", "CURATION_FACTS", "CURATION_VERSION", "apply", "bind", "curation_item", "is_curation", "split"]

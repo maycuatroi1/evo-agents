@@ -20,7 +20,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from evo_agents.hub.access import UNTRUSTED, ProjectRules
-from evo_agents.kg.policy import TOP_AUDIENCE, Label
+from evo_agents.schema.policy import TOP_AUDIENCE, Label
 
 
 def _cleared(source: list[str], target: list[str], cap: int) -> int:

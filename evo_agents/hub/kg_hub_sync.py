@@ -44,11 +44,11 @@ from evo_agents.hub.api import paths
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.kg_push import Pusher, PushReport, member_routes
 from evo_agents.kg import audit
+from evo_agents.kg.connectors.runner import ConnectorContext, ConnectorError, credential_env
 from evo_agents.kg.corpus import BASE_EPOCH, ItemRecord, LogWriter, next_epoch, to_log_record
 from evo_agents.kg.ids import utc_now, uuid7
 from evo_agents.kg.project import Project, ProjectError, remember
 from evo_agents.kg.protocol import StreamChecker, sha256, source_of
-from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorError, credential_env
 from evo_agents.kg.sync import HubBuild, ProjectSync, SyncResult, due_sources, read_already, read_run, source_lineage
 
 ACCEPT_CONNECTOR = "evo:accept-removals"

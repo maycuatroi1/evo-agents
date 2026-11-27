@@ -11,8 +11,8 @@ from evo_agents.kg.connectors._files import LANGUAGE_BY_SUFFIX
 from evo_agents.kg.extract import graphify as gfy
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, INHERITANCE, OVERRIDES
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.schema import HUB_RELATIONS
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.ontology import HUB_RELATIONS
 from tests.kg import built
 from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, git, write

@@ -49,7 +49,7 @@ from evo_agents.hub.server.kg_health import owner_access
 from evo_agents.hub.server.mcp_text import memory_about
 from evo_agents.hub.server.memories.service.audience import label_audience
 from evo_agents.hub.server.memories.service.upkeep import citations
-from evo_agents.kg.policy import audience_below
+from evo_agents.schema.policy import audience_below
 
 log = logging.getLogger(__name__)
 

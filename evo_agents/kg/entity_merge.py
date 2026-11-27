@@ -36,13 +36,16 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from evo_agents.kg import entity_links as links
+from evo_agents.kg.memo import Stage
 from evo_agents.kg.protocol import canonical_json, sha256
 
 MERGE_REL = "merged_from"
 MERGE_STAGE = "entity_merge"
 MERGE_VERSION = "1"
+MERGE = Stage(MERGE_STAGE, MERGE_VERSION)  # whether two entities are one, as the model decided
 SUMMARY_STAGE = "entity_summary"
 SUMMARY_VERSION = "1"
+SUMMARY = Stage(SUMMARY_STAGE, SUMMARY_VERSION)  # the model's summary of what items say of an entity
 MERGE_BATCH = 20  # pairs a call
 MAX_PAIRS = 2000  # candidate pairs a build asks about at most
 NEAR = 0.85  # how alike two names of one kind read (difflib) to be a candidate

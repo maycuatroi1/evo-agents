@@ -48,7 +48,7 @@ from evo_agents.hub.server.canvas.repository import store
 from evo_agents.hub.server.canvas.service import proposals, writes
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.tables_canvas import MAX_REASON_CHARS
-from evo_agents.kg.policy import join_all
+from evo_agents.schema.policy import join_all
 
 log = logging.getLogger("evo_agents.hub.server.canvas.checks")  # the name it logged under before the layers
 

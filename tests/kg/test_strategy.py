@@ -9,8 +9,8 @@ from evo_agents.cli import main
 from evo_agents.kg import claude_code, entities, init_run, strategy
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.ontology import HUB_KINDS, HUB_RELATIONS
 from tests.kg import built
 from tests.kg.projects import make_project, write
 from tests.kg.test_entities_claude_code import fake_claude  # noqa: F401 (a fixture)

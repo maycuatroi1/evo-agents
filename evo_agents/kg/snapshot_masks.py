@@ -14,7 +14,7 @@ import threading
 from array import array
 
 from evo_agents.kg.pacing import paced
-from evo_agents.kg.policy import audience_below
+from evo_agents.schema.policy import audience_below
 
 _MADE = threading.Lock()  # one thread compiles a snapshot's policies
 WITHIN_HELD = 64  # ceilings a sight keeps the mask of

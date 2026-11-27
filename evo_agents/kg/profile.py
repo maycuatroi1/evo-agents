@@ -21,7 +21,10 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from pathlib import PurePosixPath
 
+from evo_agents.kg.memo import Stage
+
 PROFILE_VERSION = "1"
+PROFILE = Stage("profile", PROFILE_VERSION)  # the figures of an item for the data profile
 SCAN_CHARS = 200_000  # an item's text is read for its shapes and signals up to here
 TOP_SHAPES = 20
 MIN_SHAPE_COUNT = 5  # a shape is a candidate identifier from this many occurrences in two items at least

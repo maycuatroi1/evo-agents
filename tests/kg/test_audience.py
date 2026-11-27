@@ -10,19 +10,19 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.kg.policy import (
-    TOP_AUDIENCE,
-    Label,
-    Policy,
-    audience_below,
-    audience_of,
-)
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import SCHEMAS, finalize_item, hello, item_hash, validate_message
 from evo_agents.kg.serve import READ_META, Session
 from evo_agents.kg.sessions import describe, read_session, record_read
 from evo_agents.kg.sync import sync_project
 from evo_agents.schema import Validator
+from evo_agents.schema.policy import (
+    TOP_AUDIENCE,
+    Label,
+    Policy,
+    audience_below,
+    audience_of,
+)
 from tests.kg import built
 from tests.kg.hub_graph import hub_session
 

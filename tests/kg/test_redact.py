@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.kg.connectors import git as git_connector
-from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
+from evo_agents.kg.connectors.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.redact import MIN_LENGTH, PEM_MIN_BODY, is_literal_secret, name_kind, redact_file
 from evo_agents.kg.sync import SyncResult, count_item, sync_project
 from tests.kg import built

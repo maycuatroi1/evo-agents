@@ -26,7 +26,7 @@ import yaml
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.profile import CLASSES
-from evo_agents.kg.schema import validate_ontology
+from evo_agents.schema.ontology import validate_ontology
 
 BUILTIN_DIR = Path(__file__).with_name("strategies")
 CUSTOM_DIR = "strategies"  # under the harness root

@@ -23,8 +23,8 @@ from evo_agents.hub import facets, kg_asked, kg_labels, tables
 from evo_agents.hub.server.curator.service.shift import owner_access
 from evo_agents.hub.server.kg_labels import visible_labels
 from evo_agents.kg.evaluate import HOLDOUT, split_of
-from evo_agents.kg.policy import Policy
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.policy import Policy
 from tests.hub.live import sql
 from tests.hub.test_digest import answered, result, session_lines, tool_use
 from tests.hub.test_facet_job import SESSION, analyzed, later, session_facet_of, user_of

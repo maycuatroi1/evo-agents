@@ -10,8 +10,8 @@ import pytest
 from evo_agents.kg import entity_map, strategy
 from evo_agents.kg.build import unchanged_rows
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.schema import HUB_RELATIONS
 from evo_agents.kg.sync import sync_project
+from evo_agents.schema.ontology import HUB_RELATIONS
 from tests.kg import built
 from tests.kg.projects import make_project
 

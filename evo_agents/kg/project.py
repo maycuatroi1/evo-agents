@@ -19,8 +19,8 @@ from evo_agents.harness import (
 )
 from evo_agents.infra.files import JsonFile
 from evo_agents.kg.corpus import Corpus, kg_home
-from evo_agents.kg.policy import Policy
 from evo_agents.schema import errors
+from evo_agents.schema.policy import Policy
 
 REPLACE_TRIES = 60  # filelock.POLL apart: about 3 s for another process to close the file on Windows
 

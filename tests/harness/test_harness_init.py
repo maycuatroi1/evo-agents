@@ -16,7 +16,7 @@ from evo_agents.cli import main
 from evo_agents.harness import load_yaml, validate_harness
 from evo_agents.harness.init import LEVELS, Repo, knowledge, project_name, without_secret
 from evo_agents.hub.registration import registration
-from evo_agents.kg.policy import DEFAULT_LEVELS
+from evo_agents.schema.policy import DEFAULT_LEVELS
 
 LABEL = {"level": "internal", "integrity": "U"}
 SINKS = [

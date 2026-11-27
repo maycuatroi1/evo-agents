@@ -61,7 +61,7 @@ from evo_agents.hub.server.memories.service import agents
 from evo_agents.hub.server.memories.service.audience import label_audience, with_audience
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.policy import audience_below, audience_join, join_all
+from evo_agents.schema.policy import audience_below, audience_join, join_all
 
 AUTO_NOTE = "accepted by the hub: a promotion of tier 0, and the charter's auto_merge names tier 0"
 WHERE = "the promotion"

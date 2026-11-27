@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.kg.graph_model import edge_id
-from evo_agents.kg.policy import TOP_AUDIENCE
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.schema.policy import TOP_AUDIENCE
 
 SOURCE = "plugin.hub_decisions"
 ITEM = f"{SOURCE}:binding:decisions"

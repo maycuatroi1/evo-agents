@@ -19,7 +19,7 @@ from evo_agents.hub.server.kg.repository import config as repository
 from evo_agents.hub.server.kg.repository.graph import find_builds, knowledge
 from evo_agents.hub.server.kg.service.graph import hub_ceiling, queue, writer
 from evo_agents.hub.server.projects import project_access
-from evo_agents.kg.policy import Policy
+from evo_agents.schema.policy import Policy
 
 # The config
 

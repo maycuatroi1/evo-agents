@@ -3,7 +3,7 @@ L]``, and the web's "New project from data", create project P with no harness an
 transaction of POST /v1/kg/{project}/uploads with ``new_project`` true (``evo_agents.hub.server.kg_uploads``).
 
 The project gets what ``evo-agents harness init`` writes for a new harness, without its sources: the default ladder
-(``evo_agents.kg.policy``), one hub sink HUB_SINK that clears L, one Claude Code sink AGENT_SINK that clears only
+(``evo_agents.schema.policy``), one hub sink HUB_SINK that clears L, one Claude Code sink AGENT_SINK that clears only
 AGENT_CLEARANCE, so an agent reads what is labelled above it only once an admin raised that clearance on purpose,
 one llm-backend sink LLM_SINK with that same clearance, through which the entities step of a strategy such as
 multi-hop-api sends prose to a model's endpoint (an item labelled above it is not sent, ``evo_agents.kg.entities``),
@@ -31,7 +31,7 @@ from evo_agents.hub.server.admin import upsert_grant
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import create_project
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
+from evo_agents.schema.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
 
 DEFAULT_LEVEL = "internal"  # the label of the data without --label, as `harness init` labels a new harness's sources
 HUB_SINK = "evo-hub"

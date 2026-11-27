@@ -9,10 +9,10 @@ from collections import Counter
 
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
-from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project
 from evo_agents.kg.refs import stored
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.schema.policy import Label, audience_below
 
 # Only a session with an ``error`` has no project, policy or clearance, and it answers nothing but that error.
 ANSWERS_NOTHING = "a session with an error reads nothing"
@@ -40,7 +40,7 @@ class SessionView:
         self.clearance = None
         self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
         self.read: Label | None = None  # join of the labels the current call reveals
-        self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
+        self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.schema.policy)
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None

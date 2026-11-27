@@ -23,8 +23,8 @@ from sqlalchemy.pool import NullPool
 from evo_agents.hub import kg_graph_rows, tables
 from evo_agents.kg import asked
 from evo_agents.kg.graph_rows import with_asked
-from evo_agents.kg.policy import Label
 from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows, edge_row, node_row
+from evo_agents.schema.policy import Label
 from tests.hub.live import add_project
 from tests.hub.test_kg import (  # noqa: F401 (hub is a fixture)
     Machine,

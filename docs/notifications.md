@@ -896,7 +896,7 @@ Telegram is a sink outside the hub, so the message holds as little as the owner 
 - not a decision's context, a proposal's summary, paths or evidence, a run's log or diff, a step's evidence, the plan's
   text or the terminal: the web button leads to them;
 - for a project whose hub sink is cleared at or above the level `customer` or the location `domestic-only` on the
-  project's own ladder, read as `evo_agents.kg.policy` reads a clearance (a sink that names no location may receive
+  project's own ladder, read as `evo_agents.schema.policy` reads a clearance (a sink that names no location may receive
   any, so it sits at the top of the locations), the project's name, the kind of thing that waits and the link, nothing
   else: no question, title, option, context, diff, file or file name, and no answer button. Its channel's `extra` is
   `{"restricted": true}` alone, so a `run_outputs` notice, to a plugin's channel, goes out as the project, the words

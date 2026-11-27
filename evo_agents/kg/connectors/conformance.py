@@ -15,11 +15,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.harness import Harness
+from evo_agents.kg.connectors.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.corpus import replayed_digest, to_log_record
-from evo_agents.kg.policy import DEFAULT_LEVELS
 from evo_agents.kg.project import Project
 from evo_agents.kg.protocol import StreamChecker
-from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
+from evo_agents.schema.policy import DEFAULT_LEVELS
 
 
 @dataclass

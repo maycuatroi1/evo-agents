@@ -30,7 +30,7 @@ from evo_agents.hub.client import HubError
 from evo_agents.hub.kg_ingest import config_problems
 from evo_agents.hub.kg_routes import Uploads
 from evo_agents.hub.server import kg_upload_project
-from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
+from evo_agents.schema.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
 from tests.hub import live
 from tests.hub.test_kg import PROJECT, InProcessHub, query, run_jobs
 from tests.hub.test_kg_upload_extract import extract, hub  # noqa: F401 (hub is a fixture)

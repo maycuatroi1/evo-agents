@@ -51,11 +51,11 @@ from evo_agents.kg import freshness
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import status as status_text
 from evo_agents.kg.explore import Explorer
-from evo_agents.kg.policy import Label, Policy, audience_below
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session
 from evo_agents.kg.serve_impact import IMPACT_STATUSES
 from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
 from evo_agents.kg.snapshot import SnapshotView
+from evo_agents.schema.policy import Label, Policy, audience_below
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 MAX_HANDLES = 100  # kg_more handles kept per user and project

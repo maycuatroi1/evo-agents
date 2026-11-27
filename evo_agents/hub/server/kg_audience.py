@@ -1,4 +1,4 @@
-"""The audience a reader of a project's knowledge graph holds on the hub (``evo_agents.kg.policy``), computed from the
+"""The audience a reader of a project's knowledge graph holds on the hub (``evo_agents.schema.policy``), computed from the
 database at every read, so a change of members or grants counts at the next read, with no build.
 
 A person holds:

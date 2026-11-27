@@ -240,7 +240,7 @@ cached bench graphs by repo.
 
 ## Audience
 
-A label (`evo_agents/kg/policy.py`) has, besides a level, a location, an integrity and the projects it names, an
+A label (`evo_agents/schema/policy.py`) has, besides a level, a location, an integrity and the projects it names, an
 audience: a set of principals that a reader must all be to see the element. A principal is a string with a prefix, of
 one of two forms:
 
@@ -539,7 +539,7 @@ and `kg_search` reads it as holding nothing.
 The index is built in memory with each snapshot, from the full-text and code rows the hub keeps of the build
 (`kg_text_rows`, `evo_agents/hub/kg_graph_rows.py`); a build writes only the rows that are new or changed. The build's
 content hash covers the graph's schema and what the index holds, so two builds with the same hash answer searches
-alike. Each row keeps the audience of its node (`label_aud`, `evo_agents/kg/policy.py`), and `node_fts_aud` holds the
+alike. Each row keeps the audience of its node (`label_aud`, `evo_agents/schema/policy.py`), and `node_fts_aud` holds the
 index rows of nodes with an audience apart, so they never weigh in the ranking a reader without that audience gets.
 
 The index keeps its postings as compressed sparse rows: per token, the rows holding it (ascending) and the raw count of
@@ -901,7 +901,7 @@ owner through the hub's sink, with dismissed fingerprints left out. The Curator'
 
 ## Ontology rules
 
-A harness's `ontology.yaml` (seam knowledge-manifest-v1, checked by `evo_agents.kg.schema.validate_ontology`) lists
+A harness's `ontology.yaml` (seam knowledge-manifest-v1, checked by `evo_agents.schema.ontology.validate_ontology`) lists
 `node_kinds` and `relations` as names. An entry may instead be a mapping with a `name` and rule keys; a plain list of
 names stays valid and states no rule.
 

@@ -36,32 +36,23 @@ from evo_agents.kg.memo import Memo
 from evo_agents.kg.packed import Packed
 from evo_agents.kg.pipeline import curation
 from evo_agents.kg.pipeline.binding import BINDING_VERSION
-from evo_agents.kg.pipeline.link import LINK_VERSION, link_traced
+from evo_agents.kg.pipeline.code import code_coverage, code_extractor, missing_graphify
+from evo_agents.kg.pipeline.facts import frag_unit, item_unit
+from evo_agents.kg.pipeline.link import LINK, link_traced
 from evo_agents.kg.pipeline.link_index import build_index, index_digest
 from evo_agents.kg.pipeline.link_reads import Held
-from evo_agents.kg.pipeline.stages import (
-    DIRECTORY_CONNECTORS,
-    MAP_VERSION,
-    STRUCTURE_VERSION,
-    code_coverage,
-    code_extractor,
-    declares,
-    frag_unit,
-    item_unit,
-    map_item,
-    missing_graphify,
-    structure_item,
-)
-from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.profile import PROFILE_VERSION, build_profile, item_stats
+from evo_agents.kg.pipeline.stages import MAP, STRUCTURE, declares, map_item, structure_item
+from evo_agents.kg.profile import PROFILE, build_profile, item_stats
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.schema import known_kinds, known_relations
 from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
 from evo_agents.kg.snapshot import Snapshot, StoreRows
 from evo_agents.kg.text import split_passages
+from evo_agents.plugins.connectors import REGISTRY as CONNECTORS
+from evo_agents.schema.ontology import known_kinds, known_relations
+from evo_agents.schema.policy import Label, Policy
 
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config", "commit", "pr"}
@@ -279,10 +270,9 @@ def map_items(
     for rec in records:
         r = rec.record
         backend = backends[rec.source]
-        dirs = sources[rec.source].get("connector") in DIRECTORY_CONNECTORS
-        mapped, _ = memo.run(
-            "map",
-            MAP_VERSION,
+        dirs = CONNECTORS.directory(sources[rec.source].get("connector"))
+        mapped, _ = MAP.run(
+            memo,
             {"item": rec.item_id, "hash": r["hash"], "rev": r.get("rev", ""), "source": rec.source, "dirs": dirs},
             lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
         )
@@ -293,9 +283,8 @@ def map_items(
             inputs = {"item": rec.item_id, "hash": r["hash"], "extractor": extractor}
             if r["kind"] in ("markdown", "code"):  # a frontmatter id, a comment, is a code only if a pattern says so
                 inputs["identifiers"] = identifiers_digest
-            structured, shash = memo.run(
-                "structure",
-                STRUCTURE_VERSION,
+            structured, shash = STRUCTURE.run(
+                memo,
                 inputs,
                 lambda rec=rec, r=r, b=backend: structure_item(r, rec.source, body(rec), b, identifiers),
             )
@@ -329,9 +318,8 @@ def item_rows(records, memo: Memo, body) -> list[tuple[str, str, dict]]:
     for rec in records:
         r = rec.record
         inputs = {"item": rec.item_id, "hash": r["hash"], "kind": r["kind"]}
-        stats, _ = memo.run(
-            "profile",
-            PROFILE_VERSION,
+        stats, _ = PROFILE.run(
+            memo,
             inputs,
             lambda rec=rec, r=r: item_stats(r, body(rec), declares(r)),
         )
@@ -352,16 +340,14 @@ def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Co
         structured, shash = structure_out[rec.item_id]
         if r["kind"] == "binding":
             idx = idx or index_digest(index)
-            out, _ = memo.run(
-                "binding",
-                f"{BINDING_VERSION}.{curation.CURATION_VERSION}",
+            out, _ = curation.BINDING.run(
+                memo,
                 {"item": rec.item_id, "hash": r["hash"], "index": idx},
                 lambda rec=rec, r=r: curation.bind(r, body(rec), index),
             )
         else:
-            out, _ = memo.run_traced(
-                "link",
-                LINK_VERSION,
+            out, _ = LINK.run_traced(
+                memo,
                 {"item": rec.item_id, "hash": r["hash"], "structure": shash},
                 lambda rec=rec, r=r, st=structured: link_traced(
                     r, corpus.fragments(r), body(rec), st.get(rec.item_id, []), index
@@ -514,7 +500,7 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
         return None
     sources = sorted(s["id"] for s in project.sources() if isinstance(s.get("id"), str))
     parts = {
-        "code": [__version__, SCHEMA_VERSION, MAP_VERSION, STRUCTURE_VERSION, LINK_VERSION, BINDING_VERSION],
+        "code": [__version__, SCHEMA_VERSION, MAP.version, STRUCTURE.version, LINK.version, BINDING_VERSION],
         "graphify": gfy.version() if gfy.available() else None,
         "knowledge": project.knowledge,
         "ontology": ontology,

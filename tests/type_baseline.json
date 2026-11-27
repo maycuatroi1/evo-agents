@@ -10466,24 +10466,6 @@
                 }
             }
         ],
-        "./evo_agents/kg/protocol/runner.py": [
-            {
-                "code": "reportOptionalIterable",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalIterable",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 35,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/kg/scrub.py": [
             {
                 "code": "reportArgumentType",
@@ -11104,7 +11086,7 @@
                 }
             }
         ],
-        "./evo_agents/schema.py": [
+        "./evo_agents/schema/__init__.py": [
             {
                 "code": "reportOptionalIterable",
                 "range": {

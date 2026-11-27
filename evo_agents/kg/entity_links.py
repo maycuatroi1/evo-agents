@@ -29,6 +29,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
+from evo_agents.kg.memo import Stage
 from evo_agents.kg.protocol import canonical_json, sha256
 
 SYNONYM_REL = "synonym_of"
@@ -38,6 +39,7 @@ DEFAULT_SYNONYM_THRESHOLD = 0.8  # HippoRAG 2's synonymy_edge_sim_threshold
 SYNONYM_NEIGHBOURS = 10
 SYNONYM_VERSION = "1"
 SYNONYM_STAGE = "entity_synonyms"
+SYNONYMS = Stage(SYNONYM_STAGE, SYNONYM_VERSION)  # the synonym pairs of the entities, from their vectors
 CASE_CONF = 0.9  # of a code link whose name matches the code's only once case and accents are folded
 MAX_KEY = 80
 _WORD = re.compile(r"[a-z0-9]+")
@@ -242,7 +244,7 @@ def synonyms(
     from evo_agents.kg.semantic import SemanticUnavailable
 
     try:
-        pairs, _ = memo.run(SYNONYM_STAGE, SYNONYM_VERSION, inputs, task)
+        pairs, _ = SYNONYMS.run(memo, inputs, task)
     except _Offline:
         return [], "offline: the memo holds no pairs for these names"
     except SemanticUnavailable as exc:

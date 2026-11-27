@@ -6,13 +6,13 @@ manifest``) as a dict, or a function that returns one, with ``tier: core``. Its 
 ``python`` (``module:attribute``), which the process that uses the extension point imports when it needs it:
 
 - ``runtimes``: a runtime adapter of the worker, a subclass of ``evo_agents.worker.adapter.Adapter``;
-- ``kg_connectors``: a connector of the knowledge graph, a function of a ``ConnectorContext``;
+- ``kg_connectors``: a connector of the knowledge graph, a function of a ``ConnectorContext`` or a ``Connector`` class;
 - ``channels``, ``routes``, ``mcp_tools``, ``jobs``, ``events``: the extension points of the hub, whose processes
   read them through ``evo_agents.hub.plugin_calls`` (``docs/plugins.md``, section Extension points); ``tables``: the
   tables of the hub's schema the plugin owns.
 
-The registries of runtime adapters (``evo_agents.worker.adapter``) and of kg connectors (``evo_agents.kg.protocol.
-runner``, ``evo_agents.harness``) read these contributions beside their own entry point groups
+The registries of runtime adapters (``evo_agents.worker.adapter``) and of kg connectors (``evo_agents.kg.connectors.
+registry``) read these contributions beside their own entry point groups
 (``evo_agents.worker.adapters``, ``evo_agents.kg.connectors``), which keep working as they did. An entry point that
 does not load, does not give a manifest, gives one that is not a core plugin's, or names ``engines`` and
 ``plugin_api`` this release does not run (``evo_agents.plugins.compat``) is logged and left out; a broken

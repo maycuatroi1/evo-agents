@@ -4,7 +4,7 @@ Revision ID: 0049
 Revises: 0048
 Create Date: 2026-10-19
 
-runs.seen_audience holds the principals (``chat:<id>``, ``grant:<project>:<level>``, as ``evo_agents.kg.policy`` names
+runs.seen_audience holds the principals (``chat:<id>``, ``grant:<project>:<level>``, as ``evo_agents.schema.policy`` names
 them) of what the hub returned to the agent of the run with an audience: the labels of kg_* results, the messages
 chat_message, chat_thread and `evo-agents worker chat read` read, and the memories it read
 (``evo_agents.hub.server.run_audience``). It only grows, sorted and without repeats; empty, the default for every run

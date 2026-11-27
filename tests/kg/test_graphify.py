@@ -1,7 +1,8 @@
 import pytest
 
 from evo_agents.kg.extract import graphify as gfy
-from evo_agents.kg.pipeline.stages import code_extractor, structure_item
+from evo_agents.kg.pipeline.code import code_extractor
+from evo_agents.kg.pipeline.stages import structure_item
 
 pytestmark = pytest.mark.skipif(not gfy.available(), reason="graphify extra not installed")
 

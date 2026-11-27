@@ -73,7 +73,7 @@ def test_without_ontology_key_any_kind_builds_as_before(tmp_path, kg_env):
 
 
 def test_commits_and_pull_requests_are_hub_kinds_an_ontology_may_not_redefine(tmp_path, kg_env):
-    from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS, validate_ontology
+    from evo_agents.schema.ontology import HUB_KINDS, HUB_RELATIONS, validate_ontology
 
     assert {"Commit", "PullRequest"} <= set(HUB_KINDS)
     assert HUB_RELATIONS["changes"] == ("Commit", "*") and HUB_RELATIONS["merged_as"] == ("PullRequest", "Commit")

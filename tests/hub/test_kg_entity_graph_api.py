@@ -20,8 +20,8 @@ from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_web import NotVisible, WebSession
 from evo_agents.kg.graph_model import Graph, edge_id, label_columns
 from evo_agents.kg.graph_rows import graph_rows
-from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.snapshot import Snapshot, SnapshotView
+from evo_agents.schema.policy import Label, Policy
 
 PROJECT = "ents"
 PUBLIC = Label(0, 0, "U", frozenset({PROJECT}))

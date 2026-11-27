@@ -44,7 +44,6 @@ from collections import deque
 
 from evo_agents import __version__
 from evo_agents.kg.freshness import Links
-from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, readable
 from evo_agents.kg.serve_impact import ImpactTools
 from evo_agents.kg.serve_search import SearchTools
@@ -53,6 +52,7 @@ from evo_agents.kg.serve_walk import WalkTools
 from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.kg.tools import INSTRUCTIONS, SIGNATURES, TOOLS
+from evo_agents.schema.policy import Label, audience_below
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning

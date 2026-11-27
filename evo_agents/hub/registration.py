@@ -26,8 +26,8 @@ from evo_agents.harness import find_manifest, load_manifest, load_yaml, validate
 from evo_agents.hub.access import ProjectRules, Refused
 from evo_agents.hub.client import HubError
 from evo_agents.infra.git import Git
-from evo_agents.kg.policy import Policy
 from evo_agents.schema import errors
+from evo_agents.schema.policy import Policy
 
 PROJECT_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # as the hub accepts it
 SHOWN_ERRORS = 5

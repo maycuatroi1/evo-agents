@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import kg_sources, tables
 from evo_agents.kg import asked, graph_rows
 from evo_agents.kg.evaluate import HOLDOUT, split_of
-from evo_agents.kg.policy import Policy, audience_of
 from evo_agents.kg.snapshot import StoreRows
+from evo_agents.schema.policy import Policy, audience_of
 
 MAX_LABELS = 20_000  # the newest labels a build reads
 

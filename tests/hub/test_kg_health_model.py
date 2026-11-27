@@ -23,9 +23,9 @@ from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import kg_health
 from evo_agents.kg import graph_rows
 from evo_agents.kg.health import is_test_path
-from evo_agents.kg.policy import Label
 from evo_agents.kg.review import ONTOLOGY_RULES, RULES
 from evo_agents.kg.snapshot import Snapshot
+from evo_agents.schema.policy import Label
 from tests.kg import built
 from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, git, make_project, write

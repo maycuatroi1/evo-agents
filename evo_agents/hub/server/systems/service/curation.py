@@ -60,7 +60,7 @@ from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.systems.repository import curation as rows
 from evo_agents.hub.server.systems.repository import store as system_store
 from evo_agents.hub.server.systems.service import traces as system_traces
-from evo_agents.kg.schema import known_relations
+from evo_agents.schema.ontology import known_relations
 
 LENS = "agent_system"
 KIND = "agent_config"

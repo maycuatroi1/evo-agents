@@ -64,7 +64,7 @@ from evo_agents.hub.server.chats.service.runs import chat_run
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_audience import note
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.kg.policy import DEFAULT_LEVELS
+from evo_agents.schema.policy import DEFAULT_LEVELS
 
 
 def _person(user_id: int) -> Principal:

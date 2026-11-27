@@ -10,11 +10,11 @@ when asked for. Without a walk the ranking keeps the order the text and meaning 
 from __future__ import annotations
 
 from evo_agents.kg import ppr, semantic
-from evo_agents.kg.policy import audience_below
 from evo_agents.kg.refs import readable
 from evo_agents.kg.search import CODE_LEAD, code_words, through_entities, with_mentions
 from evo_agents.kg.snapshot import Snapshot, SnapshotView
 from evo_agents.kg.snapshot_text import Ranker
+from evo_agents.schema.policy import audience_below
 
 SEARCH_REACH = 2000  # candidates read at most to fill a page the clearance thinned (serve_search.SEARCH_REACH)
 REPO_POOL = 12  # with a repo, candidates ranked per result asked (serve_search.REPO_POOL)

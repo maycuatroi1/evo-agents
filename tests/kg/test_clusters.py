@@ -6,7 +6,7 @@ import pytest
 
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.graph_model import Graph, edge_id
-from evo_agents.kg.policy import Label, Policy
+from evo_agents.schema.policy import Label, Policy
 from tests.kg import built
 from tests.kg.built import sync_build  # imported from here by tests.kg.test_review
 from tests.kg.hub_graph import hub_status

@@ -1,4 +1,4 @@
-"""What the agent of a run was shown, as an audience (``evo_agents.kg.policy``), so that a memory it writes carries the
+"""What the agent of a run was shown, as an audience (``evo_agents.schema.policy``), so that a memory it writes carries the
 audience of the chats it read (criterion a6 of plan chat-history-in-kg).
 
 The hub notes in ``runs.seen_audience`` the principals of everything it returns to the agent of a run that has an
@@ -21,8 +21,8 @@ from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.kg.policy import audience_of
 from evo_agents.kg.sessions import READ_META
+from evo_agents.schema.policy import audience_of
 
 CHAT_RUN = "chat"  # the kind of a chat run (``runs.kind``)
 

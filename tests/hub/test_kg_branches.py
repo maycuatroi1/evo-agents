@@ -19,8 +19,8 @@ pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server ext
 
 from evo_agents.hub.cli.kg import branches as kg_branches_cli
 from evo_agents.kg import branch_ops, graph_model
-from evo_agents.kg.policy import Label
 from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row
+from evo_agents.schema.policy import Label
 from tests.hub import pg
 
 TOP = ((1, 0), frozenset())

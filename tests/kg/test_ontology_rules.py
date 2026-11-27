@@ -9,9 +9,9 @@ import yaml
 
 from evo_agents.kg import review
 from evo_agents.kg.ontology_rules import RelationRule, check, review_items, rules_of
-from evo_agents.kg.schema import known_kinds, known_relations, validate_ontology
 from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.snapshot_text import TextIndex
+from evo_agents.schema.ontology import known_kinds, known_relations, validate_ontology
 
 ONTOLOGY = {
     "node_kinds": [

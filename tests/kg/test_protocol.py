@@ -1,8 +1,8 @@
 import json
 import sys
 
+from evo_agents.kg.connectors.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.protocol import StreamChecker, finalize_item, hello, item_hash
-from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.text import slugify, split_markdown
 
 

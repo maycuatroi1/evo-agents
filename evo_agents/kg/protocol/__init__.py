@@ -13,11 +13,12 @@ repeats; only a reader who is every one of them sees the item. A label is not co
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass, field
 
 from evo_agents.schema import Issue, validate
+from evo_agents.schema.canonical import PRINCIPAL as PRINCIPAL
+from evo_agents.schema.canonical import canonical_json as canonical_json
+from evo_agents.schema.canonical import sha256 as sha256
 
 PROTOCOL = "kg/1"
 MAJOR = 1
@@ -26,11 +27,9 @@ ID_PATTERN = r"^[a-z0-9][a-z0-9_.-]*:[a-z0-9_.-]+:.+$"
 TIME_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
 HASH_PATTERN = r"^sha256:[0-9a-f]{64}$"
 CAPABILITIES = ("list_complete", "tombstones", "rev_exact", "history", "conditional_write")
-# A principal of a label's audience: a member of chat <id>, or one with a grant on <project> up to <level> at least.
-PRINCIPAL = r"^(chat:[1-9][0-9]*|grant:[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.-]*)$"
 
 # audience: principals, sorted, no repeats; a reader must be every one of them. Another form only warns here: the
-# build reads it as the highest audience, which no reader reaches (evo_agents.kg.policy.audience_of).
+# build reads it as the highest audience, which no reader reaches (evo_agents.schema.policy.audience_of).
 _LABEL = {
     "type": "object",
     "additionalProperties": False,
@@ -169,18 +168,6 @@ SCHEMAS: dict[str, dict] = {
 
 # ---------------------------------------------------------------------------------------------
 # Hashing
-
-
-def canonical_json(value) -> bytes:
-    """The byte form every hash in kg/1 is computed over. Connectors in other languages must match it:
-    keys sorted, no insignificant whitespace, UTF-8 without escaping non-ASCII characters."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-
-
-def sha256(data: bytes | str) -> str:
-    if isinstance(data, str):
-        data = data.encode("utf-8")
-    return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
 def fragment_hash(fragment: dict) -> str:
