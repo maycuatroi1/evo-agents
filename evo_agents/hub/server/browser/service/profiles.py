@@ -22,52 +22,29 @@ import asyncio
 import hashlib
 import logging
 import os
-from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from sqlalchemy import func, select, update
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import KIND_LIMITS, BlobStore
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.blobs import fetch_bytes, put_bytes
-from evo_agents.hub.server.sealing import (
-    KEY_BYTES,
-    NONCE_BYTES,
-    TAG_BYTES,
-    Sealed,
-    Sealer,
-    Unsealable,
-    browser_identity_aad,
+from evo_agents.hub.server.browser.models.profiles import (
+    FORMAT,
+    KIND,
+    MAX_ARCHIVE_BYTES,
+    OVERHEAD,
+    VERSION_COLUMNS,
+    ProfileConflict,
+    ProfileTooLarge,
+    SealedProfile,
 )
+from evo_agents.hub.server.browser.repository import profiles as repository
+from evo_agents.hub.server.sealing import KEY_BYTES, NONCE_BYTES, Sealed, Sealer, Unsealable, browser_identity_aad
 
 log = logging.getLogger(__name__)
-
-KIND = "browser-profile"
-FORMAT = b"\x01"  # the first byte of a sealed profile: this layout, AES-256-GCM under the version's data key
-OVERHEAD = len(FORMAT) + NONCE_BYTES + TAG_BYTES
-MAX_ARCHIVE_BYTES = KIND_LIMITS[KIND] - OVERHEAD  # so the sealed blob stays within its kind's limit
-VERSION_COLUMNS = ("sha256", "size", "sealed_key", "key_nonce", "key_id")
-
-
-class ProfileTooLarge(ValueError):
-    """An archive over MAX_ARCHIVE_BYTES; nothing was stored."""
-
-
-class ProfileConflict(Exception):
-    """A save that lost: the identity was deleted, saved by someone else meanwhile, or is no longer the run's."""
-
-
-@dataclass(frozen=True)
-class SealedProfile:
-    """One version of a profile as the hub keeps it: the blob for the bucket and its data key, sealed."""
-
-    sha256: str
-    size: int
-    blob: bytes
-    key: Sealed
 
 
 def blob_aad(identity_id: int, version: int) -> bytes:
@@ -108,26 +85,6 @@ def _columns(prefix: str, profile: SealedProfile | None = None) -> dict:
     return {f"{prefix}{name}": value for name, value in zip(VERSION_COLUMNS, values, strict=True)}
 
 
-async def locked(conn: AsyncConnection, identity_id: int):
-    """The row of identity ``identity_id`` with its project's name, locked, after the blob lock taken exclusively:
-    the order every writer of the identity's blobs takes them in. None when there is no such identity."""
-    await blob_gc.lock_exclusive(conn)
-    b, p = tables.browser_identities, tables.projects
-    found = (
-        select(b, p.c.name.label("project"))
-        .join(p, p.c.id == b.c.project_id)
-        .where(b.c.id == identity_id)
-        .with_for_update(of=b)
-    )
-    return (await conn.execute(found)).one_or_none()
-
-
-async def _forget(conn: AsyncConnection, *versions: tuple[str | None, int | None]) -> None:
-    blobs = {sha256: (size, KIND) for sha256, size in versions if sha256 is not None}
-    if blobs:
-        await blob_gc.forget(conn, blobs)
-
-
 def _refusal(row, base_version: int, run_id: int | None, unheld: bool = False) -> str | None:
     if row is None or row.deleted_at is not None:
         return "the browser identity is deleted"
@@ -163,21 +120,21 @@ async def save_profile(
     version = base_version + 1
     profile = await asyncio.to_thread(seal_profile, sealer, identity_id, version, archive)
     await asyncio.to_thread(put_bytes, store, profile.sha256, profile.blob)
-    b = tables.browser_identities
     async with engine.begin() as conn:
-        row = await locked(conn, identity_id)
+        row = await repository.locked(conn, identity_id)
         refusal = _refusal(row, base_version, run_id, unheld)
         if refusal is not None:
-            await _forget(conn, (profile.sha256, profile.size))
+            await repository.forget(conn, (profile.sha256, profile.size))
         else:
-            shifted = {f"previous_{name}": b.c[name] for name in VERSION_COLUMNS}
+            assert row is not None  # _refusal refuses a missing row
             saved = {"version": version, "chromium_version": chromium_version, **_columns("", profile)}
             stamps = {"last_saved_at": func.now(), "last_saved_by": actor_id, "updated_at": func.now()}
             if login_worker_id is not None:
                 stamps |= {"status": "active", "worker_id": login_worker_id}
-            await conn.execute(update(b).values(**shifted, **saved, **stamps).where(b.c.id == identity_id))
-            await _forget(conn, (row.previous_sha256, row.previous_size))
+            await repository.write(conn, identity_id, {**repository.shifted(VERSION_COLUMNS), **saved, **stamps})
+            await repository.forget(conn, (row.previous_sha256, row.previous_size))
             target = f"{row.project} browser-identity:{identity_id} version={version}"
+            # in the name of ``actor_id`` (a run's dispatcher) with ``token_id`` (the worker's): no Principal's
             await audit.record(
                 conn,
                 actor_id=actor_id,
@@ -203,9 +160,8 @@ async def open_profile(engine, store: BlobStore, sealer: Sealer, identity_id: in
     """(version, archive) of the current version of identity ``identity_id``, or of the one before it with
     ``previous``; None when the identity is deleted or has no such version. ``Unsealable`` when it does not open,
     ``ProfileConflict`` when its blob is missing from the bucket."""
-    b = tables.browser_identities
     async with engine.connect() as conn:
-        row = (await conn.execute(select(b).where(b.c.id == identity_id))).mappings().one_or_none()
+        row = await repository.current(conn, identity_id)
     prefix = "previous_" if previous else ""
     if row is None or row["deleted_at"] is not None or row[f"{prefix}sha256"] is None:
         return None
@@ -220,7 +176,6 @@ async def open_profile(engine, store: BlobStore, sealer: Sealer, identity_id: in
 async def retire_profiles(conn: AsyncConnection, row) -> None:
     """Mark identity ``row`` (as ``locked`` read it, in this transaction) deleted: its data keys go from the row, and
     both blobs are recorded for deletion."""
-    b = tables.browser_identities
     gone = {"deleted_at": func.now(), "updated_at": func.now(), **_columns(""), **_columns("previous_")}
-    await conn.execute(update(b).values(gone).where(b.c.id == row.id))
-    await _forget(conn, (row.sha256, row.size), (row.previous_sha256, row.previous_size))
+    await repository.write(conn, row.id, gone)
+    await repository.forget(conn, (row.sha256, row.size), (row.previous_sha256, row.previous_size))

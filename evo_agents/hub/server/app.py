@@ -661,11 +661,11 @@ def _include_member_routes(app: FastAPI) -> None:
         work_cards,
         worker_autonomy,
     )
-    from evo_agents.hub.server.browser.service import asks as browser_asks
-    from evo_agents.hub.server.browser.service import identities as browser_identities
-    from evo_agents.hub.server.browser.service import leases as browser_leases
-    from evo_agents.hub.server.browser.service import local as browser_local
-    from evo_agents.hub.server.browser.service import logins as browser_logins
+    from evo_agents.hub.server.browser.routes import asks as browser_asks
+    from evo_agents.hub.server.browser.routes import identities as browser_identities
+    from evo_agents.hub.server.browser.routes import leases as browser_leases
+    from evo_agents.hub.server.browser.routes import local as browser_local
+    from evo_agents.hub.server.browser.routes import logins as browser_logins
     from evo_agents.hub.server.chats.routes import agents as chat_agents
     from evo_agents.hub.server.chats.routes import bridges as chat_bridges
     from evo_agents.hub.server.chats.routes import chats
@@ -795,14 +795,15 @@ def _include_member_routes(app: FastAPI) -> None:
 def _include_websockets(app: FastAPI) -> None:
     """The websockets of the hub, each with its two ends and the registry of what it has open in this process."""
     from evo_agents.hub.server import terminal
-    from evo_agents.hub.server.browser.service import view as browser_view
+    from evo_agents.hub.server.browser.routes import view as browser_view
+    from evo_agents.hub.server.browser.service.view import BrowserViews
 
     app.include_router(terminal.router)
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
     app.include_router(browser_view.router)
     app.include_router(browser_view.worker_router)
-    app.state.browser_views = browser_view.BrowserViews()  # the live views of runs' browsers, one channel per run
+    app.state.browser_views = BrowserViews()  # the live views of runs' browsers, one channel per run
 
 
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
