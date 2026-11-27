@@ -96,7 +96,7 @@ KIND_LIMITS = {
     outputs.KIND: outputs.MAX_FILE_BYTES,  # a file a run's agent made, an output of the run (evo_agents.hub.outputs)
     attachments.KIND: attachments.MAX_FILE_BYTES,  # a file a person attached to a message (evo_agents.hub.attachments)
     PLUGIN_KIND: MAX_PLUGIN_BUNDLE,  # a plugin's tar.gz, which the hub holds itself (evo_agents.plugins.bundle)
-    "browser-profile": 64 * MiB,  # one version of a browser identity's profile, sealed (server.browser_profiles)
+    "browser-profile": 64 * MiB,  # one version of a browser identity's profile, sealed (browser.service.profiles)
 }
 HUB_ONLY_KINDS = frozenset({"browser-profile"})  # what only the hub puts, never a client through an upload URL
 UPLOAD_KINDS = tuple(kind for kind in KIND_LIMITS if kind not in HUB_ONLY_KINDS)  # what a client may upload

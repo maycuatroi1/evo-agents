@@ -6,7 +6,7 @@ associated data binds a value to where it belongs, ``secret:{owner_id}:{name}:{k
 ``agent-secret:{profile_id}:{name}`` for an env secret an agent profile owns (never of the member form, so a sealed
 value copied between the two kinds of row does not open) and ``lease:{id}`` for a token the hub leased, ``plugin-config:{plugin}:{layer}:{project}:{profile}:{field}`` for a
 secret field of a plugin's config, and ``browser-identity:{id}:{version}`` for the data key of one version of a browser
-identity's profile (``evo_agents.hub.server.browser_profiles``), and ``market-source:{id}`` for the GitHub token of a
+identity's profile (``evo_agents.hub.server.browser.service.profiles``), and ``market-source:{id}`` for the GitHub token of a
 market source (``evo_agents.hub.market_refresh``), and ``auth-app:{name}`` for the secret of a first-party app that
 signs members in (``evo_agents.hub.server.app_sessions``), so a sealed value copied into another row, or to
 another version, does not open there. The key is 32 bytes in base64url, read by ``evo_agents.hub.config``; it never

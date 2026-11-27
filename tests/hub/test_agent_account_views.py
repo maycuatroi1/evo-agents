@@ -1,4 +1,4 @@
-"""What every member reads of the accounts of an agent (``evo_agents.hub.server.agent_account_views``), criterion a5 of
+"""What every member reads of the accounts of an agent (``evo_agents.hub.server.agent_accounts.service.views``), criterion a5 of
 the plan agent-accounts.
 
 Any member of the agent's project, a reader too, reads each account of the agent with its provider, category, state,

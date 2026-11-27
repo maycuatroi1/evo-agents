@@ -1,5 +1,5 @@
 """``evo-agents hub browser identity list|create|login|disable|enable|delete``: the browser identities of a project
-(``evo_agents.hub.server.browser_identities``), over /v1/projects/{p}/browser-identities.
+(``evo_agents.hub.server.browser.service.identities``), over /v1/projects/{p}/browser-identities.
 
 A browser identity is a Chromium profile kept logged in to some sites, which runs of the project use on the one worker
 that holds it. ``list`` shows the project's identities and your own, with any grant on the project. ``create NAME``

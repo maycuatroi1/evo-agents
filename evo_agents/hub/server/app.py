@@ -10,7 +10,7 @@ ticket of their own (``security.PUBLIC_PREFIXES``), and the routes of a feature 
 answer 404 (``FeatureGate``, ``evo_agents.hub.server.hub_settings``). The OpenAPI document is served at /v1/openapi.json
 for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
-(``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser_view``),
+(``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser.service.view``),
 which check their own credential. ``app.state.sealer`` seals the members' secrets
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
 503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin

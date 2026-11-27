@@ -1,4 +1,4 @@
-"""Browser identities on the hub (``evo_agents.hub.server.browser_identities`` and ``browser_profiles``), criterion a2
+"""Browser identities on the hub (``evo_agents.hub.server.browser.service.identities`` and ``browser_profiles``), criterion a2
 of the plan agent-browser. A member creates, lists and deletes their own identity with the writer role, and no other
 member sees it; the project's identity is an admin's to create and delete, and every member sees it; its worker is the
 caller's own or a shared one that serves the project; names are unique per owner; a delete is refused while a run

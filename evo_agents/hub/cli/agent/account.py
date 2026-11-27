@@ -2,7 +2,7 @@
 profile owns (``evo_agents.hub.server.agent_accounts``), over PUT, PATCH and DELETE
 /v1/projects/{p}/agents/{handle}/accounts/{name}. Writing needs the admin role on the project.
 
-``list`` and ``show`` need any grant on the project (``evo_agents.hub.server.agent_account_views``): ``list`` reads GET
+``list`` and ``show`` need any grant on the project (``evo_agents.hub.server.agent_accounts.service.views``): ``list`` reads GET
 /v1/agent-accounts, the accounts of the agents of every project you hold a grant on, narrowed to one agent with HANDLE
 (in ``--project`` or the harness's project) or to one project with ``--project``; ``show HANDLE NAME`` reads one account.
 Both give each account's provider, state, workers, weight, priority, end, last usage, runs and their cost over 24 hours

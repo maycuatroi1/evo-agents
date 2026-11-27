@@ -1,4 +1,4 @@
-"""The hub's own Install browser (``evo_agents.hub.server.browser_install.ask_for_queued``, on each pass of the reaper): a
+"""The hub's own Install browser (``evo_agents.hub.server.browser.service.install.ask_for_queued``, on each pass of the reaper): a
 queued run dispatched with browser that no worker can take has its owner's nearest worker that lacks only Chromium,
 and whose daemon says browser_install, asked to install it; the run waits for that install (``queue_fit``) and the
 worker claims it once its heartbeat lists the feature browser. A worker whose last install ended without Chromium,

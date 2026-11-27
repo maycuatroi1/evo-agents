@@ -4,7 +4,7 @@ library only, so the api and the worker daemon share them.
 
 A plugin contributes agent types (``contributes.agent_types``): each a template of an agent profile (its handle, name,
 description, instructions and permissions) with the agent packs, the environment, the jobs, the events and the pages
-of the same plugin it uses. An admin of a project enables one there (``evo_agents.hub.server.agent_types``): the hub
+of the same plugin it uses. An admin of a project enables one there (``evo_agents.hub.server.agents.service.agent_types``): the hub
 creates its profile in the project from the template, or takes the one it made before, and the admin names the member
 whose name the type's runs go under (``run_as``, a writer of the project), whose workers in the agent's own pool take
 them, and the cap of what its runs may cost in BUDGET_HOURS (``daily_usd``, at most MAX_DAILY_USD).

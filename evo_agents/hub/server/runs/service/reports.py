@@ -3,7 +3,7 @@ runs, what the daemon found of updating itself and what it last did for the grap
 the leases of the runs it holds and answers what to do with each, the worker's settings (its version lock among them),
 where the tag nightly pointed when the hub last read it, the owner's open Update now
 (``evo_agents.hub.server.update_now``, which the heartbeat may end), the owner's open Install browser
-(``evo_agents.hub.server.browser_install``, which the heartbeat may end too), the Chromium a daemon of feature
+(``evo_agents.hub.server.browser.service.install``, which the heartbeat may end too), the Chromium a daemon of feature
 browser starts for a run (``_browser``), for a daemon that runs them the runtimes of the plugins its owner accepted
 (``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph it keeps fresh
 (``kg_duties``); and the move of a run it holds (POST /v1/worker/runs/{id}/state), checked against the transition table

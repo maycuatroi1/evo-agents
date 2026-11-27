@@ -18,7 +18,7 @@ that was (``evo_agents.hub.nightly``), absent until the hub first read it. brows
 said of the Chromium its daemon starts for a run (``evo_agents.worker.browser``), NULL when it said nothing of one.
 The columns of 0146 keep its owner's Install browser as those of 0065 keep Update now: browser_install_requested_at,
 browser_install_ended_at, browser_install_outcome (``runs.BROWSER_INSTALL_OUTCOMES``) and browser_install_reason
-(``evo_agents.hub.server.browser_install``).
+(``evo_agents.hub.server.browser.service.install``).
 worker_projects lists the projects a worker takes runs of; worker_pairings holds the pairing codes a member creates
 for a machine to join with.
 """

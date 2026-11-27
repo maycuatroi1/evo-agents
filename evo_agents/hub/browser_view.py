@@ -1,4 +1,4 @@
-"""The live view of a run's browser: its wire format, shared by the api's relay (``evo_agents.hub.server.browser_view``)
+"""The live view of a run's browser: its wire format, shared by the api's relay (``evo_agents.hub.server.browser.service.view``)
 and the worker daemon's broker (``evo_agents.worker.browser.live``). Standard library only. ``docs/workers.md``
 describes the relay.
 

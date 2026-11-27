@@ -7,7 +7,7 @@ attach it to a run. Its worker is the caller's own worker, not revoked, or a sha
 the feature browser: its daemon starts Chromium (``evo_agents.worker.browser``).
 
 These routes deal in metadata alone: no answer, log line or audit row holds a cookie, a profile, a key or a hash of
-one. The profiles themselves are sealed and kept by ``evo_agents.hub.server.browser_profiles``; deleting an identity
+one. The profiles themselves are sealed and kept by ``evo_agents.hub.server.browser.service.profiles``; deleting an identity
 takes its keys from the row and records its blobs for deletion. Every write is an audit row (``audit.BROWSER_*``).
 """
 

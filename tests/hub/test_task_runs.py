@@ -1,5 +1,5 @@
 """Agent types of plugins and the task runs a plugin dispatches, on the hub (``evo_agents.hub.task_runs``,
-``evo_agents.hub.server.agent_types`` and ``task_dispatch``), as criterion a9 of the plan hub-agent-plugins names it.
+``evo_agents.hub.server.agents.service.agent_types`` and ``task_dispatch``), as criterion a9 of the plan hub-agent-plugins names it.
 
 A plugin contributes agent types; an admin of a project that enabled the plugin enables one there, which creates its
 agent profile from the type's template, with its pool agent-<handle>, and names the member its runs go under and the

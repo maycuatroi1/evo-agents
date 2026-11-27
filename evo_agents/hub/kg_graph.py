@@ -401,7 +401,7 @@ class Handles:
 
 class WholeSession(HubSession):
     """A HubSession whose answer is the tool's data whole, never cut for kg_more, and no text: what a read across
-    projects counts before it reads again within the clearance it may show (``server.agent_reads``)."""
+    projects counts before it reads again within the clearance it may show (``server.agents.service.reads``)."""
 
     def _envelope(self, text: str, data: dict) -> dict:
         return {"structuredContent": data}

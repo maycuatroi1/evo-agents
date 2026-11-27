@@ -1,4 +1,4 @@
-"""What of another project enters a chat run (``evo_agents.hub.server.agent_reads``, ``cross_labels``), as criterion
+"""What of another project enters a chat run (``evo_agents.hub.server.agents.service.reads``, ``cross_labels``), as criterion
 b5 of the plan chat-first-home names it.
 
 b5: the agent of a chat run reads the memories (and the knowledge graph) of another project that the person at the

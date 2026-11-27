@@ -113,7 +113,7 @@ WORKER_POOL_KG_SHARED = "worker_pool.kg_shared"
 WORKER_UPDATE_NOW = "worker.update_now"
 WORKER_UPDATE_NOW_CANCEL = "worker.update_now_cancel"
 # The owner or a hub admin asked the worker's daemon to install Chromium, or cancelled that request:
-# "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.browser_install)
+# "worker:<id> name=<n> owner=<login>" (evo_agents.hub.server.browser.service.install)
 WORKER_BROWSER_INSTALL = "worker.browser_install"
 WORKER_BROWSER_INSTALL_CANCEL = "worker.browser_install_cancel"
 # The owner or a hub admin narrowed a shared worker to a unit of the org chart, or took the unit back
@@ -211,7 +211,7 @@ PROVIDER_ACCOUNT_DELETE = "provider-account.delete"  # deleted: its sealed key a
 # A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
 # run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
 ACCOUNT_FAILOVER = "account.failover"
-# A project's agent profiles (evo_agents.hub.server.agent_profiles), in the project; the target is
+# A project's agent profiles (evo_agents.hub.server.agents.service.profiles), in the project; the target is
 # "<project>/@<handle> v<version>", with " fields=<names>" for an edit, never a description, instructions or an image.
 AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
@@ -253,7 +253,7 @@ GUARD_TARGET_REMOVE = "guard-target.remove"  # an admin removed one
 AGENT_ACCOUNT_PUT = "agent-account.put"  # an admin gave the agent an account, or replaced the one of that name
 AGENT_ACCOUNT_SET = "agent-account.set"  # an admin renewed it or changed its weight, priority, workers, end or pause
 AGENT_ACCOUNT_DELETE = "agent-account.delete"  # an admin deleted it: value and bindings went, its leases were revoked
-# Browser identities (evo_agents.hub.server.browser_identities, browser_profiles, browser_leases), in the project; the
+# Browser identities (evo_agents.hub.server.browser.service.identities, browser_profiles, browser_leases), in the project; the
 # target is "<project> browser-identity:<id>", with " version=<n>" for a profile saved or handed out and " run:<id>"
 # for a run's, never a domain, a cookie or a key. A run's are in the name of its dispatcher, with its worker's token.
 BROWSER_IDENTITY_CREATE = "browser_identity.create"  # a member made one of their own, or an admin one of the project
@@ -267,7 +267,7 @@ BROWSER_IDENTITY_DISABLE = "browser_identity.disable"  # its member or an admin 
 BROWSER_IDENTITY_ENABLE = "browser_identity.enable"  # it was enabled again
 BROWSER_IDENTITY_DEFAULT = "browser_identity.default"  # an admin made it the identity its agent hands its runs
 BROWSER_IDENTITY_NEEDS_LOGIN = "browser_identity.needs_login"  # its profile did not open: it waits for a new login
-# The live view of a run's browser (evo_agents.hub.server.browser_view), in the run's project and the name of who
+# The live view of a run's browser (evo_agents.hub.server.browser.service.view), in the run's project and the name of who
 # dispatched it; the target names the run as above, then "start", or "end=<how>" with the screen frames and events
 # relayed, never a key, a text, a URL or a frame.
 BROWSER_VIEW = "browser.view"  # the dispatcher opened the run's browser in the live view, or the view ended
@@ -337,7 +337,7 @@ MARKET_LICENSE_LAPSE = "market.license.lapse"
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it
 PLUGIN_GRANT = "plugin.grant"  # an admin granted the permissions the installed version asks for, enabling it or after
 PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for the project: its grants went
-# Agent types of plugins in a project (evo_agents.hub.server.agent_types), in that project; the target is
+# Agent types of plugins in a project (evo_agents.hub.server.agents.service.agent_types), in that project; the target is
 # "<project>/plugin:<name> agent-type:<type>", then " @<handle> run-as=<login> workers=<names> daily-usd=<cap>" for an
 # enable, or " run:<id>" for a task, whose actor is the member it runs as, with no token: the plugin's token handed it.
 AGENT_TYPE_ENABLE = "agent-type.enable"  # an admin of the project enabled it, or changed how; its profile on the first

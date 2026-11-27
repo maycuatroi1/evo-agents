@@ -1,5 +1,5 @@
 """An agent of a chat run asks an agent of another project (``evo-agents worker agent ask``,
-``evo_agents.hub.server.agent_asks``), as criterion b4 of the plan chat-first-home names it.
+``evo_agents.hub.server.agents.service.asks``), as criterion b4 of the plan chat-first-home names it.
 
 b4: the ask makes a run of the agent asked, on its pool, for the person at the origin of the chain, one hop further,
 linked to the asking run by ``spawned_by_run_id``; the asking run parks on a wait and holds no worker, and the end of

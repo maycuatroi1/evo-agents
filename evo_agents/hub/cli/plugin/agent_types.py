@@ -1,5 +1,5 @@
 """``evo-agents hub plugin agent-type list|enable|disable --project P``: the agent types the plugins a project enabled
-contribute (``evo_agents.hub.server.agent_types``; ``docs/plugins.md``, section Agent types).
+contribute (``evo_agents.hub.server.agents.service.agent_types``; ``docs/plugins.md``, section Agent types).
 
 ``list`` prints each agent type of the plugins P enabled, to any member of P: its handle, whether P enabled it, the
 member its runs go under, its cap of cost for 24 hours, the floor of one run and what its task runs cost in them. ``enable PLUGIN NAME``, for
