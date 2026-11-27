@@ -53,15 +53,27 @@ boundaries and size limits.
 
 | Path | Contents |
 | --- | --- |
+| `evo_agents/cli.py` | The root `evo-agents` command: the `tree()` of every package's commands and the `harness` commands |
+| `evo_agents/clikit/` | The command kit: `Command`, `ListCommand`, `Group`, `Result` and its views, `Arg` (standard library only) |
+| `evo_agents/infra/` | Git, atomic and JSON files, `RetryPolicy` (standard library only) |
+| `evo_agents/schema/` | The policy, ontology and canonical hash the harness and the graph share |
 | `evo_agents/harness/` | Project manifests, schemas and validation |
-| `evo_agents/kg/` | Connectors, graph storage, retrieval and MCP tools |
-| `evo_agents/hub/` | Hub API, CLI, jobs and agent integration |
-| `evo_agents/worker/` | Worker daemon and coding-agent runtimes |
+| `evo_agents/kg/` | Connectors, build stages, graph storage, retrieval and MCP tools; its commands in `kg/cli/` |
+| `evo_agents/plugins/` | What the hub and the worker share to read, trust and place a plugin; its commands in `plugins/cli/` |
+| `evo_agents/hub/api/` | The gateway to the hub's API: the one place outside the server that writes a `/v1/...` path |
+| `evo_agents/hub/cli/` | The `hub` commands, one module or package per command word |
+| `evo_agents/hub/server/` | The hub's FastAPI app: one package per feature in layers (`routes`, `service`, `repository`, `models`) on `server/base/` |
+| `evo_agents/hub/worker/` | The hub's background jobs: one `Job` class each, listed in `registry.py` |
+| `evo_agents/hub/` | The hub's domain outside the server: tables, configuration, the clients, the graph sync |
+| `evo_agents/worker/` | Worker daemon, kinds of run, coding-agent adapters and platforms; its commands in `worker/cli/` |
+| `evo_agents/core_plugins/` | The core plugins the hub ships (`builder`, `browser`, `guard`), reached through their manifests |
 | `plugins/` | Coding-agent plugins |
 | `web/` | Next.js web interface |
 | `deploy/` | Hub and worker deployment files |
 | `tests/` | Python tests and fixtures |
 | `docs/` | Setup guides and technical references |
+
+Where a new class goes, and which base it takes, is in [Object design](docs/structure.md#object-design).
 
 For a new data source, see [Writing a connector](docs/kg-setup.md#writing-a-connector).
 For hub extensions, see [Plugins](docs/plugins.md). Release instructions are in [Releases](docs/releases.md).

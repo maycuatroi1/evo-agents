@@ -11,7 +11,7 @@ their workers, as a plan run that does every step not done yet and asks the memb
 This page describes version 1 of the worker protocol. `evo_agents/hub/runs.py` holds the model it rests on: the run
 kinds and states and who may change them, a worker's status, the event kinds, which steps are ready, and the
 decisions and notices of a plan run; `evo_agents/hub/run_prompts.py` builds the prompts a run gives its agent. It needs
-only the standard library, so the api and the daemon share it. Schema 0009 holds the tables, and 0010 adds plan runs, decisions and notifications, and `evo_agents/hub/server/workers.py` the routes that register and stop workers (pairings, join,
+only the standard library, so the api and the daemon share it. Schema 0009 holds the tables, and 0010 adds plan runs, decisions and notifications, and `evo_agents/hub/server/workers/` the routes that register and stop workers (pairings, join,
 direct registration, list, drain, undrain, revoke). The package `evo_agents/hub/server/runs` holds the queue: ready
 steps, dispatch, claim, heartbeat, state reports, the list of runs, and the owner's cancel, approve, rerun, takeover
 and handback, as routes over a service over models (docs/structure.md); `evo_agents/hub/server/run_state.py` moves
@@ -208,8 +208,8 @@ which take a name, labels and settings from the pool and need no one at the keyb
 joining with a pairing code or registering with `hub login`, as above; a worker of no pool behaves as it always did.
 Schema 0148 adds `worker_pools`, `worker_join_tokens` and `workers.pool_id`; 0149 `workers.taints`, `runs.selector`
 and `runs.tolerations`; 0150 the pool of a charter, a schedule and a secret binding (`pool_id`). The hub's side is
-`evo_agents/hub/server/worker_pools.py` (pools and tokens), `worker_join.py` (the join), `worker_placement.py`
-(labels, taints, readiness) and `worker_reaper.py`; the command line is `evo-agents worker pool`
+`evo_agents/hub/server/workers/service/pools.py` (pools and tokens), `service/join.py` (the join), `repository/placement.py`
+(labels, taints, readiness) and `service/reaper.py`; the command line is `evo-agents worker pool`
 (`evo_agents/worker/cli/pool.py`), and the web shows the pools at `/workers/pools`, reached from the Pools button of
 the Workers page.
 

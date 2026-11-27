@@ -722,7 +722,7 @@ routes, the CLI and the page of worker pools: join tokens, labels, taints, slots
 member who is not an admin is refused (403, or 404 without a grant on the project), and the pool's `projects` do not
 change (422). A member's pool cannot take a name that starts with `agent-`. Every agent runs on its own pool: schema 0194 dropped the `placement` bridge that 0189 added, and there is no legacy mode. Worker protocol version 1 and `local` runs do not change.
 
-The hub places every run of the agent, of any kind and whoever dispatches it (`server/agent_placement.py`):
+The hub places every run of the agent, of any kind and whoever dispatches it (`server/agents/service/placement.py`):
 the run gets the selector `pool=agent-<handle>` and tolerations for the pool's taints when it is inserted
 (`insert_run`), and only a node of that pool that is online, not draining and ready claims it; a member's worker or a
 shared worker outside the pool never does, and a node of an agent's pool takes no run of another agent. A chat run
@@ -1052,7 +1052,7 @@ span says so.
 ### A plan run in a system
 
 A writer of the project can hand a whole plan to an agent system instead of queueing a plan run on a worker
-(`evo_agents/hub/server/plan_systems.py`). `POST /v1/projects/{p}/plans/{plan_id}/system-dispatch` takes `{system}`, the
+(`evo_agents/hub/server/plan_systems/`). `POST /v1/projects/{p}/plans/{plan_id}/system-dispatch` takes `{system}`, the
 slug of a system of the project, and does what the member would do by hand: it writes their own message in their direct
 chat with the system's entry agent (the chat is made when there is none). The message names the plan, its revision, its
 page on the web and its pending steps (each with its key, title and the steps it depends on, as many as fit, then "and N
@@ -1104,7 +1104,7 @@ evo-agents hub run plan rollout --system support --project northwind
 #### The remembered choice of Run plan
 
 The web's Run plan dialog has a Where it runs choice, on a worker or in a system, and opens on the member's last
-choice in the project, which the hub keeps (`evo_agents/hub/server/plan_run_choice.py`, table `plan_run_choices` of
+choice in the project, which the hub keeps (`evo_agents/hub/server/plan_run_choice/`, table `plan_run_choices` of
 migration 0238, one row a member and project). `GET /v1/projects/{p}/plan-run-choice` reads the caller's own choice
 (a grant on the project), and `PUT` replaces it (the writer role); no one reads or writes another member's. The fields
 remembered are `target` (`worker` or `system`), `system` (the slug, given when and only when the target is `system`),
@@ -1873,7 +1873,7 @@ its row, reads a mention `via` settle as `via` thread, and drops the table.
 ### Runs that stop moving
 
 Two runs that did not fail by their worker's word also get a triage thread, once a run (`run_triage` holds one row per
-run), in the same chat as a failed run's (`evo_agents/hub/server/triage.py`):
+run), in the same chat as a failed run's (`evo_agents/hub/server/triage/`):
 
 - a run of kind step, plan or author that is `running` or `verifying` and has written no event for 45 minutes
   (`triage.STALE_MINUTES`; its start counts when it wrote none) while its worker is not revoked and still sends
@@ -1894,7 +1894,7 @@ last). It mentions the project's default agent as for a failed run, unless the c
 
 The agent of a failed run's triage thread acts for the run's owner through four worker routes,
 `POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan`, `.../triage/invite` and `.../triage/cancel`
-(`evo_agents/hub/server/triage_actions.py`, `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
+(`evo_agents/hub/server/triage/service/actions.py`, `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
 of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, and an edit of a plan only as a
 new revision that differs from the held one in the `verify` or `what` of pending steps of the run's repos, with no
 command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step that is done,
@@ -1920,7 +1920,7 @@ protected path and the rest of the hub's merge allows it, K5 of the chat run's p
 
 The agent of a chat run asks an agent of another project for work or knowledge of that project with
 `evo-agents worker agent ask HANDLE TEXT` (`evo_agents/worker/cli/agent.py`), which calls
-`POST /v1/worker/runs/{id}/agent/asks` with the worker's token (`evo_agents/hub/server/agent_asks.py`). Only a chat run
+`POST /v1/worker/runs/{id}/agent/asks` with the worker's token (`evo_agents/hub/server/agents/service/asks.py`). Only a chat run
 asks: a run of another kind gets 422. `worker chat mention` stays as it was, for an agent of the same chat.
 
 The hub refuses, with why, writes nothing else and says the refusal in the asking run's thread (201, `refusal` set,
@@ -1933,7 +1933,7 @@ exit status 1 on the command line), when:
   agent type that takes work from the admins alone (`agent_tasking.task_refusal`);
 - the agent was deleted or has no pool of its own (`agent_tasking.work_home`).
 
-Who may give an agent work, and whether it takes work at all, is one module, `evo_agents/hub/server/agent_tasking.py`:
+Who may give an agent work, and whether it takes work at all, is one module, `evo_agents/hub/server/agents/service/tasking.py`:
 a mention in a chat (`chats.service.runs.hand_work`), an ask and the list of agents a person may chat with call the same
 functions, so they never disagree.
 
@@ -1975,7 +1975,7 @@ and set to null when what they name is deleted; the run API returns `spawned_by_
 The agent of a chat run reads the knowledge graph and the memories of another project with
 `evo-agents worker agent read PROJECT TOOL [TEXT]` (`evo_agents/worker/cli/agent.py`), TOOL being `kg-search`,
 `kg-context`, `memory-search` or `memory-get`, which calls `POST /v1/worker/runs/{id}/agent/reads` with the worker's
-token (`evo_agents/hub/server/agent_reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
+token (`evo_agents/hub/server/agents/service/reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
 token reaches no other project, and widening it would widen every tool. Only a chat run reads this way (422 for
 another kind), and never its own project (422, with a pointer to the evo-hub tools). `--graph NAME` (`graph` of the
 body) narrows `kg-search` and `kg-context` to a named graph of PROJECT (`docs/kg.md`, Named graphs); the check below
@@ -3001,7 +3001,7 @@ curator status` names the last one (`last_brief`).
 
 Accepting a proposal of a tier the charter's `planned_tiers` names (`judge.planned_tiers`: tiers 0 to 2 unless it
 names others, tier 3 included) makes its draft plan the Curator's plan on the hub, in the same transaction, as the
-admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
+admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans/`, `evo_agents/hub/judge.py`): the plan
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
 or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
