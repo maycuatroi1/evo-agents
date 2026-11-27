@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from evo_agents.hub import tables
 from evo_agents.hub.server import app_sessions
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from evo_agents.hub.server.security import APP, PREFIXES, RUN, WEB, WORKER
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer, sql

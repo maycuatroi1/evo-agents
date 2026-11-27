@@ -1,5 +1,5 @@
 """``evo-agents hub plugin list --project|enable|disable|config|rollback``: the plugins of a project and the layers of
-a plugin's config (``evo_agents.hub.server.project_plugins``), and the hub's own layer for hub admins
+a plugin's config (``evo_agents.hub.server.plugins.routes.projects``), and the hub's own layer for hub admins
 (``--instance``, ``evo_agents.hub.server.plugins``).
 
 ``list --project P`` prints each plugin installed on the hub, whether P enabled it and what it asks for. ``enable

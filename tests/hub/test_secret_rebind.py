@@ -1,5 +1,5 @@
 """PATCH /v1/secrets/{name}: the binding of a member's secret replaced alone, without its value
-(``evo_agents.hub.server.secrets.rebind_secret``).
+(``evo_agents.hub.server.credentials.routes.secrets.rebind_secret``).
 
 A secret bound to a worker that was revoked reaches no run; bound again to the pool its runs now go to (the pool of an
 agent the owner made, whose runs go to its nodes alone), a node of the pool is leased the same value, and its sealed

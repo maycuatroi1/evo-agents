@@ -22,8 +22,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from evo_agents.hub import autonomy_card, runs, tables, task_runs
-from evo_agents.hub.server import draft_pulls, plugin_tokens
+from evo_agents.hub.server import draft_pulls
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.plugins.service.tokens import issue_token
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.account_pool_setup import give_account_pool
@@ -132,7 +133,7 @@ def plugin_key(client, plugin_id: int) -> dict:
 
     async def issue() -> str:
         async with client.app.state.engine.begin() as conn:
-            return await plugin_tokens.issue_token(conn, plugin_id)
+            return await issue_token(conn, plugin_id)
 
     return {"Authorization": f"Bearer {client.portal.call(issue)}"}
 

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound
-from evo_agents.hub.server.credential_shares import live_unit
+from evo_agents.hub.server.credentials.service.shares import live_unit
 from evo_agents.hub.server.security import Principal
 from evo_agents.hub.server.workers.models.shares import NO_WORKER, WorkerShares
 from evo_agents.hub.server.workers.models.workers import revoked

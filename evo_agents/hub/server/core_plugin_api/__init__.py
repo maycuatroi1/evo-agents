@@ -86,63 +86,7 @@ from fastapi import Depends
 
 from evo_agents.hub.chat_bridge_events import EVENT as BRIDGE_EVENT
 from evo_agents.hub.server.admin import Login
-from evo_agents.hub.server.core_plugin_api._access import ROLES, chat_run_of, has_role, project_access, run_session
-from evo_agents.hub.server.core_plugin_api._acts import (
-    agents,
-    answer_decision,
-    answer_proposal,
-    chat_history_items,
-    open_direct_chat,
-    read_message,
-    send_message,
-)
-from evo_agents.hub.server.core_plugin_api._agents import MAX_TASK_MINUTES, enabled_agent_type, hand_task, reply_in_chat
-from evo_agents.hub.server.core_plugin_api._base import (
-    Context,
-    audit,
-    begin,
-    caller,
-    granted,
-    hub_admin,
-    hub_config,
-    plugin,
-    plugin_config,
-    plugin_environment,
-    project_configs,
-    restricted,
-    transaction,
-    web_session,
-    web_url,
-)
-from evo_agents.hub.server.core_plugin_api._bridges import (
-    bridge_attach,
-    bridge_code,
-    bridge_file,
-    bridge_find,
-    bridge_guest,
-    bridge_link,
-    bridge_message,
-    bridge_move,
-    bridge_read,
-    bridge_send,
-    bridge_sent,
-    bridge_set_state,
-    bridge_unlink,
-)
-from evo_agents.hub.server.core_plugin_api._channels import (
-    delivered_notification,
-    direct_chat_member,
-    find_member,
-    link_channel,
-    link_code,
-    linked_channel,
-    prepare,
-    redeem_link_code,
-    set_channel_state,
-    unlink_by_login,
-    unlink_channel,
-)
-from evo_agents.hub.server.core_plugin_api._decision import (
+from evo_agents.hub.server.core_plugin_api.models.decision import (
     AcceptedRule,
     CauseClassified,
     Cleared,
@@ -153,47 +97,17 @@ from evo_agents.hub.server.core_plugin_api._decision import (
     ReviewNodeText,
     RunEventText,
     RunFailure,
-    classify_run_failure,
-    decide_graph,
-    dismiss_review_item,
-    read_accepted_rules,
-    read_corrections,
-    read_review_queue,
-    read_run_failure,
 )
-from evo_agents.hub.server.core_plugin_api._loop import (
+from evo_agents.hub.server.core_plugin_api.models.loop import (
     ClaimCardRef,
     GoalMeasure,
     ProjectAgentTypeRef,
     SignalPoint,
     SignalsPushed,
     WorkItemRef,
-    admins_notified,
-    measure_goals,
-    notify_admins,
-    push_signals,
-    read_agent_types,
-    read_claim_cards,
-    read_work_items,
-    record_audit,
-    run_member,
-    session_run,
 )
-from evo_agents.hub.server.core_plugin_api._people import (
-    PROJECT_NAME,
-    EnabledProject,
-    InviteRef,
-    LabelReader,
-    RunActorRef,
-    label_reader,
-    match_users,
-    read_first_runs,
-    read_invites,
-    read_project,
-    read_run,
-)
-from evo_agents.hub.server.core_plugin_api._probes import MAX_PROBE_REF_CHARS, add_probe, remove_probe
-from evo_agents.hub.server.core_plugin_api._questions import (
+from evo_agents.hub.server.core_plugin_api.models.people import EnabledProject, InviteRef, LabelReader, RunActorRef
+from evo_agents.hub.server.core_plugin_api.models.questions import (
     ANSWER_EVENT,
     MAX_ANSWER_CHARS,
     MAX_ASKER_CHARS,
@@ -201,34 +115,8 @@ from evo_agents.hub.server.core_plugin_api._questions import (
     MAX_REF_CHARS,
     AgentAnswer,
     AgentQuestion,
-    ask_agent_type,
-    read_agent_answer,
 )
-from evo_agents.hub.server.core_plugin_api._reads import (
-    read_claims,
-    read_decisions,
-    read_goals,
-    read_grants,
-    read_plan_steps,
-    read_plans,
-    read_runs,
-    read_signals,
-    read_sprints,
-    read_srs_items,
-    read_srs_versions,
-    read_task_links,
-    read_tasks,
-    read_users,
-    step_key,
-)
-from evo_agents.hub.server.core_plugin_api._tables import (
-    HUB_KEYS,
-    PluginSchemaError,
-    adopt_tables,
-    own_tables,
-    plugin_metadata,
-)
-from evo_agents.hub.server.core_plugin_api._tasks import (
+from evo_agents.hub.server.core_plugin_api.models.tasks import (
     PlanStepChangeRef,
     SprintDetailRef,
     TaskActivityRef,
@@ -240,21 +128,8 @@ from evo_agents.hub.server.core_plugin_api._tasks import (
     TaskSrsItemRef,
     ToolCaller,
     Visibility,
-    enabled_plugin_config,
-    post_in_chat,
-    read_plan_step_changes,
-    read_sprint_details,
-    read_task_activity,
-    read_task_blockers,
-    read_task_decisions,
-    read_task_details,
-    read_task_events,
-    read_task_people,
-    read_task_srs_items,
-    read_visibility,
-    tool_caller,
 )
-from evo_agents.hub.server.core_plugin_api._types import (
+from evo_agents.hub.server.core_plugin_api.models.types import (
     AgentRef,
     AgentTypeRef,
     Bridge,
@@ -300,7 +175,141 @@ from evo_agents.hub.server.core_plugin_api._types import (
     UnsupportedApi,
     UserRef,
 )
-from evo_agents.hub.server.core_plugin_api._writes import (
+from evo_agents.hub.server.core_plugin_api.routes.callers import begin, caller, hub_admin, hub_config, web_session
+from evo_agents.hub.server.core_plugin_api.service.access import (
+    ROLES,
+    chat_run_of,
+    has_role,
+    project_access,
+    run_session,
+)
+from evo_agents.hub.server.core_plugin_api.service.acts import (
+    agents,
+    answer_decision,
+    answer_proposal,
+    chat_history_items,
+    open_direct_chat,
+    read_message,
+    send_message,
+)
+from evo_agents.hub.server.core_plugin_api.service.agents import (
+    MAX_TASK_MINUTES,
+    enabled_agent_type,
+    hand_task,
+    reply_in_chat,
+)
+from evo_agents.hub.server.core_plugin_api.service.bridges import (
+    bridge_attach,
+    bridge_code,
+    bridge_file,
+    bridge_find,
+    bridge_guest,
+    bridge_link,
+    bridge_message,
+    bridge_move,
+    bridge_read,
+    bridge_send,
+    bridge_sent,
+    bridge_set_state,
+    bridge_unlink,
+)
+from evo_agents.hub.server.core_plugin_api.service.channels import (
+    delivered_notification,
+    direct_chat_member,
+    find_member,
+    link_channel,
+    link_code,
+    linked_channel,
+    prepare,
+    redeem_link_code,
+    set_channel_state,
+    unlink_by_login,
+    unlink_channel,
+)
+from evo_agents.hub.server.core_plugin_api.service.decision import (
+    classify_run_failure,
+    decide_graph,
+    dismiss_review_item,
+    read_accepted_rules,
+    read_corrections,
+    read_review_queue,
+    read_run_failure,
+)
+from evo_agents.hub.server.core_plugin_api.service.ground import (
+    Context,
+    audit,
+    granted,
+    plugin,
+    plugin_config,
+    plugin_environment,
+    project_configs,
+    restricted,
+    transaction,
+    web_url,
+)
+from evo_agents.hub.server.core_plugin_api.service.loop import (
+    admins_notified,
+    measure_goals,
+    notify_admins,
+    push_signals,
+    read_agent_types,
+    read_claim_cards,
+    read_work_items,
+    record_audit,
+    run_member,
+    session_run,
+)
+from evo_agents.hub.server.core_plugin_api.service.people import (
+    PROJECT_NAME,
+    label_reader,
+    match_users,
+    read_first_runs,
+    read_invites,
+    read_project,
+    read_run,
+)
+from evo_agents.hub.server.core_plugin_api.service.probes import MAX_PROBE_REF_CHARS, add_probe, remove_probe
+from evo_agents.hub.server.core_plugin_api.service.questions import ask_agent_type, read_agent_answer
+from evo_agents.hub.server.core_plugin_api.service.reads import (
+    read_claims,
+    read_decisions,
+    read_goals,
+    read_grants,
+    read_plan_steps,
+    read_plans,
+    read_runs,
+    read_signals,
+    read_sprints,
+    read_srs_items,
+    read_srs_versions,
+    read_task_links,
+    read_tasks,
+    read_users,
+    step_key,
+)
+from evo_agents.hub.server.core_plugin_api.service.tables import (
+    HUB_KEYS,
+    PluginSchemaError,
+    adopt_tables,
+    own_tables,
+    plugin_metadata,
+)
+from evo_agents.hub.server.core_plugin_api.service.tasks import (
+    enabled_plugin_config,
+    post_in_chat,
+    read_plan_step_changes,
+    read_sprint_details,
+    read_task_activity,
+    read_task_blockers,
+    read_task_decisions,
+    read_task_details,
+    read_task_events,
+    read_task_people,
+    read_task_srs_items,
+    read_visibility,
+    tool_caller,
+)
+from evo_agents.hub.server.core_plugin_api.service.writes import (
     create_invite,
     emit_event,
     notify,

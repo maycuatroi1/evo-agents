@@ -2,7 +2,7 @@
 (``evo_agents.hub.branding``) and which features are on (``evo_agents.hub.features``), for the hub and for a project.
 Table hub_settings, schema 0037.
 
-Each setting is a layer of fields, versioned as a plugin's config is (``evo_agents.hub.server.plugin_configs``): a
+Each setting is a layer of fields, versioned as a plugin's config is (``evo_agents.hub.server.plugins.service.configs``): a
 write names the fields it sets and those it unsets, the others stay as the current version has them, and each write
 that changes something makes the layer's next version, never changed after; a rollback makes the next version a copy
 of an older one, which names it (``rolled_back_to``); ``if_version`` other than the version now is 409, nothing

@@ -58,7 +58,7 @@ from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.mirror import render
 from evo_agents.hub.server import command_dispatch, run_reaper
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from evo_agents.worker import doctor, worker_lines
 from tests.hub.live import ADMIN, bearer
 from tests.hub.test_plans import registration

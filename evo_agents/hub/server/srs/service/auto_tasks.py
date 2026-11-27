@@ -57,7 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import feature_rule, task_status
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.server.srs import BA
 from evo_agents.hub.server.srs.models.diff import diff
 from evo_agents.hub.server.srs.models.doc import Document, Item

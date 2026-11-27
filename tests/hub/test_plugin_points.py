@@ -675,7 +675,7 @@ def test_core_plugin_migration_made_tables_records_a_hub_wide_plugin_in_the_stor
     installs = live.sql(hub_db, select(trail.c.target).where(trail.c.action == "plugin.install"))
     assert installs == [("plugin:notes@1.0.0 via=image",)]
     # the store turns off none of the image's plugins, which the image loads only on a release they run on
-    from evo_agents.hub.server.plugin_store import disable_incompatible
+    from evo_agents.hub.server.plugins.service.startup import disable_incompatible
 
     async def on_an_older_release(app):
         return await disable_incompatible(app.state.engine, frozenset({live.ADMIN}), "0.1.0")
@@ -754,7 +754,7 @@ def test_core_plugin_disabled_answers_404_keeps_its_data_and_enabled_again_finds
 def test_core_plugin_page_is_native_and_framed_nowhere(notes):
     from dataclasses import replace
 
-    from evo_agents.hub.server.plugin_pages import ticket
+    from evo_agents.hub.server.plugins.service.pages import ticket
 
     client = notes.client
     listed = client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.reader)

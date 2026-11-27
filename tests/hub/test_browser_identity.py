@@ -28,7 +28,7 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.browser.models import profiles as profile_models
 from evo_agents.hub.server.browser.models.identities import BrowserIdentity
 from evo_agents.hub.server.browser.service import profiles as profiles
-from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, Unsealable, browser_identity_aad
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES, Sealed, Sealer, Unsealable, browser_identity_aad
 from tests.hub import test_secrets_cli as secrets_cli
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql, table_dump

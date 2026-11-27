@@ -1,5 +1,5 @@
 """The messages an isolated plugin posts and reads in a group chat with its token (``evo_agents.hub.server
-.plugin_chats_api``), as criterion b4 of the plan agent-qa-bugs-through-dev-system names it.
+.plugin_api.routes.chats``), as criterion b4 of the plan agent-qa-bugs-through-dev-system names it.
 
 Granted chats:write, a plugin posts a message, or a reply in a thread, to a chat that holds an agent of its project, in
 the name of the admin who granted it its permissions, a member of the chat: the message goes the way theirs does (a

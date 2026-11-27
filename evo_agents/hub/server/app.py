@@ -12,10 +12,10 @@ for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
 (``evo_agents.hub.server.terminal``) and of the live view of its browser (``evo_agents.hub.server.browser.service.view``),
 which check their own credential. ``app.state.sealer`` seals the members' secrets
-(``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
+(``evo_agents.hub.server.credentials.models.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
 503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin
-that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugin_store``). The routes of
-plugins are included when the app is made (``evo_agents.hub.server.plugin_routes``): the core plugins' own, Telegram's
+that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugins.service.store``). The routes of
+plugins are included when the app is made (``evo_agents.hub.server.plugins.service.extension``): the core plugins' own, Telegram's
 among them, then the proxy to isolated plugins' backends under /v1/x. ``app.state.github_app`` is the hub's GitHub App
 (``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan opens it, None
 without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start. ``app.state.curator_app`` is the
@@ -45,13 +45,13 @@ from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
+from evo_agents.hub.plugin_calls import PluginHostClient
 from evo_agents.hub.server import (
     admin,
     app_sessions,
     auth,
     blobs,
     errors,
-    gateway_sync,
     health,
     invites,
     projects,
@@ -63,6 +63,7 @@ from evo_agents.hub.server import (
 from evo_agents.hub.server.cron.service.fire import (
     cron_pass as cron_pass,  # handed down to the hub worker, as those below
 )
+from evo_agents.hub.server.gateway.service import sync as gateway_sync
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
@@ -77,8 +78,7 @@ from evo_agents.hub.server.loop.tick import tick as loop_tick  # noqa: F401
 from evo_agents.hub.server.memories.routes import restore_router as restore_routes
 from evo_agents.hub.server.memories.service.upkeep import upkeep as memory_upkeep  # noqa: F401
 from evo_agents.hub.server.notifications import routes as notifications
-from evo_agents.hub.server.plugin_bridge import bridge_gate
-from evo_agents.hub.server.plugin_host import PluginHostClient
+from evo_agents.hub.server.plugins.routes.bridge import bridge_gate
 from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.hub.server.systems.routes import traces as system_trace_views
@@ -177,14 +177,14 @@ def create_app(config: HubConfig) -> FastAPI:
     _include_kg_routes(app)
     _include_run_routes(app, config)
     _include_curator_routes(app)
-    from evo_agents.hub.server import plugin_routes
+    from evo_agents.hub.server.plugins.routes import extension as plugin_routes
 
     # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
     app.state.core_plugins = plugin_routes.include(app)
 
     _include_websockets(app)
     _include_member_routes(app)
-    from evo_agents.hub.server.sealing import Sealer
+    from evo_agents.hub.server.credentials.models.sealing import Sealer
 
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
     # The release plugins are checked against (a test starts a hub of another one), the checker of the Sigstore
@@ -604,52 +604,16 @@ def _include_curator_routes(app: FastAPI) -> None:
 
 def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server import (
-        account_pools,
-        account_views,
-        accounts,
-        branding,
         claude_sign_in,
-        context_answer_reuse,
-        credential_shares,
-        credentials,
-        features,
-        gateway_proxy,
-        kg_shared_pool_api,
-        market,
-        market_install,
-        market_licenses,
-        merge_check,
-        merge_judge,
-        merge_view,
-        model_catalog,
-        opportunity_evidence,
-        plugin_chats_api,
-        plugin_command_list,
-        plugin_docs_api,
-        plugin_host,
-        plugin_notify,
-        plugin_publishers,
-        plugin_records_api,
-        plugin_runs_api,
-        plugin_srs_api,
-        plugin_tasks_api,
-        plugin_ui,
-        plugins,
-        problem_evidence,
-        project_admin,
-        project_archive,
-        project_plugins,
-        provider_accounts,
         rate_limits,
         run_leases,
         run_waits,
-        runnable_models,
-        secrets,
-        seller,
-        seller_api,
         task_dispatch,
         work_cards,
     )
+    from evo_agents.hub.server.accounts.routes import accounts
+    from evo_agents.hub.server.accounts.routes import pools as account_pools
+    from evo_agents.hub.server.accounts.routes import views as account_views
     from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
     from evo_agents.hub.server.agent_accounts.routes import provider_accounts as agent_provider_accounts
     from evo_agents.hub.server.agent_accounts.routes import views as agent_account_views
@@ -658,7 +622,6 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.agents.routes import packs as agent_packs
     from evo_agents.hub.server.agents.routes import profiles as agent_profiles
     from evo_agents.hub.server.agents.routes import reads as agent_reads
-    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
     from evo_agents.hub.server.autonomy.routes import worker as worker_autonomy
     from evo_agents.hub.server.browser.routes import asks as browser_asks
     from evo_agents.hub.server.browser.routes import identities as browser_identities
@@ -676,26 +639,31 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import members as chat_members
     from evo_agents.hub.server.chats.routes import people as chat_people
     from evo_agents.hub.server.chats.routes import read as chat_read
+    from evo_agents.hub.server.credentials.routes import leases as credential_leases
+    from evo_agents.hub.server.credentials.routes import secrets as secret_routes
+    from evo_agents.hub.server.credentials.routes import shares as credential_shares
     from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
-    from evo_agents.hub.server.goals import routes as goals
-    from evo_agents.hub.server.intake import routes as intake
-    from evo_agents.hub.server.opportunities import routes as opportunities
     from evo_agents.hub.server.ops import routes as ops_routes
     from evo_agents.hub.server.orchestrator import routes as orchestrator_routes
     from evo_agents.hub.server.plan_run_choice import routes as plan_run_choice
     from evo_agents.hub.server.plan_systems import routes as plan_systems
-    from evo_agents.hub.server.problems import routes as problems
-    from evo_agents.hub.server.signals import routes as signals
+    from evo_agents.hub.server.plugin_api.routes import chats as plugin_chats_api
+    from evo_agents.hub.server.plugin_api.routes import docs as plugin_docs_api
+    from evo_agents.hub.server.plugin_api.routes import records as plugin_records_api
+    from evo_agents.hub.server.plugin_api.routes import runs as plugin_runs_api
+    from evo_agents.hub.server.plugin_api.routes import srs as plugin_srs_api
+    from evo_agents.hub.server.plugin_api.routes import tasks as plugin_tasks_api
+    from evo_agents.hub.server.plugins.routes import notify as plugin_notify
     from evo_agents.hub.server.systems.routes import ops as system_ops
     from evo_agents.hub.server.systems.routes import systems as agent_systems
     from evo_agents.hub.server.triage import routes as triage_routes
 
     for routes in (
-        secrets.router,
+        secret_routes.router,
         credential_shares.router,  # the shares of secrets and accounts
         run_leases.router,
-        credentials.worker_router,
+        credential_leases.worker_router,
         claude_sign_in.router,  # before accounts.router: /v1/accounts/claude-sign-in is no account's name
         accounts.router,
         account_views.router,
@@ -753,6 +721,51 @@ def _include_member_routes(app: FastAPI) -> None:
         ops_routes.worker_router,  # and the Orchestrator of a default system in its ops threads
         work_cards.worker_router,  # the entry agent of a system sets the work of its trace
         curator_thread_routes.worker_router,  # the agent of a proposal's thread answers it
+    ):
+        app.include_router(routes)
+    _include_store_routes(app)
+
+
+def _include_store_routes(app: FastAPI) -> None:
+    """The routes of the plugin store, the markets and sellers, a project's admin and plugins, the hub's branding and
+    features, the model catalog and gateway, signals, goals, problems, opportunities, intake and merges, included
+    after the member routes in this order."""
+    from evo_agents.hub.server import (
+        branding,
+        context_answer_reuse,
+        features,
+        kg_shared_pool_api,
+        merge_check,
+        merge_judge,
+        merge_view,
+        model_catalog,
+        opportunity_evidence,
+        problem_evidence,
+        project_admin,
+        project_archive,
+        runnable_models,
+    )
+    from evo_agents.hub.server.accounts.routes import provider_accounts
+    from evo_agents.hub.server.autonomy.routes import policies as autonomy_policies
+    from evo_agents.hub.server.gateway.routes import proxy as gateway_proxy
+    from evo_agents.hub.server.goals import routes as goals
+    from evo_agents.hub.server.intake import routes as intake
+    from evo_agents.hub.server.market.routes import install as market_install
+    from evo_agents.hub.server.market.routes import licenses as market_licenses
+    from evo_agents.hub.server.market.routes import market
+    from evo_agents.hub.server.opportunities import routes as opportunities
+    from evo_agents.hub.server.plugins.routes import commands as plugin_command_list
+    from evo_agents.hub.server.plugins.routes import host as plugin_host
+    from evo_agents.hub.server.plugins.routes import projects as project_plugins
+    from evo_agents.hub.server.plugins.routes import publishers as plugin_publishers
+    from evo_agents.hub.server.plugins.routes import store as plugins
+    from evo_agents.hub.server.plugins.routes import ui as plugin_ui
+    from evo_agents.hub.server.problems import routes as problems
+    from evo_agents.hub.server.seller.routes import api as seller_api
+    from evo_agents.hub.server.seller.routes import seller
+    from evo_agents.hub.server.signals import routes as signals
+
+    for routes in (
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
         plugin_publishers.router,
@@ -814,7 +827,7 @@ def _include_websockets(app: FastAPI) -> None:
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
     """Record the core plugins of the image in the store, then turn off the installed plugins that do not run on this
     release (``plugin_store``); a failure is logged and the hub serves on."""
-    from evo_agents.hub.server.plugin_store import disable_incompatible, register_core_plugins
+    from evo_agents.hub.server.plugins.service.startup import disable_incompatible, register_core_plugins
 
     try:
         await register_core_plugins(app.state.engine, app.state.core_plugins.plugins)

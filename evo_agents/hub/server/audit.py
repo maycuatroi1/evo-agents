@@ -188,7 +188,7 @@ SECRET_BIND = "secret.bind"
 # /v1/secrets/{name}): "secret:<id> workers=<names>", "secret:<id> pools=<names>" or "secret:<id> anywhere".
 SECRET_REBIND = "secret.rebind"
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
-# A share of a secret or an account (evo_agents.hub.server.credential_shares), in no project; the target names the share
+# A share of a secret or an account (evo_agents.hub.server.credentials.service.shares), in no project; the target names the share
 # and the secret by id, never the secret's name: "share:<id> secret:<id> credential=<class> grantee=<kind>[:<login or
 # slug>] projects=<names> level=<level> budget_usd=<n> usage_ceiling_pct=<n> max_running=<n> expires=<when>", each limit
 # that is set. share.terms_ack follows share.create for a subscription token: "share:<id> secret:<id> warning=<the
@@ -202,7 +202,7 @@ SHARE_REVOKE = "share.revoke"
 ACCOUNT_SET = "account.set"  # the owner changed the weight or priority of an account, or paused or resumed it
 ACCOUNT_POLICY_PUT = "account.policy-put"  # the member set their policy for the project
 ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the defaults hold again
-# A provider account (evo_agents.hub.server.provider_accounts), a member's in no project and an agent's in its project:
+# A provider account (evo_agents.hub.server.accounts.service.provider_accounts), a member's in no project and an agent's in its project:
 # "secret:<id> provider=<catalog id> host=<host of its base URL>", after "<project>/@<handle> " for an agent's, with
 # " fields=<names>" for a change; never its name, its key or the path of its base URL.
 PROVIDER_ACCOUNT_PUT = "provider-account.put"  # created, or replaced whole with a new key
@@ -233,7 +233,7 @@ CRON_DELETE = "cron.delete"  # its owner or an admin deleted it with its fires
 CRON_PAUSE = "cron.pause"  # its owner or an admin paused it
 CRON_RESUME = "cron.resume"  # its owner or an admin resumed it
 CRON_RUN = "cron.run"  # its owner or an admin fired it now
-# Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
+# Account pools (evo_agents.hub.server.accounts.service.pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.
 ACCOUNT_POOL_CREATE = "account-pool.create"  # an admin made a named account pool
@@ -292,7 +292,7 @@ CHAT_LABEL = "chat.label"
 # (evo_agents.hub.server.chats.service.bridges).
 CHAT_BRIDGE = "chat.bridge"
 CHAT_UNBRIDGE = "chat.unbridge"
-# The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
+# The hub's store of plugins (evo_agents.hub.server.plugins.service.store), outside any project; the target is
 # "plugin:<name>@<version>", never a manifest, a bundle or a signature.
 PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds
 PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or installed one again after the hub turned it off
@@ -326,13 +326,13 @@ MARKET_ORDER_PAID = "market.order.paid"  # a hub admin marked an order paid, wit
 MARKET_ORDER_CANCEL = "market.order.cancel"  # a hub admin cancelled an open order
 MARKET_LICENSE_ISSUE = "market.license.issue"  # the seller signed the licence of a paid order
 MARKET_PAYOUT = "market.payout"  # a hub admin marked a publisher's share of a month paid out
-# Buying them (evo_agents.hub.server.market_licenses): "market:<source id>/<plugin> order:<number>" for an order a hub
+# Buying them (evo_agents.hub.server.market.service.licenses): "market:<source id>/<plugin> order:<number>" for an order a hub
 # admin placed with a seller; "license:<id> plugin=<plugin> until=<date>" for a licence the hub received and checked,
 # and for one that lapsed, which turned the plugin off.
 MARKET_ORDER_PLACE = "market.order.place"
 MARKET_LICENSE_RECEIVE = "market.license.receive"
 MARKET_LICENSE_LAPSE = "market.license.lapse"
-# Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
+# Plugins in a project (evo_agents.hub.server.plugins.service.grants), in that project; the target is
 # "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
 PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it
 PLUGIN_GRANT = "plugin.grant"  # an admin granted the permissions the installed version asks for, enabling it or after
@@ -346,7 +346,7 @@ PLUGIN_NOTIFY = (
     "plugin.notify"  # the plugin, granted notifications:send, sent members a notice: who and how many, no text
 )
 TASK_DISPATCH = "task.dispatch"  # the plugin, granted runs:dispatch, handed it a task: a run of kind task
-# A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugin_configs): "plugin:<name> config
+# A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugins.service.configs): "plugin:<name> config
 # instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
 # <name> config agent v<n>" in the project, then " fields=<names>" or " rollback-to=v<n>"; never a value.
 PLUGIN_CONFIG = "plugin.config"

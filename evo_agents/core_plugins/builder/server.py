@@ -18,7 +18,7 @@ change with, the event that reads an admin's answer in the thread, and the route
   pending ones the caller may decide, where the web and ``evo-agents hub intake proposal`` find those an intake made,
   which have no thread.
 
-Approving a proposal of kind plugin_install installs the release from GitHub (``market_install.install_github``) with
+Approving a proposal of kind plugin_install installs the release from GitHub (``market.service.install.install_github``) with
 what the request's app holds, or, in the thread, with the hub's engine, config, blob store and Sigstore.
 """
 
@@ -49,7 +49,8 @@ from evo_agents.hub.server.chats.models.runs import ChatRun
 from evo_agents.hub.server.chats.service.runs import chat_run, hub_reply
 from evo_agents.hub.server.collect import looks_through
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.market_install import GitHubInstallIn, Installing, install_github
+from evo_agents.hub.server.market.models.install import GitHubInstallIn
+from evo_agents.hub.server.market.service.install import Installing, install_github
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal, member_principal

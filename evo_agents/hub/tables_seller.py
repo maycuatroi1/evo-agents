@@ -3,7 +3,7 @@
 ``tables.market_purchases``.
 
 ``hub_identity`` holds the hub's stable id, ``hub_`` and 32 hex digits, made the first time the hub needs it
-(``evo_agents.hub.server.market_licenses.hub_id``): a seller's licence names it.
+(``evo_agents.hub.server.market.service.licenses.hub_id``): a seller's licence names it.
 
 A seller's side (the feature seller, ``evo_agents.hub.server.seller``): a listing (``market_listings``) is a plugin a
 publisher sells, by the publisher's id and the signer of its bundles, owned by the member who listed it, at a price in
@@ -15,7 +15,7 @@ payment provider keeps of it (``payment``, ``evo_agents.hub.payments``); and ``o
 ``paid`` with an invoice number, which issues its licence, or ``cancelled``. A payout (``market_payouts``) records a
 publisher's share of a month's revenue paid out, by whom.
 
-A buyer's side (``evo_agents.hub.server.market_licenses``): a purchase (``market_purchases``) is an order the hub placed
+A buyer's side (``evo_agents.hub.server.market.service.licenses``): a purchase (``market_purchases``) is an order the hub placed
 with a seller, with the order's secret sealed with the hub's key (``{ciphertext, nonce, key_id}``), the state the seller
 last answered, and the licence received once it checked against the keys the market's index lists for the seller.
 

@@ -8,10 +8,10 @@ share for every run lends to the dispatcher on the run's project (``share_leases
 seat or above, or all): 404 when no such share covers them, 422 when its owner paused it, it ended or its owner bound
 it to the project no more. It goes on any worker, as a share lends on any. Its share still decides each ask for the
 run's leases: while it lends nothing (``share_leases._refusal``), the run takes an account by the rules, its own first. The pick is written to run_accounts with how ``manual`` in the
-transaction that queues the run, and ``account_choice.choose_accounts`` keeps it on every ask for the run's leases;
+transaction that queues the run, and ``accounts.service.choice.choose_accounts`` keeps it on every ask for the run's leases;
 an account picked by hand never fails over to another one. A provider account picked is written for the variable
 ``gateway:<prefix>`` (``gateway_runs.PICK_PREFIX``): the run's model must be one of its prefix, and its gateway key
-reaches that account alone (``gateway_accounts``). Audit rows name it by its secret's id, never its name.
+reaches that account alone (``gateway.service.accounts``). Audit rows name it by its secret's id, never its name.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """The routes of the feature docs, under /v1/x/docs/<project>/ for a member with a grant on a project the feature is on
-in (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project it is off in answers 404).
+in (the hub checks both first, ``evo_agents.hub.server.plugins.service.extension``; a project it is off in answers 404).
 
 Readers read: the documents (GET .../documents), a document with every version and one version whole, its Markdown
 and its images (GET .../documents/{slug}, ``version`` for an older one), the versions alone (GET .../versions), an

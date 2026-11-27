@@ -44,7 +44,7 @@ from evo_agents.hub.server.chats.repository.store import insert_mentions
 from evo_agents.hub.server.chats.service.access import chat_access
 from evo_agents.hub.server.chats.service.messages import resolve_mentions
 from evo_agents.hub.server.chats.service.runs import hand_mentions, hub_reply
-from evo_agents.hub.server.market_install import GitHubInstallIn, MarketInstalled
+from evo_agents.hub.server.market.models.install import GitHubInstallIn, MarketInstalled
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.market import DEFAULT_SOURCE

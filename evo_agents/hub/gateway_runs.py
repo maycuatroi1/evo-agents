@@ -2,7 +2,7 @@
 
 A provider account's models are named as the gateway reads them, ``<alias>/<model>``: the alias is the catalog's for
 the account's provider (``model_catalog``), or ``evo-<secret id>`` for an endpoint a member named (custom-openai,
-custom-anthropic), the prefix of its node at the gateway (``server.gateway_sync``). A run whose model has such a prefix
+custom-anthropic), the prefix of its node at the gateway (``server.gateway.service.sync``). A run whose model has such a prefix
 records it in runs.gateway_provider; only a daemon of GATEWAY_RUN_AGENT or later claims it, as an older one would run
 it on its own sign-in. The worker's lease of such a run (kind and provider ``gateway``) carries the hub's gateway
 route, a token of the run, the model and the API format its runtime speaks (RUNTIME_FORMATS); never a provider's key

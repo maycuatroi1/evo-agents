@@ -1,5 +1,5 @@
 """Secrets of kind forge: the GitLab token of a project that only the hub's own process opens, to drive the project's
-merge requests, and that no run ever holds (``evo_agents.hub.server.secrets``, ``evo_agents.hub.server.forge``).
+merge requests, and that no run ever holds (``evo_agents.hub.server.credentials.service.secrets``, ``evo_agents.hub.server.forge``).
 
 The checks step 3 of plan gitlab-merge-queue names (criterion a3): a forge secret has a url_prefix as a git secret has,
 an end, and its value from the owner once; it is never leased to a run, not even one whose origin it covers, and no
@@ -25,9 +25,9 @@ from sqlalchemy import select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES, Sealer
 from evo_agents.hub.server.forge import forge_token
 from evo_agents.hub.server.gitlab import GitLabProject
-from evo_agents.hub.server.sealing import KEY_BYTES, Sealer
 from tests.hub import test_credentials_api as leases_api
 from tests.hub.fake_gitlab import FakeGitLab
 from tests.hub.live import sql, table_dump

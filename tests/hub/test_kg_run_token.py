@@ -31,7 +31,7 @@ from evo_agents.hub.client import env_credentials
 from evo_agents.hub.kg_health_eval import AGENT_SINK
 from evo_agents.hub.server import kg_run_access
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from tests.hub.live import bearer, sql
 from tests.hub.test_credentials_api import leased
 from tests.hub.test_curator import PROJECT, night, set_run  # noqa: F401 (night is a fixture)

@@ -7,7 +7,7 @@ password, query or fragment, and a host that is not a name of a private network:
 (``address_refusal``): no loopback, private (RFC 1918), link-local and the metadata address 169.254.169.254, CGNAT
 (100.64.0.0/10), multicast, reserved or unspecified, IPv6 unique-local (fc00::/7) or an IPv4 address mapped into IPv6
 that is any of these. The hub checks both when a member writes the URL and again before each call, as DNS may change
-after the write; the call goes to the address checked (``evo_agents.hub.server.provider_probe``), so a second answer
+after the write; the call goes to the address checked (``evo_agents.hub.server.accounts.service.probe``), so a second answer
 of the resolver cannot send it elsewhere.
 
 No message repeats more of the URL than its host, which the member typed.

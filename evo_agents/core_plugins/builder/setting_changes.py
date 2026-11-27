@@ -1,5 +1,5 @@
 """The proposals of @builder of a setting the hub keeps in layers or versions (``proposals``): ``branding`` and
-``features`` (``hub_settings``), ``plugin_config`` (``plugin_configs``), ``agent`` (an agent profile) and ``policy``
+``features`` (``hub_settings``), ``plugin_config`` (``plugins.service.configs``), ``agent`` (an agent profile) and ``policy``
 (the autonomy policy): where one applies, how it is checked, applied and rolled back, as the ``Kind`` of each.
 """
 
@@ -21,14 +21,17 @@ from evo_agents.core_plugins.builder.kinds import (
 )
 from evo_agents.hub import autonomy, branding, features
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit, hub_settings, plugin_configs
+from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.agents.models.packs import AgentPackPin
 from evo_agents.hub.server.agents.models.profiles import AgentEdit
 from evo_agents.hub.server.agents.service.packs import pinned
 from evo_agents.hub.server.agents.service.profiles import new_version, profile_changes
 from evo_agents.hub.server.autonomy.repository import policies as policy_store
 from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
-from evo_agents.hub.server.plugin_grants import installed_row
+from evo_agents.hub.server.plugins.models.configs import Place, PluginConfigRollback, PluginConfigWrite
+from evo_agents.hub.server.plugins.repository.configs import current
+from evo_agents.hub.server.plugins.service.configs import place_of, rollback_layer, write_layer
+from evo_agents.hub.server.plugins.service.grants import installed_row
 from evo_agents.hub.server.profile_store import Profile, by_handle, version_rules
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
@@ -129,7 +132,7 @@ async def _profile(conn: AsyncConnection, access: ProjectAccess, handle: str, *,
     return profile
 
 
-def _config_place(target: Target) -> plugin_configs.Place:
+def _config_place(target: Target) -> Place:
     assert target.config is not None  # located for plugin_config
     return target.config
 
@@ -142,15 +145,15 @@ async def _config_target(conn: AsyncConnection, access: ProjectAccess, change: C
     plugin = await enabled_in(conn, name, access.project_id)
     if plugin is None:
         raise ProposalError(409, f"plugin {name} is not enabled in project {access.name}, or it is turned off")
-    place = plugin_configs.place_of(plugin, "project", project_id=access.project_id, project=access.name)
+    place = place_of(plugin, "project", project_id=access.project_id, project=access.name)
     title = f"the config of plugin {name} in project {access.name}"
     if handle is not None:
         profile = await _profile(conn, access, handle)
-        place = plugin_configs.place_of(
+        place = place_of(
             plugin, "agent", project_id=access.project_id, project=access.name, profile_id=profile.id, handle=handle
         )
         title = f"the config of plugin {name} for @{handle} in project {access.name}"
-    row = await plugin_configs.current(conn, place)
+    row = await current(conn, place)
     held = {**dict.fromkeys(row.secrets), **row.plain} if row is not None else {}
     return Target(title, 0 if row is None else row.version, held, config=place, schema=plugin.manifest.get("config"))
 
@@ -175,20 +178,18 @@ async def _check_config(
 
 async def _apply_config(w: Writing) -> int:
     await _check_config(w.conn, w.access, w.change, w.target, w.hub_version)
-    body = plugin_configs.PluginConfigWrite(values=w.change.sets, unset=list(w.change.unset), if_version=w.version)
-    return (
-        await plugin_configs.write_layer(w.conn, w.user, _config_place(w.target), w.target.schema, body, None)
-    ).version
+    body = PluginConfigWrite(values=w.change.sets, unset=list(w.change.unset), if_version=w.version)
+    return (await write_layer(w.conn, w.user, _config_place(w.target), w.target.schema, body, None)).version
 
 
 async def _roll_back_config(w: Writing) -> int:
     """The next version of the layer, a copy of version ``applied - 1``; version 0 is no layer."""
     place, before = _config_place(w.target), w.version - 1
     if before >= 1:
-        body = plugin_configs.PluginConfigRollback(version=before, if_version=w.version)
-        return (await plugin_configs.rollback_layer(w.conn, w.user, place, body)).version
-    body = plugin_configs.PluginConfigWrite(unset=sorted(w.target.held), if_version=w.version)
-    return (await plugin_configs.write_layer(w.conn, w.user, place, w.target.schema, body, None)).version
+        body = PluginConfigRollback(version=before, if_version=w.version)
+        return (await rollback_layer(w.conn, w.user, place, body)).version
+    body = PluginConfigWrite(unset=sorted(w.target.held), if_version=w.version)
+    return (await write_layer(w.conn, w.user, place, w.target.schema, body, None)).version
 
 
 CONFIG = Kind(_config_target, _check_config, _apply_config, _roll_back_config)

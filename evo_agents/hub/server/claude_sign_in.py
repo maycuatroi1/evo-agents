@@ -26,30 +26,31 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from evo_agents.hub import claude_oauth
 from evo_agents.hub.credentials import MAX_SECRETS_PER_OWNER, SECRET_NAME
-from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
+from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.runs.models.placement import PoolName
-from evo_agents.hub.server.sealing import Sealer, Unsealable
-from evo_agents.hub.server.secrets import (
+from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable
+from evo_agents.hub.server.credentials.models.secrets import (
     MAX_BINDINGS,
     PROVIDER_HOLDS,
     Secret,
     SecretWrite,
     SecretWritten,
+)
+from evo_agents.hub.server.credentials.repository.secrets import live_secrets, provider_holds
+from evo_agents.hub.server.credentials.routes.secrets import put_secret
+from evo_agents.hub.server.credentials.service.secrets import (
     binding_refusal,
-    live_secrets,
     own_pools,
     own_workers,
     owned_secrets,
-    provider_holds,
-    put_secret,
     sealer_of,
     unique_names,
     writable_projects,
 )
+from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.runs.models.placement import PoolName
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.hub.server.workers.models.workers import WORKER_NAME
 

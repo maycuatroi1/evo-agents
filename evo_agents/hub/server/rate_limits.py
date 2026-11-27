@@ -12,7 +12,7 @@ account cools down from a ``rejected`` one changes nothing: that report is older
 the account's last usage. With ``allowed`` and ``allowed_warning`` that is all, and the answer's action is ``none``.
 
 With ``rejected`` the account cools down until ``resets_at``, else for the owner's ``cooldown_seconds``
-(``account_choice.fail_over``). ``unauthorized`` says the account failed to authenticate (the CLI's token was refused,
+(``accounts.service.choice.fail_over``). ``unauthorized`` says the account failed to authenticate (the CLI's token was refused,
 a 401): no usage is kept, and the account cools down for the owner's ``cooldown_seconds``, its reason saying to log in
 again (there is no state "needs login"; a token renewed with ``evo-agents hub account login`` is taken once that
 cooldown ends). When the run may fail over (failover on in its owner's policy, the account not picked by hand, fewer
@@ -39,8 +39,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.account_choice import Failover, fail_over
-from evo_agents.hub.server.credentials import survey_run
+from evo_agents.hub.server.accounts.models.choice import Failover
+from evo_agents.hub.server.accounts.service.choice import fail_over
+from evo_agents.hub.server.credentials.service.survey import survey_run
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import RunId
@@ -148,7 +149,7 @@ def _note(env_var: str, current: int, moved: Failover, status: str) -> str:
 
 def _event(env_var: str, current: int, moved: Failover, status: str) -> dict:
     """The run's ``system`` event of a usage limit or a failed authentication: the note, and what the run page reads
-    of it (``account_views``): ``account_event`` failover with the account moved to, or stop; accounts by secret id
+    of it (``accounts.service.views``): ``account_event`` failover with the account moved to, or stop; accounts by secret id
     alone."""
     body = {"text": _note(env_var, current, moved, status), "env_var": env_var, "secret_id": current}
     body["cooldown_until"] = moved.cooling_until.isoformat()

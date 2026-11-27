@@ -38,7 +38,7 @@ if pg.DSN:
 
     from evo_agents.hub import tables
     from evo_agents.hub.server.app import create_app
-    from evo_agents.hub.server.sealing import KEY_BYTES
+    from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
     from evo_agents.hub.server.security import SESSION_COOKIE, hash_token
     from tests.hub.fake_github import Account
     from tests.hub.live import ADMIN, LEVELS, add_project, bearer, sql

@@ -8,7 +8,7 @@ import { type PluginPage, type ProjectPlugin, projectPluginsQuery } from "@/lib/
 
 import { PluginFrame } from "./plugin-frame";
 
-/** The slots a plugin's page may name instead of a page of its own (evo_agents.hub.server.plugin_pages). */
+/** The slots a plugin's page may name instead of a page of its own (evo_agents.hub.server.plugins.models.pages). */
 export type PageSlot = "decide";
 
 /** Each enabled plugin's framed page whose slot is `slot`, in the order the hub lists the plugins and their pages. */

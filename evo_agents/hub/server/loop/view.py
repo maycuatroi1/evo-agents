@@ -56,7 +56,7 @@ from evo_agents.hub.server.loop.model import (
     VersionView,
     View,
 )
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.srs_backlog import BACKLOG_METRIC
 from evo_agents.hub.tables_srs import PENDING_SPLIT
 from evo_agents.plugins import config as plugin_config

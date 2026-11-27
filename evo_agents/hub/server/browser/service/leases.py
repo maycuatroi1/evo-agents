@@ -33,9 +33,9 @@ from evo_agents.hub.server.browser.repository import identities as identities_re
 from evo_agents.hub.server.browser.repository import leases as repository
 from evo_agents.hub.server.browser.service.logins import notify_needs_login
 from evo_agents.hub.server.browser.service.profiles import open_profile, save_profile
+from evo_agents.hub.server.credentials.models.sealing import Sealer, Unsealable
 from evo_agents.hub.server.runs.models import NOT_HELD
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.sealing import Sealer, Unsealable
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)

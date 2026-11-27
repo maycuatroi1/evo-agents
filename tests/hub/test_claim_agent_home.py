@@ -4,7 +4,7 @@ agent a config dir of its own, and its claim says ``own_home``; a run under the 
 that runs on another runtime, go to any daemon as before. Each run goes to a node of its agent's pool (plan
 agent-dedicated-pools), where the worker is moved for the run of each agent, and takes its model account from the
 agent's account pool, so the claim of every run of an agent says ``own_home``, the default agent's too
-(``pool_accounts.is_pooled``); the default agent's says ``owner_setup`` as well, so its agent keeps the owner's setup."""
+(``accounts.repository.pool_runs.is_pooled``); the default agent's says ``owner_setup`` as well, so its agent keeps the owner's setup."""
 
 import pytest
 

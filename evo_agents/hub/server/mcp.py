@@ -8,7 +8,7 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 must not reach the SDK; the SDK then sees the request with the caller in ``request.state``.
 
 The 39 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
-named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
+named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugins.service.tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project whose audience the caller still holds
 (``kg_audience``), with or without a graph. chat_message and chat_thread read the messages of group chats whole, as
@@ -75,7 +75,6 @@ from evo_agents.hub.server import (
     kg_optimize,
     local_runs,
     opportunity_mcp,
-    plugin_tools,
     problem_evidence,
     projects,
     run_events,
@@ -110,6 +109,7 @@ from evo_agents.hub.server.mcp_text import (
 from evo_agents.hub.server.memories import routes as memories
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.plans import routes as plans
+from evo_agents.hub.server.plugins.service import tools as plugin_tools
 from evo_agents.hub.server.probes import mcp as probe_report
 from evo_agents.hub.server.problems import service as problems
 from evo_agents.hub.server.projects import ProjectAccess, project_access

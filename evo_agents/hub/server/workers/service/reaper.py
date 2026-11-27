@@ -15,7 +15,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub.server import credentials
+from evo_agents.hub.server import lease_ending
 from evo_agents.hub.server.workers.repository import reaper as store
 from evo_agents.hub.server.workers.service.workers import end_worker
 
@@ -40,6 +40,6 @@ async def reap_pool_nodes(engine: AsyncEngine, sealer, github_app, batch: int = 
             why = f"was offline more than {days} day{'s' if days != 1 else ''} and the reaper revoked it"
             moved = await end_worker(conn, None, worker_id, name, owner, token_id, why=why, by=REAPER)
         log.info("pool node reaped", extra={"worker_id": worker_id, "days": days, "runs_released": moved})
-        await credentials.revoke_tokens(engine, sealer, github_app, worker_id=worker_id)
+        await lease_ending.revoke_tokens(engine, sealer, github_app, worker_id=worker_id)
         revoked, released = revoked + 1, released + moved
     return {"revoked": revoked, "released": released}

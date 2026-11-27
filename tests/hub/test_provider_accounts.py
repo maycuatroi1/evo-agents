@@ -1,4 +1,4 @@
-"""Provider accounts: a member's and an agent's API keys of model providers (``evo_agents.hub.server.provider_accounts``
+"""Provider accounts: a member's and an agent's API keys of model providers (``evo_agents.hub.server.accounts.service.provider_accounts``
 and ``agent_provider_accounts``), plan model-providers, criterion a2.
 
 A member adds, edits, rotates the key of, pauses, resumes and deletes one through the API and the CLI; the key is
@@ -27,9 +27,9 @@ from sqlalchemy import select
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import public_endpoint
+from evo_agents.hub.server.accounts.service.probe import sanitized
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.provider_probe import sanitized
-from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, agent_provider_aad, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES, Sealed, Sealer, agent_provider_aad, secret_aad
 from tests.hub.live import sql, table_dump
 from tests.hub.test_run_cli import write_credentials
 from tests.hub.test_runs import OTHER, OWNER, PROJECT, add_worker, members

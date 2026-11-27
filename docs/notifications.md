@@ -866,7 +866,7 @@ as they were sent, `answer_option` is null, and the decision card on the web and
 inbox, or resume the parked run, as any answer does.
 
 Words sent through a channel that the hub's filter of secrets (`evo_agents.hub.redact`) would mask any part of are
-refused before anything is read or written: 422 with the reason `HOLDS_SECRET` of `core_plugin_api._acts`, the same
+refused before anything is read or written: 422 with the reason `HOLDS_SECRET` of `core_plugin_api.service.acts`, the same
 words every time and naming no value, so the channel tells it from a 422 for an answer too long. The decision stays
 open, and nothing goes to its run's inbox, the audit log or the hub's log. Only answers through a channel are filtered:
 the web and the CLI are where a member gives a credential (A credential request).

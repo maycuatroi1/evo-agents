@@ -1,6 +1,6 @@
 """Giving back a run's leases, and revoking the GitHub tokens among them (``docs/credentials.md``, section "Life of a
-lease"); moved out of ``credentials``, which re-exports every name here so its callers read ``credentials.end_leases``
-and the like as before.
+lease"); moved out of ``credentials``, whose service (``credentials.service.leases``) and other callers import it
+from here.
 
 ``end_leases`` marks revoked, in the caller's transaction, the leases of a run, of a worker or of that worker's run, and
 adds one credential.revoke audit row per run; the token of a run that runs as its owner (``run_access``) is revoked in
@@ -22,10 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import RUN_ACCESS
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, lease_aad
 from evo_agents.hub.server.github import GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.runs.service.audits import run_target
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad
 
 log = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ def _pending_tokens(run_id: int | None, worker_id: int | None, batch: int):
     ``run_id`` and of worker ``worker_id`` when given."""
     cl = tables.credential_leases
     statement = select(cl.c.id).where(
-        cl.c.provider == "github-app",  # a gateway key is the gateway's to revoke (``gateway_leases.sweep``)
+        cl.c.provider == "github-app",  # a gateway key is the gateway's to revoke (``gateway.service.leases.sweep``)
         cl.c.sealed_value.is_not(None),
         cl.c.revoked_at.is_not(None),
         cl.c.expires_at > func.now(),

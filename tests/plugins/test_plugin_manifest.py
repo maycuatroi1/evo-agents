@@ -272,7 +272,7 @@ def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_
 
 def test_plugin_pages_placed_in_the_menu_name_the_area_each_names():
     pytest.importorskip("psycopg", reason="the hub's pages come from the hub server, evo-ak[hub-server]")
-    from evo_agents.hub.server.plugin_pages import pages_of
+    from evo_agents.hub.server.plugins.service.pages import pages_of
 
     core = manifest(id="srs", tier="core", permissions=None, config=None, contributes={})
     # the area of the menu a page names; one a stored manifest names that this release does not know is none (apps)

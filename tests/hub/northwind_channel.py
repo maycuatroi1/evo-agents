@@ -24,8 +24,8 @@ import pytest
 from sqlalchemy import insert, select, update
 
 from evo_agents.hub import plugin_calls, tables
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from evo_agents.hub.server.notifications.service import deliveries as notice_deliveries
-from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live

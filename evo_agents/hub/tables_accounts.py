@@ -11,7 +11,7 @@ has the defaults. account_policies holds a member's policy for a project; none m
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 
 provider_accounts (0151) holds what a provider account calls, for its secret of kind provider, whose sealed value is
-its API key (``evo_agents.hub.server.provider_accounts``): the catalog id of its provider, its base URL, its API
+its API key (``evo_agents.hub.server.accounts.service.provider_accounts``): the catalog id of its provider, its base URL, its API
 format and the names of its models. Its weight, priority, pause and cooldown are its ``accounts`` row, as for any
 account.
 
@@ -22,7 +22,7 @@ an address from these rows, or from GitHub's noreply address, which needs none.
 credential_shares holds each share an owner gave of a secret or an account (``evo_agents.hub.credential_shares``): to
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
 moment its owner acknowledged the terms warning, when it was revoked, and the one run it lends to when an admin gave a
-value for another member's run (0247, ``evo_agents.hub.server.credential_answers``); never deleted. credential_share_projects
+value for another member's run (0247, ``evo_agents.hub.server.credentials.service.answers``); never deleted. credential_share_projects
 holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
 made for and the share it came under (0106), and the hash of a gateway lease's run token (0152); runs gains the
 provider prefix of a run that goes through the model gateway (0152, ``evo_agents.hub.gateway_runs``).

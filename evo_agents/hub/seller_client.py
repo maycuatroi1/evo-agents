@@ -1,5 +1,5 @@
 """How a buying hub talks to the hub of a plugin's seller (plan plugin-market, criterion a7): the seller's API under
-``/v1/seller-api`` at the ``url`` a market's index lists for it (``evo_agents.hub.server.seller_api``).
+``/v1/seller-api`` at the ``url`` a market's index lists for it (``evo_agents.hub.server.seller.service.api``).
 
 - ``place_order``: POST /v1/seller-api/orders with the plugin, the buying hub's stable id and address, the months and a
   contact; the seller answers the order's number, its secret (which the buyer seals and the seller keeps only the

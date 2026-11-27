@@ -165,9 +165,9 @@ if pg.DSN:
     from sqlalchemy import select
 
     from evo_agents.hub import tables
-    from evo_agents.hub.server.account_oauth import oauth_aad, open_tokens
+    from evo_agents.hub.server.accounts.repository.oauth import oauth_aad, open_tokens
     from evo_agents.hub.server.app import create_app
-    from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable
+    from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable
     from tests.hub import test_credentials_api as leases_api
     from tests.hub.live import sql
     from tests.hub.test_credentials_api import OTHER, OWNER

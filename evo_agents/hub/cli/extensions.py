@@ -1,7 +1,7 @@
 """``evo-agents hub <plugin> <command>``: the commands plugins add to the CLI (extension point ``cli``), read from the
 hub rather than shipped with the CLI, so a plugin adds one without a release of evo-agents.
 
-The hub lists them at ``GET /v1/cli/plugins`` (``evo_agents.hub.server.plugin_command_list``); the CLI keeps the answer in
+The hub lists them at ``GET /v1/cli/plugins`` (``evo_agents.hub.server.plugins.routes.commands``); the CLI keeps the answer in
 ``cli-plugins.json`` of the login directory (``~/.evo/hub``), and builds the commands of each plugin from
 it when it builds its own parser. A ``hub`` command it does not know, or a command of a plugin it does not know, makes it ask
 the hub again before it parses: the first run of a new command fetches it. A plugin whose id is a

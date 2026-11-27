@@ -5,7 +5,7 @@
  * grants the plugin the permission it needs (METHODS) now: the web reads the plugin's grant again before such a call
  * (`Host.granted`), and the rest are refused with `not_granted` and never reach the hub. Each call names the plugin in
  * the header X-Evo-Plugin (PLUGIN_HEADER), and the hub checks it again against what the plugin may do in the project
- * as it arrives (evo_agents.hub.server.plugin_bridge), so a page left open after its grant changed gets nothing more.
+ * as it arrives (evo_agents.hub.server.plugins.routes.bridge), so a page left open after its grant changed gets nothing more.
  * This module is the protocol without the DOM: what a message must be, which methods a grant opens, and what each one
  * asks of the hub (`HubReader`, which plugin-frame.tsx gives it).
  *

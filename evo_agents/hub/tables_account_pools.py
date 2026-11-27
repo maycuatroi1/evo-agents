@@ -2,7 +2,7 @@
 attributes (``tables.account_pools``, ``tables.account_pool_members``): queries name them there.
 
 An account pool is a named set of accounts that an admin of a project (or of the hub) keeps for the agents of the
-project (``evo_agents.hub.server.account_pools``). account_pools holds each pool: its project, its name (unique in the
+project (``evo_agents.hub.server.accounts.service.pools``). account_pools holds each pool: its project, its name (unique in the
 project in any case), who made it, and its policy (0258): the strategy its agents' runs pick accounts by and the
 thresholds of quota-pacing (``evo_agents.hub.accounts``). account_pool_members lists its accounts, each a secret (``secrets``) of kind env
 or provider: who added it and when. ``agent_profiles.account_pool_id`` names the one account pool of an agent; many

@@ -4,7 +4,7 @@ GET /v1/projects/{p}/agents/{handle}/accounts and GET .../accounts/{name}, the a
 
 Each account reads as ``agent_accounts.models.accounts.AgentAccount``: its name, variable, provider and category
 (``account_providers``), workers, weight, priority, pause, cooldown, end, state, and the figures a member's own account
-has, computed by the same functions (``account_views.agent_account_figures``): last usage, runs and their cost over 24
+has, computed by the same functions (``accounts.service.views.agent_account_figures``): last usage, runs and their cost over 24
 hours and 7 days (null for a service account), the runs holding it. Never a value: no query here reads one.
 
 Reading needs a grant on the project, any role, as reading the agent's profile does: someone without one gets the 404
@@ -19,14 +19,14 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server.account_views import agent_account_figures
+from evo_agents.hub.server.accounts.service.views import agent_account_figures
 from evo_agents.hub.server.agent_accounts.models.views import icon_url
 from evo_agents.hub.server.agent_accounts.repository import accounts as repository
 from evo_agents.hub.server.agent_accounts.service.accounts import view_of
 from evo_agents.hub.server.agent_accounts.service.shapes import AgentAccount, ListedAgentAccount
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
+from evo_agents.hub.server.credentials.repository.secrets import bound_names
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.secrets import bound_names
 from evo_agents.hub.server.security import Principal
 
 

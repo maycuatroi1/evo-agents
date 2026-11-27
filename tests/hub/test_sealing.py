@@ -1,5 +1,5 @@
 """Schema 0011 and sealing: the secrets, bindings and leases of ``docs/credentials.md`` in Postgres, and the AES-256-GCM
-of ``evo_agents.hub.server.sealing`` that keeps their values.
+of ``evo_agents.hub.server.credentials.models.sealing`` that keeps their values.
 
 The checks step 3 of the worker-credentials plan names: a database with workers and runs goes up from 0010 to 0011,
 down to 0010 with the schema 0010 had, and up again; a value sealed under another key, or opened as the value of
@@ -30,8 +30,8 @@ from sqlalchemy import Executable, delete, func, insert, select, update
 from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig, load_config
 from evo_agents.hub.migrate import migrate
-from evo_agents.hub.server import sealing
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
+from evo_agents.hub.server.credentials.models import sealing
+from evo_agents.hub.server.credentials.models.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from tests.hub.test_migrate import SNAPSHOT, move_to, one, query
 from tests.hub.test_migrate import tables as table_names
 from tests.hub.test_run_tables import DAY, add_plan, add_run, seed_runs

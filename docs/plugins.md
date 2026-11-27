@@ -651,9 +651,9 @@ writes on (404 otherwise: tasks, docs, srs). Each call runs the code a member's 
 of the project who granted the plugin its permissions last: their grant as it is now, read through the project's hub
 sink. That admin is the author of each task, change, comment and version the plugin writes. Once they hold less than
 writer on the project (reader, for the use cases), every call is a 403 until an admin enables the plugin again, which
-grants it in that admin's name (`evo_agents/hub/server/plugin_api_access.py`).
+grants it in that admin's name (`evo_agents/hub/server/plugin_api/service/access.py`).
 
-**Tasks** (`tasks:write`, `evo_agents/hub/server/plugin_tasks_api.py`). The routes sit under `board/` so they stay
+**Tasks** (`tasks:write`, `evo_agents/hub/server/plugin_api/routes/tasks.py`). The routes sit under `board/` so they stay
 apart from `GET .../tasks/{task_id}`, which reads a task the plugin handed an agent type (section Agent types):
 
 ```http
@@ -680,7 +680,7 @@ Content-Type: application/json
 Each answer is the task whole, as `GET /v1/x/tasks/{project}/tasks/{ref}` shows it to a member, with `key`. Creating or
 changing a task queues a build of the project's knowledge graph, as a member's request does.
 
-**Documents** (`docs:write`, `evo_agents/hub/server/plugin_docs_api.py`). `POST .../docs/images` uploads one image, its
+**Documents** (`docs:write`, `evo_agents/hub/server/plugin_api/routes/docs.py`). `POST .../docs/images` uploads one image, its
 bytes as the body (PNG, JPEG, WebP or GIF, at most 10 MiB), kept once by its SHA-256, and answers the `sha256`. `PUT
 .../docs/documents/{slug}` saves the next version of a document, or creates it at version 1: `title`, the Markdown
 `body`, `summary`, and `images`, each `{name, sha256}` with the name the Markdown gives it (`![Login](shots/login.png)`),
@@ -689,7 +689,7 @@ so a plugin never writes a document a member or another plugin keeps; a `label` 
 nothing writes nothing, and `base_version` refuses a save over a version the plugin did not read (409), as for a member
 (`docs/hub.md`, section Docs). A version shows at most 100 images.
 
-**Use cases** (`srs:read`, `evo_agents/hub/server/plugin_srs_api.py`). `GET .../srs/{slug}/use-cases` answers the use
+**Use cases** (`srs:read`, `evo_agents/hub/server/plugin_api/routes/srs.py`). `GET .../srs/{slug}/use-cases` answers the use
 cases of the version of document `slug` approved last, identifiers only: `{"document", "version", "use_cases": [{"code",
 "key"}]}` in the document's order. `key` is the hub's key of the item, the same in every version while its code may
 change. No text of the document leaves this way; an agent the plugin hands a task reads the text through its own run. A
@@ -700,7 +700,7 @@ document with no approved version, or whose label is above what the granting adm
 
 A backend granted `chats:write` posts a message to a group chat through the hub's API for plugins, with the token of
 its backend and no other credential, in the name of the admin of the project who granted the plugin its permissions
-last, as tasks and documents are (section Tasks and documents of a plugin, `evo_agents/hub/server/plugin_chats_api.py`):
+last, as tasks and documents are (section Tasks and documents of a plugin, `evo_agents/hub/server/plugin_api/routes/chats.py`):
 
 ```http
 POST /v1/plugin-api/projects/northwind/chats/42/messages
@@ -1359,7 +1359,7 @@ hands its own types tasks without that grant, gets it all the same. Its payload 
 queued and when it ended. It answers for the plugin's own tasks only (404 for any other).
 
 **The plugin reads what a run of its agent types left**, with `runs:dispatch`, by the run's own id (`run_id` of
-`task.result`, each attempt apart; `evo_agents/hub/server/plugin_runs_api.py`):
+`task.result`, each attempt apart; `evo_agents/hub/server/plugin_api/routes/runs.py`):
 
 - `GET /v1/plugin-api/projects/{project}/runs/{run_id}/summary`: the task as above, with `summary`, the evidence the hub
   kept when the run ended done (the worker, the commits and their diffstat, each verify, then the agent's summary), and
@@ -1531,7 +1531,7 @@ images and fonts from the bundle's `pages/` by relative URL, and may write them 
   such a call the web reads the plugin's grant again when its last read is over 5 seconds old, and refuses the call
   with `not_granted`, never reaching the hub, once the plugin lacks it or is no longer on in the project. Every call
   the bridge makes names the plugin in the header `X-Evo-Plugin`, and the hub checks it again as it arrives
-  (`evo_agents.hub.server.plugin_bridge`): such a call reaches only the reads below and the plugin's own routes, and a
+  (`evo_agents.hub.server.plugins.routes.bridge`): such a call reaches only the reads below and the plugin's own routes, and a
   read only while the plugin is installed, turned on, enabled in the project, with the permission in what the project
   granted that the installed version still asks for; anything else is a 403, which the page gets as `hub_refused`. A
   page left open after its plugin was disabled, removed, turned off or upgraded to ask for less gets nothing more:

@@ -1,4 +1,4 @@
-"""Shares of secrets and accounts (``evo_agents.hub.server.credential_shares``), as criteria a1 and a2 of plan
+"""Shares of secrets and accounts (``evo_agents.hub.server.credentials.service.shares``), as criteria a1 and a2 of plan
 credential-sharing name them: schema 0105 and its constraints; only the owner shares, the owner or a hub admin
 revokes; a forge secret, a project the secret is not bound to, a missing member and a unit that is not live are
 refused; a personal subscription token is shared only with the acknowledgement of TERMS_WARNING, which the 409 and the

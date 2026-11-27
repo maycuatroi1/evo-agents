@@ -33,7 +33,7 @@ from evo_agents.hub.server.intake.models import (
     IntakeTask,
 )
 from evo_agents.hub.server.opportunities import service as project_opportunities
-from evo_agents.hub.server.plugin_configs import stored_stacks
+from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.server.problems import service as project_problems
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal

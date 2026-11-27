@@ -6,7 +6,7 @@ hub takes back when a share ends.
 The principal of a run is the member it acts for (runs.principal_id, ``run_autonomy``), the member who dispatched it
 for a run without one (a local run, one queued before schema 0113). Each lease records the principal it was made for
 (credential_leases.principal_id), so the cost of the runs that took an account splits by principal
-(``account_views``). A share's level is source 6 of the run's autonomy from the lease that lends it on
+(``accounts.service.views``). A share's level is source 6 of the run's autonomy from the lease that lends it on
 (``run_autonomy.share_levels``).
 
 A share covers a run when it is not revoked, its end has not passed, it is for the run's project, it is for every run
@@ -16,7 +16,7 @@ the run (``user``), a live unit holding the live primary seat of either or a uni
 secret is live, of a kind the hub leases, not the dispatcher's own (``own_secrets`` leases those), and still bound to
 the project on any worker of its owner, unless the share is for one run: that is the value an admin of the project gave for another
 member's run, which they keep as their secret for it alone (``credential_answers``), bound nowhere; it counts as on
-this worker when it is bound to this one. ``account_choice`` takes the secret of a share for one run for its variable
+this worker when it is bound to this one. ``accounts.service.choice`` takes the secret of a share for one run for its variable
 before any other, since it was given for that run. A run of the Curator and a release run never take a shared secret: their charter and their runtime's login
 are their own.
 
@@ -25,25 +25,25 @@ and the first that does not is the share's refusal, which goes to the run's even
 the secret's name or value (``note_refusals``), when the run got nothing else for the variable or origin:
 
 - its owner has not paused the account and it does not cool down: while it waits, the owner's runs go first (they
-  take a cooling account as a last resort, ``account_choice._fallback``; a run under a share never does);
+  take a cooling account as a last resort, ``accounts.service.choice._fallback``; a run under a share never does);
 - the highest usage among the windows of accounts.last_usage whose reset has not passed is under the share's
   usage_ceiling_pct (``peak_usage``); an account whose usage is unknown is lent. The CLI reports a window's usage as a
   fraction of its limit (0.35), the ceiling is a percent (1 to 100): ``peak_usage`` gives whole percent, a fraction
   above 1 read as the limit reached, as the web's usage bars read it;
 - fewer than max_running runs hold a lease under the share now;
-- the cost of the runs that took a lease under the share this month (UTC, as ``account_views`` counts a run's cost),
+- the cost of the runs that took a lease under the share this month (UTC, as ``accounts.service.views`` counts a run's cost),
   plus an estimate for each run holding one that reported no cost yet and for this run, is within budget_usd. The
   estimate is the mean cost of the share's runs this month that reported one, else ESTIMATE_USD, and never under
   MIN_ESTIMATE_USD: a run is never taken to cost nothing.
 
-The principal's own secrets come first: ``account_choice`` takes a shared account only when none of the principal's
+The principal's own secrets come first: ``accounts.service.choice`` takes a shared account only when none of the principal's
 own for the variable is ready, and ``credentials`` a shared git secret for an origin only when none of the
 principal's own covers it.
 
 A KG run on a node of the shared KG pool (``kg_shared_pool.holding``: a review with no repo of a project with no repo
 that the pool's owner created) whose charter gives no model login, as a project fed by uploads alone has none, is
 leased the pool owner's own env secrets for MODEL_ENV_VARS bound to that pool, whatever project each binding names
-(``kg_pool_logins``), one per variable as ``account_choice`` chooses. No other run takes them, and no run of a
+(``kg_pool_logins``), one per variable as ``accounts.service.choice`` chooses. No other run takes them, and no run of a
 project another member created.
 
 A share revoked ends the leases still out under it at once (``credential_shares.revoke_share``, with
@@ -64,8 +64,9 @@ from evo_agents.hub import runs, tables
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credential_shares import ALL, UNIT, USER
 from evo_agents.hub.credentials import LEASED_KINDS
-from evo_agents.hub.server import account_views, kg_shared_pool, org_store
-from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR
+from evo_agents.hub.server import kg_shared_pool, org_store
+from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR
+from evo_agents.hub.server.accounts.repository import views as account_views
 from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 ESTIMATE_USD = Decimal("1.00")  # what a run under a share is taken to cost before any of its runs reported a cost
@@ -236,7 +237,7 @@ async def shared_secrets(
 ) -> tuple[list, list[Refusal]]:
     """(the rows of the secrets shared with the principal of ``run`` that the hub lends it now, each with its
     share_id; the refusals of the shares that lend nothing), as the module says; of ``kinds``, the provider accounts
-    of a gateway run among them (``gateway_accounts``). With ``lock`` the rows of the secrets and of their shares are
+    of a gateway run among them (``gateway.service.accounts``). With ``lock`` the rows of the secrets and of their shares are
     shared-locked, so a share revoked meanwhile waits for these leases and ends them."""
     s, b, cs, csp, a = (
         tables.secrets,
@@ -427,7 +428,8 @@ async def end_unlent(conn: AsyncConnection, run_id: int, worker_id: int, lent: s
         .where(
             cl.c.run_id == run_id,
             cl.c.worker_id == worker_id,
-            cl.c.provider != "gateway",  # the accounts a gateway key reaches end with the key (``gateway_leases``)
+            cl.c.provider
+            != "gateway",  # the accounts a gateway key reaches end with the key (``gateway.service.leases``)
             cl.c.share_id.not_in(lent) if lent else cl.c.share_id.is_not(None),
             cl.c.revoked_at.is_(None),
         )

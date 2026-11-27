@@ -3,7 +3,7 @@ dispatch form offers (``evo_agents.hub.gateway_runs``, ``docs/credentials.md``, 
 
 Each model is named as a run asks for it, ``<prefix>/<model>``, with the runtimes that run it through the gateway and
 the accounts that serve it: the caller's own provider accounts bound to the project and those shared with them for it
-that a run of theirs may use now (``gateway_accounts.usable_accounts``, on any worker: live, not paused, not past
+that a run of theirs may use now (``gateway.service.accounts.usable_accounts``, on any worker: live, not paused, not past
 their end, a share that lends now). A model of none of them is not listed; a dispatch of one is 422, saying why.
 Never a key: no query here reads one.
 """
@@ -21,7 +21,8 @@ from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.gateway_accounts import Asker, usable_accounts
+from evo_agents.hub.server.gateway.models.accounts import Asker
+from evo_agents.hub.server.gateway.service.accounts import usable_accounts
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 

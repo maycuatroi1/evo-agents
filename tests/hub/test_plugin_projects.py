@@ -31,7 +31,7 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import tables
 from evo_agents.hub.runs import AGENT_HOME
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_run_cli import write_credentials
@@ -84,7 +84,7 @@ def grants_of(db, name: str = "sandbox") -> dict:
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from evo_agents.hub.server.plugin_grants import project_grants
+    from evo_agents.hub.server.plugins.repository.grants import project_grants
 
     async def read() -> dict:
         engine = create_async_engine(

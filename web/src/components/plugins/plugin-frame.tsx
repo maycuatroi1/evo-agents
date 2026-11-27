@@ -37,7 +37,7 @@ import { hubReader } from "./bridge-hub";
  * The frame of an isolated plugin's page (web/DESIGN.md, Plugins): `sandbox="allow-scripts allow-forms"` and never
  * allow-same-origin, so the page has an opaque origin, reads no cookie or storage of the hub, cannot reach the page
  * around it, and its own requests carry no session. The hub serves its files under a CSP of the same sandbox with
- * connect-src 'none' (evo_agents.hub.server.plugin_ui). The frame's one way to the hub is the bridge evo-plugin/1:
+ * connect-src 'none' (evo_agents.hub.server.plugins.models.ui). The frame's one way to the hub is the bridge evo-plugin/1:
  * a message from this frame's window, from an opaque origin, answered by calling the hub with the viewer's session for
  * the methods the project granted the plugin (bridge.ts). The answer goes back with the target "*", the only one an
  * opaque origin can be posted to; it goes to the frame's own window, never to another.

@@ -32,7 +32,7 @@ from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plans import service as plan_service
-from evo_agents.hub.server.plugin_configs import check_run_layer
+from evo_agents.hub.server.plugins.service.configs import check_run_layer
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.repo_origins import repo_origins

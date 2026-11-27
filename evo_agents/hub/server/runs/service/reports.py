@@ -382,10 +382,10 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         view = await run_view(conn, run_id)
     log.info("run moved", extra={"run_id": run_id, "from": state, "to": body.state, "worker_id": worker_id})
     if body.state not in runs.HELD_STATES:  # the move gave back the run's leases: revoke its GitHub tokens now
-        from evo_agents.hub.server import credentials
+        from evo_agents.hub.server import lease_ending
 
-        await credentials.revoke_tokens(
-            app_state.engine, app_state.sealer, credentials.revoker(app_state), run_id=run_id
+        await lease_ending.revoke_tokens(
+            app_state.engine, app_state.sealer, lease_ending.revoker(app_state), run_id=run_id
         )
         sync = getattr(app_state, "gateway_sync", None)  # its key of the gateway, if any: taken back now
         if sync is not None:

@@ -55,7 +55,7 @@ trusted. The session secret also keys the hashes of pairing codes, which therefo
 Curator's replay suites (``evo_agents.hub.replay.split_of``), which no hub builds without it.
 
 Credentials of runs (``docs/credentials.md``) are optional configuration too. EVO_HUB_SECRETS_KEY is the AES-256-GCM
-key that seals them (``evo_agents.hub.server.sealing``), 32 bytes in base64url: without it a route that writes a
+key that seals them (``evo_agents.hub.server.credentials.models.sealing``), 32 bytes in base64url: without it a route that writes a
 secret answers 503 and a run asking for its leases gets none, with the reason. EVO_HUB_GITHUB_APP_ID (the App's ID
 or client ID) and EVO_HUB_GITHUB_APP_PRIVATE_KEY (its PEM, where ``\\n`` may stand for each line break, as one line
 of an environment file needs) go together or not at all: without them a run gets no GitHub token. The key and the
@@ -109,7 +109,7 @@ compose network, http://evo-agents-hub-plugins:8090) and EVO_HUB_PLUGIN_HOST_TOK
 /internal/plugin-host/ routes, which the reverse proxy does not forward, and the api to the host. Without both the api
 runs no backend: those routes answer 503, and so does a call to a plugin.
 
-The model gateway (OmniRoute, ``evo_agents.hub.server.gateway_client``) is optional too. EVO_HUB_GATEWAY_SECRET, at
+The model gateway (OmniRoute, ``evo_agents.hub.server.gateway.client.omniroute``) is optional too. EVO_HUB_GATEWAY_SECRET, at
 least 32 characters and registered as a secret, is the one root secret the api and the gateway's service share: the
 gateway derives its own secrets and its dashboard password from it, and the api derives the same password to manage
 it. EVO_HUB_GATEWAY_URL is where the api reaches it, http://evo-agents-hub-gateway:20128 on the compose network by
@@ -248,7 +248,7 @@ BLOB_STORE_FIELDS = (
     "s3_region",
     "s3_addressing_style",
 )
-SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
+SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.credentials.models.sealing
 SELLER_KEY_BYTES = 32  # the seed of an Ed25519 key
 SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.admin.PROJECT_NAME
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not

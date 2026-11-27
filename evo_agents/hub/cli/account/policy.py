@@ -1,5 +1,5 @@
 """``evo-agents hub account policy PROJECT``: the member's policy for their accounts in a project
-(``evo_agents.hub.server.accounts``, ``docs/credentials.md``, section "Accounts"). Without a flag it prints the policy;
+(``evo_agents.hub.server.accounts.service.accounts``, ``docs/credentials.md``, section "Accounts"). Without a flag it prints the policy;
 a flag sets it over the policy as it is now, ``--reset`` drops it so the defaults hold again.
 
 ``--strategy`` names how a run picks among the accounts (``evo_agents.hub.accounts.STRATEGIES``); with

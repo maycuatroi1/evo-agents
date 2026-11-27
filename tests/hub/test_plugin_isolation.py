@@ -93,7 +93,7 @@ def test_plugin_isolation_host_without_a_secret_runs_no_backend(tmp_path):
 
 
 def test_plugin_host_client_crash_is_unavailable_without_a_host_and_within_the_timeout():
-    from evo_agents.hub.server.plugin_host import PluginHostClient, PluginHostUnavailable
+    from evo_agents.hub.plugin_calls import PluginHostClient, PluginHostUnavailable
 
     async def unconfigured():
         with pytest.raises(PluginHostUnavailable):
@@ -116,8 +116,8 @@ def test_plugin_isolation_client_keeps_a_failed_start_out_of_what_members_read(t
     import httpx
     from fastapi.testclient import TestClient
 
+    from evo_agents.hub.plugin_calls import PluginHostClient, PluginHostUnavailable
     from evo_agents.hub.plugin_host_service import create_host_app
-    from evo_agents.hub.server.plugin_host import PluginHostClient, PluginHostUnavailable
     from evo_agents.plugins.host import BackendUnavailable
 
     cause = "plugin sample could not start: PlacementError: /plugins/envs/sample/1.0.0; stderr: evo-sibling-secret"
@@ -199,7 +199,7 @@ from sqlalchemy import func, select, update  # noqa: E402
 import tests.hub.test_plugin_projects as projects  # noqa: E402
 from evo_agents.hub import tables  # noqa: E402
 from evo_agents.hub.server.app import create_app  # noqa: E402
-from evo_agents.hub.server.sealing import KEY_BYTES  # noqa: E402
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES  # noqa: E402
 from tests.hub.test_plugin_projects import ASKED, PROJECT, install, prepare  # noqa: E402
 
 HOST_TOKEN = "plugin-host-shared-" + secrets.token_hex(16)
@@ -264,7 +264,7 @@ def _give_backend(hub_db, name: str = "sandbox") -> None:
 
 
 def _live(hub_db, *tokens: str) -> list[int | None]:
-    from evo_agents.hub.server.plugin_tokens import plugin_of_token
+    from evo_agents.hub.server.plugins.service.tokens import plugin_of_token
 
     async def read(conn):
         return [await plugin_of_token(conn, token) for token in tokens]
@@ -277,7 +277,7 @@ def _token_count(hub_db) -> int:
 
 
 def test_plugin_token_isolation_carries_only_granted_permissions(client, hub, hub_db):
-    from evo_agents.hub.server.plugin_tokens import backend_payload, issue_token
+    from evo_agents.hub.server.plugins.service.tokens import backend_payload, issue_token
 
     projects.enabled(client, hub["owner"], ASKED)  # grant exactly what sandbox asks for
 
@@ -314,7 +314,7 @@ def test_plugin_token_isolation_pulling_mints_nothing_and_each_start_mints_one(c
 
 
 def test_plugin_token_isolation_remove_and_turn_off_revoke_it_at_once(client, hub, hub_db):
-    from evo_agents.hub.server.plugin_store import disable_incompatible
+    from evo_agents.hub.server.plugins.service.startup import disable_incompatible
 
     _give_backend(hub_db)
     token = client.post("/internal/plugin-host/plugins/sandbox/token", headers=HOST).json()["token"]
@@ -367,7 +367,8 @@ def test_plugin_token_isolation_minting_waits_for_a_remove_under_way(client, hub
     finds no installed plugin once the remove commits."""
     from types import SimpleNamespace
 
-    from evo_agents.hub.server.plugin_store import find, set_removed
+    from evo_agents.hub.server.plugins.repository.store import find
+    from evo_agents.hub.server.plugins.service.store import set_removed
 
     _give_backend(hub_db)
 
@@ -395,7 +396,7 @@ def test_plugin_token_isolation_minting_waits_for_a_remove_under_way(client, hub
 
 
 def test_plugin_config_isolation_one_plugin_never_sees_another_secret(client, hub, hub_db):
-    from evo_agents.hub.server.plugin_tokens import backend_payload
+    from evo_agents.hub.server.plugins.service.tokens import backend_payload
 
     install(hub_db, name="beta")  # a second installed plugin
     # The hub's own (instance) layer holds a secret for each plugin.
@@ -419,7 +420,7 @@ def test_plugin_config_isolation_one_plugin_never_sees_another_secret(client, hu
 
 
 def test_plugin_token_isolation_a_disabled_plugin_grants_nothing(client, hub, hub_db):
-    from evo_agents.hub.server.plugin_tokens import backend_payload
+    from evo_agents.hub.server.plugins.service.tokens import backend_payload
 
     projects.enabled(client, hub["owner"], ASKED)
     projects.turn_off(hub_db, "incompatible")  # the hub turned it off
@@ -458,7 +459,7 @@ def test_plugin_backend_status_shows_for_an_admin(client, hub, hub_db):
 
 def test_plugin_host_routes_need_the_shared_secret_and_live_outside_v1(client):
     from evo_agents.hub.plugin_host_service import HUB_ROUTES
-    from evo_agents.hub.server.plugin_host import HOST_ROUTES
+    from evo_agents.hub.server.plugins.models.host import HOST_ROUTES
 
     assert HUB_ROUTES == HOST_ROUTES and not HOST_ROUTES.startswith("/v1")  # the proxy forwards /v1 and /mcp only
     assert client.get("/internal/plugin-host/plugins").status_code == 401  # no secret

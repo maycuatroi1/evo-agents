@@ -5,7 +5,7 @@ Revises: 0010
 Create Date: 2026-10-06
 
 ``docs/credentials.md`` describes the design these tables hold the state of, ``evo_agents.hub.credentials`` the kinds,
-providers and limits, and ``evo_agents.hub.server.sealing`` how a value is sealed; the lists below are copies of
+providers and limits, and ``evo_agents.hub.server.credentials.models.sealing`` how a value is sealed; the lists below are copies of
 those modules' as of this revision, never imports, so a later change to them takes a new revision.
 
 secrets is one value a member wrote: a name unique among the owner's secrets that are not deleted (a deleted secret's
@@ -45,7 +45,7 @@ branch_labels = None
 depends_on = None
 
 MAX_SECRET_BYTES = 16384  # one value, as evo_agents.hub.credentials.MAX_SECRET_BYTES
-TAG_BYTES = 16  # of AES-GCM, appended to the ciphertext (evo_agents.hub.server.sealing)
+TAG_BYTES = 16  # of AES-GCM, appended to the ciphertext (evo_agents.hub.server.credentials.models.sealing)
 NONCE_BYTES = 12
 SEALED = f"BETWEEN {1 + TAG_BYTES} AND {MAX_SECRET_BYTES + TAG_BYTES}"
 KEY_ID = r"'^[0-9a-f]{8}$'"  # the first 8 hex digits of the key's SHA-256

@@ -1,5 +1,5 @@
 """The routes of the plugin tasks, under /v1/x/tasks/<project>/ for a member with a grant on a project that enabled
-it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
+it (the hub checks both first, ``evo_agents.hub.server.plugins.service.extension``; a project that did not enable it answers 404).
 
 Readers read: the config as tasks are written against it, the tasks (by status, sprint, the caller's own or an
 assignee's), a task whole with its links as they are now, its history and comments, the sprints, the members a task

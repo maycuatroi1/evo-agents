@@ -9,7 +9,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.server import audit, credentials, update_now
+from evo_agents.hub.server import audit, lease_ending, update_now
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.browser.service import install as browser_install
@@ -243,7 +243,7 @@ async def end_worker(
     await store.revoke(conn, worker_id, token_id)
     released = await release_runs(conn, worker_id, f"its worker {name} {why}")
     # The runs it released gave theirs back as they moved; this takes the rest, of runs that left it otherwise.
-    await credentials.end_leases(
+    await lease_ending.end_leases(
         conn, worker_id=worker_id, actor_id=actor_id, token_id=actor_token, by="worker-revoked"
     )
     shown_target = target(worker_id, name, owner)
@@ -256,6 +256,6 @@ async def end_worker(
 async def revoke_leased_tokens(app_state, worker_id: int) -> None:
     """Once ``end_worker`` committed: revoke at GitHub the tokens the worker's leases held. GitHub failing leaves them
     to the reaper's next pass."""
-    await credentials.revoke_tokens(
-        app_state.engine, app_state.sealer, credentials.revoker(app_state), worker_id=worker_id
+    await lease_ending.revoke_tokens(
+        app_state.engine, app_state.sealer, lease_ending.revoker(app_state), worker_id=worker_id
     )

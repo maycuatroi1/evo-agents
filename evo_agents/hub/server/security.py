@@ -12,13 +12,13 @@ request. Revoked, expired and unknown credentials all get the same 401, which na
 ``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
 closed: a route added later needs a credential unless it is listed there. Each public prefix checks a credential of
 its own. One serves the files of plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in
-the path is their credential (``evo_agents.hub.server.plugin_pages``). Another is the API of the hub for plugins,
+the path is their credential (``evo_agents.hub.server.plugins.service.pages``). Another is the API of the hub for plugins,
 whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). The
 third, HOOKS_PREFIX, holds the webhooks of core plugins, each under ``/v1/hooks/<its id>/``
-(``evo_agents.hub.server.plugin_routes``): a service outside the hub calls them with a secret of the plugin's, which
+(``evo_agents.hub.server.plugins.service.extension``): a service outside the hub calls them with a secret of the plugin's, which
 the route compares itself; the request has no principal, so a route there that asks for the caller gets 401. The
 fourth, SELLER_PREFIX, is the API a seller's hub serves the hubs that buy its plugins
-(``evo_agents.hub.server.seller_api``): an order's secret or a licence the seller signed is the credential, which the
+(``evo_agents.hub.server.seller.service.api``): an order's secret or a licence the seller signed is the credential, which the
 route checks itself, as it checks that the feature seller is on. A machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET
@@ -57,7 +57,7 @@ it unless its owner's run reach holds ``runs``; its principal acts for the run (
 the routes open to it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The
 token of a KG run (``kg_run_access``, host ``kg-run:<run id>``) lives the same way without its run running as its
 owner, is never a hub admin, and reaches the routes of ``kg_run_access.ROUTES`` on its run's project alone. The
-gateway route's token of a run (``gateway_leases``) shares the prefix and is a credential of those routes alone: here
+gateway route's token of a run (``gateway.service.leases``) shares the prefix and is a credential of those routes alone: here
 it is unknown.
 
 The middleware reads credentials of HTTP requests only. A websocket under /v1 reaches the app only when its path is
@@ -132,7 +132,7 @@ PUBLIC_PATHS = frozenset(
         "/v1/branding/logo",
         "/v1/branding/favicon",
         "/v1/push/config",  # the public VAPID key a browser subscribes with, and which push senders are on
-        # the gateway route of runs on a provider account's model: a run's token is the credential (gateway_proxy)
+        # the gateway route of runs on a provider account's model: a run's token is the credential (gateway.routes.proxy)
         "/v1/messages",
         "/v1/chat/completions",
         "/v1/responses",
@@ -141,7 +141,7 @@ PUBLIC_PATHS = frozenset(
 )
 HOOKS_PREFIX = "/v1/hooks/"  # the webhooks of core plugins, /v1/hooks/<plugin id>/... (plugin_routes)
 SELLER_PREFIX = "/v1/seller-api/"  # what a seller's hub serves buying hubs (seller_api)
-# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), a
+# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugins.service.pages), a
 # plugin token (evo_agents.hub.server.task_dispatch), a core plugin's own secret (HOOKS_PREFIX), or an order's secret
 # or a licence (SELLER_PREFIX).
 PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/", HOOKS_PREFIX, SELLER_PREFIX)

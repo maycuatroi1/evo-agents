@@ -1,5 +1,5 @@
 """The routes of the plugin srs, under /v1/x/srs/<project>/ for a member with a grant on a project that enabled it
-(the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
+(the hub checks both first, ``evo_agents.hub.server.plugins.service.extension``; a project that did not enable it answers 404).
 
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
 between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (each

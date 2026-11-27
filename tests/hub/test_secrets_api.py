@@ -1,4 +1,4 @@
-"""The owner's secrets on the hub: PUT, GET and DELETE /v1/secrets (``evo_agents.hub.server.secrets``).
+"""The owner's secrets on the hub: PUT, GET and DELETE /v1/secrets (``evo_agents.hub.server.credentials.service.secrets``).
 
 The checks step 4 of the worker-credentials plan names: GET never carries a value; a project where the caller is not
 a writer is 403; another member's worker is 403; an env_var of DENIED_ENV, or with one of its prefixes, is 422; a hub
@@ -25,9 +25,9 @@ from sqlalchemy import func, insert, select
 
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import DEFAULT_GIT_USERNAME, MAX_SECRET_BYTES
-from evo_agents.hub.server import secrets as secret_routes
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.sealing import KEY_BYTES, Sealed, Sealer, secret_aad
+from evo_agents.hub.server.credentials.models.sealing import KEY_BYTES, Sealed, Sealer, secret_aad
+from evo_agents.hub.server.credentials.service import secrets as secret_routes
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, add_project, bearer, sql, table_dump
 from tests.hub.test_run_tables import PLAN, add_plan, add_run

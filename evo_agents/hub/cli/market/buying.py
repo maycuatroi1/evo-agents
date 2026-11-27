@@ -1,4 +1,4 @@
-"""Buying a paid plugin (``evo_agents.hub.server.market_licenses``): ``hub market buy NAME --months N --name --email
+"""Buying a paid plugin (``evo_agents.hub.server.market.service.licenses``): ``hub market buy NAME --months N --name --email
 [--trust]`` orders it from its seller and prints how to pay; ``market licenses [--check]`` the hub's orders and
 licences; ``market hub-id`` the id a licence names. Standard library only, like the rest of the client.
 """
