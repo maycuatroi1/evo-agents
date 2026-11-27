@@ -9,11 +9,12 @@ import re
 import secrets
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, NotFound
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.security import Principal, hash_token
 from evo_agents.hub.server.workers.models.pools import TOKEN_PREFIX, IssuedJoinToken, JoinToken, JoinTokenRequest
 from evo_agents.hub.server.workers.models.workers import WORKER_NAME
@@ -44,37 +45,40 @@ def join_token(row, pool: str) -> JoinToken:
     return JoinToken(**fields, pool=pool, status=status)
 
 
-async def create(conn: AsyncConnection, user: Principal, name: str, body: JoinTokenRequest) -> IssuedJoinToken:
+async def create(engine: AsyncEngine, user: Principal, name: str, body: JoinTokenRequest) -> IssuedJoinToken:
     """A join token of the pool ``name``; the token shown once."""
-    token = new_join_token()
-    pool = await pool_row(conn, user, name)
-    token_id = await store.insert_token(conn, pool.id, hash_token(token), user.user_id, body.hours, body.max_uses)
-    shown = f"{target(pool.id, pool.name)} join_token:{token_id} hours={body.hours} max_uses={body.max_uses}"
-    await Auditor(conn, None, user).record(audit.WORKER_POOL_TOKEN, shown)
-    row = await store.token_row(conn, pool.id, token_id)
-    log.info("worker pool join token created", extra={"pool_id": pool.id, "join_token_id": token_id})
-    return IssuedJoinToken(**join_token(row, pool.name).model_dump(), token=token)
+    async with UnitOfWork(engine) as conn:
+        token = new_join_token()
+        pool = await pool_row(conn, user, name)
+        token_id = await store.insert_token(conn, pool.id, hash_token(token), user.user_id, body.hours, body.max_uses)
+        shown = f"{target(pool.id, pool.name)} join_token:{token_id} hours={body.hours} max_uses={body.max_uses}"
+        await Auditor(conn, None, user).record(audit.WORKER_POOL_TOKEN, shown)
+        row = await store.token_row(conn, pool.id, token_id)
+        log.info("worker pool join token created", extra={"pool_id": pool.id, "join_token_id": token_id})
+        return IssuedJoinToken(**join_token(row, pool.name).model_dump(), token=token)
 
 
-async def listed(conn: AsyncConnection, user: Principal, name: str) -> list[JoinToken]:
-    pool = await pool_row(conn, user, name)
-    return [join_token(row, pool.name) for row in await store.token_rows(conn, pool.id)]
+async def listed(engine: AsyncEngine, user: Principal, name: str) -> list[JoinToken]:
+    async with UnitOfWork(engine) as conn:
+        pool = await pool_row(conn, user, name)
+        return [join_token(row, pool.name) for row in await store.token_rows(conn, pool.id)]
 
 
-async def revoke(conn: AsyncConnection, user: Principal, name: str, token_id: int) -> JoinToken:
+async def revoke(engine: AsyncEngine, user: Principal, name: str, token_id: int) -> JoinToken:
     """Revoke join token ``token_id`` of the pool ``name``; 404 for none, 409 when it is revoked already."""
-    pool = await pool_row(conn, user, name)
-    found = await store.locked_token(conn, pool.id, token_id)
-    if found is None:
-        raise NotFound(f"pool {pool.name} has no join token {token_id}: see its token list")
-    if found.revoked_at is not None:
-        raise Conflict(f"join token {token_id} was revoked already, at {found.revoked_at.isoformat()}")
-    await store.revoke_token(conn, token_id)
-    shown = f"{target(pool.id, pool.name)} join_token:{token_id}"
-    await Auditor(conn, None, user).record(audit.WORKER_POOL_TOKEN_REVOKE, shown)
-    row = await store.token_row(conn, pool.id, token_id)
-    log.info("worker pool join token revoked", extra={"pool_id": pool.id, "join_token_id": token_id})
-    return join_token(row, pool.name)
+    async with UnitOfWork(engine) as conn:
+        pool = await pool_row(conn, user, name)
+        found = await store.locked_token(conn, pool.id, token_id)
+        if found is None:
+            raise NotFound(f"pool {pool.name} has no join token {token_id}: see its token list")
+        if found.revoked_at is not None:
+            raise Conflict(f"join token {token_id} was revoked already, at {found.revoked_at.isoformat()}")
+        await store.revoke_token(conn, token_id)
+        shown = f"{target(pool.id, pool.name)} join_token:{token_id}"
+        await Auditor(conn, None, user).record(audit.WORKER_POOL_TOKEN_REVOKE, shown)
+        row = await store.token_row(conn, pool.id, token_id)
+        log.info("worker pool join token revoked", extra={"pool_id": pool.id, "join_token_id": token_id})
+        return join_token(row, pool.name)
 
 
 # Joining with a token (``join``)

@@ -10,12 +10,13 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import browser_login, runs
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.browser.models.identities import MAX_IDENTITIES, BrowserIdentity
 from evo_agents.hub.server.browser.repository import identities as repository
 from evo_agents.hub.server.browser.repository.profiles import locked
@@ -70,12 +71,13 @@ async def shown(
     return identity_view(row, project, user, access)
 
 
-async def list_identities(conn: AsyncConnection, user: Principal, project: str) -> list[BrowserIdentity]:
+async def list_identities(engine: AsyncEngine, user: Principal, project: str) -> list[BrowserIdentity]:
     """The project's identities and the caller's own in it, never another member's, and its agents' for an admin."""
-    access = await project_access(conn, user, project)
-    agents = holds(access.role, "admin")
-    rows = await repository.listed(conn, access.project_id, user.user_id, agents=agents)
-    return [identity_view(row, project, user, access) for row in rows]
+    async with engine.connect() as conn:
+        access = await project_access(conn, user, project)
+        agents = holds(access.role, "admin")
+        rows = await repository.listed(conn, access.project_id, user.user_id, agents=agents)
+        return [identity_view(row, project, user, access) for row in rows]
 
 
 # Writing
@@ -181,58 +183,68 @@ def check_create(body: BrowserIdentityCreate) -> None:
 
 
 async def create_identity(
-    conn: AsyncConnection, user: Principal, project: str, body: BrowserIdentityCreate
+    engine: AsyncEngine, user: Principal, project: str, body: BrowserIdentityCreate
 ) -> BrowserIdentity:
     """Create the identity ``body`` describes, with no profile yet (version 0); the caller ran ``check_create``."""
-    access = await project_access(conn, user, project)
-    may_create(access, body.owner)
-    worker_id = await identity_worker(conn, user, access, body.worker)
-    identity_id = await insert_identity(conn, user, access, body, worker_id)
-    created = await shown(conn, user, access, project, identity_id)
-    log.info(
-        "browser identity created",
-        extra={"project": project, "login": user.login, "browser_identity": identity_id, "owner": body.owner},
-    )
-    return created
-
-
-async def delete_identity(conn: AsyncConnection, user: Principal, project: str, identity_id: int) -> None:
-    """Delete an identity: its member, or an admin for the project's; 409 while a run holds it."""
-    access = await project_access(conn, user, project)
-    row = await locked(conn, identity_id)
-    if (
-        row is None
-        or row.project_id != access.project_id
-        or row.deleted_at is not None
-        or (row.owner_kind == "member" and row.owner_id != user.user_id)
-    ):
-        raise NotFound(f"project {project} has no browser identity {identity_id} of yours or its own")
-    if not identity_can_manage(row, user, access):
-        held = access.role or "no grant"
-        raise Forbidden(f"deleting a browser identity of project {project} needs the admin role on it; you hold {held}")
-    if row.held_by_run is not None:
-        raise Conflict(f"run {row.held_by_run} holds the browser identity; delete it after the run ends")
-    await retire_profiles(conn, row)
-    await identity_record(conn, user, access, audit.BROWSER_IDENTITY_DELETE, identity_id)
-    log.info(
-        "browser identity deleted", extra={"project": project, "login": user.login, "browser_identity": identity_id}
-    )
-
-
-async def make_default(conn: AsyncConnection, user: Principal, project: str, identity_id: int) -> BrowserIdentity:
-    """Make an agent's identity the one its profile hands to every run under it: an admin of the project."""
-    access = await project_access(conn, user, project)
-    row = await locked(conn, identity_id)
-    if row is None or row.project_id != access.project_id or row.deleted_at is not None or row.owner_kind != "agent":
-        raise NotFound(f"project {project} has no browser identity {identity_id} of an agent")
-    if not identity_can_manage(row, user, access):
-        held = access.role or "no grant"
-        raise Forbidden(
-            f"setting the browser identity of an agent of project {project} needs the admin role; you hold {held}",
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        may_create(access, body.owner)
+        worker_id = await identity_worker(conn, user, access, body.worker)
+        identity_id = await insert_identity(conn, user, access, body, worker_id)
+        created = await shown(conn, user, access, project, identity_id)
+        log.info(
+            "browser identity created",
+            extra={"project": project, "login": user.login, "browser_identity": identity_id, "owner": body.owner},
         )
-    await repository.make_default(conn, row.profile_id, identity_id)
-    await identity_record(conn, user, access, audit.BROWSER_IDENTITY_DEFAULT, identity_id)
-    return await shown(conn, user, access, project, identity_id)
+        return created
+
+
+async def delete_identity(engine: AsyncEngine, user: Principal, project: str, identity_id: int) -> None:
+    """Delete an identity: its member, or an admin for the project's; 409 while a run holds it."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        row = await locked(conn, identity_id)
+        if (
+            row is None
+            or row.project_id != access.project_id
+            or row.deleted_at is not None
+            or (row.owner_kind == "member" and row.owner_id != user.user_id)
+        ):
+            raise NotFound(f"project {project} has no browser identity {identity_id} of yours or its own")
+        if not identity_can_manage(row, user, access):
+            held = access.role or "no grant"
+            raise Forbidden(
+                f"deleting a browser identity of project {project} needs the admin role on it; you hold {held}"
+            )
+        if row.held_by_run is not None:
+            raise Conflict(f"run {row.held_by_run} holds the browser identity; delete it after the run ends")
+        await retire_profiles(conn, row)
+        await identity_record(conn, user, access, audit.BROWSER_IDENTITY_DELETE, identity_id)
+        log.info(
+            "browser identity deleted", extra={"project": project, "login": user.login, "browser_identity": identity_id}
+        )
+
+
+async def make_default(engine: AsyncEngine, user: Principal, project: str, identity_id: int) -> BrowserIdentity:
+    """Make an agent's identity the one its profile hands to every run under it: an admin of the project."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        row = await locked(conn, identity_id)
+        if (
+            row is None
+            or row.project_id != access.project_id
+            or row.deleted_at is not None
+            or row.owner_kind != "agent"
+        ):
+            raise NotFound(f"project {project} has no browser identity {identity_id} of an agent")
+        if not identity_can_manage(row, user, access):
+            held = access.role or "no grant"
+            raise Forbidden(
+                f"setting the browser identity of an agent of project {project} needs the admin role; you hold {held}",
+            )
+        await repository.make_default(conn, row.profile_id, identity_id)
+        await identity_record(conn, user, access, audit.BROWSER_IDENTITY_DEFAULT, identity_id)
+        return await shown(conn, user, access, project, identity_id)
 
 
 async def retire_profile_identities(conn: AsyncConnection, profile_id: int) -> int:

@@ -10,7 +10,7 @@ from collections import Counter
 from datetime import timedelta
 
 from sqlalchemy import func
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy_card, autonomy_levels, org, post_merge
 from evo_agents.hub.server.autonomy.models.page import (
@@ -168,3 +168,18 @@ async def org_autonomy(conn: AsyncConnection, user: Principal) -> OrgAutonomy:
         seats.append(SeatClasses(id=seat.id, classes=classes))
     stops = [held_stop(row) for row in await stop_store.live_stops(conn)]
     return OrgAutonomy(seats=seats, stops=stops)
+
+
+# The routes, each on a connection of its own that writes nothing
+
+
+async def read_settings(engine: AsyncEngine, user: Principal) -> AutonomySettings:
+    """``settings``, on a connection of its own."""
+    async with engine.connect() as conn:
+        return await settings(conn, user)
+
+
+async def read_org_autonomy(engine: AsyncEngine, user: Principal) -> OrgAutonomy:
+    """``org_autonomy``, on a connection of its own."""
+    async with engine.connect() as conn:
+        return await org_autonomy(conn, user)

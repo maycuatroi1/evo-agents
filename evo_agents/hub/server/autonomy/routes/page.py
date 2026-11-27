@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from evo_agents.hub.server.autonomy.models.page import AutonomySettings, OrgAutonomy
-from evo_agents.hub.server.autonomy.service.page import org_autonomy, settings
+from evo_agents.hub.server.autonomy.service.page import read_org_autonomy, read_settings
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 
@@ -26,12 +26,10 @@ router = APIRouter(prefix="/v1/autonomy", tags=["autonomy"], responses={401: {"m
 @router.get("/settings", response_model=AutonomySettings, responses={403: {"model": ErrorBody}})
 async def show_settings(request: Request, user: CurrentUser) -> AutonomySettings:
     """The caller's own autonomy, preference, ceiling, stop and 30-day figures, for the web's settings page."""
-    async with request.app.state.engine.connect() as conn:
-        return await settings(conn, user)
+    return await read_settings(request.app.state.engine, user)
 
 
 @router.get("/org", response_model=OrgAutonomy, responses={403: {"model": ErrorBody}})
 async def show_org_autonomy(request: Request, user: CurrentUser) -> OrgAutonomy:
     """Every seat's effective mode of each class, and the stops that hold, for the web's org page."""
-    async with request.app.state.engine.connect() as conn:
-        return await org_autonomy(conn, user)
+    return await read_org_autonomy(request.app.state.engine, user)

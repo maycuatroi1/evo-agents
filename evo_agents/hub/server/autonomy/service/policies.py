@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy
 from evo_agents.hub.server import audit
@@ -22,11 +22,14 @@ from evo_agents.hub.server.autonomy.models.policies import (
     PolicyChange,
     PolicyComparison,
     PolicyRevision,
+    PolicyWrite,
+    PolicyWritten,
 )
 from evo_agents.hub.server.autonomy.repository import policies as store
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden, NotFound, refuse
 from evo_agents.hub.server.base.revisions import at_revision
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.loop import state as loop_state
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, holds
@@ -182,3 +185,39 @@ async def write(
     await loop_state.policy_written(conn, access.project_id, bool(after["loop"]["enabled"]))
     log.info("autonomy policy written", extra={"project": access.name, "revision": now + 1, "keys": len(keys)})
     return now + 1, True
+
+
+# The routes, each in a transaction of its own
+
+
+async def read_policy(
+    engine: AsyncEngine, user: Principal, project: str, revision: int | None = None
+) -> AutonomyPolicy:
+    """The project's policy at ``revision`` (``view_at``) for a reader, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await view_at(conn, await reader(conn, user, project), revision)
+
+
+async def read_revisions(engine: AsyncEngine, user: Principal, project: str) -> list[PolicyRevision]:
+    """``revisions`` for a reader, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await revisions(conn, await reader(conn, user, project))
+
+
+async def read_comparison(
+    engine: AsyncEngine, user: Principal, project: str, from_revision: int, to_revision: int | None
+) -> PolicyComparison:
+    """``compare`` for a reader, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await compare(conn, await reader(conn, user, project), from_revision, to_revision)
+
+
+async def write_policy(engine: AsyncEngine, user: Principal, project: str, body: PolicyWrite) -> PolicyWritten:
+    """Write the project's policy whole as its next revision (``write``) for an admin of the project, in a transaction
+    of its own: the policy as that revision reads."""
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        refuse_writer(user, access)
+        revision, changed = await write(conn, user, access, body.policy, note=body.note, if_revision=body.if_revision)
+        shown = await view_at(conn, access, revision)
+    return PolicyWritten(**shown.model_dump(), changed=changed)

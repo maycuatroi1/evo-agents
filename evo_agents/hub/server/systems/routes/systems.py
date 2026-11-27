@@ -11,7 +11,8 @@
 - POST .../systems/validate {spec}: what is wrong in a spec, written nowhere.
 - DELETE .../systems/{slug}: deletes it with its revisions; its profiles, graphs and runs stay.
 
-Each route opens the connection and hands the request to ``service.systems``, which says who may do what.
+A read opens the connection and hands the request to ``service.systems``, which says who may do what; a change hands
+it the app's engine, and the service opens the transaction.
 """
 
 from __future__ import annotations
@@ -121,8 +122,7 @@ async def put_system(request: Request, project: ProjectName, slug: Slug, body: S
     """Create the agent system, or store ``spec`` as its next revision."""
     spec = service.spec_in(slug, body)
     try:
-        async with request.app.state.engine.begin() as conn:
-            written = await service.put(conn, user, project, slug, body, spec)
+        written = await service.put(request.app.state.engine, user, project, slug, body, spec)
     except Refused as exc:
         return _refusal(request, exc)
     if written.changed:
@@ -137,5 +137,4 @@ async def put_system(request: Request, project: ProjectName, slug: Slug, body: S
 )
 async def delete_system(request: Request, project: ProjectName, slug: Slug, user: CurrentUser) -> SystemDeleted:
     """Delete an agent system with its revisions; its profiles, graphs and runs stay."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.delete(conn, user, project, slug)
+    return await service.delete(request.app.state.engine, user, project, slug)

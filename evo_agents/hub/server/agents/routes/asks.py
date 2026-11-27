@@ -27,8 +27,7 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 )
 async def ask(request: Request, run_id: RunId, body: AgentAskIn, user: CurrentUser) -> AgentAsked:
     """Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring)."""
-    async with request.app.state.engine.begin() as conn:
-        asked = await service.ask(conn, request.app.state.sealer, user, run_id, body)
+    asked = await service.ask(request.app.state.engine, request.app.state.sealer, user, run_id, body)
     return asked
 
 
@@ -42,7 +41,6 @@ async def forward_answer(request: Request, run_id: RunId, body: AgentForwardIn, 
     """Forward the last answer of run ``body.run_id``, a run of the same trace of an agent system, verbatim into the
     thread of a chat run this worker holds (``forward``). A refusal is answered (201, ``refusal``) and said in the
     thread."""
-    async with request.app.state.engine.begin() as conn:
-        message_id, refusal = await service.forward_of(conn, user, run_id, body.run_id)
+    message_id, refusal = await service.forward_of(request.app.state.engine, user, run_id, body.run_id)
     log.info("answer forwarded", extra={"run_id": run_id, "forwarded": body.run_id, "refused": bool(refusal)})
     return AgentForwarded(message_id=message_id, refusal=refusal)

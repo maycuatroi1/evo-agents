@@ -21,5 +21,4 @@ router = APIRouter(prefix="/v1/projects", tags=["agents"], responses={401: {"mod
 )
 async def list_agent_packs(request: Request, project: ProjectName, user: CurrentUser) -> list[AgentPack]:
     """The agent packs a profile of the project may attach, by plugin, then in its manifest's order."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.list_packs(conn, user, project, request.app.state.hub_version)
+    return await service.list_packs(request.app.state.engine, user, project, request.app.state.hub_version)

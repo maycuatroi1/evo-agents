@@ -7,7 +7,7 @@ import logging
 
 import psycopg
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import browser_login
 from evo_agents.hub.credentials import dispatch_credential
@@ -15,6 +15,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.browser.models.identities import BrowserIdentity
 from evo_agents.hub.server.browser.models.logins import BrowserLogin
 from evo_agents.hub.server.browser.repository import identities as identities_repository
@@ -97,75 +98,78 @@ async def _pinned(conn: AsyncConnection, user: Principal, access: ProjectAccess,
     return pinned, home
 
 
-async def queue_login(
-    conn: AsyncConnection, user: Principal, project: str, identity_id: int, body: BrowserLogin
-) -> Run:
+async def queue_login(engine: AsyncEngine, user: Principal, project: str, identity_id: int, body: BrowserLogin) -> Run:
     """Queue a login session of the identity, pinned to its worker or, for a Move, to ``body.worker``."""
-    access = await project_access(conn, user, project)
-    dispatch.check_dispatcher(access)
-    await dispatch.check_seat(conn, user)
-    move = body.worker is not None
-    row = await _loggable(conn, user, access, identity_id, move)
-    worker_id = await identity_worker(conn, user, access, body.worker) if body.worker is not None else row.worker_id
-    pinned, home = await _pinned(conn, user, access, row, worker_id, project)
-    title = browser_login.title_of(row.name, move=move and worker_id != row.worker_id, worker=pinned.name)
-    values = {
-        "kind": browser_login.KIND,
-        "project_id": access.project_id,
-        "title": title,
-        "dispatched_by": user.user_id,
-        "dispatched_via": dispatch_credential(user.kind),
-        "pinned_worker_id": pinned.id,
-        **(
-            {"profile_id": row.profile_id, "profile_version": await repository.profile_version(conn, row.profile_id)}
-            if home is not None and row.owner_kind == "agent"
-            else {}
-        ),
-        "requested_runtime": "any",
-        "runtime": "any",
-        "mode": "headless",
-        "approval": "auto",
-        "timeout_s": browser_login.TIMEOUT_MINUTES * 60,
-        "max_attempts": browser_login.MAX_ATTEMPTS,
-        "browser": True,
-        "browser_identities": [identity_id],
-    }
-    try:
-        run_id = await dispatch.insert_run(conn, values)
-    except IntegrityError as exc:
-        if isinstance(exc.orig, psycopg.errors.CheckViolation):
-            raise Unprocessable("the login session could not be queued; nothing was dispatched") from None
-        raise
-    await notify_queued(conn, run_id)
-    target = f"{project} browser-identity:{identity_id} run:{run_id}"
-    await Auditor.of(conn, user, access).record(audit.BROWSER_IDENTITY_LOGIN, target)
-    view = await run_view(conn, run_id)
-    log.info(
-        "browser login session queued",
-        extra={"project": project, "browser_identity": identity_id, "run_id": run_id, "worker_id": pinned.id},
-    )
-    return view
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        dispatch.check_dispatcher(access)
+        await dispatch.check_seat(conn, user)
+        move = body.worker is not None
+        row = await _loggable(conn, user, access, identity_id, move)
+        worker_id = await identity_worker(conn, user, access, body.worker) if body.worker is not None else row.worker_id
+        pinned, home = await _pinned(conn, user, access, row, worker_id, project)
+        title = browser_login.title_of(row.name, move=move and worker_id != row.worker_id, worker=pinned.name)
+        values = {
+            "kind": browser_login.KIND,
+            "project_id": access.project_id,
+            "title": title,
+            "dispatched_by": user.user_id,
+            "dispatched_via": dispatch_credential(user.kind),
+            "pinned_worker_id": pinned.id,
+            **(
+                {
+                    "profile_id": row.profile_id,
+                    "profile_version": await repository.profile_version(conn, row.profile_id),
+                }
+                if home is not None and row.owner_kind == "agent"
+                else {}
+            ),
+            "requested_runtime": "any",
+            "runtime": "any",
+            "mode": "headless",
+            "approval": "auto",
+            "timeout_s": browser_login.TIMEOUT_MINUTES * 60,
+            "max_attempts": browser_login.MAX_ATTEMPTS,
+            "browser": True,
+            "browser_identities": [identity_id],
+        }
+        try:
+            run_id = await dispatch.insert_run(conn, values)
+        except IntegrityError as exc:
+            if isinstance(exc.orig, psycopg.errors.CheckViolation):
+                raise Unprocessable("the login session could not be queued; nothing was dispatched") from None
+            raise
+        await notify_queued(conn, run_id)
+        target = f"{project} browser-identity:{identity_id} run:{run_id}"
+        await Auditor.of(conn, user, access).record(audit.BROWSER_IDENTITY_LOGIN, target)
+        view = await run_view(conn, run_id)
+        log.info(
+            "browser login session queued",
+            extra={"project": project, "browser_identity": identity_id, "run_id": run_id, "worker_id": pinned.id},
+        )
+        return view
 
 
 async def set_status(
-    conn: AsyncConnection, user: Principal, project: str, identity_id: int, *, disable: bool
+    engine: AsyncEngine, user: Principal, project: str, identity_id: int, *, disable: bool
 ) -> BrowserIdentity:
     """Disable the identity, or enable a disabled one: active when it has a saved profile, else needs_login."""
-    access = await project_access(conn, user, project)
-    row = await _visible(conn, user, access, identity_id)
-    _manager(row, user, access, "disabling" if disable else "enabling")
-    if disable:
-        if row.held_by_run is not None:
-            raise Conflict(f"run {row.held_by_run} holds the browser identity; disable it after the run")
-        status = "disabled"
-    else:
-        if row.status != "disabled":
-            raise Conflict(f"browser identity {row.name} is not disabled")
-        status = "active" if row.sha256 is not None else "needs_login"
-    await identities_repository.set_status(conn, identity_id, status)
-    action = audit.BROWSER_IDENTITY_DISABLE if disable else audit.BROWSER_IDENTITY_ENABLE
-    await identity_record(conn, user, access, action, identity_id)
-    return await shown(conn, user, access, project, identity_id)
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        row = await _visible(conn, user, access, identity_id)
+        _manager(row, user, access, "disabling" if disable else "enabling")
+        if disable:
+            if row.held_by_run is not None:
+                raise Conflict(f"run {row.held_by_run} holds the browser identity; disable it after the run")
+            status = "disabled"
+        else:
+            if row.status != "disabled":
+                raise Conflict(f"browser identity {row.name} is not disabled")
+            status = "active" if row.sha256 is not None else "needs_login"
+        await identities_repository.set_status(conn, identity_id, status)
+        action = audit.BROWSER_IDENTITY_DISABLE if disable else audit.BROWSER_IDENTITY_ENABLE
+        await identity_record(conn, user, access, action, identity_id)
+        return await shown(conn, user, access, project, identity_id)
 
 
 async def notify_needs_login(conn: AsyncConnection, identity, project: str) -> None:

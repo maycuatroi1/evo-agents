@@ -25,7 +25,6 @@ from fastapi import APIRouter, Request
 from evo_agents.hub.server.autonomy.models.worker import AutonomyActIn, AutonomyActOut, BackupIn, BackupOut
 from evo_agents.hub.server.autonomy.service import worker as service
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.security import CurrentUser
 
@@ -37,9 +36,7 @@ REFUSALS: dict[int | str, dict[str, Any]] = {403: {"model": ErrorBody}, 404: {"m
 async def record_backup(request: Request, run_id: RunId, backup: BackupIn, user: CurrentUser) -> BackupOut:
     """Record a backup the run's agent made, as the module says."""
     made_at, fresh = service.made_at(backup)
-    async with request.app.state.engine.begin() as conn:
-        await claimed_run(conn, user, run_id)
-        seq = await service.record_backup(conn, user, run_id, backup, made_at)
+    seq = await service.write_backup(request.app.state.engine, user, run_id, backup, made_at)
     return BackupOut(seq=seq, made_at=made_at, fresh=fresh)
 
 
@@ -47,6 +44,4 @@ async def record_backup(request: Request, run_id: RunId, backup: BackupIn, user:
 async def autonomy_act(request: Request, run_id: RunId, act: AutonomyActIn, user: CurrentUser) -> AutonomyActOut:
     """The mode of the class of a command the run's agent is about to run, and whether its decision is answered; the
     principal told when the mode is notify, as the module says."""
-    async with request.app.state.engine.begin() as conn:
-        await claimed_run(conn, user, run_id)
-        return await service.act(conn, run_id, act)
+    return await service.claimed_act(request.app.state.engine, user, run_id, act)

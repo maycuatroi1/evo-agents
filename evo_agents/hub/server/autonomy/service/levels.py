@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import autonomy, autonomy_levels, org
 from evo_agents.hub.server import audit, run_access_rules
@@ -31,6 +31,7 @@ from evo_agents.hub.server.autonomy.repository import levels as store
 from evo_agents.hub.server.autonomy.service import policies as autonomy_policies
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.org_store import load, lock, profile_by_handle, today, user_by_login
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import Principal
@@ -162,3 +163,32 @@ async def view(
         environments=None if reached.environments is None else list(reached.environments),
         workers=None if reached.workers is None else list(reached.workers),
     )
+
+
+# The routes, each in a transaction of its own
+
+
+async def read_view(
+    engine: AsyncEngine, user: Principal, login: str | None, *, project: str | None, agent: str | None, repo: str | None
+) -> AutonomyView:
+    """``view``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await view(conn, user, login, project=project, agent=agent, repo=repo)
+
+
+async def set_pref(engine: AsyncEngine, user: Principal, body: PrefSet) -> PrefWritten:
+    """``write_pref``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await write_pref(conn, user, body)
+
+
+async def read_run_reach(engine: AsyncEngine, user: Principal) -> RunReach:
+    """``run_reach``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await run_reach(conn, user)
+
+
+async def set_run_reach(engine: AsyncEngine, user: Principal, body: RunReachSet) -> RunReachWritten:
+    """``write_run_reach``, in a transaction of its own."""
+    async with UnitOfWork(engine) as conn:
+        return await write_run_reach(conn, user, body)

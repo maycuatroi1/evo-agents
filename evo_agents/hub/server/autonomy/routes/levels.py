@@ -51,27 +51,24 @@ async def show_autonomy(
     repo: Name = None,
 ) -> AutonomyView:
     """The effective autonomy of a person, alone or running an agent profile on a repo, with the source of each mode."""
-    async with request.app.state.engine.begin() as conn:
-        return await autonomy_store.view(conn, user, login, project=project, agent=agent, repo=repo)
+    engine = request.app.state.engine
+    return await autonomy_store.read_view(engine, user, login, project=project, agent=agent, repo=repo)
 
 
 @router.put("/prefs", response_model=PrefWritten, responses=REFUSALS)
 async def set_pref(request: Request, body: PrefSet, user: CurrentUser) -> PrefWritten:
     """The next revision of the caller's own preference; one above their ceilings is stored, the ceilings still
     decide."""
-    async with request.app.state.engine.begin() as conn:
-        return await autonomy_store.write_pref(conn, user, body)
+    return await autonomy_store.set_pref(request.app.state.engine, user, body)
 
 
 @router.get("/run-reach", response_model=RunReach, responses=REFUSALS)
 async def show_run_reach(request: Request, user: CurrentUser) -> RunReach:
     """The groups the caller's runs that run as them reach besides what every run's token reaches."""
-    async with request.app.state.engine.begin() as conn:
-        return await autonomy_store.run_reach(conn, user)
+    return await autonomy_store.read_run_reach(request.app.state.engine, user)
 
 
 @router.put("/run-reach", response_model=RunReachWritten, responses=REFUSALS)
 async def set_run_reach(request: Request, body: RunReachSet, user: CurrentUser) -> RunReachWritten:
     """Replace the caller's own run reach; an empty list clears it. The next request of each of their runs reads it."""
-    async with request.app.state.engine.begin() as conn:
-        return await autonomy_store.write_run_reach(conn, user, body)
+    return await autonomy_store.set_run_reach(request.app.state.engine, user, body)

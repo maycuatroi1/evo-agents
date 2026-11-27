@@ -13,8 +13,8 @@ Agent systems).
 - GET .../systems/{slug}/ops/batches[?state=&limit=]: the batches of the project's queue, the newest first; empty for
   a system that is not the default.
 
-Each route opens the connection and hands the request to ``service.ops``: every member of the project reads;
-changing needs the admin role on it.
+A read opens the connection and hands the request to ``service.ops``; a change hands it the app's engine, and the
+service opens the transaction. Every member of the project reads; changing needs the admin role on it.
 """
 
 from __future__ import annotations
@@ -57,8 +57,7 @@ async def show_default(request: Request, project: ProjectName, user: CurrentUser
 @router.put("/{project}/default-system", response_model=DefaultSystem, responses=REFUSALS)
 async def set_default(request: Request, project: ProjectName, body: DefaultPut, user: CurrentUser) -> DefaultSystem:
     """Make system ``slug`` the project's default system, and no other."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.set_default(conn, user, project, body.slug)
+    return await service.set_default(request.app.state.engine, user, project, body.slug)
 
 
 # The ops of a system
@@ -72,8 +71,7 @@ async def show_ops(request: Request, project: ProjectName, slug: Slug, user: Cur
 
 
 async def _pause(request: Request, project: str, slug: str, user, reason: str | None) -> SystemOps:
-    async with request.app.state.engine.begin() as conn:
-        return await service.pause(conn, user, project, slug, reason)
+    return await service.pause(request.app.state.engine, user, project, slug, reason)
 
 
 @router.post("/{project}/systems/{slug}/ops/pause", response_model=SystemOps, responses=REFUSALS)

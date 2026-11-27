@@ -9,10 +9,13 @@ as the hub holds it raises ``Refused``, which the route answers with ``SystemCon
 
 from __future__ import annotations
 
+from sqlalchemy.ext.asyncio import AsyncEngine
+
 from evo_agents.hub import system_spec
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
+from evo_agents.hub.server.base.unit_of_work import UnitOfWork
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.systems.models.systems import (
@@ -215,38 +218,42 @@ def spec_in(slug: str, body: SystemPut) -> dict:
     return {k: v for k, v in body.spec.items() if k != "slug"}
 
 
-async def put(conn, user: Principal, project: str, slug: str, body: SystemPut, spec: dict) -> SystemWritten:
+async def put(
+    engine: AsyncEngine, user: Principal, project: str, slug: str, body: SystemPut, spec: dict
+) -> SystemWritten:
     """Create the agent system, or store ``spec`` (``spec_in`` of ``body``) as its next revision; ``Refused`` when the
     revision is not the one ``body`` names or the spec has an error."""
-    access = await project_access(conn, user, project)
-    admin_only(access, "changing")
-    held = await system_store.one(conn, access.project_id, slug, lock=True)
-    refs = await system_store.refs(conn, access.project_id)
-    if (held is None and body.if_revision) or (held is not None and body.if_revision != held.revision):
-        if held is None:
-            raise NotFound(f"project {access.name} has no agent system {slug} to replace")
-        raise _stale(access, held, body.if_revision, refs)
-    found, problems = checked(spec, refs, slug)
-    if errors := system_spec.errors(problems):
-        detail = [p.as_dict() for p in errors]
-        count = f"{len(errors)} error{'s' if len(errors) != 1 else ''}"
-        raise Refused(422, f"agent system {slug} has {count}: nothing was written", detail=detail)
-    if held is not None and held.spec == found:
-        out = _out(access, held, held.spec, held.revision, refs)
-        return SystemWritten(**out.model_dump(), created=False, changed=False)
-    await write_spec(conn, user, access, slug, found, held, refs)
-    written = await system_store.one(conn, access.project_id, slug)
-    assert written is not None  # write_spec wrote it in this transaction
-    refs = await system_store.refs(conn, access.project_id)
-    out = _out(access, written, written.spec, written.revision, refs)
-    return SystemWritten(**out.model_dump(), created=held is None, changed=True)
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        admin_only(access, "changing")
+        held = await system_store.one(conn, access.project_id, slug, lock=True)
+        refs = await system_store.refs(conn, access.project_id)
+        if (held is None and body.if_revision) or (held is not None and body.if_revision != held.revision):
+            if held is None:
+                raise NotFound(f"project {access.name} has no agent system {slug} to replace")
+            raise _stale(access, held, body.if_revision, refs)
+        found, problems = checked(spec, refs, slug)
+        if errors := system_spec.errors(problems):
+            detail = [p.as_dict() for p in errors]
+            count = f"{len(errors)} error{'s' if len(errors) != 1 else ''}"
+            raise Refused(422, f"agent system {slug} has {count}: nothing was written", detail=detail)
+        if held is not None and held.spec == found:
+            out = _out(access, held, held.spec, held.revision, refs)
+            return SystemWritten(**out.model_dump(), created=False, changed=False)
+        await write_spec(conn, user, access, slug, found, held, refs)
+        written = await system_store.one(conn, access.project_id, slug)
+        assert written is not None  # write_spec wrote it in this transaction
+        refs = await system_store.refs(conn, access.project_id)
+        out = _out(access, written, written.spec, written.revision, refs)
+        return SystemWritten(**out.model_dump(), created=held is None, changed=True)
 
 
-async def delete(conn, user: Principal, project: str, slug: str) -> SystemDeleted:
+async def delete(engine: AsyncEngine, user: Principal, project: str, slug: str) -> SystemDeleted:
     """Delete an agent system with its revisions; its profiles, graphs and runs stay."""
-    access = await project_access(conn, user, project)
-    admin_only(access, "deleting")
-    held = await held_system(conn, access, slug, lock=True)
-    await system_store.remove(conn, held.id)
-    await record(conn, user, access, audit.SYSTEM_DELETE, slug, held.revision)
-    return SystemDeleted(project=project, deleted=slug)
+    async with UnitOfWork(engine) as conn:
+        access = await project_access(conn, user, project)
+        admin_only(access, "deleting")
+        held = await held_system(conn, access, slug, lock=True)
+        await system_store.remove(conn, held.id)
+        await record(conn, user, access, audit.SYSTEM_DELETE, slug, held.revision)
+        return SystemDeleted(project=project, deleted=slug)

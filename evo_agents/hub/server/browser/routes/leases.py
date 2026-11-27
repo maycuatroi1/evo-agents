@@ -94,5 +94,4 @@ async def browser_needs_login(
     request: Request, run_id: RunId, identity_id: IdentityId, body: BrowserNeedsLogin, user: CurrentUser
 ) -> BrowserIdentityState:
     """The run's Chromium could not use the identity's profile: it waits for a new login."""
-    async with request.app.state.engine.begin() as conn:
-        return await service.needs_login(conn, user, run_id, identity_id, body.cause)
+    return await service.needs_login(request.app.state.engine, user, run_id, identity_id, body.cause)

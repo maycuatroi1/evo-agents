@@ -40,23 +40,21 @@ import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Header, Path, Query, Request
 from pydantic import BaseModel, Field
 
 from evo_agents.hub import goals, opportunities, problems
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import delivery_evidence
-from evo_agents.hub.server.loop import adopt, baseline, board, chain, items
-from evo_agents.hub.server.loop import breaker as loop_breaker
+from evo_agents.hub.server.loop import adopt, baseline, items, service
 from evo_agents.hub.server.loop.board_items import DecisionBoard
 from evo_agents.hub.server.loop.breaker import BREAKER_STATES
 from evo_agents.hub.server.loop.chain import LoopItemChain
 from evo_agents.hub.server.loop.items import LoopGoal, LoopItems
 from evo_agents.hub.server.loop.model import KINDS, STATES
 from evo_agents.hub.server.plans.models import SINK_HEADER
-from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser, holds
+from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
 
@@ -81,18 +79,10 @@ class ProjectLoop(BaseModel):
     items: dict[Literal[STATES], int] = Field(description="its work items by state")
 
 
-async def _view(conn, project_id: int, project: str) -> ProjectLoop:
-    return ProjectLoop(project=project, **await loop_breaker.status(conn, project_id))
-
-
 @router.get("/{project}/loop", response_model=ProjectLoop, responses=REFUSALS)
 async def show_loop(request: Request, project: ProjectName, user: CurrentUser) -> ProjectLoop:
     """The project's Loop: on or off, its breaker, its cursor and its work items by state."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        if access.role is None:
-            raise HTTPException(403, f"reading the Loop of project {access.name} needs a grant on it")
-        return await _view(conn, access.project_id, access.name)
+    return ProjectLoop(**await service.read_loop(request.app.state.engine, user, project))
 
 
 @router.post(
@@ -102,19 +92,9 @@ async def show_loop(request: Request, project: ProjectName, user: CurrentUser) -
 )
 async def resume_loop(request: Request, project: ProjectName, user: CurrentUser) -> ProjectLoop:
     """Reset the tripped breaker of the project's Loop (the admin role on the project)."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        await loop_breaker.resume(conn, user, access)
-        view = await _view(conn, access.project_id, access.name)
+    view = ProjectLoop(**await service.resume(request.app.state.engine, user, project))
     log.info("loop resumed", extra={"project": project, "login": user.login})
     return view
-
-
-async def _reader(conn, user, project: str, what: str):
-    access = await project_access(conn, user, project)
-    if access.role is None:
-        raise HTTPException(403, f"reading {what} of project {access.name} needs a grant on it")
-    return access
 
 
 @router.get("/{project}/loop/items", response_model=LoopItems, responses=REFUSALS)
@@ -137,12 +117,9 @@ async def loop_items(
     ] = None,
 ) -> LoopItems:
     """The work items of the project's Loop, the newest first: where each stands and why, and its ancestors."""
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader(conn, user, project, "the work items")
-        reading = await board.reading_of(conn, access, sink)
-        found = {"state": state, "kind": kind, "goal": goal, "open_only": open, "limit": limit, "problem": problem}
-        found["opportunity"] = opportunity
-        return await items.listed(conn, reading, **found)
+    found = {"state": state, "kind": kind, "goal": goal, "open_only": open, "limit": limit, "problem": problem}
+    found["opportunity"] = opportunity
+    return await service.read_items(request.app.state.engine, user, project, sink, **found)
 
 
 @router.get("/{project}/loop/items/{item_id}", response_model=LoopItemChain, responses=REFUSALS)
@@ -154,17 +131,13 @@ async def loop_item(
     sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
 ) -> LoopItemChain:
     """A work item of the project's Loop with its chain from the goal to the release, and what happened to it."""
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader(conn, user, project, "a work item")
-        return await chain.shown(conn, await board.reading_of(conn, access, sink), item_id)
+    return await service.read_item(request.app.state.engine, user, project, item_id, sink)
 
 
 @router.get("/{project}/loop/goals", response_model=list[LoopGoal], responses=REFUSALS)
 async def loop_goals(request: Request, project: ProjectName, user: CurrentUser) -> list[LoopGoal]:
     """Each goal of the project with its metric measured now against its target, and its work items by state."""
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader(conn, user, project, "the goals")
-        return await items.goal_figures(conn, access.project_id)
+    return await service.read_goals(request.app.state.engine, user, project)
 
 
 @router.get("/{project}/decision-board", response_model=DecisionBoard, responses=REFUSALS)
@@ -177,24 +150,10 @@ async def decision_board(
     """Everything of the project that waits for a person: the goals, the canvases and the policy (the three gates),
     then the Loop's exceptions and the SRS versions and settle chats its chain waits on; each with since when, who may
     decide it and the page where it is decided."""
-    async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        if access.role is None:
-            raise HTTPException(403, f"reading the decision board of project {access.name} needs a grant on it")
-        return await board.gather(conn, access, sink)
+    return await service.read_board(request.app.state.engine, user, project, sink)
 
 
 BASELINE_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
-
-
-async def _baseline(conn, user, project: str, ref: str, *, writing: bool = False):
-    """(access, goal id, goal code, codes of its use cases) for the baseline of goal ``ref``: the graph is read between
-    two transactions of the request, so the one that writes never waits on it."""
-    access = await _reader(conn, user, project, "the baseline of a goal")
-    if writing and (user.acts_for_run is not None or not holds(access.role, "admin")):
-        raise HTTPException(403, f"setting the baseline of a goal needs the admin role on project {access.name}")
-    goal_id, code, _ = await baseline.goal_of(conn, access.project_id, ref)
-    return access, goal_id, code, await baseline.refs(conn, goal_id)
 
 
 @router.get("/{project}/goals/{ref}/baseline", response_model=baseline.SrsBaseline, responses=BASELINE_REFUSALS)
@@ -203,11 +162,10 @@ async def show_baseline(
 ) -> baseline.SrsBaseline:
     """The baseline of a goal that aims at an SRS document: what the hub proposes of each approved use case, with its
     evidence, and whether an admin confirmed it."""
-    async with request.app.state.engine.begin() as conn:
-        access, goal_id, code, codes = await _baseline(conn, user, project, ref)
+    engine = request.app.state.engine
+    access, goal_id, code, codes = await service.baseline_of(engine, user, project, ref)
     found, why = await delivery_evidence(request.app.state, user, project, codes)
-    async with request.app.state.engine.begin() as conn:
-        return await baseline.view(conn, access.name, goal_id, code, found, why)
+    return await service.read_baseline(engine, access, goal_id, code, found, why)
 
 
 @router.post("/{project}/goals/{ref}/baseline/fix", response_model=baseline.SrsBaseline, responses=BASELINE_REFUSALS)
@@ -221,13 +179,10 @@ async def fix_baseline(
     """Set use cases of the baseline to delivered, undelivered or unknown by code, by heading, or the unknown ones as a
     whole (an admin of the project); with ``cancel_builds``, also a use case a build of the Loop holds, cancelling that
     build so no author run of it is handed out again. Answers the baseline as it stands, with the builds cancelled."""
-    async with request.app.state.engine.begin() as conn:
-        access, goal_id, code, codes = await _baseline(conn, user, project, ref, writing=True)
+    engine = request.app.state.engine
+    access, goal_id, code, codes = await service.baseline_of(engine, user, project, ref, writing=True)
     found, why = await delivery_evidence(request.app.state, user, project, codes)
-    async with request.app.state.engine.begin() as conn:
-        done = await baseline.fix(conn, user, access, goal_id, code, body, found)
-        shown = await baseline.view(conn, access.name, goal_id, code, found, why)
-        return shown.model_copy(update={"cancelled": done.cancelled})
+    return await service.fix_baseline(engine, user, access, goal_id, code, body, found, why)
 
 
 @router.post(
@@ -237,12 +192,10 @@ async def confirm_baseline(
     request: Request, project: ProjectName, ref: Annotated[str, Path(pattern=goals.REF)], user: CurrentUser
 ) -> baseline.SrsBaseline:
     """Confirm the baseline of a goal, once (an admin of the project): the Loop then makes builds for its backlog."""
-    async with request.app.state.engine.begin() as conn:
-        access, goal_id, code, codes = await _baseline(conn, user, project, ref, writing=True)
+    engine = request.app.state.engine
+    access, goal_id, code, codes = await service.baseline_of(engine, user, project, ref, writing=True)
     found, why = await delivery_evidence(request.app.state, user, project, codes)
-    async with request.app.state.engine.begin() as conn:
-        await baseline.confirm(conn, user, access, goal_id, code, found)
-        return await baseline.view(conn, access.name, goal_id, code, found, why)
+    return await service.confirm_baseline(engine, user, access, goal_id, code, found, why)
 
 
 @router.post(
@@ -253,6 +206,4 @@ async def adopt_plan(
 ) -> adopt.LoopAdopted:
     """Adopt a plan of the project as a deliver for use cases of a goal's document (an admin of the project, or the
     writer who owns the goal): the use cases are being delivered, and delivered at once for a plan already completed."""
-    async with request.app.state.engine.begin() as conn:
-        access = await _reader(conn, user, project, "the Loop")
-        return await adopt.adopt(conn, user, access, body)
+    return await service.adopt_plan(request.app.state.engine, user, project, body)

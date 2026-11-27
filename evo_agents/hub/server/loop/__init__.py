@@ -16,7 +16,7 @@ into work items with ancestors and a key, and moves them on.
   ``runs_of``: which work item a run was handed out for;
 - ``stall`` and ``breaker`` (criterion a7): triage at the second failure, a decision of a person at the third, and the
   breaker that stops the Loop of a project making too many work items in an hour; ``routes``: its state and the reset
-  of its breaker;
+  of its breaker, and the rest of its routes, each of which hands its transaction to ``service``;
 - ``state``: the Loop turned on and off with the revision of the policy that sets ``loop.enabled``;
 - ``board``, ``board_gates``, ``board_chain`` and ``board_items`` (criterion a8): the project's decision board, the
   three gates and what the Loop's chain waits on a person for; ``notices``: the month's review of the goals, the Loop's
