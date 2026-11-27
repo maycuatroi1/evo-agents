@@ -572,12 +572,12 @@ async def _converse(engine, config, blobs, sealer, held: Held, client: GatewayCl
     reach, why = await _connections(client, engine, held)
     if not reach:
         return {"state": await _no_turn(engine, held, f"I cannot answer on the hub: {why}.", why or "")}
-    expires = datetime.now(UTC) + timedelta(seconds=TURN_SECONDS + KEY_GRACE)
-    key = await client.create_key(KEY_NAME.format(run_id=held.run_id), reach, expires)
     names = hub_tools.TASK_NAMES if held.kind == TASK else hub_tools.NAMES
-    listed = await _skills(engine, config, held)
+    listed = await _skills(engine, config, held)  # before the key: nothing to revoke if it fails
     names += (hub_tools.SKILL_READ,) if listed else ()  # an agent without a skill keeps the tools it had
     turn = hub_tools.Turn(engine, config, blobs, sealer, held.run_id, held.project, names=names, skills=listed)
+    expires = datetime.now(UTC) + timedelta(seconds=TURN_SECONDS + KEY_GRACE)
+    key = await client.create_key(KEY_NAME.format(run_id=held.run_id), reach, expires)
     try:
         messages, fresh = await _prompt(engine, held, hub_tools.skills_prompt(listed))
         found = await _rounds(client, key.value.get_secret_value(), held, turn, messages, fresh)
