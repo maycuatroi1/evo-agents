@@ -1,12 +1,12 @@
-"""The request of an agent's read of another project: its project is checked against ``admin.PROJECT_NAME``, and
+"""The request of an agent's read of another project: its project is checked against ``base.models.PROJECT_NAME``, and
 ``admin`` reaches this package's services, so the shape is here, not in ``evo_agents.hub.server.agents.models``."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.agents.models.reads import MAX_IDS, MAX_LIMIT, Tool
+from evo_agents.hub.server.base.models import PROJECT_NAME
 
 
 class CrossReadIn(BaseModel):

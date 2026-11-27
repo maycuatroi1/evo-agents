@@ -31,17 +31,16 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_decisions import plugin_actor
 from evo_agents.hub.kg_web import WebSession
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg_decisions.models import Fix, KgDecision
 from evo_agents.hub.server.kg_decisions.service import apply_fixes
 from evo_agents.hub.server.kg_web import GraphRef, no_graph, read_graph, require_reader
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 from evo_agents.kg.review import RULES
 
 MAX_REASON_CHARS = 1000  # as migration 0141 checks
@@ -164,7 +163,7 @@ async def review_queue(
         access = await project_access(conn, user, project)
         require_reader(access)
         dismissed = await _dismissals(conn, access.project_id) if ref is not None else {}
-    can_dismiss = has_role(access.role, "writer")
+    can_dismiss = holds(access.role, "writer")
     if ref is None:
         empty = [RuleCount(rule=r, open=0, dismissed=0) for r in RULES]
         return ReviewQueue(graph=None, computed=False, reason=NO_BUILD, can_dismiss=can_dismiss, counts=empty, items=[])
@@ -202,7 +201,7 @@ async def dismiss_item(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"dismissing a review item of project {access.name} needs the writer role on it")
     data, ref = await read_graph(request, user, project, WebSession.review)
     if ref is None:
@@ -296,7 +295,7 @@ async def apply_review(request: Request, project: ProjectName, body: ApplyBody, 
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"applying the review queue of project {access.name} needs the writer role on it")
         if body.run_id is not None:
             r = tables.runs
@@ -379,7 +378,7 @@ async def undismiss_item(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(403, f"reopening a review item of project {access.name} needs the writer role on it")
     data, ref = await read_graph(request, user, project, WebSession.review)
     if ref is None:

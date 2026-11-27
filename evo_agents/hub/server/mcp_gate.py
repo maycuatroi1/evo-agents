@@ -42,7 +42,7 @@ from starlette.requests import Request
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.mcp_tools import LOCAL_RUN_HEADER, PROJECT_HEADER, RUN_HEADER, SINK_HEADER
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.mcp_run import MOUNT, run_principal
 from evo_agents.hub.server.security import (

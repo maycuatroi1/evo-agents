@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.credentials.models.sealing import plugin_config_aad
 from evo_agents.plugins import config as plugin_config
 
@@ -33,10 +34,8 @@ class PluginConfigLayer(BaseModel):
     changed_at: datetime | None
 
 
-class PluginConfigWrite(BaseModel):
+class PluginConfigWrite(StrictModel):
     """The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."""
-
-    model_config = ConfigDict(extra="forbid")
 
     values: dict[str, Any] = Field(
         default_factory=dict,
@@ -47,9 +46,7 @@ class PluginConfigWrite(BaseModel):
     if_version: int | None = Field(None, ge=0, description="409 unless the layer is at this version now")
 
 
-class PluginConfigRollback(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PluginConfigRollback(StrictModel):
     version: int = Field(ge=1, description="the older version of the layer to copy as its next one")
     if_version: int | None = Field(None, ge=0, description="409 unless the layer is at this version now")
 

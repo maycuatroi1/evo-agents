@@ -21,7 +21,6 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, chats, output_prune
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
 from evo_agents.hub.server.base.unit_of_work import UnitOfWork
@@ -48,7 +47,7 @@ from evo_agents.hub.server.run_events import claimed_run
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.views import readable_run
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 NO_QUESTION_OUTPUTS = "run {run} is a question run: it sends no outputs, only the answer in its report of done"
@@ -76,7 +75,7 @@ async def put_settings(request: Request, user: Principal, project: str, body: Ou
     """Switch the images taken out of tools' results on or off for the project; an admin of it only."""
     async with UnitOfWork(request.app.state.engine) as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "admin"):
+        if not holds(access.role, "admin"):
             raise Forbidden(f"switching the tool images of project {access.name} needs the admin role on it")
         before = await tool_images(conn, access.project_id)
         if before != body.tool_images:
@@ -127,7 +126,7 @@ async def delete(
     async with UnitOfWork(engine) as conn:
         access = await readable_run(conn, user, project, run_id, sink)
         run = await store_repository.locked_run(conn, run_id)
-        if run.dispatched_by != user.user_id and not has_role(access.role, "admin"):
+        if run.dispatched_by != user.user_id and not holds(access.role, "admin"):
             raise Forbidden(f"only who dispatched run {run_id}, or an admin of {access.name}, deletes its outputs")
         await blob_gc.lock_exclusive(conn)  # after the run's row, as recording takes them
         gone = await _one(conn, access.name, run_id, output_id)

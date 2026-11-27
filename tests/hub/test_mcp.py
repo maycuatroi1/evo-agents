@@ -163,7 +163,7 @@ def test_tools_list_offers_the_agent_of_a_run_only_what_it_may_call():
 def test_names_follow_the_hub_s_patterns():
     pytest.importorskip("fastapi")
     from evo_agents.hub.plans import PLAN_ID
-    from evo_agents.hub.server.admin import PROJECT_NAME
+    from evo_agents.hub.server.base.models import PROJECT_NAME
 
     assert mcp_tools.NAME_PATTERN == PROJECT_NAME == PLAN_ID
 

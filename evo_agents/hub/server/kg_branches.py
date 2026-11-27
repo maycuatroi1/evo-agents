@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from evo_agents.hub import kg_branches as store
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.kg_graphs import may_change

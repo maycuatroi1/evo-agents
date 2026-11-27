@@ -36,7 +36,6 @@ from urllib.parse import urlsplit
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import gateway_runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import category_of, provider_of
 from evo_agents.hub.accounts import DEFAULT_POLICY, QUOTA_PACING, account_state
 from evo_agents.hub.gateway_runs import PICK_PREFIX
@@ -61,7 +60,7 @@ from evo_agents.hub.server.accounts.service.views import account_figures, figure
 from evo_agents.hub.server.base.errors import Forbidden, NotFound
 from evo_agents.hub.server.credentials.service.secrets import audit_target
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.share_leases import grantee_clause, live_share
 from evo_agents.hub.server.share_views import CredentialShare, shares_of
 
@@ -265,7 +264,7 @@ def _policy_target(project: str, body: AccountPolicyWrite) -> str:
 async def put_policy(conn: AsyncConnection, user: Principal, project: str, body: AccountPolicyWrite) -> AccountPolicy:
     """The caller's policy for ``project`` set whole; the writer role on it."""
     access = await project_access(conn, user, project)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         role = access.role or "no role"
         raise Forbidden(f"a policy for project {project} needs the writer role on it; you hold {role}")
     await repository.put_policy(conn, user.user_id, access.project_id, body.model_dump())

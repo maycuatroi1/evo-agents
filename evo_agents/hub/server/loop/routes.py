@@ -44,8 +44,7 @@ from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 
 from evo_agents.hub import goals, opportunities, problems
-from evo_agents.hub.access import has_role
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import delivery_evidence
 from evo_agents.hub.server.loop import adopt, baseline, board, chain, items
@@ -57,7 +56,7 @@ from evo_agents.hub.server.loop.items import LoopGoal, LoopItems
 from evo_agents.hub.server.loop.model import KINDS, STATES
 from evo_agents.hub.server.plans.models import SINK_HEADER
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 
 log = logging.getLogger(__name__)
 
@@ -192,7 +191,7 @@ async def _baseline(conn, user, project: str, ref: str, *, writing: bool = False
     """(access, goal id, goal code, codes of its use cases) for the baseline of goal ``ref``: the graph is read between
     two transactions of the request, so the one that writes never waits on it."""
     access = await _reader(conn, user, project, "the baseline of a goal")
-    if writing and (user.acts_for_run is not None or not has_role(access.role, "admin")):
+    if writing and (user.acts_for_run is not None or not holds(access.role, "admin")):
         raise HTTPException(403, f"setting the baseline of a goal needs the admin role on project {access.name}")
     goal_id, code, _ = await baseline.goal_of(conn, access.project_id, ref)
     return access, goal_id, code, await baseline.refs(conn, goal_id)

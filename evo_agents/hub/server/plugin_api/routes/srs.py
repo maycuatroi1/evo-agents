@@ -12,7 +12,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.plugin_api.models.srs import ApprovedUseCases
 from evo_agents.hub.server.plugin_api.service import srs

@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from evo_agents.hub.access import has_role
+from evo_agents.hub.server.security import holds
 
 
 def admin_only(user, access) -> None:
-    if user.acts_for_run is not None or not has_role(access.role, "admin"):
+    if user.acts_for_run is not None or not holds(access.role, "admin"):
         raise HTTPException(403, f"this needs the admin role on project {access.name}")

@@ -9,9 +9,8 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.srs.models import checks, markdown
 from evo_agents.hub.server.srs.models.api import (
     SrsComment,
@@ -98,7 +97,7 @@ async def _queued_cases(
     reads, the open findings of the document about it or a business rule under it, by level, what holds its approval
     (nothing of @ba with ``wait_for_ba`` off) and whether ``reviewer`` (None: nobody, the caller is no writer) may
     review it."""
-    admin = has_role(access.role, "admin")
+    admin = holds(access.role, "admin")
     under = findings.use_case_of(content)
     intents = {  # Intent, or the Objective it replaced in older use cases
         item.key: item.fields.get("intent") or item.fields.get("objective")
@@ -141,7 +140,7 @@ async def _queued_version(
     settings: store.Settings,
 ) -> SrsQueuedVersion | None:
     """Version ``row`` of ``doc`` as the review queue lists it, or None when it lists it not."""
-    writer = has_role(access.role, "writer") and user.acts_for_run is None
+    writer = holds(access.role, "writer") and user.acts_for_run is None
     latest_draft = row.state == "draft" and row.number == doc.latest_version
     if row.state != "in_review" and not latest_draft:
         return None

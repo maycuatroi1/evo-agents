@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import MODEL_ENV_VARS, provider_of
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.accounts.models.pools import (
@@ -38,13 +37,13 @@ from evo_agents.hub.server.accounts.repository import pools as repository
 from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 # Reading
 
 
 def _admin(access: ProjectAccess, user: Principal, doing: str) -> None:
-    if not user.admin and not has_role(access.role, "admin"):
+    if not user.admin and not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise Forbidden(f"{doing} account pools of project {access.name} needs the admin role on it; you hold {held}")
 

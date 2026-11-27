@@ -31,7 +31,6 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.review import EvidenceProblem, parse_evidence
 from evo_agents.hub.runs import MAX_PROMPT_BYTES
@@ -47,7 +46,7 @@ from evo_agents.hub.server.memories import repository
 from evo_agents.hub.server.memories.models import INDEX_BYTES, RESTORE, Memory
 from evo_agents.hub.server.memories.service import core
 from evo_agents.hub.server.memories.service.audience import label_audience
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.kg.policy import audience_below
 
 log = logging.getLogger(__name__)
@@ -174,7 +173,7 @@ async def restore(engine: AsyncEngine, user: Principal, memory_id: int, sink: st
             raise Forbidden(f"the agent of run {user.scope.run_id} restores no memory: a writer of it does")
         if row.profile_id is None or access is None:
             raise Unprocessable(f"memory {memory_id} is no agent's: only an agent's memory is ever archived")
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise Forbidden(f"restoring a memory needs the writer role on project {held.project}")
         if held.archived_at is None:
             return held

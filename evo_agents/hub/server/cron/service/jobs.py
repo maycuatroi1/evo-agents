@@ -11,14 +11,13 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import cron, cron_store
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.cron import repository as store
 from evo_agents.hub.server.cron.models import CronFireOut, CronJobOut, CronJobPut, CronJobWritten
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -46,17 +45,17 @@ def _reader(access: ProjectAccess) -> None:
 
 
 def _writer(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         held = access.role or "no grant"
         raise Forbidden(f"{doing} a cron job of project {access.name} needs the writer role on it; you hold {held}")
 
 
 def can_change(access: ProjectAccess, user: Principal, job: cron_store.Job) -> bool:
-    return has_role(access.role, "writer") and job.owner_id == user.user_id
+    return holds(access.role, "writer") and job.owner_id == user.user_id
 
 
 def can_manage(access: ProjectAccess, user: Principal, job: cron_store.Job) -> bool:
-    return can_change(access, user, job) or has_role(access.role, "admin")
+    return can_change(access, user, job) or holds(access.role, "admin")
 
 
 def _manager(access: ProjectAccess, user: Principal, job: cron_store.Job, doing: str) -> None:

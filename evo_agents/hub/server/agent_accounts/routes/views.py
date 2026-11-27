@@ -8,12 +8,12 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request, Response
 
 from evo_agents.hub import profiles
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_accounts.models.accounts import AccountName, Handle
 from evo_agents.hub.server.agent_accounts.models.views import REFUSALS
 from evo_agents.hub.server.agent_accounts.service import views as service
 from evo_agents.hub.server.agent_accounts.service.shapes import AgentAccount, ListedAgentAccount
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 

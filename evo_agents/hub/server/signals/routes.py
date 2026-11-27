@@ -13,7 +13,7 @@ from fastapi.routing import APIRoute
 from pydantic import AwareDatetime
 
 from evo_agents.hub import signals
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.base.scope import Scope
 from evo_agents.hub.server.errors import ErrorBody, error_response, refusals
 from evo_agents.hub.server.security import principal

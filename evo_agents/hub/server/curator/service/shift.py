@@ -14,7 +14,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.curator.models.charter import DISPATCH
 from evo_agents.hub.server.curator.repository import shift as store
@@ -26,7 +25,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run, plan_run_repos
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 from evo_agents.hub.server.shift_hours import cancel_queued, changes_waiting
 
 log = logging.getLogger(__name__)
@@ -126,7 +125,7 @@ async def _queue(conn: AsyncConnection, due, night: date, duty: Duty, plan, budg
 
 async def writer_access(conn: AsyncConnection, due) -> ProjectAccess | None:
     access = await owner_access(conn, due.owner_id, due.owner, due.project)
-    if access is None or not has_role(access.role, "writer"):
+    if access is None or not holds(access.role, "writer"):
         log.warning("night shift skipped: its owner holds no writer grant", extra={"project": due.project})
         return None
     return access

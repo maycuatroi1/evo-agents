@@ -48,7 +48,7 @@ ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, 
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
 # One of the caller's env secrets by name, or <login>/<name>: the one that member shared with the caller (a secret's
-# name holds no "/", a login is admin.LOGIN_NAME's)
+# name holds no "/", a login is base.models.LOGIN_NAME's)
 SHARED_OWNER = r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}"
 AccountName = Annotated[
     str, Field(max_length=MAX_SECRET_NAME_CHARS + 101, pattern=f"^(?:{SHARED_OWNER}/)?{SECRET_NAME.pattern}$")

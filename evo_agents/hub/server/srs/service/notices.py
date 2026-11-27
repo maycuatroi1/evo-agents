@@ -42,10 +42,10 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import signals
-from evo_agents.hub.access import has_role
 from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.srs.repository import people, store
 from evo_agents.hub.server.srs.repository.store import DocumentRow, Settings, VersionRow
 from evo_agents.hub.server.srs.service import findings, use_case_reviews
@@ -94,7 +94,7 @@ async def reviewers(
     grants = await people.grants(conn, project_id)
     seen = {}  # the writers who read the document, by id, with their role
     for user_id, role, max_level in grants:
-        if not has_role(role, "writer"):
+        if not holds(role, "writer"):
             continue
         access = ProjectAccess(project_id, rules, role, max_level)
         through = store.sink_of(access, None)
@@ -112,7 +112,7 @@ async def reviewers(
         found = [
             user_id
             for user_id, role in seen.items()
-            if has_role(role, "admin") and any(user_id not in case.authors for case in owned)
+            if holds(role, "admin") and any(user_id not in case.authors for case in owned)
         ]
     unowned = [case for case in cases or [] if not case.owners]
     if unowned:
@@ -171,7 +171,7 @@ async def _shares(
 async def _people(conn: AsyncConnection, project_id: int, ids: set[int]) -> dict[int, tuple[str, bool]]:
     """The login of each member ``ids`` names, and whether they are an admin of project ``project_id``."""
     found = await people.logins_and_roles(conn, project_id, ids)
-    return {row.id: (row.login, has_role(row.role, "admin")) for row in found}
+    return {row.id: (row.login, holds(row.role, "admin")) for row in found}
 
 
 def _body(project: str, doc: DocumentRow, held: VersionRow, cases: list[CaseState], run, deciding_settled: bool) -> str:

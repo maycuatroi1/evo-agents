@@ -24,11 +24,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.loop import backlog, baseline, delivery, srs_ledger, tick
 from evo_agents.hub.server.loop.model import DELIVER, DONE, ENGINE, QUEUED, WorkSpec
 from evo_agents.hub.server.loop.runs_of import goal_owner
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.srs_backlog import DELIVERING, ref_key
 
 ADOPT = "loop.adopt"  # a plan adopted as a deliver: "<project>/goal G-<n> plan=<plan> use_cases=<count>"
@@ -72,7 +72,7 @@ def allowed(access, user, owner: int | None) -> bool:
     """An admin of the project, or the writer who owns the goal; never the agent of a run."""
     if user.acts_for_run is not None:
         return False
-    return has_role(access.role, "admin") or (has_role(access.role, "writer") and owner == user.user_id)
+    return holds(access.role, "admin") or (holds(access.role, "writer") and owner == user.user_id)
 
 
 async def adopt(conn: AsyncConnection, user, access, body: LoopAdopt) -> LoopAdopted:

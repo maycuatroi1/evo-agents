@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
 
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.tasks.models.api import MAX_PEOPLE, TasksItemDetail, TasksLinksIn, TasksRolesIn
 from evo_agents.hub.tables_tasks import MAX_DESCRIPTION_CHARS, MAX_TITLE_CHARS, PRIORITIES
 
@@ -16,10 +17,8 @@ CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 RACE = "another write in the project took a number or a key at the same moment: nothing was written; try again"
 
 
-class PluginTaskIn(BaseModel):
+class PluginTaskIn(StrictModel):
     """A new task of the plugin, under a key of its own; its type and status are the config's first when left out."""
-
-    model_config = ConfigDict(extra="forbid")
 
     key: str = Field(
         min_length=1,

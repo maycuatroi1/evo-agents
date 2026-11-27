@@ -36,7 +36,7 @@ from evo_agents.hub import kg_entity_map_run as model
 from evo_agents.hub.kg_graph import GraphUnavailable, read_labelled
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import audit, kg_init, kg_questions, kg_run_access
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import (
     GRAPHS_TRIED,

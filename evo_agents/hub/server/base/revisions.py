@@ -43,6 +43,12 @@ class Revised:
     changed: bool
 
 
+def at_revision(what: str, now: int, wanted: int | None) -> None:
+    """409 when a writer wanted ``what`` at revision ``wanted`` and it is at ``now``; nothing when they wanted none."""
+    if wanted not in (None, now):
+        raise Conflict(f"{what} is at revision {now}, not {wanted}; nothing changed")
+
+
 class RevisionedStore(ABC):
     lock_name: ClassVar[str]  # "goals": the advisory lock is "<lock_name>:<project id>"
     noun: ClassVar[str]  # "goal", as a refusal names one
@@ -138,10 +144,7 @@ class RevisionedStore(ABC):
         await self.lock(conn, access.project_id)
         held = await self.found(conn, access.project_id, ref)
         now = 0 if held is None else held.revision
-        if if_revision is not None and if_revision != now:
-            raise Conflict(
-                f"{self.noun} {ref} of project {access.name} is at revision {now}, not {if_revision}; nothing changed"
-            )
+        at_revision(f"{self.noun} {ref} of project {access.name}", now, if_revision)
         number = held.number if held is not None else await self.number_of_new(conn, access, ref)
         values = await values_of(held)
         if held is not None and values == self.stored(held):

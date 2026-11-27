@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.runs.models import REFUSALS, AccessChange, PriorityChange, Rerun, Run, RunId
 from evo_agents.hub.server.runs.service.controls import approve_run, ask_control, cancel_run, change_access, rerun_run
 from evo_agents.hub.server.runs.service.priority import change_priority

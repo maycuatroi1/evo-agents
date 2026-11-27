@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import Path
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, Field
 
 from evo_agents.hub import org
 from evo_agents.hub.credential_shares import GRANTEE_KINDS, MAX_BUDGET_USD, MAX_RUNNING, MAX_SHARE_PROJECTS
 from evo_agents.hub.credentials import SECRET_NAME
-from evo_agents.hub.server.admin import LOGIN_NAME, PROJECT_NAME
+from evo_agents.hub.server.base.models import LOGIN_NAME, PROJECT_NAME, StrictModel
 
 NO_SHARE = "there is no share {share_id} of yours on this hub: see GET /v1/secrets/{{name}}/shares"
 MAX_SHARE_ID = 2**63 - 1
@@ -19,9 +19,7 @@ SecretName = Annotated[str, Path(pattern=f"^{SECRET_NAME.pattern}$", description
 ShareId = Annotated[int, Path(ge=1, le=MAX_SHARE_ID, description="the id of the share")]
 
 
-class ShareWrite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class ShareWrite(StrictModel):
     grantee_kind: Literal[GRANTEE_KINDS] = Field(  # pyright: ignore[reportInvalidTypeForm]
         description="user: one member, named by login; unit: a unit of the org chart and every unit below it, named "
         "by unit; all: everyone on the hub"

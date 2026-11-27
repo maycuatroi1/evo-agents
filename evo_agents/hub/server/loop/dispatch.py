@@ -40,7 +40,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
@@ -60,6 +59,7 @@ from evo_agents.hub.server.loop.model import (
 from evo_agents.hub.server.loop.runs_of import goal_owner
 from evo_agents.hub.server.repo_origins import repo_origins
 from evo_agents.hub.server.runs.models.placement import normalized
+from evo_agents.hub.server.security import holds
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ async def _owner(conn: AsyncConnection, project_id: int, worker: LoopWorker) -> 
     u, g = tables.users, tables.grants
     login = await conn.scalar(select(u.c.login).where(u.c.id == worker.owner_id))
     role = await conn.scalar(select(g.c.role).where(g.c.user_id == worker.owner_id, g.c.project_id == project_id))
-    if not has_role(role, "writer"):
+    if not holds(role, "writer"):
         return login, (
             f"{login}, the owner of worker {worker.name} of the pool, holds {role or 'no grant'} on the "
             "project, not writer: the Loop's author and plan runs go in that name"

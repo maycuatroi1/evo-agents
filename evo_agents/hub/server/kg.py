@@ -77,7 +77,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import kg_branches, kg_named_graphs, kg_pool, kg_settings, tables
-from evo_agents.hub.access import Refused, has_role
+from evo_agents.hub.access import Refused
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
 from evo_agents.hub.kg_build import QueueBusy, no_graph_reason, procrastinate_jobs, queue_build
@@ -103,12 +103,12 @@ from evo_agents.hub.kg_source_state import SourceState, source_state
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH
 from evo_agents.kg.pacing import pacing
@@ -242,7 +242,7 @@ def member(access: ProjectAccess) -> None:
 
 
 def writer(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"{doing} project {access.name} needs the writer role on it")
 
 

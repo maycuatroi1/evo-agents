@@ -7,9 +7,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub.runs import RUN_STATES
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.tables_srs import (
     DOCUMENT_KINDS,
@@ -272,9 +273,7 @@ class SrsUseCaseSubmitted(SrsVersionCases):
     )
 
 
-class SrsImport(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsImport(StrictModel):
     markdown: str = Field(min_length=1, max_length=MAX_MARKDOWN_BYTES)
     document: str | None = Field(None, pattern=SLUG, description="the document whose next version this is")
     slug: str | None = Field(None, pattern=SLUG, description="the slug of a new document; from its title if left out")
@@ -311,16 +310,12 @@ class SrsImportResult(BaseModel):
     preview: SrsPreview
 
 
-class SrsRefIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsRefIn(StrictModel):
     rel: Literal[REF_RELS]
     to: str = Field(min_length=1, max_length=100, description="the code or key of the item it links to")
 
 
-class SrsNewItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsNewItem(StrictModel):
     kind: Literal[ITEM_KINDS]
     title: str = Field(min_length=1, max_length=500)
     body: str = Field("", max_length=MAX_BODY_CHARS)
@@ -331,10 +326,8 @@ class SrsNewItem(BaseModel):
     steps: list[str] | None = Field(None, max_length=50, description="a business rule's steps of its use case")
 
 
-class SrsChange(BaseModel):
+class SrsChange(StrictModel):
     """A change of the item ``key`` (title, body, steps, links, or drop it with ``retire``), or a ``new`` item."""
-
-    model_config = ConfigDict(extra="forbid")
 
     key: str | None = Field(None, min_length=1, max_length=64)
     title: str | None = Field(None, min_length=1, max_length=500)
@@ -351,34 +344,26 @@ class SrsChange(BaseModel):
         return self
 
 
-class SrsSave(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsSave(StrictModel):
     base_version: int = Field(ge=1, description="the version the changes were made on")
     summary: str = Field("", max_length=MAX_SUMMARY_CHARS)
     preamble: str | None = Field(None, max_length=MAX_BODY_CHARS)
     changes: list[SrsChange] = Field(min_length=1, max_length=MAX_CHANGES)
 
 
-class SrsReviewIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsReviewIn(StrictModel):
     decision: Literal[REVIEW_DECISIONS]
     role: Literal[REVIEW_ROLES] | None = Field(None, description="the role it counts for; one the reviewer holds")
     body: str = Field("", max_length=MAX_REVIEW_CHARS)
 
 
-class SrsWithdrawIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsWithdrawIn(StrictModel):
     comment: str | None = Field(
         None, min_length=1, max_length=MAX_COMMENT_CHARS, description="why, kept as a comment on the version"
     )
 
 
-class SrsRetireIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsRetireIn(StrictModel):
     codes: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
         min_length=1, max_length=MAX_CHANGES, description="the codes or aliases of the items to retire"
     )
@@ -454,10 +439,8 @@ class SrsComment(BaseModel):
     ask_run_id: int | None = Field(None, description="the run of @ba this comment asked to answer its thread")
 
 
-class SrsCommentIn(BaseModel):
+class SrsCommentIn(StrictModel):
     """A comment to write: ``@ba`` in its body asks @ba to answer in the thread."""
-
-    model_config = ConfigDict(extra="forbid")
 
     body: str = Field(min_length=1, max_length=MAX_COMMENT_CHARS)
     version: int | None = Field(None, ge=1)
@@ -506,15 +489,11 @@ class SrsFinding(BaseModel):
     options: list[str] = Field(description="the choices a member picks from to settle it (A, B, ...); empty for none")
 
 
-class SrsWaiveIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsWaiveIn(StrictModel):
     reason: str = Field(min_length=1, max_length=MAX_RESOLUTION_CHARS, description="why, kept as its resolution")
 
 
-class SrsSettleIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class SrsSettleIn(StrictModel):
     option: int | None = Field(None, ge=0, le=3, description="the choice picked, 0 for A; needed when it offers any")
     note: str = Field(
         "", max_length=MAX_RESOLUTION_CHARS, description="why; the resolution of a finding with no choice"

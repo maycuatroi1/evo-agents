@@ -26,13 +26,14 @@ import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, branding, tables
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server.agents.service.profiles import media_type
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.hub_settings import (
@@ -86,9 +87,7 @@ class Branding(BaseModel):
     version: int = Field(description="the version of the branding; 0 while it was never set")
 
 
-class BrandingImage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class BrandingImage(StrictModel):
     data: str = Field(
         min_length=1,
         max_length=(MAX_IMAGE_BYTES + 2) // 3 * 4,

@@ -13,8 +13,9 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, Request
 
 from evo_agents.hub import runs
-from evo_agents.hub.server.admin import MISSING, PROJECT_NAME, Login
+from evo_agents.hub.server.admin import MISSING
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.base.models import PROJECT_NAME, Login
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications.models import (
     MAX_LIST,

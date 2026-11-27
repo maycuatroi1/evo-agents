@@ -41,7 +41,6 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import merge_gate, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.loop.model import (
     ACT,
     BUILD,
@@ -58,6 +57,7 @@ from evo_agents.hub.server.loop.model import (
 )
 from evo_agents.hub.server.runs.models.placement import selector_of
 from evo_agents.hub.server.runs.service.worker_fit import OFFLINE
+from evo_agents.hub.server.security import holds
 
 log = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ async def _selected(conn: AsyncConnection, project_id: int, selector: Sequence[s
         place = worker_placement.Placement.of(row)
         if not row.online or row.drained_at is not None or place.problems(selector):
             continue
-        if not has_role(row.role, "writer"):
+        if not holds(row.role, "writer"):
             why = f"the owner of every worker holding {asked} that serves the project is no writer on it"
             continue
         found.append((max(row.slots - row.holding, 0), row))

@@ -44,7 +44,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.autonomy import AUTO
 from evo_agents.hub.plans import PlanProblem
 from evo_agents.hub.server.autonomy.service.policies import effective_policy
@@ -58,6 +57,7 @@ from evo_agents.hub.server.loop.model import DELIVER, FINISHED
 from evo_agents.hub.server.loop.view import RELEASED, run_chains
 from evo_agents.hub.server.merge.service import pulls
 from evo_agents.hub.server.repo_origins import repo_origins
+from evo_agents.hub.server.security import holds
 
 log = logging.getLogger(__name__)
 
@@ -345,7 +345,7 @@ async def mark(conn: AsyncConnection, want: Wanted, pull: Merged) -> bool:
     try:
         async with conn.begin_nested():  # a savepoint: a refused write leaves the others in place
             access = await project_access(conn, actor, want.project)
-            if not has_role(access.role, "writer"):
+            if not holds(access.role, "writer"):
                 log.warning("a merged repo not marked in its plan: the dispatcher is no writer", extra=where)
                 return False
             held = await plan_service.held(conn, access, want.plan_id)

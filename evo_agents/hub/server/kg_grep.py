@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub.kg_graph import GraphUnavailable, reading
 from evo_agents.hub.server import kg_run_access
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import GRAPHS_TRIED, REFUSALS, Sink, built_graphs, member, read_sink, snapshot_view
 from evo_agents.hub.server.kg_audience import reader_audience

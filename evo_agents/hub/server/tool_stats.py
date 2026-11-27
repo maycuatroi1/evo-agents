@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.digest import MAX_NAME, SKILL_TOOL, TOOL_NAME
 from evo_agents.hub.plans import PLAN_ID
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.projects import project_access

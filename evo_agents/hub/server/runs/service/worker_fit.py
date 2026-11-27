@@ -11,12 +11,13 @@ from functools import cache
 from sqlalchemy import and_, exists, func, literal, or_, select
 
 from evo_agents.hub import org, profiles, runs, tables
-from evo_agents.hub.access import ROLES, has_role
+from evo_agents.hub.access import ROLES
 from evo_agents.hub.server.runs.models import available
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.server.workers.repository import placement as worker_placement
 
 OFFLINE = func.make_interval(0, 0, 0, 0, 0, 0, runs.OFFLINE_AFTER_SECONDS)
-WRITER_ROLES = tuple(role for role in ROLES if has_role(role, "writer"))
+WRITER_ROLES = tuple(role for role in ROLES if holds(role, "writer"))
 
 
 def writes(user_id, project_id):

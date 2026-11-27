@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Query, Request
 from pydantic import AwareDatetime
 
-from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
+from evo_agents.hub.server.base.models import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.digests.models.sessions import (
     DEFAULT_LIMIT,
     MAX_LIMIT,

@@ -23,10 +23,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugins.service.configs import stored_stacks
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.tables_canvas import CELLS, STATUSES
 from evo_agents.plugins import config as plugin_config
 
@@ -141,7 +141,7 @@ class People:
     def holding(self, role: str, *, but: Iterable[int] = ()) -> list[str]:
         """The logins of the members holding ``role`` or above, but those whose ids are ``but``."""
         left_out = set(but)
-        return [m.login for m in self.members if has_role(m.role, role) and m.user_id not in left_out]
+        return [m.login for m in self.members if holds(m.role, role) and m.user_id not in left_out]
 
     def logins(self, user_ids: Iterable[int]) -> list[str]:
         """The logins of the members among ``user_ids`` who still hold a grant."""

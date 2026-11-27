@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.agents.models.placement import Home
 from evo_agents.hub.server.agents.models.tasking import HUB
 from evo_agents.hub.server.agents.repository import tasking as repository
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.profile_store import Profile
+from evo_agents.hub.server.security import holds
 
 
 def deleted_refusal(profile: Profile) -> str | None:
@@ -74,12 +74,12 @@ def role_refusal(profile: Profile, login: str, role: str | None, *, attends: boo
             f"@{profile.handle} works for the members of project {profile.project} in this settle chat, and "
             f"{login} holds no grant there"
         )
-    if not has_role(role, "writer") and not attends:
+    if not holds(role, "writer") and not attends:
         return (
             f"@{profile.handle} works for the writers of project {profile.project}, and {login} holds "
             f"{role or 'no grant'} there"
         )
-    if not has_role(role, "admin") and admins:
+    if not holds(role, "admin") and admins:
         return (
             f"@{profile.handle} takes work from the admins of project {profile.project} alone, and {login} holds "
             f"{role} there"
@@ -96,5 +96,5 @@ async def task_refusal(
     if refusal is not None:
         return refusal
     role = await repository.project_role(conn, user_id, profile.project_id)
-    admins = not has_role(role, "admin") and await admins_only(conn, profile.id)
+    admins = not holds(role, "admin") and await admins_only(conn, profile.id)
     return role_refusal(profile, login, role, attends=attends, admins=admins)

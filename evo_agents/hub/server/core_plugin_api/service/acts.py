@@ -51,7 +51,7 @@ from evo_agents.hub.server.notifications.service import member_channels
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.proposals.models import ProposalAnswer as ProposalAnswerIn
 from evo_agents.hub.server.proposals.service.reads import answer_proposal_as
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 READS, WRITES = "chats:read", "chats:write"
 NOT_GRANTED = "project {project} does not grant plugin {plugin} {permission}: an admin of the project grants it"
@@ -258,7 +258,7 @@ async def agents(conn: AsyncConnection, member: Member) -> list[AgentRef]:
     own_member(member)
     with refusing():
         await feature_on(conn, principal_of(member), "chats")
-    writers = [role for role in access.ROLES if access.has_role(role, "writer")]
+    writers = [role for role in access.ROLES if holds(role, "writer")]
     return [AgentRef(row.handle, row.name, row.project) for row in await agents_of(conn, member.user_id, writers)]
 
 

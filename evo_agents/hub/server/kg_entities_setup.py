@@ -19,14 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import kg_settings as store
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, project_archive
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.kg import REFUSALS, Build, find_builds, queue
 from evo_agents.hub.server.kg_settings import MAX_REASON_CHARS, may_change
 from evo_agents.hub.server.kg_web import require_reader
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.entities import sink_problem
 from evo_agents.kg.policy import Policy
@@ -85,7 +84,7 @@ async def _state(conn: AsyncConnection, access) -> SetupOut:
         turns_on=ENTITY_STRATEGY,
         sink=sink,
         sink_problem=await _sink_problem(conn, access.project_id, access.name, sink),
-        can_change=has_role(access.role, "writer"),
+        can_change=holds(access.role, "writer"),
         building=next((b for b in builds if b.status in IN_FLIGHT), None),
         queued=None,
     )

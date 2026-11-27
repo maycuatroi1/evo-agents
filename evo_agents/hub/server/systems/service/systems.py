@@ -10,12 +10,11 @@ as the hub holds it raises ``Refused``, which the route answers with ``SystemCon
 from __future__ import annotations
 
 from evo_agents.hub import system_spec
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Forbidden, NotFound, Unprocessable
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.systems.models.systems import (
     REVISION_CONFLICT,
     Pin,
@@ -39,7 +38,7 @@ def reader_only(access: ProjectAccess) -> None:
 
 
 def admin_only(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise Forbidden(
             f"{doing} the agent systems of project {access.name} needs the admin role on it; you hold {held}"
@@ -111,7 +110,7 @@ def _out(access: ProjectAccess, held: system_store.System, spec: dict, revision:
         pins=_pins(spec, refs),
         problems=_problems(problems),
         entry_agent=system_spec.entry_agent(spec),
-        can_change=has_role(access.role, "admin"),
+        can_change=holds(access.role, "admin"),
         created_by=held.created_by,
         updated_by=held.updated_by,
         created_at=held.created_at,

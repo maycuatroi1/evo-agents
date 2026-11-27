@@ -10,13 +10,12 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_spec
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.ops.models import views as ops_views
 from evo_agents.hub.server.ops.repository import threads as ops_threads
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.systems.models.ops import DefaultSystem, OpsBatch, OpsSettings, SystemOps
 from evo_agents.hub.server.systems.repository import ops as ops_rows
 from evo_agents.hub.server.systems.repository import store as system_store
@@ -30,7 +29,7 @@ def _limits(spec: dict) -> dict:
 
 
 def _default_out(access: ProjectAccess, held: system_store.System | None) -> DefaultSystem:
-    can_change = has_role(access.role, "admin")
+    can_change = holds(access.role, "admin")
     if held is None:
         return DefaultSystem(project=access.name, slug=None, name=None, ops=None, limits=None, can_change=can_change)
     return DefaultSystem(

@@ -44,17 +44,16 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs, webhook_events
-from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, run_access_rules
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agents.service.agent_types import contributed, enabled_type, type_left, type_spend
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
+from evo_agents.hub.server.base.models import ProjectName, StrictModel
 from evo_agents.hub.server.chats.repository.runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
@@ -68,7 +67,7 @@ from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 from evo_agents.plugins.runtimes import CONTRIBUTION
 
 log = logging.getLogger(__name__)
@@ -83,10 +82,8 @@ router = APIRouter(prefix="/v1/plugin-api", tags=["plugin api"], responses={401:
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
 
-class TaskRepo(BaseModel):
+class TaskRepo(StrictModel):
     """A repo of the project a task's run gets a worktree of, with the branch of origin that worktree starts from."""
-
-    model_config = ConfigDict(extra="forbid")
 
     repo: RepoName
     base: str = Field(
@@ -97,9 +94,7 @@ class TaskRepo(BaseModel):
     )
 
 
-class TaskIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TaskIn(StrictModel):
     task: str = Field(
         min_length=1,
         max_length=task_runs.MAX_TASK_BYTES,
@@ -315,7 +310,7 @@ async def type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[
     g = tables.grants
     query = select(g.c.role).where(g.c.user_id == row.run_as_id, g.c.project_id == enabled.project_id)
     role = (await conn.execute(query)).scalar_one_or_none()
-    if not has_role(role, "writer"):
+    if not holds(role, "writer"):
         return 409, (
             f"agent type {name} runs as {row.run_as}, who holds {role or 'no grant'} on project {enabled.project} now, "
             "not writer: an admin of the project names another member"

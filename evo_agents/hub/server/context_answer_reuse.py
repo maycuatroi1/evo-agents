@@ -24,13 +24,12 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import signals, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import context_answers
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import principal
+from evo_agents.hub.server.security import holds, principal
 from evo_agents.hub.server.signals.models import SignalIn
 
 log = logging.getLogger(__name__)
@@ -101,7 +100,7 @@ async def read_weeks(
     now = datetime.now(UTC)
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "reader"):
+        if not holds(access.role, "reader"):
             raise HTTPException(403, f"reading the answers loaded in project {project} needs a grant on it")
         rows = await weekly(conn, access.project_id, now, weeks)
         on = await context_answers.enabled(conn, access.project_id)

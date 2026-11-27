@@ -18,7 +18,7 @@ from fastapi.routing import APIRoute
 
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.profiles import HANDLE_PATTERN
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.memories.models import (
     DEFAULT_LIMIT,

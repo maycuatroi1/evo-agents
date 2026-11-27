@@ -21,13 +21,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import dlp, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 
 log = logging.getLogger(__name__)
 
@@ -221,7 +220,7 @@ async def write_policy(request: Request, project: ProjectName, body: DlpPolicyWr
     d = tables.dlp_policies
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "admin"):
+        if not holds(access.role, "admin"):
             held = access.role or "no grant"
             raise HTTPException(
                 403, f"setting the DLP policy of project {project} needs the admin role; you hold {held}"

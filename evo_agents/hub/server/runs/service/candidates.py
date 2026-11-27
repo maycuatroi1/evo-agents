@@ -29,14 +29,13 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
-from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import account_state
 from evo_agents.hub.chats import chat_link
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.controls import controlled_run
 from evo_agents.hub.server.runs.service.worker_fit import usable_runtimes, worker_problems, workers_of
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 OLD_FIRST = ("missing_tool", "checkout", "branch_mismatch")  # the worker of the run first: what is wrong is there
 OLD_LAST = ("worker_stopped", "lease_lost", "runtime")  # the worker of the run last: it is what went wrong
@@ -345,7 +344,7 @@ async def _foreign(conn: AsyncConnection, owner_id: int, run, found) -> tuple[li
     projects, agents = [], []
     ap = tables.agent_profiles
     for other_id, name, role, named in found:
-        writer = has_role(role, "writer")
+        writer = holds(role, "writer")
         if role is None:
             reasons = [f"the owner holds no grant on project {name}: ask a member who can grant the writer role"]
         elif not writer:
@@ -397,7 +396,7 @@ async def candidates_of(
     for place, (candidate, _) in enumerate(sorted((v for v in views if v[0].fit), key=lambda v: v[1]), 1):
         workers.append(candidate.model_copy(update={"rank": place}))
     workers += [v[0] for v in views if not v[0].fit]
-    writer = has_role(role, "writer")
+    writer = holds(role, "writer")
     agents = [_agent_view(p, rows, run, cause, writer, project) for p in by_id.values() if p.deleted_at is None]
     agents.sort(key=lambda a: (not a.fit, not a.is_default, a.handle))
     projects, away = await _foreign(conn, owner_id, run, await _other_projects(conn, owner_id, project_id, run.error))

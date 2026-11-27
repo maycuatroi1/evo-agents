@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
 from evo_agents.hub import plan_step_status
-from evo_agents.hub.access import has_role
 from evo_agents.hub.handoff import build_handoff
 from evo_agents.hub.plan_diff import plan_diff
 from evo_agents.hub.plans import (
@@ -77,7 +76,7 @@ from evo_agents.hub.server.plans.models import (
 )
 from evo_agents.hub.server.plans.repository import STORE
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.systems.service import traces as system_traces
 from evo_agents.schema import errors, validate
 
@@ -99,7 +98,7 @@ class PlanScope(ProjectScope):
     def refusal(self, user: Principal, access: ProjectAccess) -> str | None:
         if self.role == "reader":
             return read_refusal(access)
-        if has_role(access.role, self.role):
+        if holds(access.role, self.role):
             return None
         return f"pushing to project {access.name} needs the writer role on it"
 

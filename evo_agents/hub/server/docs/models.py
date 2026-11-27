@@ -8,8 +8,9 @@ from datetime import datetime
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.projects import LabelIn
 from evo_agents.hub.tables_docs import (
     IMAGE_NAME,
@@ -175,16 +176,12 @@ class DocsDocument(DocsDocumentSummary):
     shown: DocsVersionDetail = Field(description="the version asked for, the latest by default")
 
 
-class DocsImageRef(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DocsImageRef(StrictModel):
     name: str = Field(min_length=1, max_length=MAX_IMAGE_NAME_CHARS, pattern=IMAGE_NAME)
     sha256: str = Field(pattern=SHA256, description="an image of the project, uploaded before")
 
 
-class DocsSave(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DocsSave(StrictModel):
     title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
     body: str = Field(max_length=MAX_BODY_CHARS, description="the Markdown, or the HTML page when format is html")
     format: Format = Field("markdown", description="html saves the body as a page the hub serves in a sandbox")

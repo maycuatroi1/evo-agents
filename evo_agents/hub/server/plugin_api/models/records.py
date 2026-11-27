@@ -5,14 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from evo_agents.hub import plugin_records
+from evo_agents.hub.server.base.models import StrictModel
 
 
-class RecordIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RecordIn(StrictModel):
     body: dict[str, Any] = Field(description=f"a JSON object, at most {plugin_records.MAX_BODY_BYTES // 1024} KiB")
     level: str | None = Field(None, description="a level of the project's ladder; default: its default label's")
     audience: Literal["writer", "everyone"] | None = Field(

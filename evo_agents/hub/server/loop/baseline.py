@@ -40,12 +40,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import goals as goal_rules
 from evo_agents.hub import loop_jobs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.hub_events import SRS_USE_CASE_APPROVED
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.loop import backlog, delivery, srs_ledger
 from evo_agents.hub.server.loop import state as loop_state
 from evo_agents.hub.server.loop.model import BUILD, FINISHED
+from evo_agents.hub.server.security import holds
 from evo_agents.hub.srs_backlog import ADMIN, DELIVERED, DELIVERING, KG, STATES, UNKNOWN, UseCase, ref_key, under
 from evo_agents.hub.srs_baseline import FIX_STATES, SET_STATES, Evidence, Proposal, counts, fixes, propose
 
@@ -276,7 +276,7 @@ async def view(
 
 
 def _admin(user, access) -> None:
-    if user.acts_for_run is not None or not has_role(access.role, "admin"):
+    if user.acts_for_run is not None or not holds(access.role, "admin"):
         raise HTTPException(403, f"setting the baseline of a goal needs the admin role on project {access.name}")
 
 

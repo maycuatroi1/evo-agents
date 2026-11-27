@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import LOGIN_NAME
+from evo_agents.hub.server.base.models import LOGIN_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.hub.user_emails import MAX_EMAILS, email_key, email_problem, login_of_email, noreply_login

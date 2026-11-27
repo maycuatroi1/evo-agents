@@ -250,7 +250,7 @@ BLOB_STORE_FIELDS = (
 )
 SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.credentials.models.sealing
 SELLER_KEY_BYTES = 32  # the seed of an Ed25519 key
-SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.admin.PROJECT_NAME
+SELLER_PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")  # evo_agents.hub.server.base.models.PROJECT_NAME
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
 GITHUB_APP_VARIABLES = ("EVO_HUB_GITHUB_APP_ID", "EVO_HUB_GITHUB_APP_PRIVATE_KEY")
 GITHUB_APP_ID = re.compile(r"[0-9]{1,20}|Iv[0-9A-Za-z.]{1,40}")  # the App's ID, or its client ID; JWT's iss takes both

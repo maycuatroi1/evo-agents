@@ -16,7 +16,7 @@ from evo_agents.hub.server.accounts.models.pools import (
     PoolWrite,
 )
 from evo_agents.hub.server.accounts.service import pools as service
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 

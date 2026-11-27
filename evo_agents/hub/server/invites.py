@@ -51,8 +51,9 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import ROLES
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import LOGIN_NAME, PROJECT_NAME, project_ladder, upsert_grant
+from evo_agents.hub.server.admin import project_ladder, upsert_grant
 from evo_agents.hub.server.auth import NO_STORE
+from evo_agents.hub.server.base.models import LOGIN_NAME, PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
 from evo_agents.hub.server.security import (

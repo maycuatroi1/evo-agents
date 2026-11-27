@@ -36,7 +36,7 @@ import logging
 
 from fastapi import APIRouter, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plan_systems import service
 from evo_agents.hub.server.plans.models import PlanId

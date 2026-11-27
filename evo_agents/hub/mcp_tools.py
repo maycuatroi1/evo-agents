@@ -61,10 +61,10 @@ MODERN_VERSIONS = ("2026-07-28",)
 # The answers that carry the server's instructions: initialize in the handshake versions, server/discover in the
 # envelope ones. In both, tools/list alone lists the tools (2026-07-28's subscriptions/listen only says a list changed).
 INSTRUCTED_BY = frozenset({"initialize", "server/discover"})
-NAME_PATTERN = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project or plan id, as evo_agents.hub.server.admin.PROJECT_NAME
+NAME_PATTERN = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project or plan id, as evo_agents.hub.server.base.models.PROJECT_NAME
 DATE_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
 SESSION_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # as evo_agents.hub.digest.SESSION_ID
-LOGIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # as evo_agents.hub.server.admin.LOGIN_NAME
+LOGIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # as evo_agents.hub.server.base.models.LOGIN_NAME
 TRANSCRIPT_FILE = r"^(main|subagents(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}){1,5})$"  # evo_agents.hub.transcripts.FILE_KEY
 HISTORY_KEY = r"^[a-z]+/(FM-[1-3]\.[1-6]|none)$"  # a cluster's key, as evo_agents.hub.history.KEY
 MAX_REVISION = 2**31 - 1

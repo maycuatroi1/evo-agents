@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import Path, Query
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from evo_agents.hub.account_providers import Category, Provider
 from evo_agents.hub.accounts import (
@@ -28,7 +28,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server.accounts.models.views import AccountUsage, HeldBy, PrincipalCost
-from evo_agents.hub.server.base.models import LOGIN_NAME
+from evo_agents.hub.server.base.models import LOGIN_NAME, StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.share_views import CredentialShare
 
@@ -117,9 +117,7 @@ class SharedAccount(Account):
     pick: str = Field(description="how ``account`` of a dispatch names it: <owner>/<name>")
 
 
-class AccountChange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class AccountChange(StrictModel):
     weight: int | None = Field(None, ge=0, le=MAX_WEIGHT, description="its share in a weighted pool; 0 leaves it")
     priority: int | None = Field(None, ge=0, le=MAX_PRIORITY, description="the lower, the sooner in a fill-first pool")
     paused: bool | None = Field(None, description="true pauses it, so no new run takes it; false resumes it")
@@ -131,9 +129,7 @@ class AccountChange(BaseModel):
     )
 
 
-class AccountPolicyWrite(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class AccountPolicyWrite(StrictModel):
     strategy: Literal[STRATEGIES] = Field(DEFAULT_STRATEGY, description="how a run picks among the accounts")  # pyright: ignore[reportInvalidTypeForm]
     cooldown_seconds: int = Field(
         DEFAULT_COOLDOWN_SECONDS,

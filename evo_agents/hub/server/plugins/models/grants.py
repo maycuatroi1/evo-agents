@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
+from evo_agents.hub.server.base.models import StrictModel
 from evo_agents.hub.server.plugins.models.pages import PluginPage
 from evo_agents.plugins.manifest import PERMISSIONS, TIERS
 
@@ -58,9 +59,7 @@ class ProjectPlugin(BaseModel):
     granted_at: datetime | None
 
 
-class PluginEnable(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PluginEnable(StrictModel):
     permissions: list[Permission] = Field(
         max_length=len(PERMISSIONS),
         description="the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it",

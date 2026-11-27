@@ -3,19 +3,18 @@
 
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AwareDatetime, Field, SecretStr
 
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
+from evo_agents.hub.server.base.models import StrictModel
 
 OAUTH_ENV_VAR = "CLAUDE_CODE_OAUTH_TOKEN"  # the one variable an OAuth account sets
 MAX_IDENTITY_CHARS = 200
 
 
-class OAuthTokens(BaseModel):
+class OAuthTokens(StrictModel):
     """The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an
     account of OAuth; never shown again."""
-
-    model_config = ConfigDict(extra="forbid")
 
     refresh_token: SecretStr = Field(
         min_length=1, max_length=MAX_SECRET_BYTES, description="the refresh token; sealed, never shown again"

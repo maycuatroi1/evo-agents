@@ -14,12 +14,11 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import webhook_events
-from evo_agents.hub.access import has_role
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.webhooks import repository
 from evo_agents.hub.server.webhooks.models import (
     MAX_WEBHOOKS,
@@ -44,7 +43,7 @@ def _sealer(sealer: Sealer | None, config: HubConfig) -> Sealer:
 
 
 def _admin(access: ProjectAccess) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise HTTPException(403, f"the webhooks of project {access.name} are its admin's; you hold {held}")
 

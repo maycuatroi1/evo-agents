@@ -43,8 +43,8 @@ from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import CoreContext, enabled_in
 from evo_agents.hub.review import PRODUCT
 from evo_agents.hub.self_managed import ProjectScope, state_of
-from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.agents.service.agent_types import enabled_type
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.chats.models.runs import ChatRun
 from evo_agents.hub.server.chats.service.runs import chat_run, hub_reply
 from evo_agents.hub.server.collect import looks_through

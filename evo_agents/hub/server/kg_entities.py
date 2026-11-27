@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from evo_agents.hub import kg_entity_relay as relay
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import project_archive
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.blobs import blob_store, fetch_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import REFUSALS, queue, writer

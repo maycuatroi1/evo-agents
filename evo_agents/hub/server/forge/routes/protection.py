@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.forge.models.protection import Protection, RepoCheck
 from evo_agents.hub.server.forge.service import protection as service

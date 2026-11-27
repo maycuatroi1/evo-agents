@@ -16,13 +16,13 @@ from urllib.parse import quote
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import signals
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.canvas.models.baseline_rows import BaselineRow, ItemRow
 from evo_agents.hub.server.canvas.models.rows import CanvasRow
 from evo_agents.hub.server.canvas.repository import people
 from evo_agents.hub.server.canvas.service import baselines, reads
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.projects import ProjectAccess
+from evo_agents.hub.server.security import holds
 
 NOTICE = "canvas_baseline"  # evo_agents.hub.runs.NOTICE_KINDS
 
@@ -45,7 +45,7 @@ async def tell_writers(
     told = []
     for user_id, role, max_level in await people.grants(conn, project_id):
         access = ProjectAccess(project_id, rules, role, max_level)
-        if not has_role(role, "writer") or not reads.visible(access, canvas.label, None):
+        if not holds(role, "writer") or not reads.visible(access, canvas.label, None):
             continue
         if all(user_id in item.barred(anyone) for item in waiting):
             continue

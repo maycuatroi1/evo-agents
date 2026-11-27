@@ -19,7 +19,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Query, Request
 
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.autonomy.models.policies import (
     MAX_REVISION,
     AutonomyPolicy,
@@ -30,6 +29,7 @@ from evo_agents.hub.server.autonomy.models.policies import (
 )
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.autonomy.service import policies
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.security import CurrentUser

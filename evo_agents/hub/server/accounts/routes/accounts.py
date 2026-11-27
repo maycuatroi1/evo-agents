@@ -19,9 +19,9 @@ from evo_agents.hub.server.accounts.models.accounts import (
     SharedAccount,
 )
 from evo_agents.hub.server.accounts.service import accounts as service
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.security import CurrentUser
 

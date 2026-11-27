@@ -28,6 +28,6 @@ SAFE_TYPES = (
 )
 SANDBOX = "default-src 'none'; frame-ancestors 'none'; sandbox"
 PluginName = Annotated[str, Path(pattern=PLUGIN_ID)]
-PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as evo_agents.hub.server.admin.PROJECT_NAME
+PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as evo_agents.hub.server.base.models.PROJECT_NAME
 ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
 RouteName = Annotated[str, Path(pattern=NAME["pattern"])]

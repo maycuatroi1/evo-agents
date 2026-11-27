@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plan_run_choice import service
 from evo_agents.hub.server.plan_run_choice.models import REFUSALS, PlanRunChoice, PlanRunChoiceIn

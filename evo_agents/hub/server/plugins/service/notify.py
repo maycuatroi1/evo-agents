@@ -9,7 +9,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_calls, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.notifications.service.notifier import NOTIFIER
 from evo_agents.hub.server.plugins.models.notify import (
@@ -22,6 +21,7 @@ from evo_agents.hub.server.plugins.models.notify import (
 )
 from evo_agents.hub.server.plugins.repository import notify as repository
 from evo_agents.hub.server.plugins.repository.enabled import enabled_in
+from evo_agents.hub.server.security import holds
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def _recipients(conn: AsyncConnection, project_id: int, to: list[str]) -> 
     held = await repository.members(conn, project_id)
     wanted = {item.lower() for item in to if item not in ROLE_WORDS}
     words = [ROLE_WORDS[item] for item in to if item in ROLE_WORDS]
-    chosen = [row for row in held if row.login.lower() in wanted or any(has_role(row.role, needed) for needed in words)]
+    chosen = [row for row in held if row.login.lower() in wanted or any(holds(row.role, needed) for needed in words)]
     skipped = [
         item for item in to if item not in ROLE_WORDS and item.lower() not in {row.login.lower() for row in held}
     ]

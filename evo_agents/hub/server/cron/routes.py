@@ -26,7 +26,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.cron.models import (
     REVISION_CONFLICT,
     CronFireOut,

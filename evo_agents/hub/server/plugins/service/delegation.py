@@ -28,7 +28,6 @@ from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import plugin_calls
-from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_records import Reach
 from evo_agents.hub.server.chats.service.prompts import run_clearers
 from evo_agents.hub.server.plugins.models.delegation import (
@@ -43,7 +42,7 @@ from evo_agents.hub.server.plugins.models.delegation import (
 from evo_agents.hub.server.plugins.repository import delegation as repository
 from evo_agents.hub.server.plugins.repository.enabled import enabled_in
 from evo_agents.hub.server.projects import ProjectAccess, access_of
-from evo_agents.hub.server.security import WEB, Principal, hash_token
+from evo_agents.hub.server.security import WEB, Principal, hash_token, holds
 
 
 def _lower(ladder, held, cap):
@@ -136,5 +135,5 @@ async def _leased(conn: AsyncConnection, given: str, plugin_id: int, row) -> Res
 
 
 def may_write(resolved: Resolved) -> None:
-    if not has_role(resolved.role, "writer"):
+    if not holds(resolved.role, "writer"):
         raise HTTPException(403, "writing a plugin's records needs the writer role on the project")

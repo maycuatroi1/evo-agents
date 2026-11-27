@@ -44,17 +44,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, kg_health_eval, kg_init, kg_init_db, kg_settings, kg_snapshots, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, queue_build
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health, kg_questions
-from evo_agents.hub.server.admin import ProjectName, admin
+from evo_agents.hub.server.admin import admin
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 from evo_agents.hub.tables_kg import INIT_ACTIVE
 from evo_agents.kg import entities, init_run
 from evo_agents.kg import settings as tuning
@@ -525,7 +525,7 @@ async def apply_decision(conn: AsyncConnection, access, user: Principal, row, de
 async def record_decision(conn: AsyncConnection, user: Principal, project: str, run_id: int, data) -> dict:
     """Validate and apply ``data``, the decision of run ``run_id``; the run's row as a dict of what was applied."""
     access = await project_access(conn, user, project)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"deciding a kg_init run of project {access.name} needs the writer role on it")
     t = tables.kg_init_runs
     row = (
@@ -660,7 +660,7 @@ async def _begin(conn: AsyncConnection, user: Principal, access, why_all: bool):
 async def start(conn: AsyncConnection, user: Principal, project: str) -> tuple[InitRun, bool]:
     """Start a kg_init run of ``project`` for ``user`` (a writer): (the run, True), or (the run in flight, False)."""
     access = await project_access(conn, user, project)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         raise HTTPException(403, f"asking for a kg_init run of project {access.name} needs the writer role on it")
     row, made = await _begin(conn, user, access, False)
     return _shown(row, access.name), made

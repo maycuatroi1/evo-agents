@@ -35,13 +35,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.autonomy.service import hold as autonomy_hold
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import Project, project_access, project_view
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +86,7 @@ async def _admin_of(conn: AsyncConnection, user: Principal, project: str, doing:
     access = await project_access(conn, user, project)
     if user.acts_for_run is not None:
         raise HTTPException(403, f"{doing} project {project} is for an admin of it, never for the agent of a run")
-    if not user.admin and not has_role(access.role, "admin"):
+    if not user.admin and not holds(access.role, "admin"):
         raise HTTPException(403, f"{doing} project {project} needs the admin role on it, or a hub admin")
     p = tables.projects
     await conn.execute(select(p.c.id).where(p.c.id == access.project_id).with_for_update())

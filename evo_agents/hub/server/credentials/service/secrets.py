@@ -56,7 +56,6 @@ from fastapi import HTTPException, Request
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
     FORGE_KIND,
@@ -88,7 +87,7 @@ from evo_agents.hub.server.credentials.models.secrets import (
 )
 from evo_agents.hub.server.credentials.repository import secrets as repository
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.hub.server.share_views import shares_of
 
 log = logging.getLogger(__name__)
@@ -223,7 +222,7 @@ async def writable_projects(conn: AsyncConnection, user: Principal, names: list[
     ids = []
     for name in names:
         access = await project_access(conn, user, name)
-        if not has_role(access.role, needed):
+        if not holds(access.role, needed):
             role = access.role or "no role"
             raise Forbidden(
                 f"a secret of kind {kind} for project {name} needs the {needed} role on it; you hold {role}"

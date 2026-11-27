@@ -12,7 +12,7 @@ from evo_agents.hub.memory import MAX_AUDIENCE
 from evo_agents.hub.memory_files import MAX_BODY, TYPES, body_problem, name_problem
 from evo_agents.hub.memory_places import PERSONAL_LOCATION
 from evo_agents.hub.profiles import HANDLE_PATTERN
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.base.models import PROJECT_NAME
 from evo_agents.hub.server.memories.models import MAX_REVISION, PrincipalName, printable
 from evo_agents.hub.server.projects import LabelIn
 

@@ -7,7 +7,6 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_login
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
@@ -26,13 +25,13 @@ from evo_agents.hub.server.browser.service.leases import lease_sealer, opened_pr
 from evo_agents.hub.server.browser.service.shapes import BrowserIdentityCreate
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 
 def _need(access: ProjectAccess, owner: str) -> None:
     """403 unless the member holds the role the identity of ``owner`` asks of them to log it in."""
     needed = "admin" if owner == "agent" else "writer"
-    if not has_role(access.role, needed):
+    if not holds(access.role, needed):
         held = access.role or "no grant"
         raise Forbidden(
             f"logging in a browser identity of project {access.name} needs the {needed} role; the worker's owner holds {held}",

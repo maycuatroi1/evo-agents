@@ -1,6 +1,6 @@
 """The limits of an agent's read of another project, and the shape of what it reads
 (``evo_agents.hub.server.agents.service.reads`` says the rules; the request, which checks a project's name against
-``admin.PROJECT_NAME``, is ``evo_agents.hub.server.agents.service.shapes.CrossReadIn``)."""
+``base.models.PROJECT_NAME``, is ``evo_agents.hub.server.agents.service.shapes.CrossReadIn``)."""
 
 from __future__ import annotations
 

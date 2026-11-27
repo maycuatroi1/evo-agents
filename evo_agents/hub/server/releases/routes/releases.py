@@ -36,7 +36,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.releases.models.releases import (
     MAX_CYCLES,

@@ -6,9 +6,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from evo_agents.hub import release_ci, release_runs, releases
+from evo_agents.hub.server.base.models import StrictModel
 
 SET = "release.set"  # an admin set the schedule: "<project> repo=<repo> at=<HH:MM> <time zone>"
 PAUSE = "release.pause"  # "<project>", the queued runs it cancelled and the cycle it closed in the log line
@@ -20,10 +21,8 @@ MAX_CYCLES = 100
 MAX_CYCLES_OFFSET = 10_000
 
 
-class ReleaseScheduleWrite(BaseModel):
+class ReleaseScheduleWrite(StrictModel):
     """What PUT .../releases/schedule sets; a key left out keeps what the schedule holds, or its default."""
-
-    model_config = ConfigDict(extra="forbid")
 
     repo: str | None = Field(None, min_length=1, max_length=200, description="a repo of the project, on GitHub")
     at: str | None = Field(None, pattern=releases.AT.pattern, description="the local time of the daily check, HH:MM")

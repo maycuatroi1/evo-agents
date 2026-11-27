@@ -11,14 +11,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID
-from evo_agents.hub.server.security import CurrentUser
+from evo_agents.hub.server.security import CurrentUser, holds
 
 CAUSE_KEY = "cause_classification"  # the key of a run event that a plugin's classification, or its undoing, writes
 CLASSIFIED = "classified"
@@ -58,7 +57,7 @@ async def restore_cause(request: Request, project: ProjectName, run_id: int, use
         raise HTTPException(422, "run_id is out of range")
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(
                 403, f"restoring the cause of a run of project {access.name} needs the writer role on it"
             )

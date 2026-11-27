@@ -25,7 +25,6 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import judge
-from evo_agents.hub.access import has_role
 from evo_agents.hub.config import CURATOR_APP_VARIABLES, HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
@@ -42,7 +41,7 @@ from evo_agents.hub.server.forge.models.protection import (
 from evo_agents.hub.server.forge.repository import protection as store
 from evo_agents.hub.server.merge.service.pulls import check_ruleset
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ async def check_now(
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
         need_reader(access)
-        if not has_role(access.role, "admin"):
+        if not holds(access.role, "admin"):
             raise HTTPException(403, f"checking the rulesets of project {access.name} needs the admin role on it")
         origins = await store.repo_origins(conn, access.project_id)
     if repo not in origins:

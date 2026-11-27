@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.browser.models.identities import REFUSALS, BrowserIdentity, IdentityId
 from evo_agents.hub.server.browser.models.logins import BrowserLogin
 from evo_agents.hub.server.browser.service import logins as service

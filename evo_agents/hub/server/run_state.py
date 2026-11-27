@@ -72,7 +72,6 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import bus, jobs, ops_events, plugin_events, review, runs, tables, wake
-from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server import reaped_usage
@@ -80,7 +79,7 @@ from evo_agents.hub.server.browser.service import holds as browser_holds
 from evo_agents.hub.server.plans import models as plan_models
 from evo_agents.hub.server.plans import service as plan_service
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import MACHINE, Principal
+from evo_agents.hub.server.security import MACHINE, Principal, holds
 
 if TYPE_CHECKING:
     pass
@@ -544,7 +543,7 @@ async def write_step(
     try:
         async with conn.begin_nested():  # a savepoint: a refused write leaves the move in place
             access = await project_access(conn, actor, found.project)
-            if not has_role(access.role, "writer"):
+            if not holds(access.role, "writer"):
                 raise _Skipped(403, f"{found.dispatcher} no longer holds the writer role on {found.project}")
             return await _patched_step(conn, access, actor, found, updates_for, where)
     except _Skipped as exc:

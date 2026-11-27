@@ -20,7 +20,6 @@ from fastapi import HTTPException
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub.access import has_role
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import SHARED_TYPES
 from evo_agents.hub.memory_places import HARNESS
@@ -51,7 +50,7 @@ from evo_agents.hub.server.memories.service import agents
 from evo_agents.hub.server.memories.service.audience import Reader, label_audience, raised, with_audience
 from evo_agents.hub.server.memories.service.inputs import MemoryIn
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import WEB, Principal
+from evo_agents.hub.server.security import WEB, Principal, holds
 from evo_agents.kg.policy import audience_below
 
 log = logging.getLogger(__name__)
@@ -321,7 +320,7 @@ async def _target(conn: AsyncConnection, body: MemoryIn, user: Principal) -> tup
     if body.scope != "project" or body.project is None:
         return None, None
     access = await project_access(conn, user, body.project)
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         access.push_label(None)  # raises the write rule's 403, which checks the role first
     if body.location != HARNESS and not await repository.has_repo(conn, access.project_id, body.location):
         raise Unprocessable(
@@ -358,7 +357,7 @@ def _revision_conflict(body: MemoryIn, held: Memory | None) -> None:
         raise Stale(message + "if_revision to change it", held)
     if body.if_revision is not None and held is None:
         raise Stale(f"the hub holds no {body.name} here: send it without if_revision to create it", None)
-    if body.if_revision is not None and held is not None and body.if_revision != held.revision:
+    if held is not None and body.if_revision not in (None, held.revision):
         message = f"{body.name} changed on the hub: it is at revision {held.revision}, not {body.if_revision}"
         raise Stale(message, held)
 
@@ -462,7 +461,7 @@ async def lower_audience(engine: AsyncEngine, user: Principal, memory_id: int, b
     async with UnitOfWork(engine) as conn:
         row, access = await readable(conn, user, memory_id, sink, lock=True)
         held = row.memory
-        if access is None or not has_role(access.role, "admin"):
+        if access is None or not holds(access.role, "admin"):
             where = f"project {held.project}" if access else "a project, and a personal memory is in none"
             raise Forbidden(f"lowering the audience of a memory needs the admin role on {where}")
         access.push_label(held.label)  # the write rule

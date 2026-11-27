@@ -26,14 +26,14 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Path, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import insert, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables, task_runs
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName, StrictModel
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.gateway.models.accounts import Asker
 from evo_agents.hub.server.gateway.service import accounts as gateway_accounts
@@ -68,9 +68,7 @@ def asset_problem(uri: str) -> str | None:
     return None
 
 
-class MemberTaskIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class MemberTaskIn(StrictModel):
     task: str = Field(
         min_length=1,
         max_length=task_runs.MAX_TASK_BYTES,

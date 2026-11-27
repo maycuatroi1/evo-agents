@@ -28,7 +28,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chats.models.access import ChatAccess, LabelProject, LabelReader, shares_part
 from evo_agents.hub.server.chats.models.members import SHARE_HINT
@@ -40,7 +39,7 @@ from evo_agents.hub.server.chats.service.access import agent_projects, chat_acce
 from evo_agents.hub.server.chats.service.notices import notice_added
 from evo_agents.hub.server.chats.service.views import chat_view
 from evo_agents.hub.server.profile_store import Profile, by_handle
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 
 async def addable_agent(conn: AsyncConnection, user: Principal, handle: str) -> Profile:
@@ -50,7 +49,7 @@ async def addable_agent(conn: AsyncConnection, user: Principal, handle: str) -> 
     role = None if profile is None else await store.role_on(conn, user.user_id, profile.project_id)
     if profile is None or role is None:
         raise HTTPException(404, f"no agent @{handle} that you can see: see `evo-agents hub agent list`")
-    if not has_role(role, "writer"):
+    if not holds(role, "writer"):
         raise HTTPException(
             403,
             f"adding @{handle} to a chat needs the writer role on project {profile.project}, whose agent it is; "

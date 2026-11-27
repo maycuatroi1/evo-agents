@@ -31,16 +31,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_questions as model
 from evo_agents.hub import kg_snapshots, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_eval_starter import set_digest
 from evo_agents.hub.kg_graph import GraphUnavailable, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs
 from evo_agents.hub.server.kg_audience import agent_audience
 from evo_agents.hub.server.projects import project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import CurrentUser, Principal, holds
 from evo_agents.hub.tables_kg import INIT_ACTIVE
 from evo_agents.kg.evaluate import HOLDOUT, split_of
 
@@ -330,7 +329,7 @@ async def put_questions(
     engine = request.app.state.engine
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
-        if not has_role(access.role, "writer"):
+        if not holds(access.role, "writer"):
             raise HTTPException(
                 403, f"sending the starter questions of project {access.name} needs the writer role on it"
             )

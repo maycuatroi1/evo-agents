@@ -18,7 +18,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import (
@@ -54,7 +53,7 @@ from evo_agents.hub.server.runs.service.views import (
     trace_busy,
 )
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
-from evo_agents.hub.server.security import WEB, Principal
+from evo_agents.hub.server.security import WEB, Principal, holds
 from evo_agents.hub.server.workers.repository import placement as worker_placement
 from evo_agents.plugins.runtimes import is_plugin_runtime
 
@@ -62,7 +61,7 @@ log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logge
 
 
 def check_dispatcher(access: ProjectAccess) -> None:
-    if not has_role(access.role, "writer"):
+    if not holds(access.role, "writer"):
         held = access.role or "no grant"
         raise HTTPException(
             403, f"dispatching runs in project {access.name} needs the writer role on it; you hold {held}"

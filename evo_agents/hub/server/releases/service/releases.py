@@ -10,7 +10,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, releases
-from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, run_access_rules
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -35,7 +34,7 @@ from evo_agents.hub.server.releases.repository import schedules as schedules_rep
 from evo_agents.hub.server.releases.repository import tags as tags_repo
 from evo_agents.hub.server.releases.repository.cycles import unfinished
 from evo_agents.hub.server.releases.service.check import cancel_queued, check, close_idle
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ log = logging.getLogger(__name__)
 
 
 def require_admin(access: ProjectAccess, doing: str) -> None:
-    if not has_role(access.role, "admin"):
+    if not holds(access.role, "admin"):
         held = access.role or "no grant"
         raise HTTPException(403, f"{doing} of project {access.name} needs the admin role on it; you hold {held}")
 

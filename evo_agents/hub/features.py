@@ -36,7 +36,7 @@ INSTANCE = "instance"
 PROJECT = "project"
 LAYERS = (INSTANCE, PROJECT)
 
-_PROJECT = r"(?P<project>[a-z0-9][a-z0-9-]{0,99})"  # admin.PROJECT_NAME, as a group of a route's path
+_PROJECT = r"(?P<project>[a-z0-9][a-z0-9-]{0,99})"  # base.models.PROJECT_NAME, as a group of a route's path
 
 
 def _owned(*heads: str) -> re.Pattern:

@@ -13,7 +13,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import browser_login, runs
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.base.auditor import Auditor
 from evo_agents.hub.server.base.errors import Conflict, Forbidden, NotFound, Unprocessable
@@ -23,7 +22,7 @@ from evo_agents.hub.server.browser.repository.profiles import locked
 from evo_agents.hub.server.browser.service.profiles import retire_profiles
 from evo_agents.hub.server.browser.service.shapes import BrowserIdentityCreate
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ log = logging.getLogger(__name__)
 def identity_can_manage(row, user: Principal, access: ProjectAccess) -> bool:
     if row.owner_kind == "member":
         return row.owner_id == user.user_id
-    return has_role(access.role, "admin")
+    return holds(access.role, "admin")
 
 
 def identity_view(row, project: str, user: Principal, access: ProjectAccess) -> BrowserIdentity:
@@ -74,7 +73,7 @@ async def shown(
 async def list_identities(conn: AsyncConnection, user: Principal, project: str) -> list[BrowserIdentity]:
     """The project's identities and the caller's own in it, never another member's, and its agents' for an admin."""
     access = await project_access(conn, user, project)
-    agents = has_role(access.role, "admin")
+    agents = holds(access.role, "admin")
     rows = await repository.listed(conn, access.project_id, user.user_id, agents=agents)
     return [identity_view(row, project, user, access) for row in rows]
 
@@ -105,7 +104,7 @@ async def identity_worker(conn: AsyncConnection, user: Principal, access: Projec
 
 def may_create(access: ProjectAccess, owner: str) -> None:
     needed = "writer" if owner == "member" else "admin"
-    if not has_role(access.role, needed):
+    if not holds(access.role, needed):
         held = access.role or "no grant"
         whose = "your own" if owner == "member" else f"{'the project' if owner == 'project' else 'an agent'}'s"
         raise Forbidden(

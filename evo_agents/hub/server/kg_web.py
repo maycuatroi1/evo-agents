@@ -53,7 +53,7 @@ from evo_agents.hub.kg_entity_graph import (
 )
 from evo_agents.hub.kg_graph import BuiltGraph, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
-from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs, snapshot_view
 from evo_agents.hub.server.kg_audience import reader_audience

@@ -39,7 +39,6 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, JSONPATH
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
-from evo_agents.hub.access import has_role
 from evo_agents.hub.server.accounts.repository import pool_runs as pooled_runs
 from evo_agents.hub.server.accounts.service import pool_runs as pool_accounts
 from evo_agents.hub.server.autonomy.service import runs as run_autonomy
@@ -49,7 +48,7 @@ from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensur
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunOrigin, RunProfile, available
 from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
-from evo_agents.hub.server.security import Principal
+from evo_agents.hub.server.security import Principal, holds
 from evo_agents.plugins.run_environments import HOST
 
 NOTHING = "nothing was dispatched"
@@ -109,7 +108,7 @@ async def profile_named(conn: AsyncConnection, user: Principal, access: ProjectA
             other = await project_access(conn, user, profile.project)
         except HTTPException:
             raise missing from None
-        if not has_role(other.role, "writer"):
+        if not holds(other.role, "writer"):
             raise HTTPException(
                 403,
                 f"agent @{handle} belongs to project {profile.project}, and a run under it needs the writer role "
