@@ -10,9 +10,9 @@ from fastapi import Path
 from pydantic import BaseModel, Field
 
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.work_status_models import WorkStatus, WorkWaiting
 
+MAX_ID = 2**63 - 1  # bigint
 MAX_TRACES = 200  # traces a list or the metrics read at most
 MAX_WINDOW_TRACES = 2000  # traces the spread of a window reads at most, the newest first
 MAX_DAYS = 365
