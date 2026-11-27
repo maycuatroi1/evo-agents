@@ -23,9 +23,8 @@ from evo_agents.hub.kg_graph import GraphUnavailable, reading
 from evo_agents.hub.server import kg_run_access
 from evo_agents.hub.server.base.models import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import GRAPHS_TRIED, REFUSALS, Sink, built_graphs, member, read_sink, snapshot_view
-from evo_agents.hub.server.kg_audience import reader_audience
-from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.kg import REFUSALS, Sink
+from evo_agents.hub.server.kg.service.tools import read_sink, readable_graphs, snapshot_view
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg import grep_links
 
@@ -66,11 +65,7 @@ async def grep_links_of(request: Request, project: ProjectName, body: GrepLinks,
     """What the project's latest graph links to the lines a grep matched (see the module)."""
     state = request.app.state
     sink = kg_run_access.sink(user, body.sink)  # a KG run's token reads as the agents do, whatever it names
-    async with state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        member(access)
-        graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
-        audience = await reader_audience(conn, user) if graphs else frozenset()
+    access, graphs, audience = await readable_graphs(state.engine, user, project)
     if not graphs:
         raise HTTPException(409, f"project {project} has no knowledge graph on the hub yet: build it first")
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, sink), audience)
