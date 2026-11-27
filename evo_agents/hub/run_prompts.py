@@ -25,6 +25,7 @@ from evo_agents.hub.runs import (
     SHORT_BYTES,
     clip,
     plan_steps,
+    read_only,
     step_status,
     text_of,
 )
@@ -50,6 +51,7 @@ LIST_TITLE_BYTES = 120  # the title of a step in a plan run's list of steps
 LIST_DEPENDS_BYTES = 120  # and its depends_on
 STEP_LIST_BYTES = 12 * 1024  # the whole list; the steps past it are counted, and the plan file has them
 REPOS_BYTES = 3 * 1024  # a plan run's repos with their branches and worktrees
+CONTEXT_REPOS_BYTES = 1024  # and the repos it only reads, with their worktrees
 
 
 # The prompt of a run of one step
@@ -301,6 +303,8 @@ def _repo_lines(repos: list, worktrees: dict) -> list[str]:
     lines = []
     for entry in repos:
         entry = entry if isinstance(entry, dict) else {"repo": entry}
+        if read_only(entry):  # listed apart, by _context_lines
+            continue
         name = text_of(entry.get("repo"))
         branch = _line(entry.get("branch"), SHORT_BYTES, "the branch checked out")
         worktree = _line(worktrees.get(name, name), SHORT_BYTES, "not made yet")
@@ -308,6 +312,33 @@ def _repo_lines(repos: list, worktrees: dict) -> list[str]:
     if not lines:
         return ["- none named; the plan file says which repos the steps are in"]
     return _packed(lines, REPOS_BYTES, f"- and {{left}} more repos, which {PLAN_FILE} lists")
+
+
+CONTEXT_REPOS_RULE = (
+    "Repositories this plan reads as context, read-only, each in a worktree under the current directory detached at "
+    "the commit origin's default branch had when the run started. Read the documents and designs the plan points to "
+    "in these worktrees, never in another clone or worktree on this machine, which may be out of date. Change nothing "
+    "in them: the worker commits, pushes and lands none of them, and `evo-agents worker step` reports no step in them."
+)
+
+
+def _context_lines(repos: list, worktrees: dict) -> list[str]:
+    """The repos of the run it only reads (``runs.READ_ONLY``), each with its worktree, after what the agent must know
+    of them; none when it has none."""
+    lines = []
+    for entry in repos:
+        if not read_only(entry):
+            continue
+        name = text_of(entry.get("repo"))
+        worktree = _line(worktrees.get(name, name), SHORT_BYTES, "not made yet")
+        lines.append(f"- {_line(name, SHORT_BYTES, 'unnamed')}: worktree {worktree}, read-only")
+    if not lines:
+        return []
+    return [
+        "",
+        CONTEXT_REPOS_RULE,
+        *_packed(lines, CONTEXT_REPOS_BYTES, f"- and {{left}} more, which {PLAN_FILE} lists"),
+    ]
 
 
 def _step_line(step, index: int) -> str:
@@ -364,6 +395,7 @@ def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, au
         "",
         "Repositories of this run, each in a worktree of its own under the current directory:",
         *_repo_lines(repos if isinstance(repos, list) else [], worktrees),
+        *_context_lines(repos if isinstance(repos, list) else [], worktrees),
     ]
     for heading, value, budget in (
         ("# Goal of the plan", plan.get("goal"), GOAL_BYTES),
@@ -432,6 +464,7 @@ def build_step_session_prompt(
         "",
         "Repositories of this run, each in a worktree of its own under the current directory:",
         *_repo_lines(repos if isinstance(repos, list) else [], worktrees or {}),
+        *_context_lines(repos if isinstance(repos, list) else [], worktrees or {}),
     ]
     if text_of(plan.get("context")):
         lines += ["", "# Context of the plan, shortened", clip(text_of(plan.get("context")), CONTEXT_BYTES)]

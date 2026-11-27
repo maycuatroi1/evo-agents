@@ -46,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import tables
 from evo_agents.hub.autonomy import AUTO
 from evo_agents.hub.plans import PlanProblem
+from evo_agents.hub.runs import work_repos
 from evo_agents.hub.server.autonomy.service.policies import effective_policy
 from evo_agents.hub.server.credentials.models.sealing import Sealer
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
@@ -161,8 +162,8 @@ async def wanted(conn: AsyncConnection, project_id: int) -> list[Wanted]:
             continue
         branches = {
             entry["repo"]: entry.get("branch")
-            for entry in run.repos or []
-            if isinstance(entry, dict) and entry.get("repo") and entry["repo"] not in released[item.plan_id]
+            for entry in work_repos(run.repos)  # a repo the run only read has no pull request
+            if entry.get("repo") and entry["repo"] not in released[item.plan_id]
         }
         origins = await repo_origins(conn, project_id, run.dispatched_by, branches)
         for repo, branch in branches.items():

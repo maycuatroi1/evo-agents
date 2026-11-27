@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from evo_agents.hub.autonomy_levels import Choice
     from evo_agents.hub.server.changes.models.views import CuratorPolicy
 
+CONTEXT_READS = "{repo} is one of the plan's context_repos, which the plan run only reads: a token that reads"
+
 # What a run may get
 
 
@@ -58,6 +60,7 @@ class LeaseRun:
     profile_project_id: int | None = None  # the project of the profile: where its accounts are bound
     principal_id: int | None = None  # who it acts for (runs.principal_id); None for a local run or one before 0113
     as_owner: bool = False  # its owner lets it call the hub as them (``run_access``)
+    reads: tuple[str, ...] = ()  # the repos of a plan run it only reads (its plan's context_repos, ``runs.READ_ONLY``)
     account_pool_id: int | None = None  # its profile's account pool (``account_pools``)
     account_pool: str | None = None  # that pool's name
 
@@ -211,6 +214,7 @@ async def held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock: 
         owner_id=row.dispatched_by,
         owner=row.owner,
         repos=run_repos(row.kind, row.repo, row.repos),
+        reads=tuple(runs.read_only_names(row.repos)) if row.kind == "plan" else (),
         owner_github_id=row.github_id,
         profile_id=row.profile_id,
         profile_version=row.profile_version,
@@ -325,6 +329,9 @@ async def survey_run(
     survey.withheld = [f"env:{row.name}" for row in withheld]
     survey.ended = tuple(sorted(claimed - {row.env_var for row in accounts if not row.ended}))
     choose(survey)
+    for repo in run.reads:  # a repo the plan run only reads gets a GitHub token that reads, never one that writes
+        if repo in survey.github:
+            survey.read_only.setdefault(repo, CONTEXT_READS.format(repo=repo))
     return worker_id, survey
 
 

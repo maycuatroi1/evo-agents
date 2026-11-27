@@ -28,6 +28,7 @@ import re
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from evo_agents.hub.runs import work_repos
 from evo_agents.hub.server.forge.client.github_app import GitHubApp
 from evo_agents.hub.server.forge.models.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.loop.view import RELEASED
@@ -47,7 +48,8 @@ def _released(body) -> dict[str, str]:
 
 
 def _run_repos(row) -> set[str]:
-    found = {entry["repo"] for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo")}
+    """The repos the run worked in: a plan run's context_repos, which it only read, never land."""
+    found = {entry["repo"] for entry in work_repos(row.repos) if entry.get("repo")}
     return found or ({row.repo} if row.repo else set())
 
 

@@ -326,6 +326,8 @@ _DAEMON_REASONS = {  # the conditions a newer daemon passes: {version} is the wo
     "repoless_review": "its daemon (evo-agents {version}) runs no review with no repo: update it and restart it",
     "probe_change_arms": "its daemon (evo-agents {version}) does not build a probe's arms at the change's commits: "
     "update it and restart it",
+    "context_repos": "its daemon (evo-agents {version}) does not check out the repos a plan reads as context "
+    "read-only: update it and restart it",
 }
 _REASONS = {
     "project": _project_reason,

@@ -71,6 +71,17 @@
         "$ref": "#/$defs/repo"
       }
     },
+    "context_repos": {
+      "type": "array",
+      "description": "repos of the project the plan reads and never changes (design documents, specs): a plan run checks each out detached at origin's default branch beside the repos it works in, and never commits, pushes or opens a pull request there; a repo the plan's repos or steps name is worked in instead",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+      }
+    },
     "steps": {
       "type": "array",
       "items": {

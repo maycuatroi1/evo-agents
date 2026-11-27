@@ -2116,6 +2116,31 @@ that no step's `acceptance` names, unless it is `invariant: true`. A step's `acc
 such as `a1; a9`; only its words of the form `a<number>` are checked against the criteria, so the sentences older
 plans hold there pass. Each is a warning: the hub stores the plan anyway.
 
+### Repos a plan reads as context
+
+A plan run checks out only the repos its plan works in: the repo of each step not done, with the branch the plan's
+`repos` names for it. When the steps read files of another repo of the project and change none of them (a design, a
+specification, a document kept in a repo of its own), list that repo in `context_repos`:
+
+```yaml
+repos:
+  - repo: lumen-web
+    branch: feat/checkout
+context_repos: [lumen-design]
+steps:
+  - id: 1
+    repo: lumen-web
+    what: Build the checkout page as lumen-design/ux/checkout.md and its canvas files describe it.
+```
+
+The plan run then checks each of them out beside the others, detached at the commit origin's default branch has once
+the worker fetched it, and the agent reads it there rather than in a clone elsewhere on the machine, which may be weeks
+old. The run commits, pushes and lands nothing in such a repo: the worker asks git only to read it, opens no pull
+request there, `evo-agents worker step` reports no step in it, and the plan's merged state, the merge queue and the
+Loop's merge rules count only the repos the run works in. A repo of `context_repos` that the plan's `repos` or a step
+names is worked in instead, and `evo-agents harness validate` warns of it, as of a repo `harness.yaml` does not
+declare ([workers.md, Plan runs](workers.md#plan-runs)).
+
 ### Proof of a step's criteria
 
 A step done whose `acceptance` names criteria of the plan's `acceptance` keeps one proof for each in `proofs`

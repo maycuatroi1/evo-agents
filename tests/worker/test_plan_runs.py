@@ -40,6 +40,7 @@ from evo_agents.worker import gitops
 from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import WorkerConfig, WorkerHome
 from evo_agents.worker.run import ANSWER_PROMPT
+from evo_agents.worker.runner import access as access_module
 from evo_agents.worker.runner import sessions
 from evo_agents.worker.runner.conversation import KEEP_GOING_PROMPT
 from evo_agents.worker.selfupdate.updater import SelfUpdate
@@ -344,6 +345,64 @@ def test_two_repos_get_two_worktrees_and_a_failed_verify_pushes_nothing(machine)
     record = machine.home.load_run(run_id)
     assert record["kind"] == "plan" and record["dir"] == str(directory) and record["finished_at"]
     assert [item["repo"] for item in record["repos"]] == ["alpha", "beta"]
+
+
+def test_a_context_repo_is_read_at_origins_tip_and_never_pushed_or_asked_to_push(machine, tmp_path, monkeypatch):
+    # a plan run checked out only the repos it worked in, so its agent read a design in a stale clone elsewhere
+    machine = Machine(tmp_path / "three", ("alpha", "beta", "docs"))
+    seed = tmp_path / "three" / "seed" / "docs"
+    (seed / "DESIGN.md").write_text("the design, as reviewed\n", encoding="utf-8")
+    git("add", "DESIGN.md", cwd=seed)
+    git("commit", "--quiet", "-m", "the design", cwd=seed)
+    git("push", "--quiet", str(machine.origins["docs"]), "main", cwd=seed)  # the checkout here has not fetched it
+    tip = git("rev-parse", "HEAD", cwd=seed)
+    asked: list[tuple[str, bool]] = []
+
+    async def can_reach(checkout, run_id, *, push, env):
+        asked.append((checkout.name, push))
+        return ("push", "Permission denied") if push and checkout.name == "docs" else None
+
+    monkeypatch.setattr(access_module.preflight, "is_local", lambda url: False)  # the preflight asks every origin
+    monkeypatch.setattr(access_module.preflight, "can_reach", can_reach)
+    plan = {**plan_body(), "context_repos": ["docs"]}
+    repos = [*run_repos(plan), {"repo": "docs", "branch": None, "read_only": True}]
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {
+                    "sh": "git -C docs rev-parse HEAD; git -C docs symbolic-ref -q HEAD || echo detached; cat docs/DESIGN.md"
+                },
+                {"cli": ["step", "1", "in_progress", "--repo", "docs"]},
+                {"write": {"alpha/a.txt": "a\n", "docs/DESIGN.md": "changed by the agent\n"}},
+                {"cli": ["step", "1", "done", "--repo", "alpha", "--evidence", "Wrote a.txt.", "--verify", "true"]},
+                {"result": {"summary": "Step 1 done."}},
+            ]
+        }
+    )
+    found = {}
+
+    async def body(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, repos)
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, body, plan=plan)
+    run_id, hub = found["run"], found["hub"]
+    looked, refused = machine.commands()[:2]
+    assert looked["stdout"].splitlines() == [tip, "detached", "the design, as reviewed"], "origin's tip, fetched"
+    assert refused["exit"] == 1 and "only reads docs" in refused["stderr"], refused
+    assert sorted(asked) == [("alpha", True), ("beta", True), ("docs", False)], "docs is read, never pushed to"
+    assert [(item["key"], item["repo"]) for item in hub.step_reports] == [("1", "alpha")]
+    assert machine.origin("docs", "for-each-ref", "--format=%(refname) %(objectname)") == f"refs/heads/main {tip}"
+    assert any("The agent changed 1 path(s) of docs" in text for text in hub.texts(run_id)), hub.texts(run_id)
+    assert "- docs: worktree docs, read-only" in machine.starts()[0]["prompt"]
+    record = machine.home.load_run(run_id)
+    assert [(item["repo"], item.get("read_only", False)) for item in record["repos"]] == [
+        ("alpha", False),
+        ("beta", False),
+        ("docs", True),
+    ]
 
 
 def test_a_default_branch_the_plan_names_is_pushed_with_a_notice(machine):
@@ -1473,6 +1532,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "repoless_review",
             "reattach",
             "probe_change_arms",
+            "context_repos",
         ]
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
         assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))

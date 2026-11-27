@@ -549,7 +549,9 @@ byte (`tests/hub/golden/step-prompts-0.3.0.json`).
 ### The prompt of a plan run
 
 `build_plan_prompt(plan, repos, worktrees)` gives the agent of a plan run, in this order: rules, each repo of the run
-with its branch and worktree, the plan's goal and context (shortened as above), and one line per step not done yet
+it works in with its branch and worktree, the repos it only reads (the plan's `context_repos`) with their worktrees
+under a line that says to read the documents the plan points to there, never in another clone on the machine, and to
+change nothing in them, the plan's goal and context (shortened as above), and one line per step not done yet
 (key, status, title, repo and `depends_on`). The steps' what, verify and note stay in `.evo-run/plan.yaml`, which the
 daemon writes above the worktrees, so a plan of any length fits in 32 KiB: a plan of 60 steps takes about 18 KiB, the
 step list has 14 KiB, and steps past it are counted on a last line that points to the file. The rules tell the agent
@@ -615,6 +617,9 @@ agent of an author run, in this order: rules, each repo of the run with its work
 - put the plan with `evo-agents worker put FILE`, a new id for a new plan, or, for a run on a plan, read it with
   `evo-agents worker plan --json` and put it with `--if-revision`; keep the progress the hub holds, read again on a
   409, and fix what a 422 or 413 says;
+- list in the plan's `context_repos` each other repo of the project whose files the steps read and do not change (a
+  design, a specification), since a plan run checks out only the repos its plan works in, while this run has every
+  repo of the project ([Repos a plan reads as context](hub.md#repos-a-plan-reads-as-context));
 - end each turn once the plan is on the hub with its id and revision, and write `.evo-run/result.json` with a
   `summary`.
 
@@ -636,7 +641,11 @@ trace is active the plan's step runs and plan runs get 409 (`evo-agents hub run 
 system in the web's Run plan dialog; [hub.md, A plan run in a system](hub.md#a-plan-run-in-a-system)).
 
 On the worker the run gets a directory with a worktree of each of its repos on that repo's branch, and the agent works
-in that directory with the plan in `.evo-run/plan.yaml`. The agent does the steps in the order `depends_on` allows,
+in that directory with the plan in `.evo-run/plan.yaml`. A repo the run only reads gets a worktree too, detached at the
+commit origin's default branch has once the worker fetched it, as a review run reads; the preflight asks git to read
+it, never to push to it, and checks no pull request there; it gets a GitHub token that reads, no Python environment and
+no push at the run's end, where a change the agent left in it is noted and stays in its worktree; and `evo-agents
+worker step` refuses a step in it, as the hub does (422). The agent does the steps in the order `depends_on` allows,
 the way execute-plan does, and reports each through `evo-agents worker step`: the worker runs the step's verify
 commands again in the repo's worktree, commits and pushes that repo's branch, and the hub writes the step
 `in_progress`, `done` with its evidence, or back to `pending`, as the member who dispatched the run. A run that ends
@@ -664,7 +673,10 @@ answers 409, and queues nothing, when the plan has no pending step, when the pla
 or when a step
 that is not done names no repo and the plan does not list exactly one. The run has kind `plan`, approval `auto`, the
 plan's title, no step key and no repo, and `repos`: the repo of each step not done, once each in plan order, with the
-branch the plan's `repos` names for it (null when it names none). A dispatch of steps (`POST .../runs`, and a rerun)
+branch the plan's `repos` names for it (null when it names none), then each repo of the plan's `context_repos` that is
+not among them, with no branch and `"read_only": true` ([Repos a plan reads as
+context](hub.md#repos-a-plan-reads-as-context)); a dispatch pinned to a worker whose daemon does not list
+`context_repos` in its heartbeat's `features` gets 409. A dispatch of steps (`POST .../runs`, and a rerun)
 and a dispatch of a plan run take the same transaction-scoped advisory lock of the plan before they look at its
 active runs, so they cannot both get in: a step of a plan with an active plan run gets 409 (`plan X has plan run #N,
 ...`), and so does a plan run while a run of one of its steps is active. `ready-steps` answers the plan's active plan
@@ -1384,7 +1396,9 @@ id, project, plan, step key and title, plan revision, attempt, max attempts, par
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
 from), with the run's `kind`, `model` and `routing` (what the hub's Token strategy chose when the policy has model
 routing on, see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
-once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
+once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`, those it only reads
+included, and one with a repo it only reads only by a daemon that lists `context_repos` in `features`; its answer has
+no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
 `budget`, its caps (`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`,
@@ -1479,7 +1493,9 @@ that is not its project's default a config dir of its own ([The config dir of an
 without which the hub hands such a run, one asking claude-code or one whose claim would pick it, to no daemon; and
 `autonomy`, a daemon that reads the snapshot of autonomy the claim carries and runs the hook of autonomy on a
 claude-code run ([The hook of autonomy](#the-hook-of-autonomy)), without which the hub hands it no run whose principal
-has a class below auto. This daemon sends every kind of `runs.RUN_KINDS` and
+has a class below auto; and `context_repos`, a daemon whose plan run checks out the repos its plan only reads
+read-only and never pushes them ([Plan runs](#plan-runs)), without which the hub hands it no plan run with such a repo,
+as an older daemon would push it. This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,

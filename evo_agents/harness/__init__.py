@@ -505,7 +505,31 @@ def plan_semantics(data: dict, path: Path, harness: Harness | None = None) -> li
         issues += _repo_issues(step.get("repo"), f"steps[{i}].repo", repos)
         if isinstance(step.get("evidence"), str):
             issues += _evidence_issues(step["evidence"], f"steps[{i}].evidence", repos)
-    return issues + _structure_issues(data)
+    return issues + _context_repo_issues(data, repos) + _structure_issues(data)
+
+
+def _context_repo_issues(data: dict, known: set[str] | None) -> list[Issue]:
+    """Each of the plan's context_repos the manifest does not declare, and, as a warning, each one the plan also
+    works in (its repos or a step names it), which a plan run checks out on its branch instead."""
+    named = data.get("context_repos")
+    named = named if isinstance(named, list) else []
+    working = {entry.get("repo") for entry in data.get("repos") or [] if isinstance(entry, dict)}
+    working |= {step.get("repo") for step in data.get("steps") or [] if isinstance(step, dict)}
+    issues: list[Issue] = []
+    for i, name in enumerate(named):
+        if not isinstance(name, str):
+            continue
+        issues += _repo_issues(name, f"context_repos[{i}]", known)
+        if name in working:
+            issues.append(
+                Issue(
+                    f"context_repos[{i}]",
+                    f"the plan works in {name} too: a plan run checks it out on its branch and pushes it, so drop it "
+                    "from context_repos",
+                    "warning",
+                )
+            )
+    return issues
 
 
 # The shape create-exec-plan asks of a plan, which a draft written by hand often misses: step ids unique and

@@ -9,7 +9,10 @@ each step when it was dispatched with ``session_per_step`` (``sessions``).
    push still goes to the plan's branch), and writes the plan as claimed to ``.evo-run/plan.yaml`` there. A repo the
    plan names no branch for fails the run before the agent starts, and so does a default branch the plan does not
    name for the repo. Each worktree whose repo asks for a Python environment gets it (``venv``), its ``.venv/bin``
-   first on the agent's PATH.
+   first on the agent's PATH. A repo the run only reads (the plan's ``context_repos``, ``runs.READ_ONLY``) is
+   checked out too, detached at origin's default branch as a review run reads it (``RunDirectory.detached``); the
+   preflight checks that git reads it, never that it pushes there or opens a pull request, and it gets no Python
+   environment.
 2. ``running``: the agent works in that directory, with EVO_RUN_ID, EVO_RUN_KIND and EVO_WORKER_HOME, and reports
    each step itself through ``evo-agents worker step`` (which runs the step's verify commands again, commits, pushes
    the repo's branch and sends the step report), asks its owner through ``evo-agents worker ask``, and notifies with
@@ -26,8 +29,9 @@ each step when it was dispatched with ``session_per_step`` (``sessions``).
    getting done; a run whose agent still leaves steps to do then pushes as below and fails with ``steps_left``,
    rather than ending done with its plan unfinished.
 4. Once a turn ends with nothing to wait for, the daemon reports ``verifying`` and commits (leaving out what a run
-   of one step leaves out) and pushes what each repo has left, never forced (a default branch only when the plan
-   names it, with the notice ``push_default_branch``), and reports ``done`` with the agent's summary from
+   of one step leaves out) and pushes what each repo it works in has left, never forced (a default branch only when
+   the plan names it, with the notice ``push_default_branch``; a repo it only reads is noted when the agent changed
+   it, and left as it is), and reports ``done`` with the agent's summary from
    ``.evo-run/result.json``: no verify commands run at the end, since ``evo-agents worker step`` ran each step's. A
    default branch the remote moved on gets the run's commits on top of its tip (``gitops.Replay``); when they do not go
    on top, they go to ``evo-run/<run>``, the owner gets the notice ``run_failed`` naming it, and the run fails with
@@ -110,14 +114,15 @@ class PlanRun:
         )
         cls = run.agent.runtime_class()
         run.agent.check_interactive(cls)
-        if not repos:
+        if not runs.work_repos(repos):
             raise RunFailed("the plan run names no repo to work in")
         names = [entry.get("repo") for entry in repos]
+        pushes = access.repo_names(entry.get("repo") for entry in runs.work_repos(repos))  # none it only reads
         await access.take_credentials(run, names)
         run.check()
         verify_commands = runs.open_verify(self.plan_body())
-        pulls = await self.pull_repos(repos)
-        await access.check(run, names, path=access.run_path(run), pushes=names, pulls=pulls, verify=verify_commands)
+        pulls = await self.pull_repos(runs.work_repos(repos))
+        await access.check(run, names, path=access.run_path(run), pushes=pushes, pulls=pulls, verify=verify_commands)
         run.check()
         await self.prepare(repos, cls)
         run.check()
@@ -208,11 +213,18 @@ class PlanRun:
         for name, workspace in list(directory.workspaces.items()):  # a default branch is pushed while the plan names it
             directory.workspaces[name] = dataclasses.replace(workspace, plan_branch=named.get(name))
         wanted: dict[str, tuple[str, Path]] = {}  # repo -> its branch and checkout, for each worktree to make
+        reads: dict[str, Path] = {}  # repo -> its checkout, for each repo the run only reads
         for entry in repos:
             name = entry.get("repo")
             if not isinstance(name, str) or not name:
                 raise RunFailed("the plan run names a repo without a name")
-            if name in directory.workspaces or name in wanted:
+            if name in directory.workspaces or name in wanted or name in reads:
+                continue
+            if runs.read_only(entry):
+                checkout = run.daemon.checkout_for(run.project, name)
+                if checkout is None:
+                    raise RunFailed(f"this worker has no checkout of {run.project}/{name}, which the plan reads")
+                reads[name] = checkout
                 continue
             branch = entry.get("branch")
             if not isinstance(branch, str) or not branch:
@@ -226,11 +238,16 @@ class PlanRun:
             wanted[name] = (branch, checkout)
 
         async def make(name: str, folder: str) -> gitops.Workspace:
+            if name in reads:  # detached at origin's default branch, as a review run reads
+                return await directory.detached(name, reads[name], folder)
             branch, checkout = wanted[name]
             return await self.make_worktree(name, branch, named.get(name), checkout, folder)
 
-        await directory.make_each(list(wanted), make)
-        await venv.prepare(run, [(name, workspace.worktree) for name, workspace in directory.workspaces.items()])
+        await directory.make_each([*wanted, *reads], make)
+        worked = [
+            (name, workspace.worktree) for name, workspace in directory.workspaces.items() if not workspace.read_only
+        ]
+        await venv.prepare(run, worked)
         self.write_plan()
         directory.save()
 
@@ -351,10 +368,30 @@ class PlanRun:
         total = {"files": 0, "insertions": 0, "deletions": 0}
         named = await self.named_branches()
         for name, workspace in self.directory.workspaces.items():
+            if workspace.read_only:  # one of the plan's context_repos: nothing of it is committed or pushed
+                await self.note_read_only(name, workspace)
+                continue
             stat = await self.push_repo(name, workspace, named.get(name))
             for key in total:
                 total[key] += stat[key]
         return total
+
+    async def note_read_only(self, name: str, workspace: gitops.Workspace) -> None:
+        """Say in the run's log that the agent changed ``name``, a repo the run only reads, and that the worker
+        leaves those changes in its worktree, unpushed; nothing when it changed nothing."""
+        path = workspace.worktree
+        if not path.is_dir():
+            return
+        try:
+            changed = await gitops.changed_paths(path, workspace.base)
+        except gitops.GitError:
+            return
+        if changed:
+            self.run.note(
+                f"The agent changed {len(changed)} path(s) of {name}, which the plan only reads (context_repos): the "
+                f"worker commits and pushes none of them, and leaves them in {path}.",
+                repo=name,
+            )
 
     async def push_repo(self, name: str, workspace: gitops.Workspace, plan_branch: str | None) -> dict:
         """Commit what the agent left in the worktree of ``name`` and push its branch; the repo's diffstat."""

@@ -503,6 +503,30 @@ def test_a_plan_run_with_a_session_per_step_goes_only_to_a_daemon_that_says_it_r
     assert worker_view(client, hub["owner"], new)["features"] == []
 
 
+def test_a_plans_context_repos_are_read_only_repos_of_its_run_on_a_daemon_that_says_it_reads_them(client, hub, hub_db):
+    body = plan_body("designed")
+    body["context_repos"] = ["evo-cli", "agent-skills"]  # agent-skills has a step to do: the run works in it
+    push(client, hub["owner"], body)
+    context = {"repo": "evo-cli", "branch": None, "read_only": True}
+    every = {**CHECKOUTS, f"{PROJECT}/evo-cli": {"path": "/src/evo-cli", "branch": "main"}}
+    old = fleet_worker(client, hub["owner"], "old-box", checkouts=every)
+    run = dispatched_plan(client, hub["owner"], "designed")
+    assert run["repos"] == [*REPOS, context]
+    assert claim(client, old) is None and state_of(hub_db, run["id"]) == "queued", "an older daemon would push it"
+    new = with_features(client, fleet_worker(client, hub["owner"], "new-box", checkouts=every), [runs.CONTEXT_REPOS])
+    spec = claim(client, new)
+    assert spec["id"] == run["id"] and spec["repos"] == [*REPOS, context]
+    prompt = autonomy_card.without_card(spec["prompt"])
+    assert "- evo-cli: worktree evo-cli, read-only" in prompt and "- evo-cli: branch" not in prompt
+    moved(client, new, run["id"], "running")
+    refused = step_report(client, new, run["id"], 2, "in_progress", repo="evo-cli")
+    assert refused.status_code == 422 and "only reads evo-cli" in refused.json()["message"], refused.text
+    assert reported(client, new, run["id"], 2, "in_progress", repo="evo-agents")["status"] == "in_progress"
+    push(client, hub["owner"], plan_body("plain"))
+    plain = dispatched_plan(client, hub["owner"], "plain")
+    assert plain["repos"] == REPOS and claim(client, old)["id"] == plain["id"], "a plan without one goes to any"
+
+
 def test_a_run_of_one_step_is_still_claimed_by_a_worker_with_its_repo_alone(client, hub):
     half = fleet_worker(
         client, hub["owner"], "half-box", checkouts={f"{PROJECT}/evo-agents": CHECKOUTS[f"{PROJECT}/evo-agents"]}

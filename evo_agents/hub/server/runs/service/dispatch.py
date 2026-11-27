@@ -201,11 +201,13 @@ def unfit(
     *,
     session_per_step: bool = False,
     browser: bool = False,
+    context: bool = False,
 ) -> list[str]:
     """What keeps ``worker`` from ever claiming a run of ``kind`` over ``repos`` asking for ``runtime`` (a plan run
-    with a session per step when ``session_per_step``, a run with a Chromium of its own when ``browser``), as its last
-    heartbeat reported it and the claim checks it; empty when nothing does. A repo it has no checkout of keeps only an
-    older daemon from it: one that says it clones them (runs.CLONES_CHECKOUTS) clones it before the run starts."""
+    with a session per step when ``session_per_step``, a run with a Chromium of its own when ``browser``, a plan run
+    with repos it only reads when ``context``), as its last heartbeat reported it and the claim checks it; empty when
+    nothing does. A repo it has no checkout of keeps only an older daemon from it: one that says it clones them
+    (runs.CLONES_CHECKOUTS) clones it before the run starts."""
     problems = []
     if kind == "plan" and not runs.takes_plan_runs(worker.agent_version):
         problems.append(
@@ -217,6 +219,11 @@ def unfit(
             f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs a plan "
             "run with a session for each step, and would run every step in one session: upgrade it and restart its "
             "daemon, or dispatch the plan run without a session per step"
+        )
+    if context and runs.CONTEXT_REPOS not in worker.features:
+        problems.append(
+            f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not check out the repos "
+            "a plan reads as context (context_repos) read-only, and would push them: upgrade it and restart its daemon"
         )
     if kind == "probe" and runs.PROBE_CHANGE_ARMS not in worker.features:
         problems.append(
@@ -538,8 +545,9 @@ NO_PENDING = "has no pending step"  # in the refusal of a plan run of a plan wit
 
 def plan_run_repos(held) -> list[dict]:
     """The repos of a plan run of the plan ``held``: the repo of each step not done, in plan order, each once with the
-    branch the plan's repos name for it. 409 when no step is pending, or a step not done names no repo and the plan
-    does not list exactly one."""
+    branch the plan's repos name for it, then each of the plan's ``context_repos`` it does not work in, which the run
+    only reads (``runs.READ_ONLY``, no branch). 409 when no step is pending, or a step not done names no repo and the
+    plan does not list exactly one."""
     body = held.body
     steps = body.get("steps") if isinstance(body.get("steps"), list) else []
     open_steps = [
@@ -562,6 +570,8 @@ def plan_run_repos(held) -> list[dict]:
                 "one: give the step a repo; nothing was dispatched",
             )
         repos.setdefault(name, {"repo": name, "branch": _short(entry.get("branch"))})
+    for name in runs.context_repos(body):
+        repos.setdefault(name, {"repo": name, "branch": None, runs.READ_ONLY: True})
     return list(repos.values())
 
 
@@ -616,7 +626,17 @@ async def queue_plan_run(conn: AsyncConnection, user: Principal, project: str, b
     chosen = await choose(conn, user, access, body.profile, asked)
     identities, pinned = await identity_pin(conn, user, access, chosen, body.identities)
     browser = body.browser or bool(identities)
-    _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
+    context = bool(runs.read_only_names(repos))
+    _fits(
+        pinned,
+        access,
+        "plan",
+        names,
+        body.runtime,
+        session_per_step=body.session_per_step,
+        browser=browser,
+        context=context,
+    )
     values = {
         "kind": "plan",
         "project_id": access.project_id,

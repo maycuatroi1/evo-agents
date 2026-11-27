@@ -216,10 +216,16 @@ def _checked_proofs(run_id: int, key: str, body: StepReport, plan: dict, step) -
 
 
 def _report_repo(run_id: int, body: StepReport, plan: dict, step, repos: list | None) -> dict | None:
-    """The run's repo the step was done in: the one the report names (422 when the run has no such repo), else the
-    one the plan gives the step, when the run has it."""
-    by_name = {entry["repo"]: entry for entry in repos or [] if isinstance(entry, dict)}
+    """The run's repo the step was done in: the one the report names (422 when the run has no such repo, or only
+    reads it), else the one the plan gives the step, when the run works in it."""
+    by_name = {entry["repo"]: entry for entry in runs.work_repos(repos)}
     if body.repo is not None:
+        if body.repo in runs.read_only_names(repos):
+            raise HTTPException(
+                422,
+                f"run {run_id} only reads {body.repo}, one of the plan's context_repos: no step is done in it; it "
+                f"works in {', '.join(by_name) or 'no repo'}",
+            )
         if body.repo not in by_name:
             raise HTTPException(422, f"run {run_id} works in {', '.join(by_name) or 'no repo'}, not in {body.repo}")
         return by_name[body.repo]

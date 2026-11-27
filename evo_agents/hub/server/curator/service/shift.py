@@ -68,7 +68,8 @@ async def _next_plan(conn: AsyncConnection, access: ProjectAccess, charter: dict
         except HTTPException as exc:
             skipped.append(f"{plan_id}: {exc.detail}")
             continue
-        problems = duty.unfit(access.name, "plan", [entry["repo"] for entry in repos], runtime)
+        names = [entry["repo"] for entry in repos]
+        problems = duty.unfit(access.name, "plan", names, runtime, context=bool(runs.read_only_names(repos)))
         if problems:
             skipped.append(f"{plan_id}: {'; '.join(problems)}")
             continue

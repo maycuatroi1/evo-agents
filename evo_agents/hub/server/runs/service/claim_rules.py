@@ -372,6 +372,7 @@ def _gates(at: ClaimShape) -> list[Condition]:
         ("merge_judge", merge_judge_gate(at.features)),
         ("repoless_review", repoless_review_gate(at.features)),
         ("probe_change_arms", probe_gate(at.features)),
+        ("context_repos", context_repos_gate(at.features)),
         ("agent_pool", agent_placement.claim_gate(at.worker_id)),
         ("pool_accounts", pool_accounts.claim_gate()),
         ("placement", or_(agent_placement.home_run(at.worker_id), at.node.gate(at.worker_id))),
@@ -392,6 +393,17 @@ def repoless_review_gate(features):
         return true()
     r = tables.runs
     return or_(r.c.kind != "review", func.coalesce(func.jsonb_array_length(r.c.repos), 0) > 0)
+
+
+def context_repos_gate(features):
+    """The condition a queued run meets for a worker whose daemon says ``features``: a plan run with a repo it only
+    reads (the plan's context_repos, ``runs.READ_ONLY``) goes only to a daemon that checks such a repo out read-only
+    (``runs.CONTEXT_REPOS``), since an older one would take it for a repo to push."""
+    if runs.CONTEXT_REPOS in (features or ()):
+        return true()
+    r = tables.runs
+    reads = r.c.repos.contains([{runs.READ_ONLY: True}])  # jsonb @>: an entry with read_only true
+    return or_(r.c.kind != "plan", r.c.repos.is_(None), ~reads)
 
 
 def probe_gate(features):
