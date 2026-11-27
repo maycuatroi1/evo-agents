@@ -5324,7 +5324,7 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/doc_versions.py": [
+        "./evo_agents/hub/server/doc_versions/service.py": [
             {
                 "code": "reportInvalidTypeForm",
                 "range": {
