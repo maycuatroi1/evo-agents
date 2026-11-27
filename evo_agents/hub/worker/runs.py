@@ -22,7 +22,7 @@ class ExpireSeats(Job):
         from evo_agents.hub.server.run_reaper import expire_seats as expire
 
         found = hub(context)
-        return await expire(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
+        return await expire(hub_engine(context), found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
 class ReapPoolNodes(Job):
@@ -33,7 +33,7 @@ class ReapPoolNodes(Job):
         from evo_agents.hub.server.run_reaper import reap_pool_nodes as reap
 
         found = hub(context)
-        return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
+        return await reap(hub_engine(context), found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
 class HubTurn(Job):
@@ -57,7 +57,7 @@ class RecoverRuns(Job):
 
         found = hub(context)
         return await recover(
-            found.engine,
+            hub_engine(context),
             decision_wait=timedelta(seconds=found.config.decision_wait_seconds),
             sealer=found.sealer,
             # a token is revoked with itself: either App's client does
@@ -74,7 +74,7 @@ class DeliverNotifications(Job):
         from evo_agents.hub.server.notifications.service.deliveries import deliver_notifications as deliver
 
         found = hub(context)
-        return await deliver(found.engine, config=found.config, blobs=found.blobs)
+        return await deliver(hub_engine(context), config=found.config, blobs=found.blobs)
 
 
 class ReleaseSchedules(Job):
@@ -89,7 +89,7 @@ class ReleaseSchedules(Job):
         if release_pass is None:
             log.warning("no release pass was handed to this worker: no release schedule is checked")
             return {"no_release_pass": 1}
-        return await release_pass(found.engine, found.github_app)
+        return await release_pass(hub_engine(context), found.github_app)
 
 
 class CronJobs(Job):
@@ -103,7 +103,7 @@ class CronJobs(Job):
         if cron_pass is None:
             log.warning("no cron pass was handed to this worker: no cron job fires")
             return {"no_cron_pass": 1}
-        return await cron_pass(found.engine)
+        return await cron_pass(hub_engine(context))
 
 
 class LoopTicks(Job):
@@ -113,7 +113,7 @@ class LoopTicks(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.loop_jobs import queue_ticks
 
-        return await queue_ticks(hub(context).engine, context.app.job_manager)
+        return await queue_ticks(hub_engine(context), context.app.job_manager)
 
 
 class LoopNotices(Job):
@@ -123,7 +123,7 @@ class LoopNotices(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.server.brief import send_loop_notices
 
-        return await send_loop_notices(hub(context).engine)
+        return await send_loop_notices(hub_engine(context))
 
 
 class LoopTick(Job):
@@ -136,7 +136,7 @@ class LoopTick(Job):
             log.warning("no loop tick was handed to this worker: no Loop ticks", extra={"project_id": project_id})
             return {"no_loop_tick": 1}
         return await tick(
-            found.engine,
+            hub_engine(context),
             project_id,
             github_app=getattr(found, "github_app", None),
             sealer=getattr(found, "sealer", None),

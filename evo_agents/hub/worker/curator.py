@@ -9,7 +9,7 @@ import logging
 from procrastinate import JobContext
 
 from evo_agents.hub import jobs
-from evo_agents.hub.worker.job import Job, hub
+from evo_agents.hub.worker.job import Job, hub, hub_engine
 
 log = logging.getLogger("evo_agents.hub.worker")
 
@@ -22,7 +22,7 @@ class FireSchedules(Job):
         from evo_agents.hub.server.curator.service.shift import fire_schedules as fire
 
         found = hub(context)
-        return await fire(found.engine, curator_app=getattr(found, "curator_app", None) is not None)
+        return await fire(hub_engine(context), curator_app=getattr(found, "curator_app", None) is not None)
 
 
 class CuratorCollect(Job):
@@ -34,7 +34,7 @@ class CuratorCollect(Job):
 
         found = hub(context)
         app = found.github_app or found.curator_app
-        return await collect(found.engine, github_app=app, blobs=found.blobs, data_dir=found.data_dir)
+        return await collect(hub_engine(context), github_app=app, blobs=found.blobs, data_dir=found.data_dir)
 
 
 class CuratorBrief(Job):
@@ -44,7 +44,7 @@ class CuratorBrief(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.server.brief import send_briefs
 
-        return await send_briefs(hub(context).engine)
+        return await send_briefs(hub_engine(context))
 
 
 class CuratorChanges(Job):
@@ -57,7 +57,9 @@ class CuratorChanges(Job):
 
         found = hub(context)
         curator_app = getattr(found, "curator_app", None)
-        return await advance(found.engine, found.github_app, curator_app, blobs=found.blobs, data_dir=found.data_dir)
+        return await advance(
+            hub_engine(context), found.github_app, curator_app, blobs=found.blobs, data_dir=found.data_dir
+        )
 
 
 class MergeQueue(Job):
@@ -75,9 +77,13 @@ class MergeQueue(Job):
         from evo_agents.hub.server.merge.service import check as merge_check
 
         found = hub(context)
-        outcomes = await merge_gate.advance(found.engine, found.sealer, blobs=found.blobs, data_dir=found.data_dir)
-        checks = await merge_check.advance(found.engine, blobs=found.blobs, data_dir=found.data_dir)
-        merged = await merge_ancestry.settle(found.engine, getattr(found, "github_app", None), found.config.public_url)
+        outcomes = await merge_gate.advance(
+            hub_engine(context), found.sealer, blobs=found.blobs, data_dir=found.data_dir
+        )
+        checks = await merge_check.advance(hub_engine(context), blobs=found.blobs, data_dir=found.data_dir)
+        merged = await merge_ancestry.settle(
+            hub_engine(context), getattr(found, "github_app", None), found.config.public_url
+        )
         checks = {**checks, **{f"checks_{key}": value for key, value in merged.items()}}
         return {**outcomes, **checks} if checks else outcomes
 
@@ -89,7 +95,7 @@ class CuratorOutcomes(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.server.outcomes import measure_outcomes
 
-        return await measure_outcomes(hub(context).engine)
+        return await measure_outcomes(hub_engine(context))
 
 
 class ReadNightly(Job):
@@ -99,7 +105,7 @@ class ReadNightly(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.nightly import refresh
 
-        return await refresh(hub(context).engine)
+        return await refresh(hub_engine(context))
 
 
 class OpportunityDeadlines(Job):
@@ -109,7 +115,7 @@ class OpportunityDeadlines(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.server.opportunity_deadlines import remind
 
-        return await remind(hub(context).engine)
+        return await remind(hub_engine(context))
 
 
 class TodayDigest(Job):
@@ -120,7 +126,7 @@ class TodayDigest(Job):
         from evo_agents.hub.server.brief import send_today_digests
 
         found = hub(context)
-        return await send_today_digests(found.engine, config=found.config)
+        return await send_today_digests(hub_engine(context), config=found.config)
 
 
 class MemoryUpkeep(Job):
@@ -134,7 +140,7 @@ class MemoryUpkeep(Job):
         if kept is None:
             log.warning("no memory upkeep was handed to this worker: no agent's memory is archived or marked stale")
             return {"no_memory_upkeep": 1}
-        return await kept(found.engine, found.blobs, found.data_dir)
+        return await kept(hub_engine(context), found.blobs, found.data_dir)
 
 
 class ContextAnswerReuse(Job):
@@ -145,7 +151,7 @@ class ContextAnswerReuse(Job):
         from evo_agents.hub.server.context_answer_reuse import push
 
         found = hub(context)
-        return await push(found.engine, found.config)
+        return await push(hub_engine(context), found.config)
 
 
 class ReplaySuite(Job):
@@ -156,7 +162,7 @@ class ReplaySuite(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.replay_suite import build_suites
 
-        return await build_suites(hub(context).engine, hub(context).config.session_secret)
+        return await build_suites(hub_engine(context), hub(context).config.session_secret)
 
 
 class AnalyzeFacets(Job):
@@ -168,7 +174,7 @@ class AnalyzeFacets(Job):
         from evo_agents.hub.facet_job import analyze_facets as analyze
 
         found = hub(context)
-        return await analyze(found.engine, found.blobs, scratch=found.data_dir / "facets")
+        return await analyze(hub_engine(context), found.blobs, scratch=found.data_dir / "facets")
 
 
 class IndexHistory(Job):
@@ -180,4 +186,4 @@ class IndexHistory(Job):
         from evo_agents.hub.history_index import index_history as index
 
         found = hub(context)
-        return await index(found.engine, found.blobs, scratch=found.data_dir / "history")
+        return await index(hub_engine(context), found.blobs, scratch=found.data_dir / "history")

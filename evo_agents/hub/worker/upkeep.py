@@ -13,7 +13,7 @@ from sqlalchemy import delete, func
 
 from evo_agents.hub import jobs, tables
 from evo_agents.hub.blobs import STALE_AFTER, BlobStore
-from evo_agents.hub.worker.job import Job, hub
+from evo_agents.hub.worker.job import Job, hub, hub_engine
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -66,9 +66,9 @@ class CleanupUploads(Job):
         from evo_agents.hub.attachment_prune import remove_stale
 
         found = hub(context)
-        removed = await remove_stale_uploads(found.blobs, found.engine)
-        archives = await kg_upload_prune.remove_stale(found.blobs, found.engine, datetime.now(UTC))
-        return {**removed, **archives, **await remove_stale(found.engine, found.blobs)}
+        removed = await remove_stale_uploads(found.blobs, hub_engine(context))
+        archives = await kg_upload_prune.remove_stale(found.blobs, hub_engine(context), datetime.now(UTC))
+        return {**removed, **archives, **await remove_stale(hub_engine(context), found.blobs)}
 
 
 class PruneSignals(Job):
@@ -79,7 +79,7 @@ class PruneSignals(Job):
         from evo_agents.hub.signals import prune_signals as prune
 
         found = hub(context)
-        return await prune(found.engine, found.config.signal_days)
+        return await prune(hub_engine(context), found.config.signal_days)
 
 
 class PruneRunEvents(Job):
@@ -90,7 +90,7 @@ class PruneRunEvents(Job):
         from evo_agents.hub.server.run_reaper import prune_run_events as prune
 
         found = hub(context)
-        return await prune(found.engine, found.config.run_log_days, found.blobs)
+        return await prune(hub_engine(context), found.config.run_log_days, found.blobs)
 
 
 class PruneAudit(Job):
@@ -99,7 +99,7 @@ class PruneAudit(Job):
 
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         found = hub(context)
-        return await prune_audit(found.engine, found.config.audit_days)
+        return await prune_audit(hub_engine(context), found.config.audit_days)
 
 
 class PruneDigests(Job):
@@ -109,7 +109,7 @@ class PruneDigests(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.server.digests.service.sessions import prune_digests as prune
 
-        return await prune(hub(context).engine)
+        return await prune(hub_engine(context))
 
 
 class PruneTranscripts(Job):
@@ -120,7 +120,7 @@ class PruneTranscripts(Job):
         from evo_agents.hub.transcript_prune import prune_transcripts as prune
 
         found = hub(context)
-        return await prune(found.engine, found.blobs, found.config.transcript_days)
+        return await prune(hub_engine(context), found.blobs, found.config.transcript_days)
 
 
 class PruneJobs(Job):

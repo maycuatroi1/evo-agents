@@ -8,7 +8,7 @@ import logging
 from procrastinate import JobContext
 
 from evo_agents.hub import jobs
-from evo_agents.hub.worker.job import Job, hub
+from evo_agents.hub.worker.job import Job, hub, hub_engine
 
 log = logging.getLogger("evo_agents.hub.worker")
 
@@ -45,7 +45,7 @@ class PruneKgArtifacts(Job):
         from evo_agents.hub.kg_prune import prune
 
         found = hub(context)
-        report = await prune(found.engine, found.blobs, found.config.kg_keep_artifacts)
+        report = await prune(hub_engine(context), found.blobs, found.config.kg_keep_artifacts)
         return report.summary()
 
 

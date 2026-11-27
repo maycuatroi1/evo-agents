@@ -6,7 +6,7 @@ from __future__ import annotations
 from procrastinate import JobContext
 
 from evo_agents.hub import jobs
-from evo_agents.hub.worker.job import Job, hub
+from evo_agents.hub.worker.job import Job, hub, hub_engine
 
 
 class MarketRefresh(Job):
@@ -17,7 +17,7 @@ class MarketRefresh(Job):
         from evo_agents.hub.market_refresh import refresh
 
         found = hub(context)
-        done = await refresh(found.engine, found.config, found.sealer)
+        done = await refresh(hub_engine(context), found.config, found.sealer)
         return {"sources": len(done), "failed": sum(1 for item in done if item["error"])}
 
 
@@ -32,7 +32,7 @@ class MarketLicenses(Job):
         from evo_agents.plugins.signing import default_sigstore
 
         found = hub(context)
-        installing = Installing(found.engine, found.config, default_sigstore(), __version__, found.blobs)
+        installing = Installing(hub_engine(context), found.config, default_sigstore(), __version__, found.blobs)
         done = await check_licenses(installing, found.sealer)
         return {
             "checked": done.checked,
@@ -52,7 +52,7 @@ class MarketSignals(Job):
         from evo_agents.hub.server.seller.service.signals import push_signals
 
         found = hub(context)
-        return await push_signals(found.engine, found.config)
+        return await push_signals(hub_engine(context), found.config)
 
 
 class PluginJobs(Job):
@@ -62,7 +62,7 @@ class PluginJobs(Job):
     async def run(self, context: JobContext, timestamp: int | None = None) -> dict:
         from evo_agents.hub.plugin_jobs import fire
 
-        return await fire(hub(context).engine, context.app.job_manager, timestamp)
+        return await fire(hub_engine(context), context.app.job_manager, timestamp)
 
 
 class PluginJob(Job):
@@ -72,7 +72,7 @@ class PluginJob(Job):
         from evo_agents.hub.plugin_jobs import run_job
 
         found = hub(context)
-        return await run_job(found.engine, found.config, plugin, job)
+        return await run_job(hub_engine(context), found.config, plugin, job)
 
 
 class ValueCheck(Job):
@@ -82,7 +82,7 @@ class ValueCheck(Job):
         from evo_agents.hub.plugin_jobs import run_on_signals
 
         found = hub(context)
-        return await run_on_signals(found.engine, found.config, project_id)
+        return await run_on_signals(hub_engine(context), found.config, project_id)
 
 
 class DeliverPluginEvents(Job):
@@ -95,13 +95,12 @@ class DeliverPluginEvents(Job):
         from evo_agents.hub.plugin_events import BUS_GRACE_SECONDS, deliver
 
         found = hub(context)
-        assert found.engine is not None  # the hub's worker opens its engine before its first job
         if not bus.on():
-            return await deliver(found.engine, config=found.config)
+            return await deliver(hub_engine(context), config=found.config)
         # The bus carries what falls due; the minute's pass takes what it left a while, and a pass the delivery process
         # queued while the broker could not be reached takes everything due, as without the bus.
         grace = BUS_GRACE_SECONDS if timestamp is not None else 0.0
-        return await deliver(found.engine, config=found.config, schedule=False, grace=grace)
+        return await deliver(hub_engine(context), config=found.config, schedule=False, grace=grace)
 
 
 class DeliverWebhooks(Job):
@@ -113,5 +112,4 @@ class DeliverWebhooks(Job):
         from evo_agents.hub.server.webhooks.service.delivery import deliver
 
         found = hub(context)
-        assert found.engine is not None  # the hub's worker opens its engine before its first job
-        return await deliver(found.engine, found.sealer)
+        return await deliver(hub_engine(context), found.sealer)
