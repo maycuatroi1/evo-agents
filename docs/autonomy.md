@@ -277,7 +277,7 @@ The floors hold for every principal, at A5 too, and no mode lifts them.
 |---|---|
 | S1, the ledger | every decision of a gate of the hub writes the audit row `autonomy.decided` with the run, its principal, its agent, the class, the mode and the result (`server/autonomy/service/ledger.py`); the hook writes its own as run events with the same fields. A run's commits carry the trailers `Evo-Principal: <login>` and `Evo-Agent: <handle>`, and a pull or merge request a run or the hub opens names both, never a runtime or a model |
 | S2, the backup | a command of K9 runs only after a backup made within 24 hours (`evo-agents worker backup`, above) |
-| S3, no leaked lease | the worker refuses a push whose new commits hold a lease's value, and the hub masks the values of the run's leases in the events, transcripts, outputs and chat messages it stores (`server/run_events.py`, `server/agent_account_mask.py`) |
+| S3, no leaked lease | the worker refuses a push whose new commits hold a lease's value, and the hub masks the values of the run's leases in the events, transcripts, outputs and chat messages it stores (`server/run_events.py`, `server/agent_accounts/service/mask.py`) |
 | S4, the stop | below |
 | S5, no borrowed level | a run never acts above its principal: an agent type's run_as bounds it and never raises it, a run one agent asks of another stays within the asking run's snapshot, a shared worker gives the run its principal's autonomy and not its owner's, and a shared credential (source 6) only lowers it |
 

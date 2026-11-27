@@ -25,8 +25,8 @@ and outcomes), `evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (
 `evo_agents/hub/history.py` and `evo_agents/hub/excerpts.py` (the history run and what its model reads),
 `evo_agents/hub/history_index.py` (the words of the history for search), `evo_agents/hub/playbook.py` (the playbook),
 and their routes and jobs under `evo_agents/hub/server/` (`curator/`, `collect.py`, `proposals.py`, `changes.py`,
-`replays/`, `history.py`, `history_search.py`, `earlier.py`, `playbook/`, `pulls.py`, `brief.py`, `ledger.py`,
-`outcomes.py`, `telegram.py`).
+`replays/`, `history.py`, `history/`, `earlier.py`, `playbook/`, `brief.py`, `ledger.py`,
+`outcomes.py`), with `evo_agents/hub/telegram.py`.
 
 ## One night
 

@@ -137,7 +137,7 @@ On the web, the Secrets page (`/secrets`) lists the visitor's secrets and adds, 
 field is a password field the page never fills: a replace asks for the value again, and the field is emptied as soon
 as the form is sent, whatever the hub answers.
 
-From the command line (`evo_agents/hub/cli/secret.py`):
+From the command line (`evo_agents/hub/cli/secret/`):
 
 ```sh
 pbpaste | evo-agents hub secret set claude-oauth --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
@@ -327,7 +327,7 @@ while the run's row is locked; when the run ended in between, the tokens just ma
 
 A member may keep several `env` secrets for the same variable bound to the same project, such as two subscriptions of
 the agent's runtime (`claude-a`, `claude-b`); each is an **account**, and a run gets one of them per variable
-(`evo_agents/hub/server/account_choice.py`, migration 0027). The hub picks it in the transaction that leases it, with
+(`evo_agents/hub/server/accounts/service/choice.py`, migration 0027). The hub picks it in the transaction that leases it, with
 the run's row locked and the accounts it weighs locked in the order of their ids, so two runs asking at once cannot
 take the same turn:
 
@@ -420,7 +420,7 @@ The routes are the member's own, a hub admin included, and never carry a value:
 
 - `GET /v1/accounts`: the caller's env secrets as accounts, with `name`, `env_var`, `projects`, `workers`, `weight`,
   `priority`, `paused_at`, `cooldown_until`, `cooldown_reason`, `last_leased_at`, `expires_at` and `state` (`ready`,
-  `cooling`, `paused` or `expired`), and its figures (`evo_agents/hub/server/account_views.py`): the last usage a run's
+  `cooling`, `paused` or `expired`), and its figures (`evo_agents/hub/server/accounts/service/views.py`): the last usage a run's
   CLI reported (`last_usage`, `last_usage_at`), the runs that took it in the last 24 hours and 7 days (`runs_24h`,
   `runs_7d`: a run took it at its first lease of it) and their estimated cost in USD from their usage (`cost_24h_usd`,
   `cost_7d_usd`: a run that failed over counts with each account it took), and the runs a worker holds with it now
@@ -472,7 +472,7 @@ evo-agents hub account set claude-a --no-weekly-budget
 **A weekly budget.** An owner may give an account `weekly_budget_usd` and, if they like, `weekly_reset_at`, the UTC
 instant its weeks start from (Monday 00:00 UTC without one); PATCH `/v1/accounts/{name}` takes both, null drops them,
 and the `account.set` audit row says so. The cost of the runs that took the account since its week began, over the
-budget, is the account's `seven_day` window, reset when the week ends (`server/account_budgets.py`). It replaces a
+budget, is the account's `seven_day` window, reset when the week ends (`server/accounts/service/budgets.py`). It replaces a
 `seven_day` window the account reported, shows on `/v1/accounts`, `hub account list|show` and the account pools, and
 quota-pacing weighs it. A budget spent marks the usage `rejected` until the week ends. The cost is an estimate from the
 runs' usage.
@@ -494,7 +494,7 @@ evo-agents hub account login claude-b --paste                         # asks for
 ```
 
 `account login NAME [--project P ...] [--worker W ... | --pool NAME ...] [--expires YYYY-MM-DD] [--paste] [--json]`
-(`evo_agents/hub/cli/secret.py`) first does every check that needs no token: the name, the day, that the machine is
+(`evo_agents/hub/cli/secret/`) first does every check that needs no token: the name, the day, that the machine is
 signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each worker is one of the caller's
 (`GET /v1/workers`), or each pool (`GET /v1/worker-pools`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
 unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and
@@ -606,7 +606,7 @@ priority, pause, cooldown and runs stay.
 #### Refresh at lease time
 
 An access token lives about eight hours. When a run asks for its credentials (`POST /v1/worker/runs/{id}/credentials`),
-the hub first looks at each OAuth account the run may be leased (`evo_agents/hub/server/account_refresh.py`). One whose
+the hub first looks at each OAuth account the run may be leased (`evo_agents/hub/server/accounts/service/refresh.py`). One whose
 access token ends in under five minutes, or has ended, is traded at the token endpoint for a new one with its refresh
 token. Anthropic rotates the refresh token at every use, so the new access token, the new refresh token and the new end
 are stored together in one transaction: the sealed set and the secret's value (the lease hands out the value as
@@ -634,7 +634,7 @@ failure of the endpoint (down, 5xx) does not mark the account.
 
 An **agent account** is an `env` secret that an agent profile owns (`secrets.profile_id`, no member owner, migration
 0104), for runs under that agent to use whoever dispatches them: an admin of the profile's project adds it from the
-agent's page or with `evo-agents hub agent account` (`evo_agents/hub/server/agent_accounts.py`), names the workers it
+agent's page or with `evo-agents hub agent account` (`evo_agents/hub/server/agent_accounts/`), names the workers it
 is bound to (the admin's own that are not revoked, or shared workers serving the project), and gives it a weight, a
 priority and an end like any account. The hub keeps the value sealed under its own associated data
 (`agent-secret:<profile id>:<name>`) and never hands it back by any route. Only `env` accounts exist for an agent: git
@@ -667,7 +667,7 @@ Who sees what: every member of the project sees an account's name, variable, wor
 usage, never the value; only an admin of the project adds, renews, changes and deletes it. A member reads them with
 `GET /v1/projects/{p}/agents/{handle}/accounts[/{name}]`, or across every project they hold a grant on with
 `GET /v1/agent-accounts` (the /accounts page), and with `evo-agents hub agent account list|show`
-(`evo_agents/hub/server/agent_account_views.py`): provider, category, state, workers, weight, priority, end, last
+(`evo_agents/hub/server/agent_accounts/service/views.py`): provider, category, state, workers, weight, priority, end, last
 usage, runs and cost over 24 hours and 7 days (null for a service account), the runs holding it and when it was last
 leased, computed by the functions of a member's own accounts (`account_views`). Without a grant it is the 404 or 403
 of reading the profile; `GET /v1/accounts` stays the caller's own accounts. Who can read the value, since
@@ -710,7 +710,7 @@ a message saying an admin must attach one; in chat, that message is the reply. `
 ### Provider accounts
 
 A **provider account** is an API key of a model provider with the endpoint it calls and the models it serves
-(`evo_agents/hub/server/provider_accounts.py`, migration 0151). It is a secret of kind `provider`, whose sealed value is
+(`evo_agents/hub/server/accounts/service/provider_accounts.py`, migration 0151). It is a secret of kind `provider`, whose sealed value is
 the key, plus a row of `provider_accounts`: `provider`, the id of an entry of the model catalog; `base_url`, an https
 root; `api_format` (`openai`, `anthropic`, `openai-responses` or `gemini`); and `models`, the names a run may ask for.
 The catalog (`GET /v1/model-catalog`, `evo-agents hub model-catalog`) is generated from OmniRoute's provider registry at
@@ -735,7 +735,7 @@ accounts keep the sign-in of the section above.
   a cooldown and an end, shared through `/v1/secrets/{name}/shares`, picked by the rules of the section Accounts.
 - **Z.ai quota.** For an account of provider `zai`, the hub reads the quota left from GET
   `<origin>/api/monitor/usage/quota/limit` (the origin of its base URL) with the key as a Bearer token, pinned to the
-  checked public address as a probe is (`server/provider_quota.py`). The five-hour limit becomes the `five_hour` window
+  checked public address as a probe is (`server/accounts/service/quota.py`). The five-hour limit becomes the `five_hour` window
   and the weekly one `seven_day`, each a share used with its UTC reset; a window used up cools the account down until it
   resets. The result is kept in the account's last usage. `GatewaySync` reads it periodically and after each sweep;
   `POST /v1/provider-accounts/{name}/quota`, its agent route under `/v1/projects/{project}/agents/{handle}/` and
