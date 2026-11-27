@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_events, runs, tables
 from evo_agents.hub.server import browser_install, kg_shared_pool, worker_placement
+from evo_agents.hub.server.agents.models.placement import Home
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
@@ -55,7 +56,7 @@ class QueueFit:
 
     run: object
     verdicts: list[Verdict]
-    home: agent_placement.Home | None
+    home: Home | None
     diagnosis: str | None
 
 
@@ -86,7 +87,7 @@ async def _run(conn: AsyncConnection, run_id: int):
     return (await conn.execute(query)).one()
 
 
-def _workers(run, home: agent_placement.Home | None):
+def _workers(run, home: Home | None):
     """The workers that could take ``run``, not revoked: the nodes of the agent's pool ``home`` when its agent is in pool
     mode (and of the shared KG pool for a run of its kinds), else the owner's and those shared in its project; and the
     one it is pinned to. The owner's first."""
@@ -464,9 +465,7 @@ async def _pools(conn: AsyncConnection, project_id: int, home, verdicts: list[Ve
     )
     found = []
     for pool in await conn.execute(query):
-        place = agent_placement.Home(
-            pool.id, pool.name, tuple(pool.taints or ()), pool.agent_id, pool.handle, project_id
-        )
+        place = Home(pool.id, pool.name, tuple(pool.taints or ()), pool.agent_id, pool.handle, project_id)
         ready = len(await agent_placement.ready_nodes(conn, place))
         takes = home is not None and home.pool_id == pool.id
         if not takes:

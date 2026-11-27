@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import chats, command_runs, cron, cron_store, curator, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server.agents.service.tasking import project_role
+from evo_agents.hub.server.agents.repository.tasking import project_role
 from evo_agents.hub.server.chats.models.runs import Hand
 from evo_agents.hub.server.chats.repository.store import insert_mentions
 from evo_agents.hub.server.chats.service.access import chat_access

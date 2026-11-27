@@ -18,68 +18,32 @@ refused as not found. The audience of what is shown is noted as the run's (``run
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Mapping
-from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
-from starlette.status import HTTP_404_NOT_FOUND
+from fastapi import Request
 
 from evo_agents.hub.server import cross_labels, kg, run_audience
-from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.agents.models.reads import CUT, CUT_NOTE, CrossRead
+from evo_agents.hub.server.agents.service.shapes import CrossReadIn
+from evo_agents.hub.server.base.errors import NotFound, Unprocessable
 from evo_agents.hub.server.chats.service.agents import agent_run
-from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.mcp_text import memory_about, memory_line
 from evo_agents.hub.server.memories.service import core as memories
 from evo_agents.hub.server.memories.service.audience import label_audience
 from evo_agents.hub.server.projects import ProjectAccess, access_of, not_found, project_access
-from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
 
-Tool = Literal["kg_search", "kg_context", "memory_search", "memory_get"]
-MAX_LIMIT = 20
-MAX_IDS = 20
-CUT = re.compile(r"\n\[truncated: \d+ more characters; call kg_more with handle \w+\]$")
-CUT_NOTE = "\n[cut here: ask again with a narrower query or a lower limit]"
 
-worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-
-
-class CrossReadIn(BaseModel):
-    project: str = Field(pattern=PROJECT_NAME, description="the project read, another than the run's")
-    tool: Tool = Field(description="what is read, as the evo-hub tool of the same name reads it")
-    query: str | None = Field(None, min_length=1, max_length=500, description="kg_search, kg_context, memory_search")
-    ids: list[str] = Field(default_factory=list, max_length=MAX_IDS, description="kg_context: node ids")
-    memory_id: int | None = Field(None, ge=1, description="memory_get")
-    limit: int = Field(10, ge=1, le=MAX_LIMIT, description="kg_search, memory_search")
-    graph: str | None = Field(
-        None,
-        min_length=1,
-        max_length=63,
-        description="kg_search, kg_context: a named graph of the project read, only its sources' nodes and edges",
-    )
-
-
-class CrossRead(BaseModel):
-    project: str
-    tool: str
-    text: str = Field(description="what the agent reads: the items the check lets in, then the line on the rest")
-    shown: int = Field(description="items shown")
-    withheld: int = Field(description="items the person may read that the run's project does not let in")
-    why: str | None = Field(description="how many items were left out and why; null when none was")
-
-
-def _arguments(body: CrossReadIn) -> dict:
+def arguments(body: CrossReadIn) -> dict:
     """The arguments of the kg_* tool, as kg serve takes them; 422 when the tool lacks what it needs."""
     if body.tool == "kg_search":
         if body.query is None:
-            raise HTTPException(422, "kg_search needs a query")
+            raise Unprocessable("kg_search needs a query")
         return {"query": body.query, "limit": body.limit, **_graph(body)}
     if body.query is None and not body.ids:
-        raise HTTPException(422, "kg_context needs a query or node ids")
+        raise Unprocessable("kg_context needs a query or node ids")
     found = {"query": body.query} if body.query is not None else {"ids": list(body.ids)}
     return {**found, **_graph(body)}
 
@@ -114,8 +78,8 @@ def _text(result: dict) -> str:
 
 async def _kg(state, origin: Principal, gate: cross_labels.Gate, sink: str, body: CrossReadIn):
     """(text, shown, reasons, the result shown or None) of a kg_* read across projects."""
-    arguments, project = _arguments(body), body.project
-    whole = await kg.tool_result(state, origin, project, body.tool, arguments, sink, whole=True)
+    arguments_of, project = arguments(body), body.project
+    whole = await kg.tool_result(state, origin, project, body.tool, arguments_of, sink, whole=True)
     if whole.get("isError"):
         return _text(whole), 0, [], None
     seen = elements(whole.get("structuredContent"))
@@ -127,7 +91,7 @@ async def _kg(state, origin: Principal, gate: cross_labels.Gate, sink: str, body
     def narrow(held):
         return None if held is None else held.meet(ceiling)
 
-    result = await kg.tool_result(state, origin, project, body.tool, arguments, sink, narrow=narrow)
+    result = await kg.tool_result(state, origin, project, body.tool, arguments_of, sink, narrow=narrow)
     data = result.get("structuredContent") or {}
     shown = len(seen) - len(reasons) if data.get("truncated") else len(elements(data))
     return _text(result), 0 if result.get("isError") else shown, reasons, result
@@ -138,7 +102,7 @@ async def _memories(request: Request, origin: Principal, gate: cross_labels.Gate
     project = body.project
     if body.tool == "memory_search":
         if body.query is None:
-            raise HTTPException(422, "memory_search needs a query")
+            raise Unprocessable("memory_search needs a query")
         found = await memories.search(
             request.app.state.engine,
             origin,
@@ -161,10 +125,10 @@ async def _memories(request: Request, origin: Principal, gate: cross_labels.Gate
         shown = [label_audience(memory.label) for memory in kept]
         return "\n".join(lines), len(kept), reasons, shown
     if body.memory_id is None:
-        raise HTTPException(422, "memory_get needs memory_id")
+        raise Unprocessable("memory_get needs memory_id")
     memory = await memories.shown(request.app.state.engine, origin, body.memory_id, sink)
     if memory.project != project:  # a personal memory, or one of another project: not this read's
-        raise HTTPException(HTTP_404_NOT_FOUND, f"no memory {body.memory_id} of project {project} that you can see")
+        raise NotFound(f"no memory {body.memory_id} of project {project} that you can see")
     why = gate.why(memory.label)
     if why is not None:
         return "", 0, [why], []
@@ -177,27 +141,22 @@ async def _accesses(conn, origin: Principal, own: str, project: str) -> tuple[Pr
     target = await access_of(conn, None, own)
     source = await project_access(conn, origin, project)
     if target is None or source.role is None:
-        raise HTTPException(404, not_found(project))
+        raise NotFound(not_found(project))
     return target, source
 
 
-@worker_router.post(
-    "/runs/{run_id}/agent/reads",
-    response_model=CrossRead,
-    responses={code: {"model": ErrorBody} for code in (404, 409, 422, 502, 503)},
-)
-async def read(request: Request, run_id: RunId, body: CrossReadIn, user: CurrentUser) -> CrossRead:
-    """Read the knowledge graph or the memories of another project, in a chat run this worker holds, within what the
-    hub sink of the run's project lets in (see the module's docstring)."""
+async def read(request: Request, user: Principal, run_id: int, body: CrossReadIn) -> CrossRead:
+    """Read the knowledge graph or the memories of another project, in chat run ``run_id`` the worker of ``user``
+    holds, within what the hub sink of the run's project lets in (see the module's docstring)."""
     state = request.app.state
     async with state.engine.begin() as conn:
         run = await agent_run(conn, user, run_id)
         if run.kind != "chat":
-            raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent reads other projects")
+            raise Unprocessable(f"run {run_id} is a {run.kind} run: only a chat run's agent reads other projects")
         own = run.profile.project
         if body.project == own:
-            raise HTTPException(
-                422, f"project {own} is this run's own: read it with the evo-hub tools (kg_search, memory_search)"
+            raise Unprocessable(
+                f"project {own} is this run's own: read it with the evo-hub tools (kg_search, memory_search)"
             )
         target, source = await _accesses(conn, run.principal, own, body.project)
     gate = cross_labels.gate(target.rules, source.rules)

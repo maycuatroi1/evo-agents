@@ -17,11 +17,10 @@ shorter than MIN_SECRET_LENGTH is left alone, as the daemon leaves it, so that m
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.log import MIN_SECRET_LENGTH
+from evo_agents.hub.server.agent_accounts.repository import mask as repository
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, agent_secret_aad, lease_aad, secret_aad
 
 MASK = "***"  # what the daemon writes for a lease value
@@ -38,12 +37,7 @@ async def profile_values(conn: AsyncConnection, sealer: Sealer | None, profile_i
     """The value of each live account of profile ``profile_id`` the hub can open, longest first."""
     if sealer is None:
         return []
-    s = tables.secrets
-    rows = await conn.execute(
-        select(s.c.name, s.c.sealed, s.c.nonce, s.c.key_id).where(
-            s.c.profile_id == profile_id, s.c.kind == "env", s.c.deleted_at.is_(None), s.c.sealed.is_not(None)
-        )
-    )
+    rows = await repository.profile_secrets(conn, profile_id)
     values = []
     for row in rows:
         try:
@@ -75,25 +69,7 @@ async def run_values(conn: AsyncConnection, sealer: Sealer | None, run_id: int) 
     """Every value the hub leased run ``run_id`` that it can still open, longest first."""
     if sealer is None:
         return []
-    cl, s = tables.credential_leases, tables.secrets
-    query = (
-        select(
-            cl.c.id,
-            cl.c.sealed_value,
-            cl.c.nonce,
-            cl.c.key_id,
-            s.c.owner_id,
-            s.c.profile_id,
-            s.c.name,
-            s.c.kind,
-            s.c.sealed,
-            s.c.nonce.label("secret_nonce"),
-            s.c.key_id.label("secret_key_id"),
-        )
-        .select_from(cl.outerjoin(s, s.c.id == cl.c.secret_id))
-        .where(cl.c.run_id == run_id)
-    )
-    values = {_open(sealer, row) for row in await conn.execute(query)}
+    values = {_open(sealer, row) for row in await repository.run_leases(conn, run_id)}
     return sorted((value for value in values if value and len(value) >= MIN_SECRET_LENGTH), key=len, reverse=True)
 
 

@@ -658,14 +658,14 @@ def _include_member_routes(app: FastAPI) -> None:
         work_cards,
         worker_autonomy,
     )
-    from evo_agents.hub.server.agent_accounts.service import accounts as agent_accounts
-    from evo_agents.hub.server.agent_accounts.service import provider_accounts as agent_provider_accounts
-    from evo_agents.hub.server.agent_accounts.service import views as agent_account_views
-    from evo_agents.hub.server.agents.service import agent_types
-    from evo_agents.hub.server.agents.service import asks as agent_asks
-    from evo_agents.hub.server.agents.service import packs as agent_packs
-    from evo_agents.hub.server.agents.service import profiles as agent_profiles
-    from evo_agents.hub.server.agents.service import reads as agent_reads
+    from evo_agents.hub.server.agent_accounts.routes import accounts as agent_accounts
+    from evo_agents.hub.server.agent_accounts.routes import provider_accounts as agent_provider_accounts
+    from evo_agents.hub.server.agent_accounts.routes import views as agent_account_views
+    from evo_agents.hub.server.agents.routes import agent_types
+    from evo_agents.hub.server.agents.routes import asks as agent_asks
+    from evo_agents.hub.server.agents.routes import packs as agent_packs
+    from evo_agents.hub.server.agents.routes import profiles as agent_profiles
+    from evo_agents.hub.server.agents.routes import reads as agent_reads
     from evo_agents.hub.server.chats.routes import agents as chat_agents
     from evo_agents.hub.server.chats.routes import bridges as chat_bridges
     from evo_agents.hub.server.chats.routes import chats

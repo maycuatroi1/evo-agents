@@ -42,7 +42,7 @@ def test_a_message_of_the_thread_reaches_the_inbox_whole():
 
 def test_the_thread_line_names_the_message_that_holds_the_whole_answer():
     pytest.importorskip("fastapi", reason="the hub's server needs the hub-server extra, evo-ak[hub-server]")
-    from evo_agents.hub.server.agents.service import asks as agent_asks
+    from evo_agents.hub.server.agents.models import asks as agent_asks
 
     mark = agent_asks.THREAD_CUT_MARK.replace("{message}", "19900")
     line = runs.clip("@ea-dev answered (run #9177):\n\n" + "x" * 4_300, agent_asks.ANSWER_IN_THREAD, mark)
@@ -55,6 +55,7 @@ if pg.DSN:
     from sqlalchemy import select
 
     from evo_agents.hub import tables
+    from evo_agents.hub.server.agents.models.asks import ANSWER_IN_THREAD
     from evo_agents.hub.server.agents.service import asks as agent_asks
     from tests.hub import test_credentials_api as credentials_api
     from tests.hub.live import sql
@@ -139,7 +140,7 @@ if pg.DSN:
         (kept,) = sql(hub_db, select(d.c.answer_text).where(d.c.id == done["wait"]))[0]
         assert len(kept.encode()) <= runs.MAX_ANSWER_BYTES and kept.startswith(f"Decision #{done['wait']} (wait) woke")
         (line,) = thread_lines(hub_db, done["child"])
-        assert len(line.encode()) <= agent_asks.ANSWER_IN_THREAD
+        assert len(line.encode()) <= ANSWER_IN_THREAD
         m = tables.chat_messages
         (message_id,) = sql(hub_db, select(m.c.id).where(m.c.body == answer))[0]
         assert line.endswith(f"bytes left out; message #{message_id} has the whole answer]")

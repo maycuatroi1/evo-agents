@@ -47,6 +47,7 @@ from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
 from evo_agents.hub.server import kg, ops_actions, orchestrator, orchestrator_actions, work_cards, work_status_models
+from evo_agents.hub.server.agents.models.asks import AgentAskIn
 from evo_agents.hub.server.agents.service import asks as agent_asks
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.chats.models.agents import AgentMessageIn
@@ -301,12 +302,12 @@ async def interactive_answer(turn: Turn, arguments: dict) -> str:
     return f"sent the interactive answer as output #{output_id} in message #{message_id}"
 
 
-def _ask_body(arguments: dict, handle: str) -> agent_asks.AgentAskIn:
+def _ask_body(arguments: dict, handle: str) -> AgentAskIn:
     fields = ("body", *system_context.BRIEF_FIELDS, "refs", "reason")
-    return agent_asks.AgentAskIn(handle=handle, **{key: arguments[key] for key in fields if arguments.get(key)})
+    return AgentAskIn(handle=handle, **{key: arguments[key] for key in fields if arguments.get(key)})
 
 
-async def _ask(turn: Turn, body: agent_asks.AgentAskIn, tool: str) -> str:
+async def _ask(turn: Turn, body: AgentAskIn, tool: str) -> str:
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))

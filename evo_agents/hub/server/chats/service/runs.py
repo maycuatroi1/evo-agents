@@ -50,6 +50,7 @@ from evo_agents.hub.server import (
     system_store,
     system_traces,
 )
+from evo_agents.hub.server.agents.models.placement import Home
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.attachments import repository as attachment_store
@@ -93,7 +94,7 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
     return await _pool_worker(conn, hand, home)
 
 
-async def _pool_worker(conn: AsyncConnection, hand: Hand, home: agent_placement.Home):
+async def _pool_worker(conn: AsyncConnection, hand: Hand, home: Home):
     """The pick of ``pick_worker`` among the nodes of ``home``'s pool."""
     profile = hand.profile
     rows = await store.pool_workers(conn, hand.owner_id, profile.project_id, home.pool_id)
