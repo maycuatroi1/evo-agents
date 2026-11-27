@@ -275,17 +275,33 @@ docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-runs-layers"
-name = "The run API of the hub goes from its routes to its service to its models, never back"
+name = "The run API of the hub goes from its routes to its service to its repository to its models, never back"
 type = "layers"
 containers = ["evo_agents.hub.server.runs"]
-layers = ["routes", "service", "models"]
+layers = ["routes", "service", "repository", "models"]
 exhaustive = true
 broken_contract_guidance = """\
 In evo_agents.hub.server.runs a route handler only passes the request's parts to a public function of the service, \
-which checks, queries and moves runs with SQLAlchemy Core on evo_agents.hub.tables and returns the models; the models \
-import neither. Move the code that reaches up into the layer that needs it: a check or a query into the service, a \
-shape or a limit into the models. Other modules import the service and the models, never the routes. A new module \
-of the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
+which checks and decides; the repository reads and moves runs with SQLAlchemy Core on evo_agents.hub.tables; the \
+models import none of them. Move the code that reaches up into the layer that needs it: a check into the service, a \
+query into the repository, a shape or a limit into the models. Other modules import the service and the models, never \
+the routes. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-kg-layers"
+name = "The knowledge graph API of the hub goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.kg"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.kg a route handler only passes its Scope or its transaction and the request's parts to a \
+public function of the service, which checks and decides; the repository reads and writes the tables; the models \
+import none of them. Move the code that reaches up into the layer that needs it: a check or a message into the \
+service, a query into the repository, a shape or a limit into the models. Other modules import the service and the \
+models, never the routes. A new module of the package goes into one of the four layers. See docs/structure.md, \
+section Package boundaries."""
 
 [[tool.importlinter.contracts]]
 id = "hub-goals-layers"
