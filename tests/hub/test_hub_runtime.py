@@ -8,6 +8,10 @@ agent; each turn's tokens and cost reach run_spend, the run's usage and its invo
 stop at its ``limits.daily_usd`` and its owner hears of it once; without a gateway the agent says the runtime is not
 configured. a13: an ask of a hub agent parks its run, and the end of the run asked wakes it with the answer.
 
+A member's task run of a hub agent (POST .../task-runs) queues for the hub runtime too, with no worker: one turn with
+the task as its prompt and the tools that need no thread, whose last answer is the task's output and goes to no chat;
+a task run that takes no turn, runs out of rounds or raises fails.
+
 The gateway is ``Relaying`` of test_gateway_runs.py, whose /v1/chat/completions answers what a test scripts.
 """
 
@@ -30,7 +34,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import chat_runs, system_spec, tables
 from evo_agents.hub.jobs import HUB_TURN
-from evo_agents.hub.server import hub_runtime, run_retry
+from evo_agents.hub.server import hub_runtime, hub_tools, run_retry
 from evo_agents.hub.server.accounts.service import pool_runs as pool_accounts
 from evo_agents.hub.server.agents.service import tasking as agent_tasking
 from evo_agents.hub.server.profile_store import by_handle
@@ -405,3 +409,93 @@ def test_a_deadlock_at_the_end_of_a_turn_runs_its_end_again_and_the_run_parks(
     assert turn(client, gateway, parent)["state"] == "parked"
     assert run_row(hub_db, parent)[0] == "parked"
     assert moves.count("waiting") == 2 and "failed" not in moves
+
+
+# A member's task run of a hub agent
+
+TASK = "Name the service of lumen-kb that signs the export links."
+
+
+def hand_task(client, headers, **body) -> dict:
+    """A task run of @helper, handed through POST .../task-runs as a member hands one."""
+    asset = "https://assets.lumenops.example/kb.pdf"
+    body = {"task": TASK, "input": {"repo": "lumen-kb"}, "assets": [asset], "profile": "@helper"} | body
+    response = client.post(f"/v1/projects/{PROJECT}/task-runs", json=body, headers=headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def task_view(client, headers, task_id: int) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/task-runs/{task_id}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_task_run_of_a_hub_agent_is_a_turn_of_the_hub_runtime_whose_answer_is_its_output(
+    client, hub, hub_db, gateway, helper
+):
+    task = hand_task(client, hub["owner"])
+    run_id = task["task_id"]
+    state, requested, runtime, worker_id, model, *_ = run_row(hub_db, run_id)
+    assert (task["state"], state, requested, runtime, worker_id, model) == (
+        "queued",
+        "queued",
+        "hub",
+        "hub",
+        None,
+        MODEL,
+    )
+    assert turn_jobs(hub_db) == [run_id]  # deferred with the dispatch, for no worker of the agent's pool
+
+    gateway.script = [
+        {"content": None, "tool_calls": [tool_call("chat_post", {"body": "Looking."})]},
+        {"content": ANSWER},
+    ]
+    done = turn(client, gateway, run_id)
+    assert (done["state"], done["rounds"], done["input"], done["output"]) == ("done", 2, 200, 40)
+    first = gateway.asked[0]
+    assert first["model"] == MODEL
+    assert {tool["function"]["name"] for tool in first["tools"]} == set(hub_tools.TASK_NAMES)
+    assert [message["role"] for message in first["messages"]] == ["system", "user"]  # no chat, no inbox
+    system, user = first["messages"][0]["content"], first["messages"][1]["content"]
+    assert system.startswith("Be brief.") and system.endswith(hub_runtime.ON_HUB_TASK)
+    assert f"# The task\n{TASK}" in user and '"repo": "lumen-kb"' in user and "- https://assets.lumenops" in user
+    (result,) = [message for message in gateway.asked[1]["messages"] if message["role"] == "tool"]
+    assert result["content"].startswith("error: no tool chat_post")  # a tool that needs a thread is not offered
+    assert gateway.keys == {}  # the turn's key is revoked
+
+    shown = task_view(client, hub["owner"], run_id)
+    assert shown["state"] == "done" and shown["finished_at"] is not None
+    assert shown["output"] == f"run #{run_id} on the hub (hub, attempt 1).\n{ANSWER}"
+    assert shown["usage"]["gateway"]["prompt_tokens"] == 200
+    assert sql(hub_db, select(tables.chat_messages.c.id)) == []  # it replies in no chat
+    rs = tables.run_spend
+    assert sql(hub_db, select(rs.c.run_id, rs.c.input_tokens, rs.c.output_tokens)) == [(run_id, 200, 40)]
+    response = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/events", headers=hub["owner"])
+    kinds = {event["kind"] for event in response.json()["events"]}
+    assert kinds >= {"agent_message_chunk", "tool_call", "tool_call_update", "usage_update"}
+
+
+def test_a_task_run_of_a_hub_agent_fails_when_it_takes_no_turn_runs_out_of_rounds_or_raises(
+    client, hub, hub_db, gateway, helper, monkeypatch
+):
+    off = hand_task(client, hub["owner"])["task_id"]
+    assert turn(client, gateway, off, gateway_secret=None)["state"] == "failed"
+    shown = task_view(client, hub["owner"], off)
+    assert (shown["state"], shown["output"]) == ("failed", None)
+    assert shown["error"] == "the hub runtime took no turn: this hub has no model gateway"
+
+    monkeypatch.setattr(hub_runtime, "MAX_ROUNDS", 2)
+    looping = hand_task(client, hub["owner"])["task_id"]
+    gateway.script = [{"content": None, "tool_calls": [tool_call("no_such_tool", {})]}] * 3
+    assert turn(client, gateway, looping)["state"] == "failed"
+    assert "after 2 round(s), no final answer" in task_view(client, hub["owner"], looping)["error"]
+
+    async def broken(*_args, **_kwargs):
+        raise RuntimeError("the provider went away")
+
+    monkeypatch.setattr(hub_runtime, "_answer", broken)
+    raising = hand_task(client, hub["owner"])["task_id"]
+    assert turn(client, gateway, raising)["state"] == "failed"
+    assert task_view(client, hub["owner"], raising)["error"] == "the hub runtime failed: RuntimeError"
+    assert sql(hub_db, select(tables.chat_messages.c.id)) == []
