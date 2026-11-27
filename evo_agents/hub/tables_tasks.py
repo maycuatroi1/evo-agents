@@ -32,7 +32,6 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -46,6 +45,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from evo_agents.hub.columns import fkey
 from evo_agents.hub.runs import PRIORITIES as PRIORITIES  # tasks_items.priority, a run's levels too
 
 SPRINT_STATES = ("planned", "active", "closed")  # tasks_sprints.state
@@ -82,10 +82,6 @@ class TasksTables:
     blockers: Table
 
 
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
 def _sprints(metadata: MetaData) -> Table:
     name = "tasks_sprints"
     sprints = Table(
@@ -102,8 +98,8 @@ def _sprints(metadata: MetaData) -> Table:
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("closed_at", DateTime(timezone=True)),
         Column("activated_at", DateTime(timezone=True)),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_sprints_pkey"),
         UniqueConstraint("project_id", "name", name="tasks_sprints_name_key"),
     )
@@ -135,10 +131,10 @@ def _items(metadata: MetaData) -> Table:
         Column("created_by", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "sprint_id", "tasks_sprints", ondelete="SET NULL"),
-        _key(name, "parent_id", "tasks_items", ondelete="SET NULL"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "sprint_id", "tasks_sprints", ondelete="SET NULL"),
+        fkey(name, "parent_id", "tasks_items", ondelete="SET NULL"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_items_pkey"),
         UniqueConstraint("project_id", "number", name="tasks_items_number_key"),
         UniqueConstraint("project_id", "external_key", name="tasks_items_external_key"),
@@ -155,8 +151,8 @@ def _people(metadata: MetaData) -> Table:
         Column("task_id", BigInteger, nullable=False),
         Column("role", Text, nullable=False),
         Column("user_id", BigInteger, nullable=False),
-        _key(name, "task_id", "tasks_items", ondelete="CASCADE"),
-        _key(name, "user_id", "users", ondelete="RESTRICT"),
+        fkey(name, "task_id", "tasks_items", ondelete="CASCADE"),
+        fkey(name, "user_id", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("task_id", "role", "user_id", name="tasks_people_pkey"),
         Index("tasks_people_user_idx", "user_id"),
     )
@@ -177,10 +173,10 @@ def _links(metadata: MetaData) -> Table:
         Column("url", Text),
         Column("created_by", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "task_id", "tasks_items", ondelete="CASCADE"),
-        _key(name, "srs_item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "run_id", "runs", ondelete="CASCADE"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "task_id", "tasks_items", ondelete="CASCADE"),
+        fkey(name, "srs_item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "run_id", "runs", ondelete="CASCADE"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_links_pkey"),
         Index("tasks_links_task_idx", "task_id"),
         Index("tasks_links_step_idx", "plan_id", "step_id"),
@@ -202,8 +198,8 @@ def _events(metadata: MetaData) -> Table:
         Column("cause", Text, nullable=False, server_default=""),
         Column("delivery_id", BigInteger),
         Column("at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "task_id", "tasks_items", ondelete="CASCADE"),
-        _key(name, "actor_id", "users", ondelete="RESTRICT"),
+        fkey(name, "task_id", "tasks_items", ondelete="CASCADE"),
+        fkey(name, "actor_id", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_events_pkey"),
         UniqueConstraint("task_id", "delivery_id", "field", name="tasks_events_delivery_key"),
         Index("tasks_events_task_idx", "task_id", "id"),
@@ -220,8 +216,8 @@ def _comments(metadata: MetaData) -> Table:
         Column("author_id", BigInteger, nullable=False),
         Column("body", Text, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "task_id", "tasks_items", ondelete="CASCADE"),
-        _key(name, "author_id", "users", ondelete="RESTRICT"),
+        fkey(name, "task_id", "tasks_items", ondelete="CASCADE"),
+        fkey(name, "author_id", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_comments_pkey"),
         Index("tasks_comments_task_idx", "task_id", "id"),
     )
@@ -242,11 +238,11 @@ def _blockers(metadata: MetaData) -> Table:
         Column("created_by", BigInteger, nullable=False),
         Column("cleared_at", DateTime(timezone=True)),
         Column("cleared_by", BigInteger),
-        _key(name, "task_id", "tasks_items", ondelete="CASCADE"),
-        _key(name, "waiting_user_id", "users", ondelete="RESTRICT"),
-        _key(name, "waiting_task_id", "tasks_items", ondelete="CASCADE"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
-        _key(name, "cleared_by", "users", ondelete="RESTRICT"),
+        fkey(name, "task_id", "tasks_items", ondelete="CASCADE"),
+        fkey(name, "waiting_user_id", "users", ondelete="RESTRICT"),
+        fkey(name, "waiting_task_id", "tasks_items", ondelete="CASCADE"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "cleared_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="tasks_blockers_pkey"),
     )
     c = blockers.c

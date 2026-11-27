@@ -34,9 +34,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def member_task_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
@@ -48,7 +46,7 @@ def member_task_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("input", JSONB, nullable=False, server_default="{}"),
         Column("assets", JSONB, nullable=False, server_default="[]"),
-        _stamp("created_at"),
+        stamp("created_at"),
         PrimaryKeyConstraint("task_id", name="member_tasks_pkey"),
         ForeignKeyConstraint(["task_id"], ["runs.id"], ondelete="CASCADE", name="member_tasks_task_id_fkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="member_tasks_project_id_fkey"),
@@ -64,8 +62,8 @@ def member_task_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("sealed_secret", JSONB, nullable=False),  # Sealer.seal_stored: {ciphertext, nonce, key_id}
         Column("active", Boolean, nullable=False, server_default="true"),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         PrimaryKeyConstraint("id", name="project_webhooks_pkey"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="project_webhooks_project_id_fkey"
@@ -87,7 +85,7 @@ def member_task_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("next_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("last_status", Integer),
         Column("last_error", Text),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("delivered_at", DateTime(timezone=True)),
         PrimaryKeyConstraint("id", name="webhook_deliveries_pkey"),
         ForeignKeyConstraint(
@@ -109,7 +107,7 @@ def dlp_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("kinds", ARRAY(Text), nullable=False),
         Column("keywords", ARRAY(Text), nullable=False, server_default="{}"),
         Column("updated_by", BigInteger),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         PrimaryKeyConstraint("project_id", name="dlp_policies_pkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="dlp_policies_project_id_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name="dlp_policies_updated_by_fkey"),
@@ -122,7 +120,7 @@ def dlp_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("surface", Text, nullable=False),
         Column("action", Text, nullable=False),
         Column("count", BigInteger, nullable=False, server_default="0"),
-        _stamp("last_at"),
+        stamp("last_at"),
         PrimaryKeyConstraint("project_id", "kind", "surface", "action", name="dlp_counts_pkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="dlp_counts_project_id_fkey"),
     )

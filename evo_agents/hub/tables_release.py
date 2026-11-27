@@ -18,9 +18,7 @@ from sqlalchemy import (
     BigInteger,
     Column,
     Date,
-    DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     Integer,
     MetaData,
@@ -28,30 +26,18 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from evo_agents.hub.columns import id_column, stamp, when
 from evo_agents.hub.releases import UNFINISHED
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
 
 
 def _schedules(metadata: MetaData) -> Table:
     return Table(
         "release_schedules",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("repo", Text, nullable=False),
         Column("check_at", Text, nullable=False),  # HH:MM, local
@@ -62,9 +48,9 @@ def _schedules(metadata: MetaData) -> Table:
         Column("paths", JSONB, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
         Column("updated_by", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("paused_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("paused_at"),
         Column("paused_by", BigInteger),
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="release_schedules_owner_id_fkey"),
         ForeignKeyConstraint(["paused_by"], ["users.id"], ondelete="RESTRICT", name="release_schedules_paused_by_fkey"),
@@ -83,7 +69,7 @@ def _cycles(metadata: MetaData) -> Table:
     cycles = Table(
         "release_cycles",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("schedule_id", BigInteger, nullable=False),
         Column("state", Text, nullable=False, server_default="open"),
@@ -97,9 +83,9 @@ def _cycles(metadata: MetaData) -> Table:
         Column("changed_paths", JSONB, nullable=False, server_default="[]"),
         Column("stop_reason", Text),
         Column("span", JSONB),  # the range its check read: commits, pull requests, new migrations
-        _stamp("opened_at"),
-        _stamp("updated_at"),
-        _when("ended_at"),
+        stamp("opened_at"),
+        stamp("updated_at"),
+        when("ended_at"),
         Column("stop_cause", Text),  # release_ci.STOP_CAUSES: why it stopped last
         Column("decision_id", BigInteger),  # what its last stop asked the owner, on its last run
         Column("triage_chat_id", BigInteger),  # the thread its last stop opened in the project's triage chat
@@ -140,7 +126,7 @@ def _runs(metadata: MetaData) -> Table:
         Column("cycle_id", BigInteger, nullable=False),
         Column("mode", Text, nullable=False),
         Column("tag", Text),  # the red tag a fix run fixes forward
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("version", Text),  # what the run pushed: the version, release/<version>, the commit, the Decision line
         Column("branch", Text),
         Column("head_commit", Text),
@@ -149,7 +135,7 @@ def _runs(metadata: MetaData) -> Table:
         Column("pull_url", Text),
         Column("merge_commit", Text),
         Column("tagged", Text),
-        _when("tagged_at"),
+        when("tagged_at"),
         Column("land_state", Text),  # tagged, refused or failed; null while it waits to land
         Column("land_reason", Text),
         Column("land_tries", Integer, nullable=False, server_default="0"),
@@ -166,21 +152,21 @@ def _tags(metadata: MetaData) -> Table:
     return Table(
         "release_tags",
         metadata,
-        _id(),
+        id_column(),
         Column("cycle_id", BigInteger, nullable=False),
         Column("tag", Text, nullable=False),
         Column("commit", Text, nullable=False),
         Column("run_id", BigInteger),  # the run whose merge commit the hub tagged; null for a tag a person made
-        _stamp("created_at"),
-        _stamp("watched_since"),  # what the deadlines of its CI count from
+        stamp("created_at"),
+        stamp("watched_since"),  # what the deadlines of its CI count from
         Column("ci_state", Text, nullable=False, server_default="pending"),
         Column("workflow_run_id", BigInteger),  # the run of the schedule's workflow for the tag, as GitHub numbers it
         Column("workflow_url", Text),
         Column("run_attempt", Integer),
         Column("reruns", Integer, nullable=False, server_default="0"),  # the hub's runs again of its failed jobs
         Column("rerun_of_attempt", Integer),  # the attempt the hub's last run again followed
-        _when("started_at"),  # when the run of the workflow started, as GitHub says
-        _when("checked_at"),
+        when("started_at"),  # when the run of the workflow started, as GitHub says
+        when("checked_at"),
         Column("failures", JSONB),  # release_ci.summary of its failed jobs
         Column("problem", Text),  # what kept the hub from reading its CI the last time
         ForeignKeyConstraint(
@@ -196,7 +182,7 @@ def _checks(metadata: MetaData) -> Table:
     checks = Table(
         "release_checks",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("schedule_id", BigInteger, nullable=False),
         Column("trigger", Text, nullable=False),
@@ -210,7 +196,7 @@ def _checks(metadata: MetaData) -> Table:
         Column("changed_paths", JSONB),
         Column("cycle_id", BigInteger),
         Column("run_id", BigInteger),
-        _stamp("checked_at"),
+        stamp("checked_at"),
         ForeignKeyConstraint(
             ["cycle_id"], ["release_cycles.id"], ondelete="SET NULL", name="release_checks_cycle_id_fkey"
         ),

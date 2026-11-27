@@ -29,15 +29,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from evo_agents.hub.columns import stamp
+
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}$"  # system_spec.SLUG_PATTERN; a test keeps the two equal
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 def system_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -56,8 +53,8 @@ def system_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("created_by", BigInteger),
         Column("updated_by", BigInteger),
         Column("ops_chat_id", BigInteger),  # the chat of the threads to its Orchestrator (0221)
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("is_default", Boolean, nullable=False, server_default=false()),  # 0240
         Column("ops_paused_at", DateTime(timezone=True)),  # 0240
         Column("ops_paused_reason", Text),  # 0240
@@ -91,7 +88,7 @@ def system_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("revision", Integer, nullable=False),
         Column("spec", JSONB, nullable=False),
         Column("actor_id", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["system_id"], ["agent_systems.id"], ondelete="CASCADE", name=f"{rname}_system_id_fkey"),
         ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="SET NULL", name=f"{rname}_actor_id_fkey"),
         PrimaryKeyConstraint("system_id", "revision", name=f"{rname}_pkey"),

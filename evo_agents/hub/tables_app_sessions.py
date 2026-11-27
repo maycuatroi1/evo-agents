@@ -24,13 +24,10 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def app_session_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -42,7 +39,7 @@ def app_session_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("name", Text, nullable=False),
         Column("sealed_secret", JSONB, nullable=False),  # Sealer.seal_stored: {ciphertext, nonce, key_id}
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("revoked_at", DateTime(timezone=True)),
         PrimaryKeyConstraint("id", name="auth_apps_pkey"),
         UniqueConstraint("name", name="auth_apps_name_key"),
@@ -54,7 +51,7 @@ def app_session_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("app_id", BigInteger, nullable=False),
         Column("subject", Text, nullable=False),
         Column("user_id", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         PrimaryKeyConstraint("app_id", "subject", name="app_identities_pkey"),
         ForeignKeyConstraint(["app_id"], ["auth_apps.id"], ondelete="CASCADE", name="app_identities_app_id_fkey"),
         ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="app_identities_user_id_fkey"),

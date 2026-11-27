@@ -20,8 +20,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
-    DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -30,21 +28,10 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     Table,
     Text,
-    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
-
-
-def _key(column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"browser_identities_{column}_fkey")
+from evo_agents.hub.columns import fkey, stamp, when
 
 
 def _version(prefix: str) -> list[Column]:
@@ -80,21 +67,21 @@ def browser_tables(metadata: MetaData) -> Table:
         Column("held_by_run", BigInteger),
         *_version(""),
         Column("chromium_version", Text),  # the Chromium that saved the current version
-        _when("last_saved_at"),
+        when("last_saved_at"),
         Column("last_saved_by", BigInteger),
         *_version("previous_"),  # version - 1, kept to fall back on
-        _when("last_used_at"),
+        when("last_used_at"),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("deleted_at"),
-        _key("project_id", "projects", ondelete="RESTRICT"),
-        _key("owner_id", "users", ondelete="RESTRICT"),
-        _key("worker_id", "workers", ondelete="RESTRICT"),
-        _key("held_by_run", "runs", ondelete="SET NULL"),
-        _key("profile_id", "agent_profiles", ondelete="RESTRICT"),
-        _key("last_saved_by", "users", ondelete="SET NULL"),
-        _key("created_by", "users", ondelete="SET NULL"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("deleted_at"),
+        fkey("browser_identities", "project_id", "projects", ondelete="RESTRICT"),
+        fkey("browser_identities", "owner_id", "users", ondelete="RESTRICT"),
+        fkey("browser_identities", "worker_id", "workers", ondelete="RESTRICT"),
+        fkey("browser_identities", "held_by_run", "runs", ondelete="SET NULL"),
+        fkey("browser_identities", "profile_id", "agent_profiles", ondelete="RESTRICT"),
+        fkey("browser_identities", "last_saved_by", "users", ondelete="SET NULL"),
+        fkey("browser_identities", "created_by", "users", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="browser_identities_pkey"),
         Index("browser_identities_worker_idx", "worker_id"),
         Index("browser_identities_held_by_run_idx", "held_by_run"),

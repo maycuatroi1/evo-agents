@@ -16,9 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
-    DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     Integer,
     MetaData,
@@ -28,26 +26,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     column,
-    func,
     or_,
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    """A timestamptz column that defaults to now() and is never NULL."""
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    """A timestamptz column that is NULL until it happens."""
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    """``id bigint GENERATED ALWAYS AS IDENTITY``."""
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
+from evo_agents.hub.columns import id_column, stamp, when
 
 
 def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -55,7 +39,7 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
     decisions = Table(
         "decisions",
         metadata,
-        _id(),
+        id_column(),
         Column("run_id", BigInteger, nullable=False),
         Column("project_id", BigInteger, nullable=False),
         Column("plan_id", Text),  # NULL for a decision an author run asked before it put a plan (schema 0029)
@@ -68,13 +52,13 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("answer_option", Text),
         Column("answer_text", Text),
         Column("answered_by", BigInteger),
-        _stamp("asked_at"),
-        _when("answered_at"),
-        _when("delivered_at"),
+        stamp("asked_at"),
+        when("answered_at"),
+        when("delivered_at"),
         Column("asked_of", BigInteger),  # who answers it, as the run's principal routes it; NULL before 0115: its owner
-        _when("wake_at"),  # a wait (category wait, 0140): when the hub answers it at the latest
+        when("wake_at"),  # a wait (category wait, 0140): when the hub answers it at the latest
         Column("wake_on", JSONB),  # and the event of hub_events it wakes on sooner: kind, contains, after (0140)
-        _when("held_at"),  # when the person asked last chose an option that leaves it open (0140)
+        when("held_at"),  # when the person asked last chose an option that leaves it open (0140)
         Column("recommended_reason", Text),  # why the agent recommends its option (0155)
         Column("reversible", Boolean),  # whether the act it asks about can be undone (0155)
         Column("undo", Text),  # and how (0155)
@@ -104,12 +88,12 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
     run_inbox = Table(
         "run_inbox",
         metadata,
-        _id(),
+        id_column(),
         Column("run_id", BigInteger, nullable=False),
         Column("sent_by", BigInteger, nullable=False),
         Column("body", Text, nullable=False),
-        _stamp("created_at"),
-        _when("delivered_at"),
+        stamp("created_at"),
+        when("delivered_at"),
         Column("decision_id", BigInteger),
         ForeignKeyConstraint(["decision_id"], ["decisions.id"], ondelete="CASCADE", name="run_inbox_decision_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_inbox_run_id_fkey"),
@@ -134,9 +118,9 @@ def workflow_read_table(metadata: MetaData) -> Table:
         Column("repo", Text, nullable=False),  # owner/name
         Column("run_id", BigInteger, nullable=False),
         Column("data", JSONB, nullable=False),
-        _stamp("read_at"),
+        stamp("read_at"),
         Column("typical_seconds", Integer),
-        _when("typical_read_at"),
+        when("typical_read_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="workflow_run_reads_project_id_fkey"
         ),
@@ -150,7 +134,7 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     notifications = Table(
         "notifications",
         metadata,
-        _id(),
+        id_column(),
         Column("user_id", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
         Column("notice_kind", Text),
@@ -161,8 +145,8 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("body", Text),
         Column("details", JSONB),
         Column("link", Text),
-        _stamp("created_at"),
-        _when("read_at"),
+        stamp("created_at"),
+        when("read_at"),
         Column("proposal_id", BigInteger),
         ForeignKeyConstraint(
             ["decision_id"], ["decisions.id"], ondelete="CASCADE", name="notifications_decision_id_fkey"
@@ -195,12 +179,12 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     notification_channels = Table(
         "notification_channels",
         metadata,
-        _id(),
+        id_column(),
         Column("user_id", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
         Column("config", JSONB, nullable=False, server_default="{}"),
         Column("enabled", Boolean, nullable=False, server_default=true()),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("token_id", BigInteger),  # the web session that linked the channel, which it lives no longer than (0016)
         Column("linked_by", BigInteger),  # the hub admin who linked it, with no session of the member's (0268)
         ForeignKeyConstraint(
@@ -222,20 +206,20 @@ def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     notification_deliveries = Table(
         "notification_deliveries",
         metadata,
-        _id(),
+        id_column(),
         Column("notification_id", BigInteger, nullable=False),
         Column("channel_id", BigInteger),
         Column("state", Text, nullable=False, server_default="pending"),
         Column("attempts", SmallInteger, nullable=False, server_default="0"),
-        _stamp("next_at"),
+        stamp("next_at"),
         Column("last_error", Text),
-        _stamp("created_at"),
-        _when("delivered_at"),
+        stamp("created_at"),
+        when("delivered_at"),
         Column("external_id", Text),
         Column("device_id", BigInteger),  # a delivery to a push device, never with a channel (0156)
         Column("edit_of", BigInteger),  # the delivery whose message this one edits, once its decision closed (0265)
         Column("withheld", Text),  # why the message went without the notification's content (0265)
-        _when("settled_at"),  # when the hub needed nothing more of it: no edit to queue (0265)
+        when("settled_at"),  # when the hub needed nothing more of it: no edit to queue (0265)
         ForeignKeyConstraint(
             ["edit_of"], ["notification_deliveries.id"], ondelete="CASCADE", name="notification_deliveries_edit_of_fkey"
         ),

@@ -78,20 +78,16 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
+from evo_agents.hub.columns import fkey, stamp
 from evo_agents.hub.tables_canvas import CanvasTables, canvas_tables
 from evo_agents.hub.tables_srs import SrsTables, srs_tables
 from evo_agents.hub.tables_tasks import TasksTables, tasks_tables
 
 BACKEND_STATES = ("placing", "starting", "running", "backoff")  # plugin_backends.state (0036)
 ISOLATIONS = ("uid", "process")  # plugin_backends.isolation (0036), as evo_agents.plugins.environment names them
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table]:
@@ -109,7 +105,7 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("installed_at", DateTime(timezone=True)),
         Column("disabled_reason", Text),
         Column("disabled_at", DateTime(timezone=True)),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("builtin", Boolean, nullable=False, server_default=false()),  # a feature of the hub (0147)
         Column("project_id", BigInteger),  # the one project it is installed for, null for the hub's (0170)
         ForeignKeyConstraint(["installed_by"], ["users.id"], ondelete="RESTRICT", name="plugins_installed_by_fkey"),
@@ -139,7 +135,7 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("signature_kind", Text, nullable=False),
         Column("signed_by", Text, nullable=False),
         Column("published_by", BigInteger),  # NULL for a core plugin of the hub's image (0038)
-        _stamp("published_at"),
+        stamp("published_at"),
         ForeignKeyConstraint(["plugin_id"], ["plugins.id"], ondelete="CASCADE", name="plugin_versions_plugin_id_fkey"),
         ForeignKeyConstraint(
             ["published_by"], ["users.id"], ondelete="RESTRICT", name="plugin_versions_published_by_fkey"
@@ -147,10 +143,6 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         PrimaryKeyConstraint("plugin_id", "version", name="plugin_versions_pkey"),
     )
     return plugins, plugin_versions, *_project_tables(metadata, runs)
-
-
-def _fkey(column: str, target: str, table: str, ondelete: str = "RESTRICT") -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey")
 
 
 def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table]:
@@ -162,13 +154,13 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         Column("permissions", ARRAY(Text), nullable=False, server_default="{}"),
         Column("records_level", Text),  # 0169: the highest level a call with no caller touches records at
         Column("enabled_by", BigInteger, nullable=False),
-        _stamp("enabled_at"),
+        stamp("enabled_at"),
         Column("granted_by", BigInteger, nullable=False),
-        _stamp("granted_at"),
-        _fkey("project_id", "projects.id", "project_plugins"),
-        _fkey("plugin_id", "plugins.id", "project_plugins", "CASCADE"),
-        _fkey("enabled_by", "users.id", "project_plugins"),
-        _fkey("granted_by", "users.id", "project_plugins"),
+        stamp("granted_at"),
+        fkey("project_plugins", "project_id", "projects.id", "RESTRICT"),
+        fkey("project_plugins", "plugin_id", "plugins.id", "CASCADE"),
+        fkey("project_plugins", "enabled_by", "users.id", "RESTRICT"),
+        fkey("project_plugins", "granted_by", "users.id", "RESTRICT"),
         PrimaryKeyConstraint("project_id", "plugin_id", name="project_plugins_pkey"),
         Index("project_plugins_plugin_idx", "plugin_id", "project_id"),
     )
@@ -185,11 +177,11 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         Column("secrets", JSONB, nullable=False, server_default="{}"),
         Column("rolled_back_to", Integer),
         Column("changed_by", BigInteger, nullable=False),
-        _stamp("changed_at"),
-        _fkey("plugin_id", "plugins.id", "plugin_configs", "CASCADE"),
-        _fkey("project_id", "projects.id", "plugin_configs"),
-        _fkey("profile_id", "agent_profiles.id", "plugin_configs"),
-        _fkey("changed_by", "users.id", "plugin_configs"),
+        stamp("changed_at"),
+        fkey("plugin_configs", "plugin_id", "plugins.id", "CASCADE"),
+        fkey("plugin_configs", "project_id", "projects.id", "RESTRICT"),
+        fkey("plugin_configs", "profile_id", "agent_profiles.id", "RESTRICT"),
+        fkey("plugin_configs", "changed_by", "users.id", "RESTRICT"),
         PrimaryKeyConstraint("id", name="plugin_configs_pkey"),
         UniqueConstraint(
             "plugin_id",
@@ -212,8 +204,8 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         Column("plugin_id", BigInteger, nullable=False),
         Column("version", Text, nullable=False),
         Column("config_digest", Text, nullable=False),
-        _stamp("recorded_at"),
-        _fkey("run_id", "runs.id", "run_plugins", "CASCADE"),
+        stamp("recorded_at"),
+        fkey("run_plugins", "run_id", "runs.id", "CASCADE"),
         ForeignKeyConstraint(
             ["plugin_id", "version"],
             ["plugin_versions.plugin_id", "plugin_versions.version"],
@@ -250,11 +242,11 @@ def retired_table(metadata: MetaData) -> Table:
         Column("granted_by", BigInteger, nullable=False),
         Column("granted_at", DateTime(timezone=True), nullable=False),
         Column("settings_version", Integer),  # the version of the project's features 0147 added; NULL: none
-        _stamp("retired_at"),
-        _fkey("project_id", "projects.id", "retired_project_plugins"),
-        _fkey("plugin_id", "plugins.id", "retired_project_plugins", "CASCADE"),
-        _fkey("enabled_by", "users.id", "retired_project_plugins"),
-        _fkey("granted_by", "users.id", "retired_project_plugins"),
+        stamp("retired_at"),
+        fkey("retired_project_plugins", "project_id", "projects.id", "RESTRICT"),
+        fkey("retired_project_plugins", "plugin_id", "plugins.id", "CASCADE"),
+        fkey("retired_project_plugins", "enabled_by", "users.id", "RESTRICT"),
+        fkey("retired_project_plugins", "granted_by", "users.id", "RESTRICT"),
         PrimaryKeyConstraint("project_id", "plugin_id", name="retired_project_plugins_pkey"),
     )
 
@@ -267,9 +259,9 @@ def backend_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table
         Column("id", BigInteger, Identity(always=True), nullable=False),
         Column("plugin_id", BigInteger, nullable=False),
         Column("token_hash", Text, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("revoked_at", DateTime(timezone=True)),
-        _fkey("plugin_id", "plugins.id", "plugin_tokens", "CASCADE"),
+        fkey("plugin_tokens", "plugin_id", "plugins.id", "CASCADE"),
         PrimaryKeyConstraint("id", name="plugin_tokens_pkey"),
         UniqueConstraint("token_hash", name="plugin_tokens_token_hash_key"),
         Index("plugin_tokens_plugin_idx", "plugin_id"),
@@ -286,8 +278,8 @@ def backend_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table
         Column("started_at", DateTime(timezone=True)),
         Column("error", Text),
         Column("retry_at", DateTime(timezone=True)),
-        _stamp("reported_at"),
-        _fkey("plugin_id", "plugins.id", "plugin_backends", "CASCADE"),
+        stamp("reported_at"),
+        fkey("plugin_backends", "plugin_id", "plugins.id", "CASCADE"),
         PrimaryKeyConstraint("plugin_id", name="plugin_backends_pkey"),
     )
     return plugin_tokens, plugin_backends, _deliveries(metadata), _agent_types(metadata, runs)
@@ -306,13 +298,13 @@ def _deliveries(metadata: MetaData) -> Table:
         Column("state", Text, nullable=False, server_default="pending"),
         Column("attempts", SmallInteger, nullable=False, server_default="0"),
         Column("put_off", SmallInteger, nullable=False, server_default="0"),  # tries the plugin put off (0230)
-        _stamp("next_at"),
+        stamp("next_at"),
         Column("last_error", Text),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("delivered_at", DateTime(timezone=True)),
         Column("published_at", DateTime(timezone=True)),  # when the event bus last carried it (0231)
-        _fkey("plugin_id", "plugins.id", "plugin_deliveries", "CASCADE"),
-        _fkey("project_id", "projects.id", "plugin_deliveries", "CASCADE"),
+        fkey("plugin_deliveries", "plugin_id", "plugins.id", "CASCADE"),
+        fkey("plugin_deliveries", "project_id", "projects.id", "CASCADE"),
         PrimaryKeyConstraint("id", name="plugin_deliveries_pkey"),
         Index("plugin_deliveries_plugin_idx", "plugin_id", "id"),
         Index("plugin_deliveries_created_idx", "created_at"),
@@ -339,20 +331,20 @@ def _agent_types(metadata: MetaData, runs: Table) -> Table:
         Column("daily_usd", Double, nullable=False),
         Column("min_run_usd", Double),  # the least cap of one run, NULL for the hub's default (0260)
         Column("enabled_by", BigInteger, nullable=False),
-        _stamp("enabled_at"),
+        stamp("enabled_at"),
         Column("disabled_at", DateTime(timezone=True)),
-        _fkey("project_id", "projects.id", "project_agent_types"),
-        _fkey("plugin_id", "plugins.id", "project_agent_types", "CASCADE"),
-        _fkey("profile_id", "agent_profiles.id", "project_agent_types"),
-        _fkey("run_as", "users.id", "project_agent_types"),
-        _fkey("enabled_by", "users.id", "project_agent_types"),
+        fkey("project_agent_types", "project_id", "projects.id", "RESTRICT"),
+        fkey("project_agent_types", "plugin_id", "plugins.id", "CASCADE"),
+        fkey("project_agent_types", "profile_id", "agent_profiles.id", "RESTRICT"),
+        fkey("project_agent_types", "run_as", "users.id", "RESTRICT"),
+        fkey("project_agent_types", "enabled_by", "users.id", "RESTRICT"),
         PrimaryKeyConstraint("id", name="project_agent_types_pkey"),
         UniqueConstraint("project_id", "plugin_id", "name", name="project_agent_types_name_key"),
         Index("project_agent_types_plugin_idx", "plugin_id", "project_id"),
     )
     runs.append_column(Column("agent_type_id", BigInteger))  # the agent type of a task run (0042)
     runs.append_column(Column("pulls", JSONB))  # the draft pull requests of a task run's branch (0042)
-    runs.append_constraint(_fkey("agent_type_id", "project_agent_types.id", "runs"))
+    runs.append_constraint(fkey("runs", "agent_type_id", "project_agent_types.id", "RESTRICT"))
     typed = runs.c.agent_type_id.is_not(None)
     Index("runs_agent_type_idx", runs.c.agent_type_id, runs.c.queued_at, postgresql_where=typed)
     return agent_types
@@ -374,12 +366,12 @@ def question_table(metadata: MetaData) -> Table:
         Column("outcome", Text),
         Column("answer", Text),
         Column("label", JSONB),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("answered_at", DateTime(timezone=True)),
-        _fkey("plugin_id", "plugins.id", "agent_questions", "CASCADE"),
-        _fkey("project_id", "projects.id", "agent_questions", "CASCADE"),
-        _fkey("agent_type_id", "project_agent_types.id", "agent_questions", "CASCADE"),
-        _fkey("run_id", "runs.id", "agent_questions", "CASCADE"),
+        fkey("agent_questions", "plugin_id", "plugins.id", "CASCADE"),
+        fkey("agent_questions", "project_id", "projects.id", "CASCADE"),
+        fkey("agent_questions", "agent_type_id", "project_agent_types.id", "CASCADE"),
+        fkey("agent_questions", "run_id", "runs.id", "CASCADE"),
         PrimaryKeyConstraint("id", name="agent_questions_pkey"),
         UniqueConstraint("run_id", name="agent_questions_run_id_key"),
         UniqueConstraint("plugin_id", "project_id", "ref", name="agent_questions_ref_key"),

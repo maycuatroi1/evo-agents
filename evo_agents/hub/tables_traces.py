@@ -35,17 +35,14 @@ from sqlalchemy import (
     Table,
     Text,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+
+from evo_agents.hub.columns import stamp
 
 SPAN_NAMES = ("invoke_agent", "execute_tool")  # system_context.SPAN_NAMES; a test keeps the two equal
 SPAN_STATUSES = ("running", "ok", "error", "refused")  # system_context.SPAN_STATUSES
 OUTCOMES = ("met", "not_met")  # 0270: work_status.OUTCOMES, what the entry agent records of a trace's work
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -78,8 +75,8 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("outcome_left", Text),  # 0270: what it named as still to do; NULL: nothing
         Column("handled_by", BigInteger),  # 0270: the member of the work chat who marked the work handled
         Column("handled_at", DateTime(timezone=True)),  # 0270: when
-        _stamp("started_at"),
-        _stamp("last_at"),
+        stamp("started_at"),
+        stamp("last_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["system_id"], ["agent_systems.id"], ondelete="SET NULL", name=f"{name}_system_id_fkey"),
         ForeignKeyConstraint(["chat_id"], ["chats.id"], ondelete="SET NULL", name=f"{name}_chat_id_fkey"),
@@ -121,7 +118,7 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("reason", Text),
         Column("message_id", BigInteger),
         Column("attributes", JSONB, nullable=False, server_default="{}"),
-        _stamp("started_at"),
+        stamp("started_at"),
         Column("ended_at", DateTime(timezone=True)),
         ForeignKeyConstraint(["trace_id"], ["system_traces.id"], ondelete="CASCADE", name=f"{sname}_trace_id_fkey"),
         ForeignKeyConstraint(["parent_id"], ["system_spans.id"], ondelete="SET NULL", name=f"{sname}_parent_id_fkey"),
@@ -149,7 +146,7 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("run_id", BigInteger, nullable=False),
         Column("asked_by_run_id", BigInteger),
         Column("brief", JSONB, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name=f"{bname}_run_id_fkey"),
         ForeignKeyConstraint(["asked_by_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{bname}_asked_by_fkey"),
         PrimaryKeyConstraint("run_id", name=f"{bname}_pkey"),

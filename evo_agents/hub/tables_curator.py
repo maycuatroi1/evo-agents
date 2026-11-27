@@ -27,7 +27,6 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKeyConstraint,
-    Identity,
     Index,
     Integer,
     MetaData,
@@ -41,17 +40,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
-
-
-def _id() -> Column:
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
+from evo_agents.hub.columns import id_column, stamp, when
 
 
 def _changes(metadata: MetaData) -> Table:
@@ -59,7 +48,7 @@ def _changes(metadata: MetaData) -> Table:
     return Table(
         "curator_changes",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("proposal_id", BigInteger, nullable=False),
         Column("plan_id", Text),  # with repo, branch and forge: null only while open or closed (0161)
@@ -80,10 +69,10 @@ def _changes(metadata: MetaData) -> Table:
         Column("verdict", JSONB),
         Column("passed", Boolean),
         Column("check_run_id", BigInteger),
-        _when("merged_at"),
+        when("merged_at"),
         Column("merge_sha", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
         Column("knowledge", JSONB(none_as_null=True)),  # its pull request on knowledge.yaml, kind kg_source (0057)
         ForeignKeyConstraint(
@@ -134,7 +123,7 @@ def _ledger(metadata: MetaData) -> Table:
     ledger = Table(
         "curator_ledger",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("proposal_id", BigInteger, nullable=False),
         Column("change_id", BigInteger),
@@ -150,10 +139,10 @@ def _ledger(metadata: MetaData) -> Table:
         Column("verdict", JSONB),
         Column("pr_url", Text),
         Column("pr_number", Integer),
-        _when("merged_at"),
+        when("merged_at"),
         Column("outcome", Text),
         Column("details", JSONB),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="curator_ledger_actor_id_fkey"),
         ForeignKeyConstraint(
             ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_ledger_change_id_fkey"
@@ -184,7 +173,7 @@ def _replay_tasks(metadata: MetaData) -> Table:
     return Table(
         "replay_tasks",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("plan_id", Text, nullable=False),
         Column("step_key", Text, nullable=False),
@@ -198,7 +187,7 @@ def _replay_tasks(metadata: MetaData) -> Table:
         Column("label", JSONB, nullable=False),
         Column("base_sha", Text),
         Column("unusable", Text),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="replay_tasks_project_id_fkey"),
         PrimaryKeyConstraint("id", name="replay_tasks_pkey"),
         UniqueConstraint("project_id", "plan_id", "step_key", name="replay_tasks_step_key"),
@@ -211,7 +200,7 @@ def _replays(metadata: MetaData) -> Table:
     return Table(
         "curator_replays",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("change_id", BigInteger, nullable=False),
         Column("task_id", BigInteger, nullable=False),
@@ -223,8 +212,8 @@ def _replays(metadata: MetaData) -> Table:
         Column("result_a", JSONB),
         Column("result_b", JSONB),
         Column("reason", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_replays_change_id_fkey"
         ),
@@ -258,14 +247,14 @@ def briefs_table(metadata: MetaData) -> Table:
     return Table(
         "curator_briefs",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("day", Date, nullable=False),
         Column("night", Date, nullable=False),
         Column("user_id", BigInteger, nullable=False),
         Column("body", JSONB, nullable=False),
         Column("notification_id", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(
             ["notification_id"], ["notifications.id"], ondelete="SET NULL", name="curator_briefs_notification_id_fkey"
         ),
@@ -283,7 +272,7 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
     entries = Table(
         "curator_playbook",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("lens", Text),
         Column("text", Text, nullable=False),
@@ -293,10 +282,10 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("label", JSONB, nullable=False),
         Column("created_run_id", BigInteger),
         Column("updated_run_id", BigInteger),
-        _when("retired_at"),
+        when("retired_at"),
         Column("retired_note", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("until_proposal_id", BigInteger),  # the proposal it holds until; its merge retires it (0256)
         Column("prompt_exposures", Integer, nullable=False, server_default="0"),  # review runs that showed it (0256)
         ForeignKeyConstraint(
@@ -320,14 +309,14 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
     deltas = Table(
         "curator_playbook_deltas",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("entry_id", BigInteger, nullable=False),
         Column("run_id", BigInteger),
         Column("op", Text, nullable=False),
         Column("evidence", JSONB, nullable=False, server_default="[]"),
         Column("note", Text),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("actor", Text),  # curator: the hub's maintenance; None: the agent of run_id (0256)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_deltas_project_id_fkey"
@@ -348,7 +337,7 @@ def probe_tables(metadata: MetaData) -> Table:
     probes = Table(
         "curator_probes",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("proposal_id", BigInteger),
         Column("change_id", BigInteger),
@@ -362,10 +351,10 @@ def probe_tables(metadata: MetaData) -> Table:
         Column("created_by", BigInteger),
         Column("created_run_id", BigInteger),
         Column("updated_by", BigInteger),
-        _when("retired_at"),
+        when("retired_at"),
         Column("retired_note", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("replaces", BigInteger),  # the probe, not reproduced two weeks in a row, this one replaced (0133)
         Column("plugin_id", BigInteger),  # source plugin (0162): the core plugin whose rule the probe measures
         Column("ref", Text),  # source plugin: the key of that rule, one active probe per project, plugin and ref
@@ -417,7 +406,7 @@ def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -
     return Table(
         "curator_probe_runs",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("probe_id", BigInteger, nullable=False),
         Column("change_id", BigInteger),  # None: the probe of a plugin's rule (0162), which has no change
@@ -434,8 +423,8 @@ def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -
         Column("arms_at", Text),  # tip | change: where the arms ran (0246); None without a session, or a plugin's
         Column("sessions", JSONB, nullable=False, server_default="[]"),  # each session's result, as reported
         Column("reason", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_probe_runs_project_id_fkey"
         ),
@@ -466,7 +455,7 @@ def change_repos_table(metadata: MetaData) -> Table:
     return Table(
         "curator_change_repos",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("change_id", BigInteger, nullable=False),
         Column("repo", Text, nullable=False),
@@ -485,10 +474,10 @@ def change_repos_table(metadata: MetaData) -> Table:
         Column("verdict", JSONB),
         Column("passed", Boolean),
         Column("check_run_id", BigInteger),
-        _when("merged_at"),
+        when("merged_at"),
         Column("merge_sha", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_change_repos_project_id_fkey"
         ),
@@ -509,7 +498,7 @@ def _evolve_runs(metadata: MetaData) -> Table:
     return Table(
         "curator_evolve_runs",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("run_id", BigInteger),
         Column("target", Text, nullable=False),  # evolve.TARGETS: git or agent_config
@@ -533,8 +522,8 @@ def _evolve_runs(metadata: MetaData) -> Table:
         Column("reason", Text),
         Column("label", JSONB, nullable=False),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_evolve_runs_project_id_fkey"
         ),
@@ -559,7 +548,7 @@ def _evolve_candidates(metadata: MetaData) -> Table:
     return Table(
         "curator_evolve_candidates",
         metadata,
-        _id(),
+        id_column(),
         Column("project_id", BigInteger, nullable=False),
         Column("evolve_id", BigInteger, nullable=False),
         Column("parents", ARRAY(BigInteger), nullable=False, server_default="{}"),
@@ -572,8 +561,8 @@ def _evolve_candidates(metadata: MetaData) -> Table:
         Column("turns", Integer),
         Column("traces", JSONB, nullable=False, server_default="[]"),  # what the proposer read of each failure
         Column("on_front", Boolean, nullable=False, server_default="false"),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_evolve_candidates_project_id_fkey"
         ),
@@ -603,7 +592,7 @@ def _evolve_arm_cache(metadata: MetaData) -> Table:
         Column("model", Text),
         Column("result", JSONB, nullable=False),
         Column("run_id", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_evolve_arm_cache_project_id_fkey"
         ),

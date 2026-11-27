@@ -21,14 +21,10 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    """A timestamptz column that defaults to now() and is never NULL."""
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def night_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -40,7 +36,7 @@ def night_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("revision", Integer, nullable=False),
         Column("body", JSONB, nullable=False),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="charters_created_by_fkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="charters_project_id_fkey"),
         PrimaryKeyConstraint("project_id", "revision", name="charters_pkey"),
@@ -52,8 +48,8 @@ def night_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
         Column("owner_id", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("paused_at", DateTime(timezone=True)),
         Column("paused_by", BigInteger),
         Column("pause_reason", Text),  # why the hub paused it, its circuit breaker; NULL when a member did (0018)

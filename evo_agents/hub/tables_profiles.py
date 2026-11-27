@@ -35,13 +35,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import stamp
 
 
 def _profile_of(table: Table) -> None:
@@ -81,8 +78,8 @@ def profile_tables(metadata: MetaData, runs: Table, credential_leases: Table) ->
         Column("account_pool_id", BigInteger),  # since 0191: its account pool (account_pools), NULL for none
         Column("version", Integer, nullable=False, server_default="1"),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         Column("deleted_at", DateTime(timezone=True)),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="agent_profiles_created_by_fkey"),
         ForeignKeyConstraint(
@@ -109,7 +106,7 @@ def profile_tables(metadata: MetaData, runs: Table, credential_leases: Table) ->
         Column("version", Integer, nullable=False),
         Column("body", JSONB, nullable=False),
         Column("changed_by", BigInteger, nullable=False),
-        _stamp("changed_at"),
+        stamp("changed_at"),
         ForeignKeyConstraint(
             ["changed_by"], ["users.id"], ondelete="RESTRICT", name="agent_profile_versions_changed_by_fkey"
         ),

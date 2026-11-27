@@ -17,7 +17,6 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -26,17 +25,10 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import fkey, stamp
 
 
 def problem_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -48,8 +40,8 @@ def problem_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("project_id", BigInteger, nullable=False),
         Column("number", Integer, nullable=False),
         Column("revision", Integer, nullable=False),
-        _stamp("created_at"),
-        _key("problems", "project_id", "projects", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("problems", "project_id", "projects", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="problems_pkey"),
         UniqueConstraint("project_id", "number", name="problems_number_key"),
     )
@@ -70,10 +62,10 @@ def problem_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("close_reason", Text),
         Column("note", Text),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
-        _key(name, "problem_id", "problems", ondelete="CASCADE"),
-        _key(name, "owner_id", "users", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        stamp("created_at"),
+        fkey(name, "problem_id", "problems", ondelete="CASCADE"),
+        fkey(name, "owner_id", "users", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("problem_id", "revision", name="problem_revisions_pkey"),
     )
     return problems, revisions
@@ -98,14 +90,14 @@ def evidence_table(metadata: MetaData) -> Table:
         Column("signal", Text, nullable=False),
         Column("label", Text, nullable=False),
         Column("added_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("confirmed_by", BigInteger),
         Column("confirmed_at", DateTime(timezone=True)),
         Column("proposal_id", BigInteger),
-        _key(name, "problem_id", "problems", ondelete="CASCADE"),
-        _key(name, "added_by", "users", ondelete="RESTRICT"),
-        _key(name, "confirmed_by", "users", ondelete="RESTRICT"),
-        _key(name, "proposal_id", "builder_proposals", ondelete="SET NULL"),
+        fkey(name, "problem_id", "problems", ondelete="CASCADE"),
+        fkey(name, "added_by", "users", ondelete="RESTRICT"),
+        fkey(name, "confirmed_by", "users", ondelete="RESTRICT"),
+        fkey(name, "proposal_id", "builder_proposals", ondelete="SET NULL"),
         PrimaryKeyConstraint("problem_id", "number", name="problem_evidence_pkey"),
     )
     Index(f"{name}_proposal_idx", table.c.proposal_id, postgresql_where=table.c.proposal_id.is_not(None))

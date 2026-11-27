@@ -16,7 +16,6 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     MetaData,
@@ -26,9 +25,7 @@ from sqlalchemy import (
     func,
 )
 
-
-def _fk(table: str, column: str, target: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [target], ondelete="CASCADE", name=f"{table}_{column}_fkey")
+from evo_agents.hub.columns import fkey
 
 
 def attachment_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -47,11 +44,11 @@ def attachment_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("inbox_id", BigInteger),
         Column("chat_message_id", BigInteger),
-        _fk("attachments", "uploaded_by", "users.id"),
-        _fk("attachments", "run_id", "runs.id"),
-        _fk("attachments", "chat_id", "chats.id"),
-        _fk("attachments", "inbox_id", "run_inbox.id"),
-        _fk("attachments", "chat_message_id", "chat_messages.id"),
+        fkey("attachments", "uploaded_by", "users.id", ondelete="CASCADE"),
+        fkey("attachments", "run_id", "runs.id", ondelete="CASCADE"),
+        fkey("attachments", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("attachments", "inbox_id", "run_inbox.id", ondelete="CASCADE"),
+        fkey("attachments", "chat_message_id", "chat_messages.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="attachments_pkey"),
     )
     Index("attachments_sha256_idx", files.c.sha256)
@@ -68,8 +65,8 @@ def attachment_tables(metadata: MetaData) -> tuple[Table, Table]:
         metadata,
         Column("inbox_id", BigInteger, nullable=False),
         Column("attachment_id", BigInteger, nullable=False),
-        _fk("run_inbox_attachments", "inbox_id", "run_inbox.id"),
-        _fk("run_inbox_attachments", "attachment_id", "attachments.id"),
+        fkey("run_inbox_attachments", "inbox_id", "run_inbox.id", ondelete="CASCADE"),
+        fkey("run_inbox_attachments", "attachment_id", "attachments.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("inbox_id", "attachment_id", name="run_inbox_attachments_pkey"),
     )
     Index("run_inbox_attachments_attachment_id_idx", links.c.attachment_id)

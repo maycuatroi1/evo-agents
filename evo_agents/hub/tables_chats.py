@@ -60,7 +60,6 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     MetaData,
@@ -69,33 +68,20 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _id() -> Column:
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
-
-
-def _fk(table: str, column: str, target: str, *, ondelete: str, use_alter: bool = False) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint(
-        [column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey", use_alter=use_alter
-    )
+from evo_agents.hub.columns import fkey, id_column, stamp
 
 
 def _chats(metadata: MetaData) -> tuple[Table, Table]:
     chats = Table(
         "chats",
         metadata,
-        _id(),
+        id_column(),
         Column("title", Text, nullable=False),
         Column("created_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("event_seq", BigInteger, nullable=False, server_default="0"),
         Column("kind", Text, nullable=False, server_default="group"),  # 0050
         Column("direct_user_id", BigInteger),  # 0050
@@ -104,10 +90,10 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         Column("image_size", BigInteger),  # 0051
         Column("label_override", JSONB),  # 0164: the level a project admin set, and the projects it lowers
         Column("opened_from_message_id", BigInteger),  # 0232: the direct chat's thread a group was opened from
-        _fk("chats", "created_by", "users.id", ondelete="RESTRICT"),
-        _fk("chats", "direct_user_id", "users.id", ondelete="RESTRICT"),
-        _fk("chats", "direct_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
-        _fk("chats", "opened_from_message_id", "chat_messages.id", ondelete="SET NULL", use_alter=True),  # 0232
+        fkey("chats", "created_by", "users.id", ondelete="RESTRICT"),
+        fkey("chats", "direct_user_id", "users.id", ondelete="RESTRICT"),
+        fkey("chats", "direct_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
+        fkey("chats", "opened_from_message_id", "chat_messages.id", ondelete="SET NULL", use_alter=True),  # 0232
         PrimaryKeyConstraint("id", name="chats_pkey"),
         UniqueConstraint("direct_user_id", "direct_profile_id", name="chats_direct_key"),
     )
@@ -121,20 +107,20 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
     members = Table(
         "chat_members",
         metadata,
-        _id(),
+        id_column(),
         Column("chat_id", BigInteger, nullable=False),
         Column("user_id", BigInteger),
         Column("profile_id", BigInteger),
         Column("added_by", BigInteger),
         Column("added_by_run_id", BigInteger),
-        _stamp("added_at"),
+        stamp("added_at"),
         Column("removed_at", DateTime(timezone=True)),
         Column("last_read_seq", BigInteger, nullable=False, server_default="0"),
-        _fk("chat_members", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("chat_members", "user_id", "users.id", ondelete="CASCADE"),
-        _fk("chat_members", "profile_id", "agent_profiles.id", ondelete="RESTRICT"),
-        _fk("chat_members", "added_by", "users.id", ondelete="RESTRICT"),
-        _fk("chat_members", "added_by_run_id", "runs.id", ondelete="SET NULL"),
+        fkey("chat_members", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("chat_members", "user_id", "users.id", ondelete="CASCADE"),
+        fkey("chat_members", "profile_id", "agent_profiles.id", ondelete="RESTRICT"),
+        fkey("chat_members", "added_by", "users.id", ondelete="RESTRICT"),
+        fkey("chat_members", "added_by_run_id", "runs.id", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="chat_members_pkey"),
         UniqueConstraint("chat_id", "user_id", name="chat_members_person_key"),
         UniqueConstraint("chat_id", "profile_id", name="chat_members_agent_key"),
@@ -147,7 +133,7 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
     messages = Table(
         "chat_messages",
         metadata,
-        _id(),
+        id_column(),
         Column("chat_id", BigInteger, nullable=False),
         Column("seq", BigInteger, nullable=False),
         Column("thread_root_id", BigInteger),
@@ -156,20 +142,20 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         Column("run_id", BigInteger),
         Column("body", Text, nullable=False),
         Column("label", JSONB, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("via", Text),  # 0165: the kind of channel it came in by, from a bridged group
         Column("from_output_id", BigInteger),  # 0213: the interactive answer a person sent it from
         Column("copied_from_id", BigInteger),  # 0234: the message of another chat it copies, which hands no work again
         Column("guest_name", Text),  # 0266: its author, a bridged group's sender who linked no account of the hub
         Column("repeats_id", BigInteger),  # 0270: the message of its work chat a line of the hub repeats
-        _fk("chat_messages", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("chat_messages", "thread_root_id", "chat_messages.id", ondelete="CASCADE"),
-        _fk("chat_messages", "author_user_id", "users.id", ondelete="RESTRICT"),
-        _fk("chat_messages", "author_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
-        _fk("chat_messages", "run_id", "runs.id", ondelete="SET NULL"),
-        _fk("chat_messages", "from_output_id", "run_outputs.id", ondelete="SET NULL", use_alter=True),  # 0213
-        _fk("chat_messages", "copied_from_id", "chat_messages.id", ondelete="SET NULL"),  # 0234
-        _fk("chat_messages", "repeats_id", "chat_messages.id", ondelete="SET NULL"),  # 0270
+        fkey("chat_messages", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("chat_messages", "thread_root_id", "chat_messages.id", ondelete="CASCADE"),
+        fkey("chat_messages", "author_user_id", "users.id", ondelete="RESTRICT"),
+        fkey("chat_messages", "author_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
+        fkey("chat_messages", "run_id", "runs.id", ondelete="SET NULL"),
+        fkey("chat_messages", "from_output_id", "run_outputs.id", ondelete="SET NULL", use_alter=True),  # 0213
+        fkey("chat_messages", "copied_from_id", "chat_messages.id", ondelete="SET NULL"),  # 0234
+        fkey("chat_messages", "repeats_id", "chat_messages.id", ondelete="SET NULL"),  # 0270
         PrimaryKeyConstraint("id", name="chat_messages_pkey"),
         UniqueConstraint("chat_id", "seq", name="chat_messages_seq_key"),
     )
@@ -196,10 +182,10 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         Column("profile_id", BigInteger),
         Column("run_id", BigInteger),
         Column("refusal", Text),
-        _fk("chat_mentions", "message_id", "chat_messages.id", ondelete="CASCADE"),
-        _fk("chat_mentions", "user_id", "users.id", ondelete="CASCADE"),
-        _fk("chat_mentions", "profile_id", "agent_profiles.id", ondelete="RESTRICT"),
-        _fk("chat_mentions", "run_id", "runs.id", ondelete="SET NULL"),
+        fkey("chat_mentions", "message_id", "chat_messages.id", ondelete="CASCADE"),
+        fkey("chat_mentions", "user_id", "users.id", ondelete="CASCADE"),
+        fkey("chat_mentions", "profile_id", "agent_profiles.id", ondelete="RESTRICT"),
+        fkey("chat_mentions", "run_id", "runs.id", ondelete="SET NULL"),
         PrimaryKeyConstraint("message_id", "ordinal", name="chat_mentions_pkey"),
     )
     return messages, mentions
@@ -214,10 +200,10 @@ def _reactions(metadata: MetaData) -> tuple[Table, Table]:
         Column("user_id", BigInteger),
         Column("profile_id", BigInteger),
         Column("emoji", Text, nullable=False),
-        _stamp("created_at"),
-        _fk("chat_reactions", "message_id", "chat_messages.id", ondelete="CASCADE"),
-        _fk("chat_reactions", "user_id", "users.id", ondelete="CASCADE"),
-        _fk("chat_reactions", "profile_id", "agent_profiles.id", ondelete="RESTRICT"),
+        stamp("created_at"),
+        fkey("chat_reactions", "message_id", "chat_messages.id", ondelete="CASCADE"),
+        fkey("chat_reactions", "user_id", "users.id", ondelete="CASCADE"),
+        fkey("chat_reactions", "profile_id", "agent_profiles.id", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="chat_reactions_pkey"),
         UniqueConstraint("message_id", "user_id", "emoji", name="chat_reactions_person_key"),
         UniqueConstraint("message_id", "profile_id", "emoji", name="chat_reactions_agent_key"),
@@ -229,8 +215,8 @@ def _reactions(metadata: MetaData) -> tuple[Table, Table]:
         Column("seq", BigInteger, nullable=False),
         Column("kind", Text, nullable=False),
         Column("body", JSONB, nullable=False),
-        _stamp("created_at"),
-        _fk("chat_events", "chat_id", "chats.id", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("chat_events", "chat_id", "chats.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("chat_id", "seq", name="chat_events_pkey"),
     )
     return reactions, events
@@ -243,9 +229,9 @@ def _chat_runs(runs: Table) -> None:
     runs.append_column(Column("chat_message_id", BigInteger))
     runs.append_column(Column("hop", SmallInteger))
     runs.append_column(Column("seen_audience", ARRAY(Text), nullable=False, server_default="{}"))  # 0049
-    runs.append_constraint(_fk("runs", "chat_id", "chats.id", ondelete="RESTRICT"))
+    runs.append_constraint(fkey("runs", "chat_id", "chats.id", ondelete="RESTRICT"))
     # chat_messages.run_id points back at runs: this key is made apart from the tables, so that they sort
-    runs.append_constraint(_fk("runs", "chat_message_id", "chat_messages.id", ondelete="RESTRICT", use_alter=True))
+    runs.append_constraint(fkey("runs", "chat_message_id", "chat_messages.id", ondelete="RESTRICT", use_alter=True))
     Index("runs_chat_idx", runs.c.chat_id, runs.c.queued_at, postgresql_where=runs.c.chat_id.is_not(None))
 
 
@@ -267,11 +253,11 @@ def share_table(metadata: MetaData) -> Table:
         Column("project_id", BigInteger, nullable=False),
         Column("user_id", BigInteger, nullable=False),
         Column("shared_by", BigInteger, nullable=False),
-        _stamp("shared_at"),
-        _fk("chat_label_shares", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("chat_label_shares", "project_id", "projects.id", ondelete="CASCADE"),
-        _fk("chat_label_shares", "user_id", "users.id", ondelete="CASCADE"),
-        _fk("chat_label_shares", "shared_by", "users.id", ondelete="CASCADE"),
+        stamp("shared_at"),
+        fkey("chat_label_shares", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("chat_label_shares", "project_id", "projects.id", ondelete="CASCADE"),
+        fkey("chat_label_shares", "user_id", "users.id", ondelete="CASCADE"),
+        fkey("chat_label_shares", "shared_by", "users.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("chat_id", "project_id", "user_id", name="chat_label_shares_pkey"),
     )
 
@@ -281,7 +267,7 @@ def bridge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     bridges = Table(
         "chat_bridges",
         metadata,
-        _id(),
+        id_column(),
         Column("chat_id", BigInteger, nullable=False),
         Column("plugin", Text, nullable=False),  # the id of the core plugin that contributes the kind
         Column("kind", Text, nullable=False),
@@ -289,13 +275,13 @@ def bridge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("config", JSONB, nullable=False, server_default="{}"),
         Column("state", JSONB, nullable=False, server_default="{}"),
         Column("linked_by", BigInteger),
-        _stamp("linked_at"),
+        stamp("linked_at"),
         Column("unlinked_at", DateTime(timezone=True)),
         Column("unlinked_by", BigInteger),
         Column("unlinked_via", Text),  # web, cli, bot or admin
-        _fk("chat_bridges", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("chat_bridges", "linked_by", "users.id", ondelete="SET NULL"),
-        _fk("chat_bridges", "unlinked_by", "users.id", ondelete="SET NULL"),
+        fkey("chat_bridges", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("chat_bridges", "linked_by", "users.id", ondelete="SET NULL"),
+        fkey("chat_bridges", "unlinked_by", "users.id", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="chat_bridges_pkey"),
     )
     linked = bridges.c.unlinked_at.is_(None)
@@ -304,18 +290,18 @@ def bridge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     codes = Table(
         "chat_bridge_codes",
         metadata,
-        _id(),
+        id_column(),
         Column("chat_id", BigInteger, nullable=False),
         Column("user_id", BigInteger, nullable=False),
         Column("token_id", BigInteger, nullable=False),  # the web session that made it
         Column("kind", Text, nullable=False),
         Column("code_hash", Text, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("expires_at", DateTime(timezone=True), nullable=False),
         Column("used_at", DateTime(timezone=True)),
-        _fk("chat_bridge_codes", "chat_id", "chats.id", ondelete="CASCADE"),
-        _fk("chat_bridge_codes", "user_id", "users.id", ondelete="CASCADE"),
-        _fk("chat_bridge_codes", "token_id", "tokens.id", ondelete="CASCADE"),
+        fkey("chat_bridge_codes", "chat_id", "chats.id", ondelete="CASCADE"),
+        fkey("chat_bridge_codes", "user_id", "users.id", ondelete="CASCADE"),
+        fkey("chat_bridge_codes", "token_id", "tokens.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="chat_bridge_codes_pkey"),
         UniqueConstraint("code_hash", name="chat_bridge_codes_code_hash_key"),
     )
@@ -327,9 +313,9 @@ def bridge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("message_id", BigInteger, nullable=False),
         Column("direction", Text, nullable=False),  # in: it came from the group; out: it went there
         Column("external_id", Text, nullable=False),  # the group's id of the message
-        _stamp("created_at"),
-        _fk("chat_bridge_messages", "bridge_id", "chat_bridges.id", ondelete="CASCADE"),
-        _fk("chat_bridge_messages", "message_id", "chat_messages.id", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("chat_bridge_messages", "bridge_id", "chat_bridges.id", ondelete="CASCADE"),
+        fkey("chat_bridge_messages", "message_id", "chat_messages.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("bridge_id", "message_id", "direction", name="chat_bridge_messages_pkey"),
         UniqueConstraint("bridge_id", "external_id", name="chat_bridge_messages_external_key"),
     )

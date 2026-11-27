@@ -54,7 +54,6 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -67,6 +66,8 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+
+from evo_agents.hub.columns import fkey
 
 DOCUMENT_KINDS = ("srs", "spec")  # srs_documents.kind
 ITEM_KINDS = (  # srs_items.kind
@@ -159,10 +160,6 @@ class SrsTables:
     use_case_releases: Table
 
 
-def _key(table: str, column: str, target: str, *, ondelete: str, field: str = "id") -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.{field}"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
 def _documents(metadata: MetaData) -> Table:
     name = "srs_documents"
     return Table(
@@ -179,8 +176,8 @@ def _documents(metadata: MetaData) -> Table:
         Column("created_by", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("archived_at", DateTime(timezone=True)),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="srs_documents_pkey"),
         UniqueConstraint("project_id", "slug", name="srs_documents_slug_key"),
     )
@@ -216,11 +213,11 @@ def _versions(metadata: MetaData) -> Table:
         Column("submitted_at", DateTime(timezone=True)),
         Column("decided_at", DateTime(timezone=True)),
         Column("review_run_id", BigInteger),
-        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
-        _key(name, "author_id", "users", ondelete="RESTRICT"),
-        _key(name, "drafted_by_run", "runs", ondelete="SET NULL"),
-        _key(name, "preamble_sha256", "srs_texts", ondelete="RESTRICT", field="sha256"),
-        _key(name, "review_run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        fkey(name, "author_id", "users", ondelete="RESTRICT"),
+        fkey(name, "drafted_by_run", "runs", ondelete="SET NULL"),
+        fkey(name, "preamble_sha256", "srs_texts", ondelete="RESTRICT", field="sha256"),
+        fkey(name, "review_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_versions_pkey"),
         UniqueConstraint("document_id", "number", name="srs_versions_number_key"),
         Index("srs_versions_review_run_idx", "review_run_id"),
@@ -240,8 +237,8 @@ def _items(metadata: MetaData) -> Table:
         Column("code", Text),
         Column("created_in", Integer, nullable=False),
         Column("retired_in", Integer),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "document_id", "srs_documents", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="srs_items_pkey"),
         UniqueConstraint("document_id", "key", name="srs_items_key_key"),
     )
@@ -258,8 +255,8 @@ def _codes(metadata: MetaData) -> Table:
         Column("code", Text, nullable=False),
         Column("is_primary", Boolean, nullable=False, server_default=false()),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
         PrimaryKeyConstraint("project_id", "code_key", name="srs_codes_pkey"),
         Index("srs_codes_item_idx", "item_id"),
     )
@@ -278,10 +275,10 @@ def _item_versions(metadata: MetaData) -> Table:
         Column("title", Text, nullable=False),
         Column("fields", JSONB, nullable=False, server_default="{}"),
         Column("body_sha256", Text, nullable=False),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "parent_item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "body_sha256", "srs_texts", ondelete="RESTRICT", field="sha256"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "parent_item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "body_sha256", "srs_texts", ondelete="RESTRICT", field="sha256"),
         PrimaryKeyConstraint("version_id", "item_id", name="srs_item_versions_pkey"),
         UniqueConstraint("version_id", "position", name="srs_item_versions_position_key"),
         Index("srs_item_versions_item_idx", "item_id"),
@@ -297,9 +294,9 @@ def _refs(metadata: MetaData) -> Table:
         Column("from_item", BigInteger, nullable=False),
         Column("rel", Text, nullable=False),
         Column("to_item", BigInteger, nullable=False),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "from_item", "srs_items", ondelete="CASCADE"),
-        _key(name, "to_item", "srs_items", ondelete="CASCADE"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "from_item", "srs_items", ondelete="CASCADE"),
+        fkey(name, "to_item", "srs_items", ondelete="CASCADE"),
         PrimaryKeyConstraint("version_id", "from_item", "rel", "to_item", name="srs_refs_pkey"),
     )
 
@@ -317,8 +314,8 @@ def _reviews(metadata: MetaData) -> Table:
         Column("decision", Text, nullable=False),
         Column("body", Text, nullable=False, server_default=""),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "reviewer_id", "users", ondelete="RESTRICT"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "reviewer_id", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="srs_reviews_pkey"),
         UniqueConstraint("version_id", "round", "reviewer_id", name="srs_reviews_reviewer_key"),
     )
@@ -346,14 +343,14 @@ def _comments(metadata: MetaData) -> Table:
         Column("suffix", Text),  # 0227: the text just after it
         Column("start_offset", Integer),  # 0227: where the passage starts in its part
         Column("ask_run_id", BigInteger),  # 0227: the run of @ba the comment asked to answer the thread
-        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "parent_id", "srs_comments", ondelete="CASCADE"),
-        _key(name, "author_id", "users", ondelete="RESTRICT"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "resolved_by", "users", ondelete="RESTRICT"),
-        _key(name, "ask_run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "parent_id", "srs_comments", ondelete="CASCADE"),
+        fkey(name, "author_id", "users", ondelete="RESTRICT"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "resolved_by", "users", ondelete="RESTRICT"),
+        fkey(name, "ask_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_comments_pkey"),
         Index("srs_comments_document_idx", "document_id", "id"),
     )
@@ -383,11 +380,11 @@ def _findings(metadata: MetaData) -> Table:
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("commit_authors", JSONB, nullable=False, server_default="[]"),  # 0070
         Column("options", JSONB, nullable=False, server_default="[]"),  # 0225: the choices members pick from
-        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "settled_by", "users", ondelete="RESTRICT"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "settled_by", "users", ondelete="RESTRICT"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_findings_pkey"),
         Index("srs_findings_document_idx", "document_id", "id"),
     )
@@ -405,11 +402,11 @@ def _settle_chats(metadata: MetaData) -> Table:
         Column("review_run_id", BigInteger),
         Column("agent_run_id", BigInteger),
         Column("opened_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "chat_id", "chats", ondelete="CASCADE"),
-        _key(name, "root_message_id", "chat_messages", ondelete="CASCADE"),
-        _key(name, "review_run_id", "runs", ondelete="SET NULL"),
-        _key(name, "agent_run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "chat_id", "chats", ondelete="CASCADE"),
+        fkey(name, "root_message_id", "chat_messages", ondelete="CASCADE"),
+        fkey(name, "review_run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "agent_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_settle_chats_pkey"),
         UniqueConstraint("version_id", name="srs_settle_chats_version_id_key"),
         UniqueConstraint("chat_id", name="srs_settle_chats_chat_id_key"),
@@ -428,9 +425,9 @@ def _approval_tasks(metadata: MetaData) -> Table:
         Column("split_run_id", BigInteger),
         Column("outcome", JSONB, nullable=False, server_default="{}"),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "approved_by", "users", ondelete="RESTRICT"),
-        _key(name, "split_run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "approved_by", "users", ondelete="RESTRICT"),
+        fkey(name, "split_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_approval_tasks_pkey"),
         UniqueConstraint("version_id", name="srs_approval_tasks_version_id_key"),
         UniqueConstraint("split_run_id", name="srs_approval_tasks_split_run_id_key"),
@@ -450,9 +447,9 @@ def _use_case_reviews(metadata: MetaData) -> Table:
         Column("decision", Text, nullable=False),
         Column("body", Text, nullable=False, server_default=""),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "reviewer_id", "users", ondelete="RESTRICT"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "reviewer_id", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="srs_use_case_reviews_pkey"),
         Index("srs_use_case_reviews_version_idx", "version_id", "item_id"),
     )
@@ -475,12 +472,12 @@ def _use_case_revisions(metadata: MetaData) -> Table:
         Column("submitted_by", BigInteger),
         Column("round", Integer, nullable=False, server_default="0"),
         Column("review_run_id", BigInteger),
-        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "author_id", "users", ondelete="RESTRICT"),
-        _key(name, "submitted_by", "users", ondelete="RESTRICT"),
-        _key(name, "review_run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "author_id", "users", ondelete="RESTRICT"),
+        fkey(name, "submitted_by", "users", ondelete="RESTRICT"),
+        fkey(name, "review_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_use_case_revisions_pkey"),
         UniqueConstraint("item_id", "rev", name="srs_use_case_revisions_rev_key"),
         Index("srs_use_case_revisions_document_idx", "document_id", "item_id", "rev"),
@@ -502,10 +499,10 @@ def _use_case_releases(metadata: MetaData) -> Table:
         Column("released_by", BigInteger),
         Column("released_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("tasks", JSONB),
-        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
-        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
-        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
-        _key(name, "released_by", "users", ondelete="RESTRICT"),
+        fkey(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        fkey(name, "item_id", "srs_items", ondelete="CASCADE"),
+        fkey(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        fkey(name, "released_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="srs_use_case_releases_pkey"),
         UniqueConstraint("item_id", "rev", name="srs_use_case_releases_rev_key"),
         Index("srs_use_case_releases_document_idx", "document_id", "item_id", "id"),

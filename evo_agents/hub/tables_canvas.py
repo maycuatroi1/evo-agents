@@ -56,7 +56,6 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -69,6 +68,8 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+
+from evo_agents.hub.columns import fkey
 
 CELLS = (  # canvas_claims.cell: the nine cells of a Lean Canvas, in the order a canvas shows them
     "problem",
@@ -140,10 +141,6 @@ class CanvasTables:
     baseline_items: Table
 
 
-def _key(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [f"{target}.id"], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
 def _canvases(metadata: MetaData) -> Table:
     name = "canvas_canvases"
     return Table(
@@ -160,9 +157,9 @@ def _canvases(metadata: MetaData) -> Table:
         Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("archived_at", DateTime(timezone=True)),
         Column("archived_by", BigInteger),
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
-        _key(name, "archived_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "archived_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="canvas_canvases_pkey"),
         UniqueConstraint("project_id", "slug", name="canvas_canvases_slug_key"),
     )
@@ -194,9 +191,9 @@ def _claims(metadata: MetaData) -> Table:
         Column("problems", ARRAY(Text), nullable=False, server_default="{}"),  # 0135
         Column("opportunities", ARRAY(Text), nullable=False, server_default="{}"),  # 0145
         Column("delivery", Text, nullable=False, server_default="code"),  # 0139
-        _key(name, "project_id", "projects", ondelete="RESTRICT"),
-        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "project_id", "projects", ondelete="RESTRICT"),
+        fkey(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="canvas_claims_pkey"),
         UniqueConstraint("project_id", "number", name="canvas_claims_number_key"),
         Index("canvas_claims_canvas_idx", "canvas_id", "cell", "position"),
@@ -223,11 +220,11 @@ def _revs(metadata: MetaData) -> Table:
         Column("reason", Text, nullable=False, server_default=""),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("baseline_id", BigInteger),
-        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
-        _key(name, "user_id", "users", ondelete="RESTRICT"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
-        _key(name, "baseline_id", "canvas_baselines", ondelete="SET NULL"),
+        fkey(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        fkey(name, "user_id", "users", ondelete="RESTRICT"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
+        fkey(name, "baseline_id", "canvas_baselines", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="canvas_claim_revs_pkey"),
         UniqueConstraint("claim_id", "rev", name="canvas_claim_revs_rev_key"),
     )
@@ -261,12 +258,12 @@ def _evidence(metadata: MetaData) -> Table:
         Column("withdrawn_reason", Text),
         Column("basis", JSONB),
         Column("rests_on_run", Boolean, nullable=False, server_default=false()),
-        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
-        _key(name, "user_id", "users", ondelete="RESTRICT"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
-        _key(name, "confirmed_by", "users", ondelete="RESTRICT"),
-        _key(name, "withdrawn_by", "users", ondelete="RESTRICT"),
+        fkey(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        fkey(name, "user_id", "users", ondelete="RESTRICT"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
+        fkey(name, "confirmed_by", "users", ondelete="RESTRICT"),
+        fkey(name, "withdrawn_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="canvas_evidence_pkey"),
         Index("canvas_evidence_claim_idx", "claim_id", "id"),
     )
@@ -299,13 +296,13 @@ def _proposals(metadata: MetaData) -> Table:
         Column("decided_at", DateTime(timezone=True)),
         Column("decided_reason", Text),
         Column("evidence_id", BigInteger),
-        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
-        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
-        _key(name, "user_id", "users", ondelete="RESTRICT"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
-        _key(name, "decided_by", "users", ondelete="RESTRICT"),
-        _key(name, "evidence_id", "canvas_evidence", ondelete="SET NULL"),
+        fkey(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        fkey(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        fkey(name, "user_id", "users", ondelete="RESTRICT"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "chat_message_id", "chat_messages", ondelete="SET NULL"),
+        fkey(name, "decided_by", "users", ondelete="RESTRICT"),
+        fkey(name, "evidence_id", "canvas_evidence", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="canvas_proposals_pkey"),
         Index("canvas_proposals_canvas_idx", "canvas_id", "status", "id"),
         Index("canvas_proposals_claim_idx", "claim_id", "status"),
@@ -336,13 +333,13 @@ def _judgings(metadata: MetaData) -> Table:
         Column("reason", Text),
         Column("judged_at", DateTime(timezone=True)),
         Column("verdict_evidence_id", BigInteger),
-        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
-        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
-        _key(name, "run_id", "runs", ondelete="SET NULL"),
-        _key(name, "key_id", "signal_keys", ondelete="RESTRICT"),
-        _key(name, "signal_id", "signals", ondelete="SET NULL"),
-        _key(name, "evidence_id", "canvas_evidence", ondelete="SET NULL"),
-        _key(name, "verdict_evidence_id", "canvas_evidence", ondelete="SET NULL"),
+        fkey(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        fkey(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        fkey(name, "run_id", "runs", ondelete="SET NULL"),
+        fkey(name, "key_id", "signal_keys", ondelete="RESTRICT"),
+        fkey(name, "signal_id", "signals", ondelete="SET NULL"),
+        fkey(name, "evidence_id", "canvas_evidence", ondelete="SET NULL"),
+        fkey(name, "verdict_evidence_id", "canvas_evidence", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="canvas_judgings_pkey"),
         Index("canvas_judgings_claim_idx", "claim_id", "measured_at"),
         Index("canvas_judgings_run_idx", "run_id"),
@@ -368,8 +365,8 @@ def _baselines(metadata: MetaData) -> Table:
         Column("approved_at", DateTime(timezone=True)),
         Column("expired_at", DateTime(timezone=True)),
         Column("snapshot", JSONB),
-        _key(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
-        _key(name, "created_by", "users", ondelete="RESTRICT"),
+        fkey(name, "canvas_id", "canvas_canvases", ondelete="CASCADE"),
+        fkey(name, "created_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="canvas_baselines_pkey"),
         UniqueConstraint("canvas_id", "number", name="canvas_baselines_number_key"),
         UniqueConstraint("canvas_id", "week", name="canvas_baselines_week_key"),
@@ -401,10 +398,10 @@ def _baseline_items(metadata: MetaData) -> Table:
         Column("new_deadline", Date),
         Column("reason", Text),
         Column("rev", Integer),
-        _key(name, "baseline_id", "canvas_baselines", ondelete="CASCADE"),
-        _key(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
-        _key(name, "proposal_id", "canvas_proposals", ondelete="SET NULL"),
-        _key(name, "decided_by", "users", ondelete="RESTRICT"),
+        fkey(name, "baseline_id", "canvas_baselines", ondelete="CASCADE"),
+        fkey(name, "claim_id", "canvas_claims", ondelete="CASCADE"),
+        fkey(name, "proposal_id", "canvas_proposals", ondelete="SET NULL"),
+        fkey(name, "decided_by", "users", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="canvas_baseline_items_pkey"),
         UniqueConstraint("baseline_id", "claim_id", name="canvas_baseline_items_claim_key"),
         Index("canvas_baseline_items_claim_idx", "claim_id"),

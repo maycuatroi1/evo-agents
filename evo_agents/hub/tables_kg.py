@@ -31,7 +31,6 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Date,
-    DateTime,
     Double,
     ForeignKeyConstraint,
     Identity,
@@ -47,18 +46,11 @@ from sqlalchemy import (
     and_,
     column,
     false,
-    func,
     or_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
+from evo_agents.hub.columns import stamp, when
 
 
 def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
@@ -72,7 +64,7 @@ def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("log_sha256", Text, nullable=False),
         Column("log_size", BigInteger, nullable=False),
         Column("pushed_by", BigInteger, nullable=False),
-        _stamp("received_at"),
+        stamp("received_at"),
         *_run_facts(),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_ingests_project_id_fkey"),
         ForeignKeyConstraint(["pushed_by"], ["users.id"], ondelete="RESTRICT", name="kg_ingests_pushed_by_fkey"),
@@ -87,7 +79,7 @@ def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("knowledge", JSONB, nullable=False),
         Column("ontology", JSONB),
         Column("updated_by", BigInteger, nullable=False),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_configs_project_id_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="RESTRICT", name="kg_configs_updated_by_fkey"),
         PrimaryKeyConstraint("project_id", name="kg_configs_pkey"),
@@ -102,7 +94,7 @@ def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("log_size", BigInteger, nullable=False),
         Column("blobs", ARRAY(Text), nullable=False),
         Column("pushed_by", BigInteger, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         *_run_facts(),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_pending_runs_project_id_fkey"
@@ -145,11 +137,11 @@ def _builds(metadata: MetaData) -> Table:
         Column("nodes", Integer),
         Column("edges", Integer),
         Column("error", Text),
-        _stamp("queued_at"),
-        _when("started_at"),
-        _when("finished_at"),
+        stamp("queued_at"),
+        when("started_at"),
+        when("finished_at"),
         Column("artifact_reused_from", BigInteger),
-        _when("artifact_pruned_at"),
+        when("artifact_pruned_at"),
         Column("coverage", JSONB),
         ForeignKeyConstraint(
             ["artifact_reused_from"], ["kg_builds.id"], ondelete="RESTRICT", name="kg_builds_artifact_reused_from_fkey"
@@ -192,7 +184,7 @@ def _health_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("files", JSONB, nullable=False),
         Column("file_count", Integer, nullable=False),
         Column("truncated", Boolean, nullable=False, server_default=false()),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_source_files_project_id_fkey"
         ),
@@ -204,7 +196,7 @@ def _health_tables(metadata: MetaData) -> tuple[Table, Table]:
         metadata,
         Column("id", BigInteger, Identity(always=True), nullable=False),
         Column("project_id", BigInteger, nullable=False),
-        _stamp("measured_at"),
+        stamp("measured_at"),
         Column("build_id", BigInteger),
         Column("body", JSONB, nullable=False),
         Column("error", Text),
@@ -227,7 +219,7 @@ def review_dismissals(metadata: MetaData) -> Table:
         Column("rule", Text, nullable=False),
         Column("reason", Text, nullable=False),
         Column("dismissed_by", BigInteger),  # a member; NULL when a core plugin dismissed it (0174)
-        _stamp("dismissed_at"),
+        stamp("dismissed_at"),
         Column("build_id", BigInteger),
         Column("dismissed_by_plugin", Text),  # the id of the core plugin that dismissed it, else NULL (0174)
         ForeignKeyConstraint(
@@ -270,7 +262,7 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("decision_id", BigInteger, nullable=False),
         Column("action", Text, nullable=False),
         Column("actor_id", BigInteger),  # a member; NULL when a core plugin took the step (0174)
-        _stamp("at"),
+        stamp("at"),
         Column("reason", Text, nullable=False),
         Column("build_id", BigInteger),
         Column("actor_plugin", Text),  # the id of the core plugin that took it, else NULL (0174)
@@ -307,14 +299,14 @@ def query_labels(metadata: MetaData) -> Table:
         Column("run_id", BigInteger),
         Column("seq", Integer, nullable=False),
         Column("at", Text),  # where the result came: FILE:LINE of a transcript, the seq of a run's event
-        _when("searched_at"),
+        when("searched_at"),
         Column("query", Text, nullable=False),
         Column("results", JSONB, nullable=False),
         Column("clicks", JSONB, nullable=False),
         Column("grep_after", Boolean, nullable=False),
         Column("after_grep", JSONB, nullable=False),
         Column("label", JSONB, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name=f"{name}_run_id_fkey"),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
@@ -346,7 +338,7 @@ def eval_sets(metadata: MetaData) -> Table:
         Column("questions", JSONB, nullable=False),
         Column("digest", Text, nullable=False),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
         PrimaryKeyConstraint("project_id", "version", name=f"{name}_pkey"),
@@ -369,7 +361,7 @@ def semantic_settings(metadata: MetaData) -> Table:
         Column("mode", Text, nullable=False),
         Column("model", Text, nullable=False),
         Column("updated_by", BigInteger),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
         PrimaryKeyConstraint("project_id", name=f"{name}_pkey"),
@@ -415,8 +407,8 @@ def named_graphs(metadata: MetaData) -> Table:
         Column("sources", JSONB, nullable=False, server_default="[]"),
         Column("created_by", BigInteger),
         Column("updated_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
@@ -444,7 +436,7 @@ def kg_settings_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("overrides", JSONB, nullable=False),
         Column("updated_by", BigInteger),
         Column("updated_run_id", BigInteger),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
         ForeignKeyConstraint(["updated_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_updated_run_id_fkey"),
@@ -464,7 +456,7 @@ def kg_settings_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("before", JSONB, nullable=False),
         Column("after", JSONB, nullable=False),
         Column("undoes", BigInteger),
-        _stamp("changed_at"),
+        stamp("changed_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{changes_name}_project_id_fkey"
         ),
@@ -511,9 +503,9 @@ def optimize_runs(metadata: MetaData) -> Table:
         Column("report", Text),
         Column("notification_id", BigInteger),
         Column("error", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("ended_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("ended_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
         ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
@@ -550,9 +542,9 @@ def init_runs(metadata: MetaData) -> Table:
         Column("body", JSONB, nullable=False),
         Column("report", Text),
         Column("error", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("ended_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("ended_at"),
         Column("questions_run_id", BigInteger),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
@@ -599,9 +591,9 @@ def entity_map_runs(metadata: MetaData) -> Table:
         Column("revs", JSONB),
         Column("body", JSONB, nullable=False),
         Column("error", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("ended_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("ended_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_requested_by_fkey"),
         ForeignKeyConstraint(["agent_run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_agent_run_id_fkey"),
@@ -644,11 +636,11 @@ def uploads(metadata: MetaData) -> Table:
         Column("build_id", BigInteger),
         Column("error", Text),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("uploaded_at"),
-        _when("ended_at"),
-        _when("told_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("uploaded_at"),
+        when("ended_at"),
+        when("told_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(["build_id"], ["kg_builds.id"], ondelete="SET NULL", name=f"{name}_build_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
@@ -690,12 +682,12 @@ def answer_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("state", Text, nullable=False),
         Column("run_id", BigInteger),
         Column("runs", Integer, nullable=False, server_default="0"),
-        _when("waiting_since"),
+        when("waiting_since"),
         Column("note", Text),
         Column("error", Text),
-        _stamp("created_at"),
-        _stamp("updated_at"),
-        _when("ended_at"),
+        stamp("created_at"),
+        stamp("updated_at"),
+        when("ended_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{jobs_name}_project_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{jobs_name}_created_by_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name=f"{jobs_name}_run_id_fkey"),
@@ -714,8 +706,8 @@ def answer_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("answer", Text),
         Column("evidence", JSONB, nullable=False, server_default="[]"),
         Column("error", Text),
-        _when("asked_at"),
-        _when("replied_at"),
+        when("asked_at"),
+        when("replied_at"),
         ForeignKeyConstraint(["job_id"], [f"{jobs_name}.id"], ondelete="CASCADE", name=f"{name}_job_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name=f"{name}_run_id_fkey"),
         PrimaryKeyConstraint("job_id", "position", name=f"{name}_pkey"),
@@ -772,7 +764,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("label", JSONB, nullable=False),
         Column("audience", ARRAY(Text), nullable=False, server_default="{}"),
         Column("body", JSONB, nullable=False),
-        _stamp("updated_at"),
+        stamp("updated_at"),
     )
     memo = Table(
         "kg_memo_entries",
@@ -781,7 +773,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("extractor", Text, nullable=False),
         Column("row_hash", Text, nullable=False),
         Column("result", JSONB, nullable=False),
-        _stamp("created_at"),
+        stamp("created_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_memo_entries_project_id_fkey"
         ),
@@ -864,7 +856,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("summary", JSONB, nullable=False, server_default="{}"),
         Column("vectors", JSONB),
         Column("asked_weight", Double),
-        _stamp("updated_at"),
+        stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_graph_heads_project_id_fkey"
         ),
@@ -880,7 +872,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("base_build_id", BigInteger),
         Column("status", Text, nullable=False, server_default="open"),
         Column("created_by", BigInteger),
-        _stamp("created_at"),
+        stamp("created_at"),
         CheckConstraint(column("status").in_(("open", "merged", "closed")), name="kg_branches_status_check"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_branches_project_id_fkey"),
         ForeignKeyConstraint(
@@ -898,7 +890,7 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("op", Text, nullable=False),
         Column("payload", JSONB, nullable=False),
         Column("by_user", BigInteger),
-        _stamp("at"),
+        stamp("at"),
         ForeignKeyConstraint(
             ["branch_id"], ["kg_branches.id"], ondelete="CASCADE", name="kg_branch_ops_branch_id_fkey"
         ),

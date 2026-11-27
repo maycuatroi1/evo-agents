@@ -20,9 +20,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
-    DateTime,
-    ForeignKeyConstraint,
-    Identity,
     Index,
     MetaData,
     PrimaryKeyConstraint,
@@ -31,23 +28,11 @@ from sqlalchemy import (
     UniqueConstraint,
     column,
     false,
-    func,
     true,
 )
 
 from evo_agents.hub import runs
-
-
-def _fk(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey")
-
-
-def _id() -> Column:
-    return Column("id", BigInteger, Identity(always=True), nullable=False)
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
+from evo_agents.hub.columns import fkey, id_column, stamp
 
 
 def output_tables(metadata: MetaData, projects: Table) -> tuple[Table, Table]:
@@ -56,7 +41,7 @@ def output_tables(metadata: MetaData, projects: Table) -> tuple[Table, Table]:
     outputs = Table(
         "run_outputs",
         metadata,
-        _id(),
+        id_column(),
         Column("run_id", BigInteger, nullable=False),
         Column("project_id", BigInteger, nullable=False),
         Column("source", Text, nullable=False),
@@ -66,10 +51,10 @@ def output_tables(metadata: MetaData, projects: Table) -> tuple[Table, Table]:
         Column("sha256", Text, nullable=False),
         Column("caption", Text),
         Column("tool_call_id", Text),
-        _stamp("created_at"),
+        stamp("created_at"),
         Column("interactive", Boolean, nullable=False, server_default=false()),  # 0213: an interactive answer
-        _fk("run_outputs", "run_id", "runs.id", ondelete="CASCADE"),
-        _fk("run_outputs", "project_id", "projects.id", ondelete="CASCADE"),
+        fkey("run_outputs", "run_id", "runs.id", ondelete="CASCADE"),
+        fkey("run_outputs", "project_id", "projects.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="run_outputs_pkey"),
         UniqueConstraint("run_id", "sha256", name="run_outputs_run_id_sha256_key"),
     )
@@ -77,14 +62,14 @@ def output_tables(metadata: MetaData, projects: Table) -> tuple[Table, Table]:
     links = Table(
         "run_output_links",
         metadata,
-        _id(),
+        id_column(),
         Column("output_id", BigInteger, nullable=False),
         Column("decision_id", BigInteger),
         Column("chat_message_id", BigInteger),
-        _stamp("created_at"),
-        _fk("run_output_links", "output_id", "run_outputs.id", ondelete="CASCADE"),
-        _fk("run_output_links", "decision_id", "decisions.id", ondelete="CASCADE"),
-        _fk("run_output_links", "chat_message_id", "chat_messages.id", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("run_output_links", "output_id", "run_outputs.id", ondelete="CASCADE"),
+        fkey("run_output_links", "decision_id", "decisions.id", ondelete="CASCADE"),
+        fkey("run_output_links", "chat_message_id", "chat_messages.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="run_output_links_pkey"),
         UniqueConstraint("output_id", "decision_id", name="run_output_links_decision_key"),
         UniqueConstraint("output_id", "chat_message_id", name="run_output_links_message_key"),
@@ -105,8 +90,8 @@ def mute_table(metadata: MetaData) -> Table:
         metadata,
         Column("user_id", BigInteger, nullable=False),
         Column("notice_kind", Text, nullable=False),
-        _stamp("created_at"),
-        _fk("notification_mutes", "user_id", "users.id", ondelete="CASCADE"),
+        stamp("created_at"),
+        fkey("notification_mutes", "user_id", "users.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("user_id", "notice_kind", name="notification_mutes_pkey"),
         CheckConstraint(column("notice_kind").in_(runs.MUTABLE_NOTICE_KINDS), name="notification_mutes_check"),
     )

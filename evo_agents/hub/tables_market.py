@@ -22,7 +22,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
-    DateTime,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -32,19 +31,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from evo_agents.hub.columns import stamp, when
+
 REQUEST_STATES = ("open", "installed", "declined")
-
-
-def _stamp(name: str) -> Column:
-    return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-def _when(name: str) -> Column:
-    return Column(name, DateTime(timezone=True))
 
 
 def _user(table: str, column: str) -> ForeignKeyConstraint:
@@ -63,8 +55,8 @@ def market_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("token", JSONB),  # sealed
         Column("builtin", Boolean, nullable=False, server_default=false()),
         Column("added_by", BigInteger),  # NULL for the builtin source
-        _stamp("added_at"),
-        _when("fetched_at"),
+        stamp("added_at"),
+        when("fetched_at"),
         Column("fetched_sha", Text),
         Column("etag", Text),
         Column("last_error", Text),
@@ -82,9 +74,9 @@ def market_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("publisher", Text, nullable=False),
         Column("signer", Text, nullable=False),  # sigstore:OWNER/REPO/.github/workflows/FILE.yml or ed25519:KEY
         Column("added_by", BigInteger, nullable=False),
-        _stamp("added_at"),
+        stamp("added_at"),
         Column("removed_by", BigInteger),
-        _when("removed_at"),
+        when("removed_at"),
         Column("note", Text),
         _user("plugin_publishers", "added_by"),
         _user("plugin_publishers", "removed_by"),
@@ -100,10 +92,10 @@ def market_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("source_id", BigInteger, nullable=False),
         Column("plugin", Text, nullable=False),
         Column("requested_by", BigInteger, nullable=False),
-        _stamp("requested_at"),
+        stamp("requested_at"),
         Column("state", Text, nullable=False, server_default="open"),
         Column("decided_by", BigInteger),
-        _when("decided_at"),
+        when("decided_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="market_install_requests_project_id_fkey"
         ),
