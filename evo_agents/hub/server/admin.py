@@ -27,109 +27,53 @@ never a value, and POST /v1/admin/kg/scrub/purge deletes the old ones of them (`
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import (
-    BigInteger,
-    and_,
-    any_,
-    cast,
-    column,
-    delete,
-    func,
-    literal,
-    or_,
-    select,
-    table,
-    true,
-    union_all,
-)
-from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by, array_agg
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.blobs import BlobStoreUnavailable
-from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
-from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
-from evo_agents.hub.server import audit, kg_scrub, org_store
-from evo_agents.hub.server.auth import GrantInfo
+from evo_agents.hub.server import kg_scrub
 from evo_agents.hub.server.autonomy.service import guards as route_autonomy
 from evo_agents.hub.server.base.models import PROJECT_NAME, Login, ProjectName
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.hub_admin.models.admin import ACTIVE_DAYS as ACTIVE_DAYS
+from evo_agents.hub.server.hub_admin.models.admin import AUDIT_HOURS as AUDIT_HOURS
+from evo_agents.hub.server.hub_admin.models.admin import FAILED_BUILD_DAYS as FAILED_BUILD_DAYS
+from evo_agents.hub.server.hub_admin.models.admin import MISSING as MISSING
+from evo_agents.hub.server.hub_admin.models.admin import SHA256 as SHA256
+from evo_agents.hub.server.hub_admin.models.admin import TOKEN_EXPIRING_DAYS as TOKEN_EXPIRING_DAYS
+from evo_agents.hub.server.hub_admin.models.admin import TOKEN_UNUSED_DAYS as TOKEN_UNUSED_DAYS
+from evo_agents.hub.server.hub_admin.models.admin import AdminOverview as AdminOverview
+from evo_agents.hub.server.hub_admin.models.admin import AuditCounts as AuditCounts
+from evo_agents.hub.server.hub_admin.models.admin import FailedBuildCounts as FailedBuildCounts
+from evo_agents.hub.server.hub_admin.models.admin import Grant as Grant
+from evo_agents.hub.server.hub_admin.models.admin import GrantRequest as GrantRequest
+from evo_agents.hub.server.hub_admin.models.admin import KgPruned as KgPruned
+from evo_agents.hub.server.hub_admin.models.admin import MemberCounts as MemberCounts
+from evo_agents.hub.server.hub_admin.models.admin import ProjectFailedBuilds as ProjectFailedBuilds
+from evo_agents.hub.server.hub_admin.models.admin import ProjectGrantCounts as ProjectGrantCounts
+from evo_agents.hub.server.hub_admin.models.admin import ProjectPruned as ProjectPruned
+from evo_agents.hub.server.hub_admin.models.admin import PruneRequest as PruneRequest
+from evo_agents.hub.server.hub_admin.models.admin import StorageCounts as StorageCounts
+from evo_agents.hub.server.hub_admin.models.admin import TokenCounts as TokenCounts
+from evo_agents.hub.server.hub_admin.models.admin import UserGrant as UserGrant
+from evo_agents.hub.server.hub_admin.models.admin import UserRow as UserRow
+from evo_agents.hub.server.hub_admin.models.admin import WorkerCounts as WorkerCounts
+from evo_agents.hub.server.hub_admin.repository.admin import TOKEN_EXPIRING as TOKEN_EXPIRING
+from evo_agents.hub.server.hub_admin.repository.admin import TOKEN_LIVE as TOKEN_LIVE
+from evo_agents.hub.server.hub_admin.repository.admin import TOKEN_UNUSED as TOKEN_UNUSED
+from evo_agents.hub.server.hub_admin.repository.admin import upsert_grant as upsert_grant
+from evo_agents.hub.server.hub_admin.service import admin as service
+from evo_agents.hub.server.hub_admin.service.admin import give_grant as give_grant
+from evo_agents.hub.server.hub_admin.service.admin import project_ladder as project_ladder
+from evo_agents.hub.server.hub_admin.service.admin import take_grant as take_grant
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
-from evo_agents.hub.server.security import AdminUser, admin, admin_login, holds
-from evo_agents.kg.policy import Policy
-
-SHA256 = r"^[0-9a-f]{64}$"
-MISSING = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
-
-ACTIVE_DAYS = 30  # a member the hub saw within this many days is active
-TOKEN_EXPIRING_DAYS = 14  # a live token expiring within this many days is about to expire
-TOKEN_UNUSED_DAYS = 90  # a token not used (or, never used, not issued) for this many days is unused
-FAILED_BUILD_DAYS = 7  # graph builds that failed within this many days
-AUDIT_HOURS = 24  # audit rows of the last this many hours
-
-# The conditions on a row of tokens that the overview counts and GET /v1/admin/tokens?state= lists, so a count and the
-# list it links to agree. A token expires TOKEN_TTL after its last use, so with TOKEN_TTL at 90 days an unused token is
-# also an expired one that nobody revoked.
-_tokens = tables.tokens
-TOKEN_LIVE = and_(_tokens.c.revoked_at.is_(None), _tokens.c.expires_at > func.now())
-TOKEN_EXPIRING = and_(TOKEN_LIVE, _tokens.c.expires_at <= func.now() + timedelta(days=TOKEN_EXPIRING_DAYS))
-TOKEN_UNUSED = and_(
-    _tokens.c.revoked_at.is_(None),
-    func.coalesce(_tokens.c.last_used_at, _tokens.c.created_at) <= func.now() - timedelta(days=TOKEN_UNUSED_DAYS),
-)
+from evo_agents.hub.server.security import AdminUser, admin
 
 router = APIRouter(
     prefix="/v1/admin", tags=["admin"], dependencies=[Depends(admin)], responses={401: {"model": ErrorBody}}
 )
-
-
-class UserGrant(GrantInfo):
-    granted_by: str | None = Field(description="the login of the admin who gave or last changed the grant")
-    granted_at: datetime
-
-
-class UserRow(BaseModel):
-    login: str
-    admin: bool
-    signed_in: bool = Field(description="false for a login granted access before its first sign-in")
-    created_at: datetime
-    last_seen_at: datetime | None
-    active_tokens: int
-    grants: list[UserGrant]
-
-
-class GrantRequest(BaseModel):
-    role: Literal["reader", "writer", "admin"]
-    max_level: str = Field(min_length=1, max_length=100, description="a level of the project's label ladder")
-
-
-class Grant(BaseModel):
-    project: str
-    login: str
-    role: str
-    max_level: str
-    created: bool = Field(description="false when an existing grant was changed")
-
-
-class PruneRequest(BaseModel):
-    project: str | None = Field(None, pattern=PROJECT_NAME, description="left out for every project")
-    keep: int | None = Field(
-        None,
-        ge=1,
-        le=MAX_KG_KEEP_ARTIFACTS,
-        description="the newest graphs of each project whose artifact stays; default EVO_HUB_KG_KEEP_ARTIFACTS",
-    )
-    dry_run: bool = Field(False, description="answer what would be deleted, and change nothing")
-    graph_files: bool = Field(
-        False,
-        description="also delete every graph file of a project whose graph the hub's tables hold, the newest included",
-    )
 
 
 class ScrubRequest(BaseModel):
@@ -147,222 +91,15 @@ class ScrubPurgeRequest(BaseModel):
     )
 
 
-class ProjectPruned(BaseModel):
-    project: str
-    artifacts: int = Field(
-        description="distinct artifacts the project's builds pointed at, and kg-graph blobs no build did"
-    )
-    kept: int
-    pruned: int = Field(description="artifacts dropped")
-    pruned_bytes: int
-    builds: int = Field(description="builds whose artifact was dropped: they keep their content hash and counts")
-
-
-class KgPruned(BaseModel):
-    dry_run: bool
-    keep: int
-    graph_files: bool = Field(description="every graph file of a project whose graph the tables hold was pruned")
-    projects: list[ProjectPruned]
-    deleted: int = Field(description="objects deleted from the bucket; for a dry run, those that would be")
-    deleted_bytes: int
-    pending: int = Field(description="blobs whose object still waits to be deleted; the next prune tries again")
-
-
-class MemberCounts(BaseModel):
-    total: int = Field(description="every user: people who signed in, and logins granted access before signing in")
-    active: int = Field(description="users the hub saw within active_days: any token or web session of theirs used")
-    not_signed_in: int = Field(description="logins granted access that have not signed in yet")
-    active_days: int
-
-
-class TokenCounts(BaseModel):
-    live: int = Field(description="tokens and web sessions neither revoked nor expired")
-    expiring: int = Field(
-        description="live ones that expire within expiring_days; GET /v1/admin/tokens?state=expiring lists them"
-    )
-    unused: int = Field(
-        description="tokens not revoked whose last use, or issue when never used, is unused_days old or more; "
-        "GET /v1/admin/tokens?state=unused lists them"
-    )
-    expiring_days: int
-    unused_days: int
-
-
-class ProjectGrantCounts(BaseModel):
-    project: str
-    admins: int
-    writers: int
-    readers: int
-
-
-class StorageCounts(BaseModel):
-    objects: int = Field(description="distinct blobs in the bucket: projects holding the same bytes share one object")
-    bytes: int = Field(description="their size")
-    pending_deletions: int = Field(
-        description="objects nothing refers to any more whose deletion from the bucket has not succeeded yet; "
-        "the next prune tries again"
-    )
-    pending_bytes: int
-
-
-class ProjectFailedBuilds(BaseModel):
-    project: str
-    failed: int = Field(description="builds of the project that failed within the window")
-    last_failed_id: int
-    last_failed_at: datetime
-    latest_id: int = Field(description="the project's newest build, whatever its status")
-    latest_status: Literal["queued", "running", "succeeded", "failed"]
-
-
-class FailedBuildCounts(BaseModel):
-    failed: int = Field(description="graph builds of every project that failed within days")
-    days: int
-    projects: list[ProjectFailedBuilds] = Field(description="the projects with such a build, latest failure first")
-
-
-class WorkerCounts(BaseModel):
-    live: int = Field(description="workers not revoked")
-    offline: int = Field(description="live workers without a heartbeat for over offline_after_seconds, or without any")
-    offline_after_seconds: int
-
-
-class AuditCounts(BaseModel):
-    rows: int
-    hours: int
-
-
-class AdminOverview(BaseModel):
-    members: MemberCounts
-    tokens: TokenCounts
-    grants: list[ProjectGrantCounts] = Field(description="every project, by name, with its grants by role")
-    storage: StorageCounts
-    kg_builds: FailedBuildCounts
-    workers: WorkerCounts
-    audit: AuditCounts
-
-
-def _users():
-    """Every user by login whatever its case, with the number of their live tokens."""
-    users, tokens = tables.users, tables.tokens
-    live = select(func.count()).select_from(tokens).where(tokens.c.user_id == users.c.id, TOKEN_LIVE)
-    return select(
-        users.c.id,
-        users.c.login,
-        admin_login(users).label("admin_login"),
-        users.c.github_id.is_not(None).label("signed_in"),
-        users.c.created_at,
-        users.c.last_seen_at,
-        live.scalar_subquery().label("active_tokens"),
-    ).order_by(func.lower(users.c.login))
-
-
-def _user_grants(user_ids: list[int]):
-    """The grants of the users ``user_ids`` by project, with the login of the admin who gave each."""
-    grants, projects, users = tables.grants, tables.projects, tables.users
-    return (
-        select(
-            grants.c.user_id,
-            projects.c.name.label("project"),
-            grants.c.role,
-            grants.c.max_level,
-            users.c.login.label("granted_by"),
-            grants.c.granted_at,
-        )
-        .join_from(grants, projects, projects.c.id == grants.c.project_id)
-        .outerjoin(users, users.c.id == grants.c.granted_by)
-        .where(grants.c.user_id == any_(literal(user_ids, ARRAY(BigInteger))))
-        .order_by(projects.c.name)
-    )
-
-
 @router.get("/users", response_model=list[UserRow], responses={403: {"model": ErrorBody}, **PAGED})
 async def users(request: Request, page: Paging = WHOLE) -> list[UserRow]:
-    config: HubConfig = request.app.state.config
-    async with request.app.state.engine.begin() as conn:
-        rows = await page.rows(conn, _users())
-        grant_rows = (await conn.execute(_user_grants([row.id for row in rows]))).all()
-    grants: dict[int, list[UserGrant]] = {}
-    for row in grant_rows:
-        grant = UserGrant(
-            project=row.project,
-            role=row.role,
-            max_level=row.max_level,
-            granted_by=row.granted_by,
-            granted_at=row.granted_at,
-        )
-        grants.setdefault(row.user_id, []).append(grant)
-    return [
-        UserRow(
-            login=row.login,
-            admin=config.is_admin(row.admin_login),
-            signed_in=row.signed_in,
-            created_at=row.created_at,
-            last_seen_at=row.last_seen_at,
-            active_tokens=row.active_tokens,
-            grants=grants.get(row.id, []),
-        )
-        for row in rows
-    ]
+    return await service.users(request.app.state.engine, request.app.state.config, page)
 
 
-async def _project(conn: AsyncConnection, name: str) -> tuple[int, list[str]]:
-    """The id and label ladder of a registered project; 404 naming the command that registers one."""
-    projects = tables.projects
-    found = await conn.execute(
-        select(projects.c.id, projects.c.levels, projects.c.locations).where(projects.c.name == name)
-    )
-    row = found.first()
-    if row is None:
-        raise HTTPException(404, f"project {name} is not registered on this hub: run `evo-agents hub project register`")
-    return row.id, Policy(name, {"policy": {"levels": row.levels, "locations": row.locations}}).levels
-
-
-def _upsert_grant(user_id: int, project_id: int, role: str, max_level: str, granted_by: int):
-    """Give the grant, or change the one held; RETURNING whether the row is new (``xmax`` is 0 only for an insert)."""
-    grants = tables.grants
-    given = pg_insert(grants).values(
-        user_id=user_id, project_id=project_id, role=role, max_level=max_level, granted_by=granted_by
-    )
-    return given.on_conflict_do_update(
-        index_elements=[grants.c.user_id, grants.c.project_id],
-        set_={
-            "role": given.excluded.role,
-            "max_level": given.excluded.max_level,
-            "granted_by": given.excluded.granted_by,
-            "granted_at": func.now(),
-        },
-    ).returning((column("xmax") == 0).label("created"))
-
-
-project_ladder = _project  # the invite links (evo_agents.hub.server.invites) check a project and its ladder alike
-upsert_grant = _upsert_grant  # ... and give a grant as a hub admin's does
-
-
-async def give_grant(
-    conn: AsyncConnection, user, project: str, login: str, body: GrantRequest
-) -> tuple[Grant, list[int]]:
-    """Give ``login`` the grant ``body`` on ``project``, or change the one it holds, as ``user`` does, with its audit
-    row; the grant, and the runs whose credential leases were taken back (``revoke_taken`` gives them back at GitHub
-    once the transaction commits)."""
-    project_id, ladder = await _project(conn, project)
-    if body.max_level not in ladder:
-        levels = ", ".join(ladder)
-        raise HTTPException(422, f"max-level must be a level of project {project} ({levels}), not {body.max_level}")
-    users = tables.users
-    made = await conn.execute(pg_insert(users).values(login=login).on_conflict_do_nothing().returning(users.c.id))
-    made_id = made.scalar()
-    if made_id is not None:  # a login that never signed in: its seat at the root comes with its row
-        await org_store.place_user(conn, made_id)
-    found = await conn.execute(select(users.c.id, users.c.login).where(func.lower(users.c.login) == func.lower(login)))
-    grantee_id, grantee = found.one()
-    upserted = await conn.execute(_upsert_grant(grantee_id, project_id, body.role, body.max_level, user.user_id))
-    created = upserted.scalar_one()
-    target = f"{project}/{grantee} role={body.role} max_level={body.max_level}"
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_PUT, target=target)
-    taken = []
-    if not holds(body.role, "writer"):
-        taken = await _take_back_leases(conn, user, project_id, grantee_id, f"grant-{body.role}")
-    return Grant(project=project, login=grantee, role=body.role, max_level=body.max_level, created=created), taken
+async def revoke_taken(request: Request, run_ids: list[int]) -> None:
+    """Revoke at GitHub the tokens of the leases a grant taken back gave back (``service.take_back_leases``); the
+    route of a self-managed project's admin gives the leases back as well."""
+    await service.revoke_taken(request.app.state, run_ids)
 
 
 @router.put(
@@ -373,55 +110,9 @@ async def give_grant(
 )
 async def grant(request: Request, body: GrantRequest, project: ProjectName, login: Login, user: AdminUser) -> Grant:
     """Give ``login`` a role on ``project``, or change the one it has."""
-    async with request.app.state.engine.begin() as conn:
-        given, taken = await give_grant(conn, user, project, login, body)
-    await _revoke_taken(request, taken)
+    given, taken = await service.grant(request.app.state.engine, user, project, login, body)
+    await revoke_taken(request, taken)
     return given
-
-
-async def _take_back_leases(conn: AsyncConnection, user, project_id: int, member_id: int, by: str) -> list[int]:
-    """The leases still out of the runs ``member_id`` dispatched in the project, given back now that the member no
-    longer holds writer on it; the runs, for ``_revoke_taken`` once the transaction commits."""
-    from evo_agents.hub.server import lease_ending  # through runs and projects it imports this module
-
-    return await lease_ending.end_member_leases(
-        conn, user_id=member_id, project_id=project_id, actor_id=user.user_id, token_id=user.token_id, by=by
-    )
-
-
-async def _revoke_taken(request: Request, run_ids: list[int]) -> None:
-    """Revoke at GitHub the tokens of the leases ``_take_back_leases`` gave back; GitHub failing leaves them to the
-    reaper."""
-    from evo_agents.hub.server import lease_ending
-
-    state = request.app.state
-    for run_id in run_ids:
-        await lease_ending.revoke_tokens(state.engine, state.sealer, lease_ending.revoker(state), run_id=run_id)
-
-
-async def take_grant(conn: AsyncConnection, user, project: str, login: str) -> list[int]:
-    """Take away the role ``login`` has on ``project``, as ``user`` does, with its audit row; the runs whose credential
-    leases were given back, for ``revoke_taken``. 404 when ``login`` holds none."""
-    project_id, _ = await _project(conn, project)
-    grants, users = tables.grants, tables.users
-    deleted = await conn.execute(
-        delete(grants)
-        .where(
-            grants.c.user_id == users.c.id,
-            grants.c.project_id == project_id,
-            func.lower(users.c.login) == func.lower(login),
-        )
-        .returning(users.c.login, users.c.id)
-    )
-    row = deleted.first()
-    if row is None:
-        raise HTTPException(404, f"{login} has no grant on project {project}")
-    target = f"{project}/{row.login}"
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.GRANT_DELETE, target=target)
-    return await _take_back_leases(conn, user, project_id, row.id, "grant-deleted")
-
-
-revoke_taken = _revoke_taken  # ... and the route of a self-managed project's admin gives the leases back as well
 
 
 @router.delete(
@@ -433,202 +124,22 @@ revoke_taken = _revoke_taken  # ... and the route of a self-managed project's ad
 )
 async def revoke(request: Request, project: ProjectName, login: Login, user: AdminUser) -> Response:
     """Take away the role ``login`` has on ``project``."""
-    async with request.app.state.engine.begin() as conn:
-        taken = await take_grant(conn, user, project, login)
-    await _revoke_taken(request, taken)
+    taken = await service.revoke(request.app.state.engine, user, project, login)
+    await revoke_taken(request, taken)
     return Response(status_code=204)
-
-
-def _table_names():
-    """The tables of the hub's schema by name, but Alembic's record of the revision."""
-    pg_tables = table("pg_tables", column("schemaname"), column("tablename"))
-    return (
-        select(pg_tables.c.tablename)
-        .where(pg_tables.c.schemaname == func.current_schema(), pg_tables.c.tablename != "alembic_version")
-        .order_by(pg_tables.c.tablename)
-    )
-
-
-def _row_counts(names: list[str]):
-    """One row per table of ``names``: its name and its number of rows."""
-    return union_all(*(select(literal(name), func.count()).select_from(table(name)) for name in names))
 
 
 @router.get("/stats", response_model=dict[str, int], responses={403: {"model": ErrorBody}})
 async def stats(request: Request) -> dict[str, int]:
     """The number of rows of every hub table, by table name; tables added by later revisions show up by themselves."""
-    async with request.app.state.engine.begin() as conn:
-        names = (await conn.execute(_table_names())).scalars().all()
-        counts = (await conn.execute(_row_counts(names))).all() if names else []
-    return {name: rows for name, rows in counts}
-
-
-def _counts():
-    """One row of every count. Each table is read once; blobs are counted by object, as several projects may hold one.
-    Each count is a CTE of one row, and the CTEs are joined on true."""
-    users, tokens, blobs = tables.users, tables.tokens, tables.blobs
-    blob_deletions, workers, audit_trail = tables.blob_deletions, tables.workers, tables.audit
-    members = select(
-        func.count().label("total"),
-        func.count().filter(users.c.last_seen_at > func.now() - timedelta(days=ACTIVE_DAYS)).label("active"),
-        func.count().filter(users.c.github_id.is_(None)).label("not_signed_in"),
-    ).cte("members")
-    credentials = (
-        select(
-            func.count().filter(TOKEN_LIVE).label("live"),
-            func.count().filter(TOKEN_EXPIRING).label("expiring"),
-            func.count().filter(TOKEN_UNUSED).label("unused"),
-        )
-        .where(tokens.c.revoked_at.is_(None))
-        .cte("credentials")
-    )
-    objects = select(func.max(blobs.c.size).label("size")).group_by(blobs.c.sha256).subquery("objects")
-    stored = select(
-        func.count().label("objects"),
-        cast(func.coalesce(func.sum(objects.c.size), 0), BigInteger).label("bytes"),
-    ).cte("stored")
-    doomed = (
-        select(
-            func.count().label("objects"),
-            cast(func.coalesce(func.sum(blob_deletions.c.size), 0), BigInteger).label("bytes"),
-        )
-        .where(blob_deletions.c.deleted_at.is_(None))
-        .cte("doomed")
-    )
-    silent = or_(
-        workers.c.last_heartbeat_at.is_(None),
-        workers.c.last_heartbeat_at < func.now() - timedelta(seconds=OFFLINE_AFTER_SECONDS),
-    )
-    fleet = (
-        select(func.count().label("live"), func.count().filter(silent).label("offline"))
-        .where(workers.c.revoked_at.is_(None))
-        .cte("fleet")
-    )
-    trail = (
-        select(func.count().label("rows"))
-        .where(audit_trail.c.at > func.now() - timedelta(hours=AUDIT_HOURS))
-        .cte("trail")
-    )
-    return select(
-        members.c.total.label("members"),
-        members.c.active.label("active_members"),
-        members.c.not_signed_in,
-        credentials.c.live.label("live_tokens"),
-        credentials.c.expiring.label("expiring_tokens"),
-        credentials.c.unused.label("unused_tokens"),
-        stored.c.objects,
-        stored.c.bytes,
-        doomed.c.objects.label("pending_deletions"),
-        doomed.c.bytes.label("pending_bytes"),
-        fleet.c.live.label("live_workers"),
-        fleet.c.offline.label("offline_workers"),
-        trail.c.rows.label("audit_rows"),
-    ).select_from(
-        members.join(credentials, true())
-        .join(stored, true())
-        .join(doomed, true())
-        .join(fleet, true())
-        .join(trail, true())
-    )
-
-
-def _grant_counts():
-    """Every project by name, with its grants by role."""
-    projects, grants = tables.projects, tables.grants
-    return (
-        select(
-            projects.c.name.label("project"),
-            func.count().filter(grants.c.role == "admin").label("admins"),
-            func.count().filter(grants.c.role == "writer").label("writers"),
-            func.count().filter(grants.c.role == "reader").label("readers"),
-        )
-        .select_from(projects.outerjoin(grants, grants.c.project_id == projects.c.id))
-        .group_by(projects.c.id, projects.c.name)
-        .order_by(projects.c.name)
-    )
-
-
-def _failed_builds():
-    """The projects with a build that failed within FAILED_BUILD_DAYS, latest failure first, each with its newest
-    build, which comes from kg_builds_project_idx: one probe per project with a failure."""
-    projects, kg_builds = tables.projects, tables.kg_builds
-    # PostgreSQL's own aggregate_order_by: indexing Core's form renders array_agg(...)[1], which Postgres refuses
-    # without parentheses around the call.
-    last_id = array_agg(aggregate_order_by(kg_builds.c.id, kg_builds.c.finished_at.desc(), kg_builds.c.id.desc()))
-    failed = (
-        select(
-            kg_builds.c.project_id,
-            func.count().label("failed"),
-            last_id[1].label("last_id"),
-            func.max(kg_builds.c.finished_at).label("last_at"),
-        )
-        .where(
-            kg_builds.c.status == "failed",
-            kg_builds.c.finished_at > func.now() - timedelta(days=FAILED_BUILD_DAYS),
-        )
-        .group_by(kg_builds.c.project_id)
-        .subquery("f")
-    )
-    newest = kg_builds.alias("b")
-    latest = (
-        select(newest.c.id, newest.c.status)
-        .where(newest.c.project_id == failed.c.project_id)
-        .order_by(newest.c.id.desc())
-        .limit(1)
-        .lateral("latest")
-    )
-    return (
-        select(
-            projects.c.name.label("project"),
-            failed.c.failed,
-            failed.c.last_id.label("last_failed_id"),
-            failed.c.last_at.label("last_failed_at"),
-            latest.c.id.label("latest_id"),
-            latest.c.status.label("latest_status"),
-        )
-        .select_from(failed.join(projects, projects.c.id == failed.c.project_id).join(latest, true()))
-        .order_by(failed.c.last_at.desc(), projects.c.name)
-    )
+    return await service.stats(request.app.state.engine)
 
 
 @router.get("/overview", response_model=AdminOverview, responses={403: {"model": ErrorBody}})
 async def overview(request: Request) -> AdminOverview:
     """What may need an admin: members, tokens to rotate, grants by project, storage, failed graph builds, offline
     workers and the last day of the audit trail."""
-    async with request.app.state.engine.begin() as conn:
-        count = (await conn.execute(_counts())).one()._mapping
-        grants = (await conn.execute(_grant_counts())).all()
-        failed = (await conn.execute(_failed_builds())).all()
-    projects = [ProjectFailedBuilds(**row._mapping) for row in failed]
-    return AdminOverview(
-        members=MemberCounts(
-            total=count["members"],
-            active=count["active_members"],
-            not_signed_in=count["not_signed_in"],
-            active_days=ACTIVE_DAYS,
-        ),
-        tokens=TokenCounts(
-            live=count["live_tokens"],
-            expiring=count["expiring_tokens"],
-            unused=count["unused_tokens"],
-            expiring_days=TOKEN_EXPIRING_DAYS,
-            unused_days=TOKEN_UNUSED_DAYS,
-        ),
-        grants=[ProjectGrantCounts(**row._mapping) for row in grants],
-        storage=StorageCounts(
-            objects=count["objects"],
-            bytes=count["bytes"],
-            pending_deletions=count["pending_deletions"],
-            pending_bytes=count["pending_bytes"],
-        ),
-        kg_builds=FailedBuildCounts(
-            failed=sum(item.failed for item in projects), days=FAILED_BUILD_DAYS, projects=projects
-        ),
-        workers=WorkerCounts(
-            live=count["live_workers"], offline=count["offline_workers"], offline_after_seconds=OFFLINE_AFTER_SECONDS
-        ),
-        audit=AuditCounts(rows=count["audit_rows"], hours=AUDIT_HOURS),
-    )
+    return await service.overview(request.app.state.engine)
 
 
 @router.post("/kg/prune", response_model=KgPruned, responses={**MISSING, 503: {"model": ErrorBody}})

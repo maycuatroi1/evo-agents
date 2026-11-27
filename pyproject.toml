@@ -1501,3 +1501,92 @@ broken_contract_guidance = """\
 What ranks and serves the graph never reads a question set: a ranking tuned on the answers it is scored with scores \
 what it memorized (plan kg-retrieval-quality, docs/kg-eval.md, section Tune and holdout). Tune on `kg eval --split \
 tune` from outside these modules."""
+
+[[tool.importlinter.contracts]]
+id = "hub-identity-layers"
+name = "Identity goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.identity"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.identity a route handler (in the flat modules auth, web_auth, app_sessions, tokens, \
+user_emails and invites) passes the request's parts and the app's engine to a public function of the service (auth, \
+app_sessions, tokens, user_emails, invites), which opens the transaction, checks the caller, signs in or out, checks an \
+app's signature and decides; the repository holds the SQL of the users, tokens, auth apps and their identities, emails \
+and invite links; the models (the API's shapes and limits) import none of them. Neither the repository nor the models \
+import evo_agents.hub.server.security, admin or projects: security reaches the flat invites module and from there the \
+service. Pass what they need from it (a kind, an SQL expression, a statement) in from the service. Move the code that \
+reaches up into the layer that needs it: a check or a message into the service, a query into the repository, a shape \
+into the models. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-project-registry-layers"
+name = "The project registry goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.project_registry"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.project_registry the flat route modules projects, project_admin, project_archive and org \
+pass the request's parts and the app's engine to a public function of the service (access, projects, project_admin, \
+project_archive, org), which opens the transaction with UnitOfWork, checks the caller and decides; the repository \
+holds the SQL of the projects, their sinks, repos, grants, archived and self-managed state; the models (the API's \
+shapes and ProjectAccess) import none of them, nor a module of the hub that reaches the service (security, invites, \
+admin, projects). Move the code that reaches up into the layer that needs it: a check or a message into the service, \
+a query into the repository, a shape into the models. A new module of the package goes into one of the four layers. \
+See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-hub-admin-layers"
+name = "Hub administration goes from its routes to its service to its repository to its models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.hub_admin"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.hub_admin the route handlers stay in the flat modules admin, admin_console, features, \
+branding and dlp_policy; each passes the request's parts and the app's engine to a public function of the service \
+(users and grants, the audit trail and tokens, features, branding, the DLP policy and its enforcement), which opens \
+the transaction with UnitOfWork, checks the caller and decides; the repository holds the SQL; the models (the API's \
+shapes and limits, Blocked) import none of them. Neither the models nor the repository import a module of the hub \
+that reaches the flat route modules (security, auth, kg_scrub, hub_settings, projects): a chain through one of them \
+comes back to the service. Move the code that reaches up into the layer that needs it: a check or a message into the \
+service, a query into the repository, a shape into the models. A new module of the package goes into one of the \
+four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-skill-bundles-layers"
+name = "Skills go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.skill_bundles"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.skill_bundles the routes of evo_agents.hub.server.skills pass the request's parts (the app's \
+engine, blob store and configuration) to a public function of the service (skills), which opens the transaction, \
+checks who reads and publishes a skill, asks the blob store and decides; the repository holds the SQL of skills and \
+skill_versions and what they read of grants, blobs and workers; the models (the API's shapes, the place of a skill, \
+the audiences and the audit actions) import none of them. Move the code that reaches up into the layer that needs it: \
+a check or a message into the service, a query into the repository, a shape or a limit into the models. Other modules \
+import the service, the repository's latest_skills and the models, or the names evo_agents.hub.server.skills \
+re-exports. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "hub-blob-store-layers"
+name = "Blob uploads go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.blob_store"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.blob_store the routes of evo_agents.hub.server.blobs pass the request's parts (the app's \
+engine and blob store) to a public function of the service (uploads), which opens the transaction, checks who holds \
+the blobs, issues, seals and publishes the uploads and decides; the repository holds the SQL of blob_uploads and \
+blobs; the models (the API's shapes, the holder, the refusals and the limits) import none of them. Move the code that \
+reaches up into the layer that needs it: a check or a message into the service, a query into the repository, a shape \
+or a limit into the models. Other modules import the service and the models, or the names evo_agents.hub.server.blobs \
+re-exports. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
