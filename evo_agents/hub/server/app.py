@@ -678,7 +678,7 @@ def _include_member_routes(app: FastAPI) -> None:
     from evo_agents.hub.server.chats.routes import members as chat_members
     from evo_agents.hub.server.chats.routes import people as chat_people
     from evo_agents.hub.server.chats.routes import read as chat_read
-    from evo_agents.hub.server.cron.service import jobs as cron_jobs
+    from evo_agents.hub.server.cron import routes as cron_jobs
     from evo_agents.hub.server.curator.routes import threads as curator_thread_routes
     from evo_agents.hub.server.goals import routes as goals
     from evo_agents.hub.server.intake import routes as intake

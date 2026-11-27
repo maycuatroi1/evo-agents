@@ -825,6 +825,21 @@ repository, a shape into the models. Other modules import the service and the mo
 of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-cron-layers"
+name = "The cron jobs of a project go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.cron"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.cron a route handler only opens the transaction and passes the request's parts to a public \
+function of the service (jobs, the reads and writes of a job; fire, the pass that fires the jobs due), which checks \
+who may read, change or manage a job and decides; the repository holds the queries beyond evo_agents.hub.cron_store; \
+the models (the API's shapes) import none of them. Move the code that reaches up into the layer that needs it. Other \
+modules import the service and the models, never the routes. A new module of the package goes into one of the four \
+layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

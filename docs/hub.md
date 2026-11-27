@@ -1464,7 +1464,7 @@ in a sheet (`?job=<name>`).
 ### Firing
 
 The job `hub.cron_jobs` of the hub's worker runs every minute, one pass at a time, on queue `default`
-(`evo_agents.hub.server.cron_fire`). It takes each job that is not paused, in a project that is not archived, with the
+(`evo_agents.hub.server.cron.service.fire`). It takes each job that is not paused, in a project that is not archived, with the
 job's row locked, so two workers never handle the same job at once:
 
 - It reads the minutes the job was due at since its last scheduled fire, its creation or its last resume, whichever is

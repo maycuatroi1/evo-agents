@@ -1,5 +1,5 @@
 """Cron jobs of a project (``docs/hub.md``, Cron jobs; plan hub-cron-jobs, criterion a1): ``evo_agents.hub.cron``, the
-routes of ``evo_agents.hub.server.cron.service.jobs`` and ``evo-agents hub cron``.
+routes of ``evo_agents.hub.server.cron.routes`` and ``evo-agents hub cron``.
 
 Without a database: the helper validates five fields in an IANA zone, refuses aliases, crons that never fire and
 crons finer than the limit of their kind, and finds the next fire in the job's zone; ``hub cron set`` merges the flags
