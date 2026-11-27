@@ -23,7 +23,7 @@ from evo_agents.clikit import Arg, Group, Result, Table, Text, Views, returns_ob
 from evo_agents.hub.cli.base import PROJECT, HubCommand, HubContext, ProjectResource, when
 from evo_agents.hub.client import HubError
 
-MAX_LIST = 200  # merge requests the hub lists at most (merge_view.MAX_LIST)
+MAX_LIST = 200  # merge requests the hub lists at most (merge.routes.view.MAX_LIST)
 WHY_CHARS = 80  # of a merge request's reason in the table
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
 QUEUE_KEYS = ("project", "requests", "samples", "breakers")

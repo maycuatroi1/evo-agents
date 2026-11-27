@@ -1,4 +1,4 @@
-"""An admin's pass of a hold of the hub's merge queue on GitLab (``evo_agents.hub.server.merge_pass``), against Postgres
+"""An admin's pass of a hold of the hub's merge queue on GitLab (``evo_agents.hub.server.merge.service.passes``), against Postgres
 and the fake GitLab of ``tests.hub.fake_gitlab``: the real GitLab is never called.
 
 Gate 3 (score hacking) holds a merge request for a person: a plan run that adds its tests to .gitlab-ci.yml is

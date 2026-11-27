@@ -1,4 +1,4 @@
-"""The breaker of each repo of the hub's merge queue on GitLab (``evo_agents.hub.server.merge_breaker``; plan
+"""The breaker of each repo of the hub's merge queue on GitLab (``evo_agents.hub.server.merge.service.breaker``; plan
 gitlab-merge-queue, criterion a7), against Postgres and the fake GitLab of ``tests.hub.fake_gitlab``: the real GitLab
 is never called.
 

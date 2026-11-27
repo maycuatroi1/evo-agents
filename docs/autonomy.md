@@ -117,7 +117,7 @@ audit row: the hub cannot give a token that writes to a run branch alone there. 
 `autonomy.refused` naming the class, the mode, the source and what it kept back. `hub secret set --environment test`
 labels an env secret (schema 0114 adds `secrets.environment`).
 
-**K5 at the merge** (`evo_agents/hub/server/autonomy/service/gates.py`): the GitLab merge queue (`merge_gate.ready`), the
+**K5 at the merge** (`evo_agents/hub/server/autonomy/service/gates.py`): the GitLab merge queue (`merge.service.gate.ready`), the
 Curator's tier merge (`changes`, the principal of the Builder's run) and the merge the agent of a proposal's thread
 makes of a change the hub left open (`curator.service.threads`, the principal of its chat run). A repo on github.com whose project policy has `merge_check: on` adds a step
 before a run merges its own pull request: the hub's Judges check it at its head, on the head merged with the base, and

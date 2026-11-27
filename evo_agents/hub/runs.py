@@ -423,7 +423,7 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
 # builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder);
 # canvas_baseline: a baseline of a Lean Canvas waits for the review of the project's writers (core plugin canvas)
-# merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge_breaker``)
+# merge_paused: the breaker of a repo of the merge queue tripped, which the hub alone sends (``server.merge.service.breaker``)
 # pm_daily: the digest of a project's morning, pm_escalation: a blocker pm escalates (core plugin pm)
 # release: a release cycle published its version, or the hub cannot read its CI (``server.release_watch``)
 # loop_paused: the breaker of a project's Loop tripped on the work items it made in an hour (``server.loop.breaker``)
@@ -481,7 +481,7 @@ NOTICE_KINDS = (
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and
 # counted in Today's summary (``server.today``) rather than the unread count. A notice of these kinds whose details carry
-# an ``ask`` (the merge queue's audit sample, revert or release, ``server.post_merge``) waits for an answer: it is not one.
+# an ``ask`` (the merge queue's audit sample, revert or release, ``server.merge.service.post_merge``) waits for an answer: it is not one.
 REPORT_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", OUTPUT_NOTICE)
 REPORT_ASK = "ask"  # the key of a notice's details that makes a notice of REPORT_NOTICE_KINDS ask something
 
