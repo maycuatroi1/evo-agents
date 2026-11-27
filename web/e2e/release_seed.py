@@ -5,7 +5,7 @@ The stack's hub has no GitHub App, so no check of it reads a tag and no cycle of
 plays what the hub's job would have done for the project's release schedule, which the spec set through the API: two
 cycles that ended (one published v0.24.0 after its cut run, one closed on a pause) and a cycle open now, whose cut run
 pushed 0.25.0, which the hub tagged; its workflow failed one test, and its fix run is queued. With ``stopped`` no fix
-run is queued and the open cycle stops on that test the way the watch stops one (``release_cycles.stop_cycle``): it asks
+run is queued and the open cycle stops on that test the way the watch stops one (``releases.service.cycles.stop_cycle``): it asks
 the owner a decision and posts a thread in the project's triage chat. Its runs are queued through the hub's own ``queue_run`` and ended on
 the spec's worker, so they read as any release run does. Two checks are kept, a scheduled one that found nothing and the
 one that opened the cycle. Names are fictional (northwind).
@@ -109,7 +109,7 @@ async def _check(conn, row, day: date, outcome: str, reason: str, **values) -> N
 
 
 async def _seed(engine, project: str, worker_id: int, stopped: bool) -> dict:
-    from evo_agents.hub.server.release_cycles import queue_run, stop_cycle
+    from evo_agents.hub.server.releases.service.cycles import queue_run, stop_cycle
 
     today = date.today()
     async with engine.begin() as conn:
