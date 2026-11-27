@@ -1,5 +1,5 @@
 """The quota of a Z.ai provider account, plan token-and-quota-economy, criterion a1 (``evo_agents.hub.quota``,
-``evo_agents.hub.server.provider_quota``).
+``evo_agents.hub.server.accounts.service.quota``).
 
 The hub reads GET <origin>/api/monitor/usage/quota/limit with the account's key as a Bearer token, pinned to the public
 address it checked, for a member's account and an agent's alike; it maps the five-hour limit (unit 3, or 5_HOUR) to
@@ -83,9 +83,9 @@ if pg.DSN:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from evo_agents.hub import tables
+    from evo_agents.hub.server.accounts.models.quota import ZAI_REASON
     from evo_agents.hub.server.app import create_app
     from evo_agents.hub.server.gateway_sync import GatewaySync
-    from evo_agents.hub.server.provider_quota import ZAI_REASON
     from evo_agents.hub.server.sealing import Sealer
     from tests.hub import live
     from tests.hub.live import sql

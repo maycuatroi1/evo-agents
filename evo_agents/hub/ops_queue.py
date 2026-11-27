@@ -239,7 +239,7 @@ async def unoffered(conn: AsyncConnection, worker_id: int) -> set[str]:
 
 def _live(s):
     """A row of secrets ``s`` the hub leases: not deleted, and not past its end unless it signed in with OAuth, whose
-    lease refreshes it first (``pool_accounts.usable_member``). Paused or cooling down it still counts: that is the
+    lease refreshes it first (``accounts.repository.pool_runs.usable_member``). Paused or cooling down it still counts: that is the
     account's state, no fault of the worker."""
     a = tables.accounts
     return and_(

@@ -10,7 +10,7 @@ that is still good is leased as it is, with no call out.
 The secret's row is locked for the whole refresh, so runs of one account that lease close together refresh once: the
 ones that wait read the set the first stored and find it good. A refresh that fails leaves the set as it was (a token
 that has not ended is still leased; one that has is not) and logs why, without a token; a refresh the endpoint refuses (the
-refresh token is revoked or ended) marks the account as needing a new sign-in (``account_choice.mark_relogin``), and
+refresh token is revoked or ended) marks the account as needing a new sign-in (``choice.mark_relogin``), and
 ``refresh_due`` names it so the lease moves the run to another account.
 """
 
@@ -21,13 +21,14 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from pydantic import SecretStr
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import claude_oauth, tables
-from evo_agents.hub.server.account_choice import mark_relogin
-from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR, OAuthTokens, open_tokens, seal_tokens, store_tokens
-from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, secret_aad
+from evo_agents.hub import claude_oauth
+from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR, OAuthTokens
+from evo_agents.hub.server.accounts.repository import refresh as repository
+from evo_agents.hub.server.accounts.repository.oauth import open_tokens, seal_tokens, store_tokens
+from evo_agents.hub.server.accounts.service.choice import mark_relogin
+from evo_agents.hub.server.sealing import Sealer, Unsealable, secret_aad
 
 log = logging.getLogger("evo_agents.hub.accounts")
 
@@ -62,24 +63,15 @@ async def refresh_account(engine: AsyncEngine, sealer: Sealer, owner_id: int, se
 
 async def _refresh(engine: AsyncEngine, sealer: Sealer, owner_id: int, secret_id: int) -> str:
     """STORED, REJECTED (the endpoint refused the refresh token: the account is marked for a new sign-in) or SKIPPED."""
-    s, a = tables.secrets, tables.accounts
     async with engine.begin() as conn:
-        found = (
-            await conn.execute(
-                select(s.c.name, s.c.kind)
-                .where(s.c.id == secret_id, s.c.owner_id == owner_id, s.c.deleted_at.is_(None))
-                .with_for_update()
-            )
-        ).first()
+        found = await repository.lock_secret(conn, owner_id, secret_id)
         if found is None:
             return SKIPPED
-        # read once the lock is won, as a statement of its own: it sees what the refresh before it stored
-        sets = select(a.c.oauth_sealed, a.c.oauth_nonce, a.c.oauth_key_id).where(a.c.secret_id == secret_id)
-        row = (await conn.execute(sets)).first()
-        if row is None or row.oauth_sealed is None:
+        sealed = await repository.sealed_set(conn, secret_id)
+        if sealed is None:
             return SKIPPED
         try:
-            held = open_tokens(sealer, secret_id, Sealed(row.oauth_sealed, row.oauth_nonce, row.oauth_key_id))
+            held = open_tokens(sealer, secret_id, sealed)
             ends = datetime.fromisoformat(held["expires_at"])
         except (Unsealable, ValueError, KeyError) as exc:
             log.warning(
@@ -105,17 +97,7 @@ async def _refresh(engine: AsyncEngine, sealer: Sealer, owner_id: int, secret_id
             email=got.email or held.get("email"),
         )
         value = sealer.seal(got.access_token, secret_aad(owner_id, found.name, found.kind))
-        await conn.execute(
-            update(s)
-            .where(s.c.id == secret_id)
-            .values(
-                sealed=value.ciphertext,
-                nonce=value.nonce,
-                key_id=value.key_id,
-                expires_at=got.expires_at,
-                updated_at=func.now(),
-            )
-        )
+        await repository.store_value(conn, secret_id, value, got.expires_at)
         await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, got.access_token, oauth))
     log.info("an OAuth account's access token was refreshed", extra={"secret": found.name})
     return STORED

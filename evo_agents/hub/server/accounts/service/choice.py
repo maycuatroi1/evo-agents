@@ -23,12 +23,12 @@ The accounts of an agent profile (``agent_accounts``) come in the same list, and
 of it every secret of the dispatcher for a variable the agent has an account for on this worker, so a variable's group
 is the agent's or the member's, never both. An agent's accounts are chosen by DEFAULT_POLICY (its strategy, cooldown,
 failover and ``max_failovers``), and those of an account pool by the pool's strategy and quota-pacing thresholds
-(``account_pools``, DEFAULT_POLICY for the rest), by the same tiers (all of them are bound to this worker), and fail over among the
-agent's accounts alone. Every account of the agent for a variable past its end (``ended``): the run gets none for it,
-and an event says so.
+(``pools``, DEFAULT_POLICY for the rest), by the same tiers (all of them are bound to this worker), and fail over among
+the agent's accounts alone. Every account of the agent for a variable past its end (``ended``): the run gets none for
+it, and an event says so.
 
 Quota-pacing weighs the usage windows of each account (``accounts.last_usage``), its weekly budget's window replacing
-the ``seven_day`` one where the owner set one (``account_budgets``).
+the ``seven_day`` one where the owner set one (``budgets``).
 
 Each event names an account by its secret's id, never its name: the run's log is read by every reader of the project.
 
@@ -41,109 +41,44 @@ hand, the policy turns failover off or the run failed over ``max_failovers`` tim
 ready account by the same tiers and strategy, its run_accounts row moves to it and counts one more failover. With no
 account ready it stays and stops, and the answer says when the first one is ready again.
 
-An OAuth account whose refresh the token endpoint refused (``account_refresh``: the refresh token was revoked or has
-ended) needs a new sign-in: ``mark_relogin`` puts it in a cooldown that lasts ``RELOGIN_SPAN``, with the reason
+An OAuth account whose refresh the token endpoint refused (``refresh``: the refresh token was revoked or has ended)
+needs a new sign-in: ``mark_relogin`` puts it in a cooldown that lasts ``RELOGIN_SPAN``, with the reason
 ``RELOGIN_REASON``, and ``fail_over_relogin`` moves the runs that held it to another account as ``fail_over`` does.
-The member ends the cooldown by running ``evo-agents hub account oauth-login`` again (``clear_relogin``).
+The member ends the cooldown by running ``evo-agents hub account oauth-login`` again
+(``repository.choice.clear_relogin``).
 
-Any other cooldown ends when the owner resumes the account (``evo-agents hub account resume``, ``end_cooldown``): a
-usage limit that reset early, or a token renewed after a refused one, needs no wait and no new sign-in.
+Any other cooldown ends when the owner resumes the account (``evo-agents hub account resume``,
+``repository.choice.end_cooldown``): a usage limit that reset early, or a token renewed after a refused one, needs no
+wait and no new sign-in.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
 
-from sqlalchemy import func, not_, null, or_, select, update
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
 from evo_agents.hub.accounts import (
     DEFAULT_POLICY,
     FIVE_HOUR,
     SEVEN_DAY,
     Candidate,
     Pacing,
-    Window,
     pick,
     usable,
     window_of,
 )
-from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
-
-
-class Secret(Protocol):
-    """What ``choose_accounts`` reads of a secret (``credentials._Secret``)."""
-
-    id: int
-    name: str
-    kind: str
-    env_var: str | None
-    on_worker: bool
-    share_id: int | None  # the share another member lent it under; None for the owner's own
-    for_run: bool  # that share is for this run alone (``share_leases.for_run``): it comes first for its variable
-    agent: str | None  # the handle of the agent profile that owns it; None for a member's
-
-
-class Run(Protocol):
-    id: int
-    owner_id: int
-    project_id: int
-    curator: object | None
-
-
-@dataclass(frozen=True)
-class _State:
-    weight: int
-    priority: int
-    paused: bool
-    cooling_until: datetime | None  # set while it cools down
-    rotation: float
-    five_hour: Window | None = None  # its usage windows, for quota-pacing
-    seven_day: Window | None = None
-
-
-@dataclass(frozen=True)
-class _Choice:
-    secret: Secret | None
-    how: str | None  # None: the run keeps what it took, nothing to record
-    rotation: float | None = None  # the account's place once taken, for a rotating strategy
-    note: str | None = None  # the text of the run's event
-
-
-async def account_policy(conn: AsyncConnection, owner_id: int, project_id: int) -> dict:
-    """The policy of ``owner_id`` for ``project_id``: their account_policies row, else DEFAULT_POLICY."""
-    p = tables.account_policies
-    row = (
-        await conn.execute(
-            select(
-                p.c.strategy,
-                p.c.cooldown_seconds,
-                p.c.failover,
-                p.c.max_failovers,
-                p.c.hard_reserve_pct,
-                p.c.five_hour_ceiling_pct,
-            ).where(p.c.owner_id == owner_id, p.c.project_id == project_id)
-        )
-    ).one_or_none()
-    return dict(row._mapping) if row is not None else dict(DEFAULT_POLICY)
-
-
-async def pool_policy(conn: AsyncConnection, pool_id: int | None) -> dict:
-    """The policy the accounts of account pool ``pool_id`` are chosen by: its strategy and thresholds, DEFAULT_POLICY
-    for the rest (and for all of it with no pool)."""
-    if pool_id is None:
-        return dict(DEFAULT_POLICY)
-    ap = tables.account_pools
-    row = (
-        await conn.execute(
-            select(ap.c.strategy, ap.c.hard_reserve_pct, ap.c.five_hour_ceiling_pct).where(ap.c.id == pool_id)
-        )
-    ).one_or_none()
-    return dict(DEFAULT_POLICY) | (dict(row._mapping) if row is not None else {})
+from evo_agents.hub.server.accounts.models.choice import (
+    RELOGIN_REASON,
+    RELOGIN_SPAN,
+    AccountState,
+    Choice,
+    Failover,
+    Run,
+    Secret,
+)
+from evo_agents.hub.server.accounts.repository import choice as repository
+from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
 
 
 def pacing_of(policy: dict) -> Pacing:
@@ -154,30 +89,13 @@ def pacing_of(policy: dict) -> Pacing:
     )
 
 
-async def _lock_accounts(conn: AsyncConnection, ids: list[int]) -> dict[int, _State]:
+async def _lock_accounts(conn: AsyncConnection, ids: list[int]) -> dict[int, AccountState]:
     """The accounts rows of ``ids``, made when missing and locked until the transaction ends, by secret id."""
-    a = tables.accounts
     ordered = sorted(set(ids))
-    await conn.execute(insert(a).values([{"secret_id": i} for i in ordered]).on_conflict_do_nothing())
-    rows = await conn.execute(
-        select(
-            a.c.secret_id,
-            a.c.weight,
-            a.c.priority,
-            a.c.paused_at,
-            a.c.rotation,
-            (a.c.cooldown_until > func.now()).label("cooling"),
-            a.c.cooldown_until,
-            a.c.last_usage,
-        )
-        .where(a.c.secret_id.in_(ordered))
-        .order_by(a.c.secret_id)
-        .with_for_update()
-    )
-    rows = rows.all()
+    rows = await repository.lock_accounts(conn, ordered)
     usages = with_budgets({row.secret_id: row.last_usage for row in rows}, await budget_windows(conn, ordered))
     return {
-        row.secret_id: _State(
+        row.secret_id: AccountState(
             weight=row.weight,
             priority=row.priority,
             paused=row.paused_at is not None,
@@ -190,22 +108,7 @@ async def _lock_accounts(conn: AsyncConnection, ids: list[int]) -> dict[int, _St
     }
 
 
-async def _kept(conn: AsyncConnection, run_id: int) -> dict[str, int]:
-    """Variable -> the secret run ``run_id`` took for it, or the run it resumes took."""
-    ra, r = tables.run_accounts, tables.runs
-    resumed = select(r.c.resume_of_run_id).where(r.c.id == run_id).scalar_subquery()
-    rows = await conn.execute(
-        select(ra.c.env_var, ra.c.secret_id)
-        .where(ra.c.run_id.in_([run_id, resumed]))
-        .order_by((ra.c.run_id == run_id).desc())
-    )
-    kept: dict[str, int] = {}
-    for row in rows:
-        kept.setdefault(row.env_var, row.secret_id)
-    return kept
-
-
-def _candidate(secret: Secret, state: _State) -> Candidate:
+def _candidate(secret: Secret, state: AccountState) -> Candidate:
     return Candidate(
         secret.id, secret.name, state.weight, state.priority, state.rotation, state.five_hour, state.seven_day
     )
@@ -222,20 +125,20 @@ def _tiers(secrets: list[Secret], curator: bool) -> list[tuple[str, list[Secret]
     ]
 
 
-def _fallback(env_var: str, secrets: list[Secret], states: dict[int, _State], strategy: str) -> _Choice:
+def _fallback(env_var: str, secrets: list[Secret], states: dict[int, AccountState], strategy: str) -> Choice:
     """Nothing is ready: the owner's own account whose cooldown ends first, else none since every one is paused. An
     account shared with the owner is never taken cooling: its owner's runs go first (``share_leases``)."""
     secrets = [s for s in secrets if s.share_id is None]
     if not secrets:
-        return _Choice(None, None, note=f"no account for {env_var} is ready: the run gets none")
+        return Choice(None, None, note=f"no account for {env_var} is ready: the run gets none")
     allowed = {c.id for c in usable([_candidate(s, states[s.id]) for s in secrets], strategy)}
     cooling = [s for s in secrets if s.id in allowed and not states[s.id].paused and states[s.id].cooling_until]
     if not cooling:
-        return _Choice(None, None, note=f"every account for {env_var} is paused: the run gets none")
-    secret = min(cooling, key=lambda s: (states[s.id].cooling_until, s.id))
-    until = states[secret.id].cooling_until.isoformat()
+        return Choice(None, None, note=f"every account for {env_var} is paused: the run gets none")
+    secret = min(cooling, key=lambda s: (states[s.id].cooling_until, s.id))  # pyright: ignore[reportArgumentType]
+    until = states[secret.id].cooling_until.isoformat()  # pyright: ignore[reportOptionalMemberAccess]
     note = f"every account for {env_var} is cooling down: the run took secret {secret.id}, ready first, at {until}"
-    return _Choice(secret, "cooling", note=note)
+    return Choice(secret, "cooling", note=note)
 
 
 def _given_for_run(secrets: list[Secret]) -> Secret | None:
@@ -245,43 +148,33 @@ def _given_for_run(secrets: list[Secret]) -> Secret | None:
 
 
 def _decide(
-    env_var: str, secrets: list[Secret], states: dict[int, _State], kept: int | None, held: set[int], context: tuple
-) -> _Choice:
+    env_var: str,
+    secrets: list[Secret],
+    states: dict[int, AccountState],
+    kept: int | None,
+    held: set[int],
+    context: tuple,
+) -> Choice:
     policy, curator = context
     strategy = policy["strategy"]
     by_id = {secret.id: secret for secret in secrets}
     given = _given_for_run(secrets)
     if given is not None:
-        return _Choice(given, None if kept == given.id else "shared")
+        return Choice(given, None if kept == given.id else "shared")
     if kept in by_id:
-        return _Choice(by_id[kept], None)
+        return Choice(by_id[kept], None)
     tiers = _tiers(secrets, curator)
     for how, tier in tiers:
         for secret in tier:
             if secret.id in held:
-                return _Choice(secret, how)
+                return Choice(secret, how)
     for how, tier in tiers:
         ready = [s for s in tier if not states[s.id].paused and states[s.id].cooling_until is None]
         found = pick([_candidate(s, states[s.id]) for s in ready], strategy, pacing_of(policy))
         if found is not None:
             rotation = found[1] if strategy != "fill-first" else None
-            return _Choice(by_id[found[0].id], how, rotation)
+            return Choice(by_id[found[0].id], how, rotation)
     return _fallback(env_var, secrets, states, strategy)
-
-
-async def _record(
-    conn: AsyncConnection, run_id: int, env_var: str, choice: _Choice, failovers: int | None = None
-) -> None:
-    a, ra = tables.accounts, tables.run_accounts
-    values = {"last_leased_at": func.now()}
-    if choice.rotation is not None:
-        values["rotation"] = choice.rotation
-    await conn.execute(update(a).where(a.c.secret_id == choice.secret.id).values(**values))
-    took = {"secret_id": choice.secret.id, "how": choice.how, "chosen_at": func.now()}
-    if failovers is not None:
-        took["failovers"] = failovers
-    statement = insert(ra).values(run_id=run_id, env_var=env_var, **took)
-    await conn.execute(statement.on_conflict_do_update(index_elements=[ra.c.run_id, ra.c.env_var], set_=took))
 
 
 async def _ended_event(conn: AsyncConnection, run: Run, env_var: str) -> None:
@@ -302,10 +195,10 @@ async def _policy_of(conn: AsyncConnection, run: Run, secret: Secret, member: di
     """The policy ``secret`` is chosen by for ``run``: its account pool's, DEFAULT_POLICY for an agent's own, else
     the member's (``member`` when read already)."""
     if getattr(secret, "pool", None) is not None:
-        return await pool_policy(conn, getattr(run, "account_pool_id", None))
+        return await repository.pool_policy(conn, getattr(run, "account_pool_id", None))
     if secret.agent is not None:
         return dict(DEFAULT_POLICY)
-    return member if member is not None else await account_policy(conn, run.owner_id, run.project_id)
+    return member if member is not None else await repository.account_policy(conn, run.owner_id, run.project_id)
 
 
 async def choose_accounts(
@@ -316,13 +209,13 @@ async def choose_accounts(
     Records each new choice and writes the run's events."""
     by_var: dict[str, list[Secret]] = {}
     for secret in sorted((s for s in secrets if s.kind == "env"), key=lambda s: s.name):
-        by_var.setdefault(secret.env_var, []).append(secret)
+        by_var.setdefault(secret.env_var, []).append(secret)  # pyright: ignore[reportArgumentType]
     if not by_var and not ended:
         return []
     ids = [secret.id for group in by_var.values() for secret in group]
     states = await _lock_accounts(conn, ids) if ids else {}
-    kept = await _kept(conn, run.id)
-    member = await account_policy(conn, run.owner_id, run.project_id)
+    kept = await repository.kept(conn, run.id)
+    member = await repository.account_policy(conn, run.owner_id, run.project_id)
     chosen: list[Secret] = []
     for env_var in sorted(set(by_var) | set(ended)):
         if env_var not in by_var:  # every account of the agent for it has ended, and the dispatcher's is not leased
@@ -338,60 +231,16 @@ async def choose_accounts(
         if choice.secret is None:
             continue
         if choice.how is not None:
-            await _record(conn, run.id, env_var, choice)
+            await repository.record(conn, run.id, env_var, choice)
         chosen.append(choice.secret)
     return chosen
 
 
-def _id(choice: _Choice) -> int | None:
+def _id(choice: Choice) -> int | None:
     return choice.secret.id if choice.secret is not None else None
 
 
 # When a run's account hits its usage limit
-
-
-@dataclass(frozen=True)
-class Failover:
-    """What ``fail_over`` decided: the account the run moves to, or why it stays and when one is ready first."""
-
-    secret: Secret | None  # None: the run cannot move
-    failovers: int  # the times the run moved, this one included
-    cooling_until: datetime  # until when the limited account cools down
-    reason: str | None = None  # why the run cannot move
-    ready_at: datetime | None = None  # when it cannot: the earliest end of a cooldown among its accounts
-
-
-async def _taken(conn: AsyncConnection, run_id: int, env_var: str) -> tuple[int | None, str | None, int]:
-    """(secret id, how, failovers) of the account run ``run_id`` took for ``env_var``, or the run it resumes took."""
-    ra, r = tables.run_accounts, tables.runs
-    resumed = select(r.c.resume_of_run_id).where(r.c.id == run_id).scalar_subquery()
-    row = (
-        await conn.execute(
-            select(ra.c.run_id, ra.c.secret_id, ra.c.how, ra.c.failovers)
-            .where(ra.c.run_id.in_([run_id, resumed]), ra.c.env_var == env_var)
-            .order_by((ra.c.run_id == run_id).desc())
-            .limit(1)
-        )
-    ).one_or_none()
-    if row is None:
-        return None, None, 0
-    return row.secret_id, row.how, row.failovers if row.run_id == run_id else 0
-
-
-async def cool(conn: AsyncConnection, secret_id: int, until: datetime, reason: str) -> datetime:
-    """Put the account in cooldown until ``until`` at least; the end of its cooldown."""
-    a = tables.accounts
-    statement = (
-        update(a)
-        .where(a.c.secret_id == secret_id)
-        .values(
-            cooldown_until=func.greatest(func.coalesce(a.c.cooldown_until, until), until),
-            cooldown_reason=reason,
-            updated_at=func.now(),
-        )
-        .returning(a.c.cooldown_until)
-    )
-    return (await conn.execute(statement)).scalar_one()
 
 
 def _why_not(how: str | None, policy: dict, failovers: int, whose: str = "its owner's") -> str | None:
@@ -418,15 +267,15 @@ async def fail_over(
     policy = (
         await _policy_of(conn, run, held)
         if held is not None and owned
-        else await account_policy(conn, run.owner_id, run.project_id)
+        else await repository.account_policy(conn, run.owner_id, run.project_id)
     )
     states = await _lock_accounts(conn, [s.id for s in own] + [current])
     now = datetime.now(UTC)
     until = (
         resets_at if resets_at is not None and resets_at > now else now + timedelta(seconds=policy["cooldown_seconds"])
     )
-    until = await cool(conn, current, until, reason)
-    taken, how, failovers = await _taken(conn, run.id, env_var)
+    until = await repository.cool(conn, current, until, reason)
+    taken, how, failovers = await repository.taken(conn, run.id, env_var)
     others = [s for s in own if s.id != current]
     if failovers and taken != current and taken in {s.id for s in others}:
         return Failover(next(s for s in others if s.id == taken), failovers, until)
@@ -438,72 +287,30 @@ async def fail_over(
             if found is not None:
                 rotation = found[1] if policy["strategy"] != "fill-first" else None
                 secret = next(s for s in ready if s.id == found[0].id)
-                await _record(conn, run.id, env_var, _Choice(secret, tier_how, rotation), failovers + 1)
+                await repository.record(conn, run.id, env_var, Choice(secret, tier_how, rotation), failovers + 1)
                 return Failover(secret, failovers + 1, until)
         why = f"no other account for {env_var} is ready"
     cooling = [states[s.id].cooling_until for s in others if not states[s.id].paused and states[s.id].cooling_until]
-    return Failover(None, failovers, until, why, min([until, *cooling]))
+    return Failover(None, failovers, until, why, min([until, *cooling]))  # pyright: ignore[reportArgumentType]
 
 
 # An OAuth account whose refresh token is dead
 
 
-RELOGIN_REASON = "needs-relogin: the OAuth refresh token was refused; run evo-agents hub account oauth-login again"
-RELOGIN_SPAN = timedelta(days=3650)  # a cooldown only a new sign-in ends
-
-
 async def mark_relogin(conn: AsyncConnection, secret_id: int) -> None:
     """Account ``secret_id`` needs a new sign-in: no run is given it until the member logs in again."""
-    await cool(conn, secret_id, datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
-
-
-async def clear_relogin(conn: AsyncConnection, secret_id: int) -> None:
-    """A new sign-in of account ``secret_id`` ends the cooldown ``mark_relogin`` set; a cooldown of a usage limit stays."""
-    a = tables.accounts
-    await conn.execute(
-        update(a)
-        .where(a.c.secret_id == secret_id, a.c.cooldown_reason == RELOGIN_REASON)
-        .values(cooldown_until=None, cooldown_reason=None, updated_at=func.now())
-    )
-
-
-async def end_cooldown(conn: AsyncConnection, secret_id: int) -> bool:
-    """The owner's resume of account ``secret_id`` ends its cooldown, whatever limit set it, save the one only a new
-    sign-in ends (``mark_relogin``): the owner knows the limit reset before the time its runtime gave. The last usage
-    goes too, since the report that cooled the account no longer holds; the next run reports it again. True when a
-    cooldown ended."""
-    a = tables.accounts
-    ended = await conn.execute(
-        update(a)
-        .where(
-            a.c.secret_id == secret_id,
-            a.c.cooldown_until > func.now(),
-            or_(a.c.cooldown_reason.is_(None), not_(a.c.cooldown_reason.startswith(RELOGIN_REASON, autoescape=True))),
-        )
-        .values(cooldown_until=None, cooldown_reason=None, last_usage=null(), last_usage_at=None, updated_at=func.now())
-    )
-    return ended.rowcount > 0
+    await repository.cool(conn, secret_id, datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
 
 
 async def fail_over_relogin(conn: AsyncConnection, run: Run, secrets: list[Secret], rejected: set[int]) -> None:
     """Move run ``run`` off each account in ``rejected`` that it holds, as ``fail_over`` does for a usage limit; its
     lease of that account is revoked. A run that cannot move (picked by hand, failover off, no other account ready)
     keeps the account, whose token the lease leaves out once it has ended."""
-    cl = tables.credential_leases
     for secret in sorted((s for s in secrets if s.id in rejected and s.kind == "env"), key=lambda s: s.name):
-        taken, _, _ = await _taken(conn, run.id, secret.env_var)
+        taken, _, _ = await repository.taken(conn, run.id, secret.env_var)  # pyright: ignore[reportArgumentType]
         if taken != secret.id:
             continue
         limit = (datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
-        moved = await fail_over(conn, run, secrets, secret.env_var, secret.id, limit)
+        moved = await fail_over(conn, run, secrets, secret.env_var, secret.id, limit)  # pyright: ignore[reportArgumentType]
         if moved.secret is not None:
-            await conn.execute(
-                update(cl)
-                .where(
-                    cl.c.run_id == run.id,
-                    cl.c.secret_id == secret.id,
-                    cl.c.provider == "secret",
-                    cl.c.revoked_at.is_(None),
-                )
-                .values(revoked_at=func.now())
-            )
+            await repository.revoke_secret_lease(conn, run.id, secret.id)

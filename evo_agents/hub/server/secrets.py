@@ -30,11 +30,11 @@ softly: the row stays, for the leases and the audit lines that name it, while it
 and the leases and shares of it that are not given back or revoked yet are marked revoked. The name
 is free again at once.
 
-The key of a provider account is a secret of kind provider (``evo_agents.hub.server.provider_accounts``), which these
+The key of a provider account is a secret of kind provider (``evo_agents.hub.server.accounts.service.provider_accounts``), which these
 routes neither list, write nor delete: a PUT of its name answers 409, a DELETE 404.
 
 An env secret for CLAUDE_CODE_OAUTH_TOKEN may carry ``oauth``, the refresh token and other parts of an account's
-sign-in with OAuth (``evo_agents.hub.server.account_oauth``): the hub seals them with the value in the account's row,
+sign-in with OAuth (``evo_agents.hub.server.accounts.repository.oauth``): the hub seals them with the value in the account's row,
 and a write without ``oauth`` drops what was there.
 
 Each write adds one audit row, secret.put, secret.rebind or secret.delete, whose target is the secret's id
@@ -77,10 +77,9 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
-from evo_agents.hub.server.account_choice import clear_relogin
-from evo_agents.hub.server.account_oauth import (
-    OAUTH_ENV_VAR,
-    OAuthTokens,
+from evo_agents.hub.server.accounts.models.oauth import OAUTH_ENV_VAR, OAuthTokens
+from evo_agents.hub.server.accounts.repository.choice import clear_relogin
+from evo_agents.hub.server.accounts.repository.oauth import (
     drop_tokens,
     seal_tokens,
     store_tokens,

@@ -40,7 +40,7 @@ from evo_agents.hub import credential_requests, runs, tables
 from evo_agents.hub.credential_shares import USER, credential_class, needs_terms_ack, terms_refusal
 from evo_agents.hub.credentials import HUB_TOKEN_ENV, HUB_URL_ENV, MAX_SECRET_BYTES, MAX_SECRETS_PER_OWNER
 from evo_agents.hub.server import audit, credential_resolver
-from evo_agents.hub.server.account_oauth import drop_tokens
+from evo_agents.hub.server.accounts.repository.oauth import drop_tokens
 from evo_agents.hub.server.decisions.models import AnswerIn
 from evo_agents.hub.server.runs.service.admin_acts import OnBehalf
 from evo_agents.hub.server.sealing import Sealer, secret_aad

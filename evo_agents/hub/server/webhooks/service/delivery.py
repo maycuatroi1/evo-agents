@@ -8,7 +8,7 @@ again before its try is written, and two passes at once never send it twice.
 
 A try checks the webhook's URL again (``public_endpoint.host_refusal``), resolves its host and refuses it unless every
 address it resolves to is public (``public_endpoint.public_addresses``), as DNS may change after the write. The POST
-goes to the first address checked, with the host name in the Host header and in TLS (``provider_probe.pinned_url``),
+goes to the first address checked, with the host name in the Host header and in TLS (``accounts.service.probe.pinned_url``),
 so a second answer of the resolver cannot send it elsewhere. No redirect is followed.
 """
 
@@ -24,7 +24,7 @@ import httpx
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub.server.provider_probe import pinned_url
+from evo_agents.hub.server.accounts.service.probe import pinned_url
 from evo_agents.hub.server.public_endpoint import EndpointRefused, Resolver, host_refusal, public_addresses
 from evo_agents.hub.server.webhooks import repository
 from evo_agents.hub.server.webhooks.models import BATCH, PASS_SECONDS, TIMEOUT

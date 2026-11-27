@@ -13,7 +13,7 @@ model and whose agent profile does not pin one, while the project's policy has r
   of the same step and kind (the next dispatch of the step);
 - it reads the quota of the run's subscription: the env accounts of a model the run may be leased (its agent's account
   pool, else its dispatcher's own), the most of a weekly window left among those not paused nor cooling down, a weekly
-  budget counting as one (``account_budgets``); none live: used up;
+  budget counting as one (``accounts.service.budgets``); none live: used up;
 - it takes the strategy's model for the difficulty (``model_router.choose``) and places it: a gateway model goes through
   the gateway when the gateway serves its prefix, the worker's daemon runs gateway runs and the run may use an account
   of the prefix (``gateway_accounts``), and sets ``runs.gateway_provider``, so the run's lease is a gateway key of the
@@ -40,7 +40,7 @@ from evo_agents.hub.accounts import FIVE_HOUR, SEVEN_DAY, used_now, window_of
 from evo_agents.hub.model_router import NATIVE_RUNTIME, Choice, Quota, Rating
 from evo_agents.hub.plans import CLOSED_STEP_STATUSES, PlanProblem, step_index, step_key
 from evo_agents.hub.server import gateway_accounts
-from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
+from evo_agents.hub.server.accounts.service.budgets import budget_windows, with_budgets
 from evo_agents.hub.server.runs.service.views import current_plan
 from evo_agents.hub.server.systems.service import traces as system_traces
 

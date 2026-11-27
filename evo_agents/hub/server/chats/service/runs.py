@@ -43,9 +43,9 @@ from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import (
     gateway_accounts,
-    pool_accounts,
     run_access_rules,
 )
+from evo_agents.hub.server.accounts.service import pool_runs as pool_accounts
 from evo_agents.hub.server.agents.models.placement import Home
 from evo_agents.hub.server.agents.service import placement as agent_placement
 from evo_agents.hub.server.agents.service import tasking as agent_tasking

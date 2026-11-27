@@ -1,6 +1,6 @@
 """The SQL of the provider accounts of an agent: their rows, the one a write changes, its row locked, and the end of
-its shares. Their rows are those of ``provider_store.provider_rows``, which the service passes in as ``rows_of``:
-``provider_store`` reaches the service."""
+its shares. Their rows are those of ``accounts.repository.provider_accounts.provider_rows``, which the service passes in as ``rows_of``:
+``accounts.service.providers`` reaches the service."""
 
 from __future__ import annotations
 

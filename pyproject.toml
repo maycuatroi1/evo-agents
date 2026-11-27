@@ -894,6 +894,24 @@ into the models. The package's __init__ exports what the core plugins import; __
 new module of the package goes into one of the four layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-accounts-layers"
+name = "A member's accounts go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.accounts"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.accounts a route handler opens a connection or a transaction at most and passes the \
+request's parts to a public function of the service (accounts, views, pools, provider_accounts), which checks the \
+caller, chooses an account for a run, refreshes an OAuth token, calls a provider's endpoint and decides; the \
+repository holds the SQL of the accounts, their policies, budgets, cooldowns, pools, OAuth tokens and provider \
+accounts; the models (the API's shapes and limits) import none of them, nor a module of the hub that reaches the \
+service (admin, secrets, projects). Move the code that reaches up into the layer that needs it: a check or a message \
+into the service, a query into the repository, a shape into the models. Other modules import the service, the \
+models and the repository, never the routes; only the app includes them. A new module of the package goes into one \
+of the four layers. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "hub-agents-layers"
 name = "The agents go from their routes to their service to their repository to their models, never back"
 type = "layers"

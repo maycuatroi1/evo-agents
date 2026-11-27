@@ -1,5 +1,5 @@
 """The refresh of an OAuth account's access token when a run is leased its credentials
-(``evo_agents.hub.server.account_refresh``).
+(``evo_agents.hub.server.accounts.service.refresh``).
 
 The checks the claude-oauth-login plan names for its second step, against a fake token endpoint, for an OAuth account
 of the owner's in the account pool of the run's agent, where a run of an agent takes its model account (plan
@@ -28,9 +28,9 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import func, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server import account_refresh
-from evo_agents.hub.server.account_choice import RELOGIN_REASON
-from evo_agents.hub.server.account_oauth import open_tokens
+from evo_agents.hub.server.accounts.models.choice import RELOGIN_REASON
+from evo_agents.hub.server.accounts.repository.oauth import open_tokens
+from evo_agents.hub.server.accounts.service import refresh as account_refresh
 from evo_agents.hub.server.sealing import Sealed, Sealer, secret_aad
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (  # noqa: F401 (fixtures of this module)
@@ -211,7 +211,7 @@ def test_an_account_whose_access_token_ended_still_takes_a_run_and_its_lease_ref
     client, hub, hub_db, anthropic
 ):
     """An account of the agent's pool left idle past its access token's end (about eight hours) is no reason for the
-    run to wait: the claim takes it (``pool_accounts.usable_member``) and the lease refreshes the token first."""
+    run to wait: the claim takes it (``repository.pool_runs.usable_member``) and the lease refreshes the token first."""
     access, refresh = add_account(client, hub, anthropic, timedelta(minutes=1))
     sql(hub_db, update(tables.secrets).values(expires_at=func.now() - timedelta(hours=1)))
     worker, run_id = run_of(client, hub)

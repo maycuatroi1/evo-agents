@@ -1,5 +1,5 @@
 """A member's accounts: several env secrets for one variable, the routes under /v1/accounts and /v1/account-policies
-(``evo_agents.hub.server.accounts``), and which of them each run gets (``evo_agents.hub.server.account_choice``).
+(``evo_agents.hub.server.accounts``), and which of them each run gets (``evo_agents.hub.server.accounts.service.choice``).
 
 The checks the claude-account-rotation plan names for its first step, on the accounts of the account pool of the run's
 agent (plan agent-dedicated-pools: a run of an agent takes its model account from that pool alone, by the default
@@ -23,7 +23,7 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.account_choice import RELOGIN_REASON
+from evo_agents.hub.server.accounts.models.choice import RELOGIN_REASON
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (

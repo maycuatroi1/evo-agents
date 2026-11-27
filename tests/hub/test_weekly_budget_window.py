@@ -1,5 +1,5 @@
 """The weekly budget of a model account, plan token-and-quota-economy, criterion a1 (``evo_agents.hub.quota``,
-``evo_agents.hub.server.account_budgets``).
+``evo_agents.hub.server.accounts.service.budgets``).
 
 An owner gives an account ``weekly_budget_usd`` and, if they like, ``weekly_reset_at``, the UTC instant its weeks start
 from (Monday 00:00 UTC without one). The cost of the runs that took the account since its week began, over the budget,

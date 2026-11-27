@@ -1,5 +1,5 @@
 """``evo-agents hub account-pool list|show|create|policy|delete|add|remove`` and ``hub agent account-pool HANDLE POOL``: the
-account pools of a project (``evo_agents.hub.server.account_pools``), named sets of accounts that an agent in pool mode
+account pools of a project (``evo_agents.hub.server.accounts.service.pools``), named sets of accounts that an agent in pool mode
 leases from alone. Every command needs the admin role on the project or on the hub.
 
 ``add POOL NAME`` puts one of your own env or provider accounts in the pool, or with ``--agent HANDLE`` an account of
