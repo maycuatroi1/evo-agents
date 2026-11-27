@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import pytest
 
-from evo_agents.hub import runs
-from evo_agents.hub.server import hub_run_events
 from tests.hub import pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+from evo_agents.hub import runs
+from evo_agents.hub.server import hub_run_events
 from tests.hub.test_chat_runs import created, sent
 from tests.hub.test_hub_runtime import chat_runs_of, tool_call, turn
 from tests.hub.test_hub_runtime import client as client  # noqa: F401  the fixtures

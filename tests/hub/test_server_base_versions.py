@@ -9,6 +9,9 @@ import asyncio
 
 import pytest
 
+pytest.importorskip("fastapi", reason="needs the hub-server extra, evo-ak[hub-server]")
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub.server.base.errors import Conflict
 from evo_agents.hub.server.base.tools import Tool, Tools
 from evo_agents.hub.server.base.versions import VersionedStore
