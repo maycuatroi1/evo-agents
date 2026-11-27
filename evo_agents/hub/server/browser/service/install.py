@@ -24,40 +24,26 @@ Chromium (cancelled, failed or impossible) less than REASK_AFTER ago: its diagno
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, cast
 
-from fastapi import HTTPException
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import runs
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.base.auditor import Auditor
+from evo_agents.hub.server.base.errors import Conflict
+from evo_agents.hub.server.browser.models.install import ASK_BATCH, NOT_SAID, REASK_AFTER, WITHOUT_CHROMIUM
+from evo_agents.hub.server.browser.repository import install as repository
 from evo_agents.hub.server.runs.models import BrowserInstallRequest, HeartbeatRequest
 from evo_agents.hub.server.security import Principal
 
 log = logging.getLogger(__name__)
 
-NOT_SAID = f"its daemon does not say {runs.BROWSER_INSTALL} in its features"
-REASK_AFTER = timedelta(hours=24)  # a request that ended without Chromium: the hub does not open another before
-UNFINISHED_AFTER = timedelta(minutes=30)  # an open request older than this no longer counts as a wait (queue_fit)
-ASK_BATCH = 50  # the queued runs with browser one pass of ``ask_for_queued`` reads
-_WITHOUT_CHROMIUM = ("cancelled", "failed", "impossible")
-
-
-def columns():
-    w = tables.workers
-    return (
-        w.c.browser_install_requested_at,
-        w.c.browser_install_ended_at,
-        w.c.browser_install_outcome,
-        w.c.browser_install_reason,
-    )
-
 
 def shown(fields: dict) -> None:
     """Fold a listed worker's columns of the request into browser_install, in place."""
-    requested_at, ended_at, outcome, reason = (fields.pop(column.name) for column in columns())
+    requested_at, ended_at, outcome, reason = (fields.pop(column.name) for column in repository.columns())
     fields["browser_install"] = (
         None
         if requested_at is None
@@ -66,13 +52,7 @@ def shown(fields: dict) -> None:
 
 
 async def _end(conn: AsyncConnection, worker_id: int, outcome: str, reason: str | None) -> None:
-    w = tables.workers
-    values = {
-        "browser_install_ended_at": func.now(),
-        "browser_install_outcome": outcome,
-        "browser_install_reason": reason,
-    }
-    await conn.execute(update(w).values(**values).where(w.c.id == worker_id))
+    await repository.end(conn, worker_id, outcome, reason)
     log.info("browser install ended", extra={"worker_id": worker_id, "outcome": outcome})
 
 
@@ -92,13 +72,7 @@ def _ending(body: HeartbeatRequest, requested_at: datetime):
 async def settle(conn: AsyncConnection, worker_id: int, body: HeartbeatRequest) -> BrowserInstallRequest | None:
     """The worker's open request as the heartbeat answer carries it, once this heartbeat's ending of it, if any, is
     recorded; None when none is open."""
-    w = tables.workers
-    statement = select(w.c.browser_install_requested_at).where(
-        w.c.id == worker_id,
-        w.c.browser_install_requested_at.is_not(None),
-        w.c.browser_install_ended_at.is_(None),
-    )
-    requested_at = (await conn.execute(statement)).scalar_one_or_none()
+    requested_at = await repository.open_since(conn, worker_id)
     if requested_at is None:
         return None
     ending = _ending(body, requested_at)
@@ -129,7 +103,7 @@ def held_back(row, now: datetime | None = None) -> bool:
     """Whether the last request of the worker ``row`` (with ``columns``) ended without Chromium (cancelled, failed or
     impossible) less than REASK_AFTER before ``now``: the hub opens none over it before."""
     ended_at = row.browser_install_ended_at
-    if ended_at is None or row.browser_install_outcome not in _WITHOUT_CHROMIUM:
+    if ended_at is None or row.browser_install_outcome not in WITHOUT_CHROMIUM:
         return False
     return (now or datetime.now(UTC)) - ended_at < REASK_AFTER
 
@@ -149,65 +123,38 @@ def askable(row, owner_id: int, now: datetime | None = None) -> bool:
     )
 
 
-async def _open(conn: AsyncConnection, worker_id: int) -> None:
-    w = tables.workers
-    values = {
-        "browser_install_requested_at": func.now(),
-        "browser_install_ended_at": None,
-        "browser_install_outcome": None,
-        "browser_install_reason": None,
-    }
-    await conn.execute(update(w).values(**values).where(w.c.id == worker_id))
-
-
 async def set_request(conn: AsyncConnection, user: Principal, worker_id: int, target: str, *, open_it: bool) -> None:
     """Open the worker's request (``open_it``) or cancel it, audited when it changes; the caller checked the worker
     is one ``user`` may drain and not revoked, and holds its row locked."""
-    w = tables.workers
-    found = (w.c.features, w.c.browser, *columns())
-    row = (await conn.execute(select(*found).where(w.c.id == worker_id))).one()
+    row = await repository.state(conn, worker_id)
     if open_it:
         refusal = _refusal(worker_id, row)
         if refusal is not None:
-            raise HTTPException(409, refusal)
+            raise Conflict(refusal)
         if is_open(row):
             return
-        await _open(conn, worker_id)
+        await repository.open_request(conn, worker_id)
         action = audit.WORKER_BROWSER_INSTALL
     else:
         if not is_open(row):
             return
         await _end(conn, worker_id, "cancelled", None)
         action = audit.WORKER_BROWSER_INSTALL_CANCEL
-    await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+    await Auditor(conn, None, user).record(action, target)
     log.info("browser install asked" if open_it else "browser install cancelled", extra={"worker_id": worker_id})
 
 
 async def _ask(conn: AsyncConnection, worker_id: int, run) -> bool:
     """Open a request on the worker ``worker_id`` for the queued ``run``, audited with no actor; False when another
     pass holds its row, or it was revoked, has Chromium, says no browser_install or has a request open since."""
-    w, u = tables.workers, tables.users
-    owner = select(u.c.login).where(u.c.id == w.c.owner_id).scalar_subquery()
-    query = (
-        select(w.c.name, owner.label("owner"), w.c.revoked_at, w.c.features, w.c.browser, *columns())
-        .where(w.c.id == worker_id)
-        .with_for_update(of=w, skip_locked=True)
-    )
-    row = (await conn.execute(query)).one_or_none()
+    row = await repository.locked_state(conn, worker_id)
     if row is None or row.revoked_at is not None or _refusal(worker_id, row) is not None or is_open(row):
         return False
     if held_back(row):
         return False
-    await _open(conn, worker_id)
+    await repository.open_request(conn, worker_id)
     target = f"worker:{worker_id} name={row.name} owner={row.owner} run={run.id}"
-    await audit.record(
-        conn,
-        actor_id=None,
-        token_id=None,
-        action=audit.WORKER_BROWSER_INSTALL,
-        target=target,
-        project_id=run.project_id,
-    )
+    await Auditor(conn, run.project_id).record(audit.WORKER_BROWSER_INSTALL, target)
     log.info("browser install asked by the hub", extra={"worker_id": worker_id, "run_id": run.id})
     return True
 
@@ -218,10 +165,8 @@ async def ask_for_queued(engine: AsyncEngine, batch: int = ASK_BATCH) -> int:
     (``askable``), each in a transaction of its own. Returns how many requests it opened."""
     from evo_agents.hub.server.runs.service import queue_fit  # it reads this module's columns
 
-    r = tables.runs
     async with engine.begin() as conn:
-        query = select(r.c.id).where(r.c.state == "queued", r.c.browser).order_by(r.c.id).limit(batch)
-        queued = (await conn.execute(query)).scalars().all()
+        queued = await repository.queued_with_browser(conn, batch)
     asked: set[int] = set()
     for run_id in queued:
         async with engine.begin() as conn:

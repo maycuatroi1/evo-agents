@@ -29,7 +29,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import browser_holds
+from evo_agents.hub.server.browser.service import holds as browser_holds
 from evo_agents.hub.server.run_state import move_run
 
 REATTACH = timedelta(seconds=runs.REATTACH_SECONDS)

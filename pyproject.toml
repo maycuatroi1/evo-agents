@@ -842,6 +842,24 @@ routes. A new module of the package goes into one of the four layers. See docs/s
 boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "hub-browser-layers"
+name = "Browser identities go from their routes to their service to their repository to their models, never back"
+type = "layers"
+containers = ["evo_agents.hub.server.browser"]
+layers = ["routes", "service", "repository", "models"]
+exhaustive = true
+broken_contract_guidance = """\
+In evo_agents.hub.server.browser a route handler only opens the transaction and passes the request's parts to a \
+public function of the service (identities, logins, leases, local, asks, view), which checks the caller, the run or \
+the worker and decides, refusing with the domain errors; the repository holds every query of the identities, their \
+profiles and holds, the workers' Install browser and the live view; the models (the shapes, the limits and the route \
+class that bounds an uploaded archive) import none of them. Move the code that reaches up into the layer that needs \
+it: a check or a message into the service, a query into the repository, a shape or a limit into the models. Other \
+modules import the service, the models and, to compose a query of their own, the repository; only the app includes \
+the routes. A new module of the package goes into one of the four layers. See docs/structure.md, section Package \
+boundaries."""
+
+[[tool.importlinter.contracts]]
 id = "plugins-standalone"
 name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
 type = "forbidden"

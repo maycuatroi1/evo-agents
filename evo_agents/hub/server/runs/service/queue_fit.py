@@ -24,7 +24,10 @@ from sqlalchemy import and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_events, runs, tables
-from evo_agents.hub.server import agent_placement, browser_install, kg_shared_pool, worker_placement
+from evo_agents.hub.server import agent_placement, kg_shared_pool, worker_placement
+from evo_agents.hub.server.browser.models.install import UNFINISHED_AFTER
+from evo_agents.hub.server.browser.repository import install as browser_install_repository
+from evo_agents.hub.server.browser.service import install as browser_install
 from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
 from evo_agents.hub.server.runs.service.candidates import PoolCandidate, RerunCandidates, WorkerCandidate
@@ -111,7 +114,7 @@ def _workers(run, home: agent_placement.Home | None):
             held.label("holding"),
             literal(0).label("others"),
             *worker_placement.columns(w),
-            *browser_install.columns(),
+            *browser_install_repository.columns(),
         )
         .where(w.c.revoked_at.is_(None), who)
         .order_by(w.c.owner_id != run.dispatched_by, w.c.id)
@@ -257,7 +260,7 @@ def _browser_reason(row, run, profile, home) -> tuple[str, bool]:
     install = _owners_command(row, run, "evo-agents worker browser install")
     if browser_install.is_open(row):
         minutes = _minutes_since(row.browser_install_requested_at)
-        if datetime.now(UTC) - row.browser_install_requested_at < browser_install.UNFINISHED_AFTER:
+        if datetime.now(UTC) - row.browser_install_requested_at < UNFINISHED_AFTER:
             return f"{lacks}: it installs the Chromium asked {minutes} min ago, and takes the run then", True
         return f"{lacks}: the Chromium asked {minutes} min ago is not installed yet; on its machine, {install}", False
     if runs.BROWSER_INSTALL not in features:

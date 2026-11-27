@@ -10,18 +10,17 @@ next run of one may be claimed. An identity deleted meanwhile is left as it is: 
 
 from __future__ import annotations
 
-from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import runs
+from evo_agents.hub.server.browser.repository import holds as repository
 
 
 async def follow(conn: AsyncConnection, run_id: int, new: str) -> None:
     """Give run ``run_id`` its identities as it is claimed (``new`` is ``leased``), or take back those it holds as it
     leaves the held states; any other move holds what it held."""
-    b = tables.browser_identities
     if new not in runs.HELD_STATES:
-        await conn.execute(update(b).values(held_by_run=None).where(b.c.held_by_run == run_id))
+        await repository.release(conn, run_id)
         return
     if new == "leased":
         await take(conn, run_id)
@@ -30,9 +29,7 @@ async def follow(conn: AsyncConnection, run_id: int, new: str) -> None:
 async def take(conn: AsyncConnection, run_id: int) -> None:
     """Give run ``run_id`` the identities it was dispatched with that are still free and live: at its claim, and when
     the hub re-attaches it after its loss gave them back (``run_reattach``)."""
-    b, r = tables.browser_identities, tables.runs
-    ids = (await conn.execute(select(r.c.browser_identities).where(r.c.id == run_id))).scalar_one_or_none()
+    ids = await repository.dispatched_with(conn, run_id)
     if not ids:
         return
-    free = (b.c.id.in_(ids), b.c.held_by_run.is_(None), b.c.deleted_at.is_(None))
-    await conn.execute(update(b).values(held_by_run=run_id, last_used_at=func.now()).where(*free))
+    await repository.hold(conn, run_id, ids)
